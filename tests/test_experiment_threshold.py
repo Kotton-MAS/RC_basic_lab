@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import csv
-import dataclasses
 import math
 from pathlib import Path
 
@@ -45,6 +44,7 @@ from rc_basics_lab.experiment.threshold import (
     REFERENCE_WINDOW,
     THRESHOLD_SCALAR_COLUMNS,
     WINDOW_GRID,
+    ThresholdRow,
     critical_rho,
     run_threshold_sweep,
     sigma_column,
@@ -83,7 +83,7 @@ def small_config() -> Esp02Config:
     )
 
 
-def sweep() -> tuple[object, ...]:
+def sweep() -> tuple[ThresholdRow, ...]:
     return run_threshold_sweep(
         small_config(),
         abs_tol_grid=TEST_ABS_TOL_GRID,
@@ -112,7 +112,7 @@ def test_sweep_has_one_row_per_threshold_combination() -> None:
     """行数と並びが ``abs_tol`` x ``window`` の直積と一致する。"""
     rows = sweep()
     assert len(rows) == len(TEST_ABS_TOL_GRID) * len(TEST_WINDOW_GRID)
-    assert [(row.abs_tol, row.window) for row in rows] == [  # type: ignore[attr-defined]
+    assert [(row.abs_tol, row.window) for row in rows] == [
         (abs_tol, window)
         for abs_tol in TEST_ABS_TOL_GRID
         for window in TEST_WINDOW_GRID
@@ -133,10 +133,10 @@ def test_reference_case_does_not_shift_from_itself() -> None:
     reference = next(
         row
         for row in sweep()
-        if (row.abs_tol, row.window) == (REFERENCE_ABS_TOL, REFERENCE_WINDOW)  # type: ignore[attr-defined]
+        if (row.abs_tol, row.window) == (REFERENCE_ABS_TOL, REFERENCE_WINDOW)
     )
-    assert reference.n_sigma_shifted == 0  # type: ignore[attr-defined]
-    assert reference.max_abs_shift == 0.0  # type: ignore[attr-defined]
+    assert reference.n_sigma_shifted == 0
+    assert reference.max_abs_shift == 0.0
 
 
 def test_looser_tolerance_never_shrinks_the_esp_region() -> None:
@@ -147,9 +147,9 @@ def test_looser_tolerance_never_shrinks_the_esp_region() -> None:
     """
     rows = sweep()
     for window in TEST_WINDOW_GRID:
-        by_tolerance = [row for row in rows if row.window == window]  # type: ignore[attr-defined]
-        by_tolerance.sort(key=lambda row: row.abs_tol)  # type: ignore[attr-defined,no-any-return]
-        counts = [row.n_converged for row in by_tolerance]  # type: ignore[attr-defined]
+        by_tolerance = [row for row in rows if row.window == window]
+        by_tolerance.sort(key=lambda row: row.abs_tol)
+        counts = [row.n_converged for row in by_tolerance]
         assert counts == sorted(counts), (window, counts)
 
 
@@ -162,9 +162,9 @@ def test_every_row_counts_all_conditions() -> None:
         * config.reservoir.n_replicates
     )
     for row in sweep():
-        assert row.n_conditions == expected  # type: ignore[attr-defined]
-        assert 0 <= row.n_converged <= expected  # type: ignore[attr-defined]
-        assert len(row.critical_rho_by_sigma) == len(config.esp_map.sigma_grid)  # type: ignore[attr-defined]
+        assert row.n_conditions == expected
+        assert 0 <= row.n_converged <= expected
+        assert len(row.critical_rho_by_sigma) == len(config.esp_map.sigma_grid)
 
 
 def test_reference_case_must_be_in_the_grid() -> None:
@@ -185,7 +185,7 @@ def test_threshold_csv_header_matches_rows(tmp_path: Path) -> None:
     config = small_config()
     rows = sweep()
     path = write_threshold_csv(
-        rows,  # type: ignore[arg-type]
+        rows,
         config.esp_map.sigma_grid,
         tmp_path / ESP_THRESHOLD_SENSITIVITY_CSV,
     )
@@ -197,9 +197,9 @@ def test_threshold_csv_header_matches_rows(tmp_path: Path) -> None:
     assert header[: len(THRESHOLD_SCALAR_COLUMNS)] == THRESHOLD_SCALAR_COLUMNS
     assert len(written) == len(rows)
     for row, record in zip(rows, written, strict=True):
-        assert set(record) == set(threshold_row_as_dict(row))  # type: ignore[arg-type]
-        assert float(record["abs_tol"]) == row.abs_tol  # type: ignore[attr-defined]
-        for sigma, value in row.critical_rho_by_sigma:  # type: ignore[attr-defined]
+        assert set(record) == set(threshold_row_as_dict(row))
+        assert float(record["abs_tol"]) == row.abs_tol
+        for sigma, value in row.critical_rho_by_sigma:
             written_value = float(record[sigma_column(sigma)])
             assert (written_value == value) or (
                 math.isnan(written_value) and math.isnan(value)
@@ -209,8 +209,7 @@ def test_threshold_csv_header_matches_rows(tmp_path: Path) -> None:
 def test_threshold_sweep_writes_only_its_own_csv(tmp_path: Path) -> None:
     """``--threshold-sweep`` 相当は本体の7成果物を上書きしない。"""
     out_dir = tmp_path / "out"
-    reduced = dataclasses.replace(small_config())
-    path = run_and_report_threshold_sweep(reduced, out_dir)
+    path = run_and_report_threshold_sweep(small_config(), out_dir)
     assert path.name == ESP_THRESHOLD_SENSITIVITY_CSV
     produced = sorted(item.name for item in out_dir.iterdir())
     assert produced == [ESP_THRESHOLD_SENSITIVITY_CSV]
