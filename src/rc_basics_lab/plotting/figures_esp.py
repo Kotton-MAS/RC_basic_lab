@@ -122,6 +122,34 @@ def _edges(values: Sequence[float]) -> FloatArray:
 # --- 2-A: ESP の減衰曲線 ---------------------------------------------------
 
 
+_DECAY_X_MARGIN = 1.3
+"""減衰が床に届いた後も表示する余白の倍率。"""
+
+_DECAY_X_MIN = 50.0
+"""横軸の下限 (減衰が速すぎても目盛が読める幅を確保する)。"""
+
+
+def _decay_x_limit(outcomes: Sequence[ConditionOutcome]) -> tuple[float, int]:
+    """減衰曲線の横軸上限と系列長を返す。
+
+    系列長 (本番 3000 ステップ) をそのまま横軸に取ると、測れている区間
+    (rho=0.5 なら 46 ステップ、rho=0.95 でも 680 ステップ) が左端に潰れて
+    図の主役である**傾きの違い**が読めない。床に届いた時刻の最大値に余白を
+    足したところで切る。切ったことは軸ラベルに数値で書く (「グラフの外に
+    何かある」と読者に思わせないため)。
+    """
+    n_steps = max(outcome.distance.shape[0] for outcome in outcomes)
+    crossings = [
+        int(np.nonzero(outcome.distance <= _DISTANCE_FLOOR)[0][0])
+        for outcome in outcomes
+        if np.any(outcome.distance <= _DISTANCE_FLOOR)
+    ]
+    if not crossings:
+        return float(n_steps), n_steps
+    limit = max(_DECAY_X_MIN, max(crossings) * _DECAY_X_MARGIN)
+    return min(float(n_steps), limit), n_steps
+
+
 def plot_esp_decay(
     outcomes: Sequence[ConditionOutcome], path: Path, *, style: StyleContext
 ) -> Path:
@@ -169,7 +197,14 @@ def plot_esp_decay(
         )
         axis.set_yscale("log")
         axis.set_ylim(_DISTANCE_FLOOR / 10.0, 10.0)
-        axis.set_xlabel(style.label("ステップ t", "step t"))
+        x_limit, n_steps = _decay_x_limit(outcomes)
+        axis.set_xlim(0.0, x_limit)
+        axis.set_xlabel(
+            style.label(
+                f"ステップ t (系列長 {n_steps} のうち先頭 {int(x_limit)} を表示)",
+                f"step t (first {int(x_limit)} of {n_steps}; the rest is flat)",
+            )
+        )
         axis.set_ylabel(
             style.label(
                 "2軌道の距離 ||x_a - x_b|| / sqrt(N)",
