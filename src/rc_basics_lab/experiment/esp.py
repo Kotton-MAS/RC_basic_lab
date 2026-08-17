@@ -27,7 +27,10 @@ from dataclasses import dataclass, fields
 
 import numpy as np
 
-from rc_basics_lab.config import Esp02Config, esp_stream_seed
+from rc_basics_lab.config import (
+    Esp02Config,
+    esp_stream_seed,
+)
 from rc_basics_lab.diagnostics.base import DiagnosticContext, StatePropagator
 from rc_basics_lab.diagnostics.esp import conditional_lyapunov, esp_convergence
 from rc_basics_lab.diagnostics.timescale import autocorrelation_time
