@@ -50,6 +50,7 @@ from rc_basics_lab.experiment.esp import (
     evaluate_condition,
     make_drive,
     make_initial_states,
+    run_decay_sweep,
     run_esp_experiment,
     summarize_verdict_agreement,
 )
@@ -159,6 +160,18 @@ def test_unknown_distribution_raises() -> None:
     """未対応の分布は黙って一様として扱わない (``drive.distribution`` の配線)。"""
     with pytest.raises(ValueError, match="uniform"):
         make_drive(0.5, 100, np.random.default_rng(0), distribution="gaussian")
+
+
+def test_make_drive_rejects_a_negative_sigma() -> None:
+    """``sigma`` が負なら ``ValueError`` (docstring の Raises)。"""
+    with pytest.raises(ValueError, match="sigma_u"):
+        make_drive(-0.1, 100, np.random.default_rng(0))
+
+
+def test_make_drive_rejects_fewer_than_one_step() -> None:
+    """``n_steps`` が1未満なら ``ValueError`` (docstring の Raises)。"""
+    with pytest.raises(ValueError, match="n_steps"):
+        make_drive(0.5, 0, np.random.default_rng(0))
 
 
 def test_bias_scale_is_zero_so_that_zero_sigma_is_truly_no_input() -> None:
@@ -272,6 +285,33 @@ def test_initial_states_are_all_nonzero_and_independent() -> None:
         assert np.any(state), "ゼロ状態が混ざっています"
     for index in range(1, len(states)):
         assert not np.array_equal(states[0], states[index])
+
+
+def test_make_initial_states_rejects_fewer_than_one_unit() -> None:
+    """``n_units`` が1未満なら ``ValueError`` (docstring の Raises)。"""
+    with pytest.raises(ValueError, match="n_units"):
+        make_initial_states(0, 4, np.random.default_rng(0))
+
+
+def test_make_initial_states_rejects_fewer_than_one_pair() -> None:
+    """``n_pairs`` が1未満なら ``ValueError`` (docstring の Raises)。"""
+    with pytest.raises(ValueError, match="n_pairs"):
+        make_initial_states(50, 0, np.random.default_rng(0))
+
+
+def test_sweep_rejects_fewer_than_one_replicate() -> None:
+    """``reservoir.n_replicates`` が1未満なら ``_sweep`` が ``ValueError``。
+
+    ``_sweep`` は ``run_decay_sweep`` / ``run_timescale_sweep`` /
+    ``run_esp_map`` の共通ループなので、代表として ``run_decay_sweep`` から
+    到達させる。
+    """
+    config = dataclasses.replace(
+        small_config(),
+        reservoir=dataclasses.replace(small_config().reservoir, n_replicates=0),
+    )
+    with pytest.raises(ValueError, match="n_replicates"):
+        run_decay_sweep(config)
 
 
 # --- 受け入れ条件1: 無入力の減衰がスペクトル半径と一致する -------------------
