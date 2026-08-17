@@ -12,9 +12,7 @@ pyplot を使わず ``Figure`` + ``FigureCanvasAgg`` を直接組む。CI には
 
 from __future__ import annotations
 
-import statistics
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +27,7 @@ from rc_basics_lab.experiment.state_space import (
     RESERVOIR_STATE,
     StateSpaceReport,
 )
+from rc_basics_lab.experiment.summary import aggregate_nrmse
 from rc_basics_lab.plotting.style import StyleContext
 from rc_basics_lab.types import FloatArray
 
