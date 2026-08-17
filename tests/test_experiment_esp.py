@@ -32,6 +32,8 @@ from rc_basics_lab.config import (
     TimescaleConfig,
     TimescaleSweepConfig,
 )
+from rc_basics_lab.diagnostics.base import DiagnosticContext
+from rc_basics_lab.diagnostics.esp import conditional_lyapunov
 from rc_basics_lab.experiment.esp import (
     BIAS_SCALE,
     ESP_CSV_COLUMNS,
@@ -220,6 +222,41 @@ def test_propagator_uses_the_next_input() -> None:
         assert np.array_equal(propagate(states[t], t), states[t + 1])
     # u[t] を使う実装なら一致しない (検査が空振りしていないことの確認)
     assert not np.array_equal(esn.step(states[10], drive[10]), states[11])
+
+
+def test_perturbation_growth_stays_far_below_the_runaway_limit() -> None:
+    """1区間あたりの成長率が ``max_growth`` に対して桁で余裕がある (D-18)。
+
+    ``delta=1e-8`` と ``renorm_interval=1`` を選んだ理由は「摂動が線形域を
+    外れない」ことであり、``max_growth=1000`` はその前提が崩れたときの
+    暴走検出でしかない。両者が接近していたら再正規化間隔が長すぎる
+    (= 推定値が線形化の範囲を出ている) というサインになるので、余裕そのものを
+    固定する。``docs/design.md`` §9 に本番格子での実測 (最大 1.5372 /
+    max_growth の 1/650) を記録してある。
+    """
+    config = small_config()
+    limit = config.lyapunov.max_growth
+    observed = []
+    for rho in (0.9, 1.8):
+        esn = ESN(
+            build_esn_config(config, rho, 1.0),
+            make_rng_for(0, SeedStream.RESERVOIR, 0),
+            n_inputs=1,
+        )
+        drive = make_drive(0.5, 400, make_rng_for(1, SeedStream.TASK, 0))
+        states = esn.run(
+            drive, x0=make_initial_states(esn.n_units, 1, np.random.default_rng(0))[0]
+        )
+        result = conditional_lyapunov(
+            states,
+            ctx=DiagnosticContext(washout=100, propagator=esn_propagator(esn, drive)),
+            cfg=config.lyapunov,
+        )
+        observed.append(result.scalars["max_observed_growth"])
+    assert all(math.isfinite(growth) for growth in observed)
+    # 1ステップで1桁も成長しない = 摂動は線形域の内側にある
+    assert max(observed) < 10.0, observed
+    assert max(observed) < limit / 100.0, (observed, limit)
 
 
 def test_initial_states_are_all_nonzero_and_independent() -> None:
