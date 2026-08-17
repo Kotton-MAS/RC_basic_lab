@@ -73,7 +73,7 @@ def _minimal_input_conditional_lyapunov(states: FloatArray) -> _MinimalInput:
 MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.dummy.state_mean_norm": _minimal_input_no_extras,
     "rc_basics_lab.diagnostics.state_space.state_pca": _minimal_input_no_extras,
-    "rc_basics_lab.diagnostics.esp.esp_convergence": _minimal_input_no_extras,
+    "rc_basics_lab.diagnostics.esp.esp_convergence": _minimal_input_esp_convergence,
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov": (
         _minimal_input_conditional_lyapunov
     ),
@@ -336,11 +336,10 @@ def test_minimal_valid_input_actually_produces_a_result() -> None:
         minimal_x, minimal_u, minimal_y, minimal_ctx = MINIMAL_VALID_INPUT[qualname](
             states
         )
-        with contextlib.suppress(ValueError):
-            result = func(minimal_x, minimal_u, minimal_y, ctx=minimal_ctx)
-            assert isinstance(result, DiagnosticResult), (
-                f"{qualname}: DiagnosticResult を返していません: {type(result)}"
-            )
+        result = func(minimal_x, minimal_u, minimal_y, ctx=minimal_ctx)
+        assert isinstance(result, DiagnosticResult), (
+            f"{qualname}: DiagnosticResult を返していません: {type(result)}"
+        )
 
 
 def test_extra_diagnostic_parameters_are_keyword_only_and_do_not_overlap_ctx() -> None:
