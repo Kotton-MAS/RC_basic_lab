@@ -58,6 +58,7 @@ from rc_basics_lab.experiment.washout import (
     HEADLINE_METHOD,
     HEADLINE_TASK,
     WashoutRow,
+    _sensitivity_for,
     mean_nrmse_by_washout,
     predicted_t0,
     run_washout_sweep,
