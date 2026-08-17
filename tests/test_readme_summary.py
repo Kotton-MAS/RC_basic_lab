@@ -143,17 +143,22 @@ _META_VALUE_RE = {
 
 
 def _reference_threshold_row() -> dict[str, str]:
-    """閾値感度 CSV のうち、既定値 (D-16) に対応する行。"""
+    """閾値感度 CSV のうち、本番実行が実際に使った基準行 (``is_reference`` 列)。
+
+    基準は D-16 の既定値ではなく ``config.esp.abs_tol`` / ``config.esp.window``
+    から取る (``rc_basics_lab.experiment.threshold.run_threshold_sweep``)。
+    ここで独自にモジュール定数へ固定してしまうと、``config.esp`` を格子内の
+    別点に変えたときに CSV の基準行だけが動き、README 照合は「ずれ 0 でない
+    行」を基準として検証し続ける (F-2-002)。CSV 自身が持つ ``is_reference``
+    列から引くことでこの経路を塞ぐ。
+    """
     with THRESHOLD_CSV.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert rows, "esp_threshold_sensitivity.csv が空です (make threshold-02)"
     for row in rows:
-        if (
-            float(row["abs_tol"]) == _REFERENCE_ABS_TOL
-            and int(row["window"]) == _REFERENCE_WINDOW
-        ):
+        if row["is_reference"] == "True":
             return row
-    raise AssertionError("既定値 (abs_tol=1e-6, window=200) の行が CSV にありません")
+    raise AssertionError("is_reference=True の行が CSV にありません")
 
 
 def _readme_critical_rho_cells() -> list[str]:
