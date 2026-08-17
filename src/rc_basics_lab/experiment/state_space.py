@@ -17,13 +17,14 @@ PCA そのものは ``diagnostics.state_space.state_pca`` (``reservoir`` に依�
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticResult
 from rc_basics_lab.diagnostics.state_space import state_pca
 from rc_basics_lab.experiment.runner import (
+    ReplicatePlan,
     TaskEntry,
     build_tasks,
     plan_replicate,
@@ -110,19 +111,31 @@ class StateSpaceReport:
 
 
 def analyze_task(
-    config: ExperimentConfig, task_entry: TaskEntry, replicate: int = 0
+    config: ExperimentConfig,
+    task_entry: TaskEntry,
+    replicate: int = 0,
+    *,
+    plan: ReplicatePlan | None = None,
 ) -> StateSpaceReport:
-    """1課題について3つの空間の PCA を取る。"""
-    plan = plan_replicate(config, task_entry, replicate)
-    start, stop = plan.split.start, plan.split.test.stop
+    """1課題について3つの空間の PCA を取る。
+
+    Args:
+        plan: 呼び出し側が既に持っている ``ReplicatePlan`` (``replicate`` に
+            対応するもの) を渡すと ``plan_replicate`` の呼び直しを省く
+            (F-1-009)。省略時はこれまでどおり内部で作る。
+    """
+    resolved_plan = (
+        plan if plan is not None else plan_replicate(config, task_entry, replicate)
+    )
+    start, stop = resolved_plan.split.start, resolved_plan.split.test.stop
     n_lags = max(config.ridge.n_lags_grid)
     embedded = build_design_matrix(
-        DelayLineSpec(n_lags=n_lags, bias=False), plan.task.u
+        DelayLineSpec(n_lags=n_lags, bias=False), resolved_plan.task.u
     ).phi
     matrices: tuple[tuple[str, FloatArray], ...] = (
-        (RAW_INPUT, plan.task.u[start:stop]),
+        (RAW_INPUT, resolved_plan.task.u[start:stop]),
         (DELAY_EMBEDDED_INPUT, embedded[start:stop]),
-        (RESERVOIR_STATE, plan.states[start:stop]),
+        (RESERVOIR_STATE, resolved_plan.states[start:stop]),
     )
     spaces = tuple(
         SpaceSummary.from_result(name, state_pca(matrix)) for name, matrix in matrices
@@ -148,11 +161,26 @@ def analyze_task(
 
 
 def collect_state_space(
-    config: ExperimentConfig, replicate: int = 0
+    config: ExperimentConfig,
+    replicate: int = 0,
+    *,
+    plans: Mapping[str, ReplicatePlan] | None = None,
 ) -> tuple[StateSpaceReport, ...]:
-    """全課題について空間比較を取る (図と meta.json の材料)。"""
+    """全課題について空間比較を取る (図と meta.json の材料)。
+
+    Args:
+        plans: タスク名 -> ``replicate`` に対応する ``ReplicatePlan``。渡すと
+            ``run_experiment`` 側で作った plan を再利用し、``plan_replicate``
+            の呼び直しを省く (F-1-009)。
+    """
     return tuple(
-        analyze_task(config, entry, replicate) for entry in build_tasks(config)
+        analyze_task(
+            config,
+            entry,
+            replicate,
+            plan=None if plans is None else plans.get(entry.name),
+        )
+        for entry in build_tasks(config)
     )
 
 
