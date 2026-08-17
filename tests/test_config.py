@@ -159,7 +159,7 @@ def test_coerce_scalar_rejects_loose_conversions(
 
     bool は Python では int のサブクラスなので、明示的に isinstance(bool) で
     弾かないと ``n_replicates: true`` のような YAML が黙って通ってしまう。
-    D-09（未知キーは ConfigError で即座に失敗させる）と隣接する規律だが、
+    D-09 (未知キーは ConfigError で即座に失敗させる) と隣接する規律だが、
     このガード自体はこれまでテストが無く、退行しても何も落ちなかった。
     """
     path = _write(tmp_path, yaml_text)
