@@ -11,9 +11,13 @@ import inspect
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, fields, replace
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pytest
+
+if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
+    from _typeshed import DataclassInstance
 
 from rc_basics_lab.diagnostics.base import (
     DiagnosticContext,
@@ -435,42 +439,43 @@ class _ConfigCase:
     チャネルで効きを確認する (``config.py`` 側の CHANNEL_ERROR と同じ考え方)。
     """
 
-    config_type: type
+    config_type: type[object]
     field_name: str
     base: object
     changed: object
     call: Callable[[object], DiagnosticResult]
 
 
-def _outcome(case: _ConfigCase, cfg: object) -> tuple[str, object]:
+@dataclass(frozen=True, slots=True)
+class _Outcome:
+    """診断1回ぶんの「出力」。scalars か ValueError のどちらか。"""
+
+    error: str | None
+    scalars: Mapping[str, float]
+
+    def differs_from(self, other: _Outcome) -> bool:
+        if (self.error is None) != (other.error is None):
+            return True
+        if self.error is not None:
+            return self.error != other.error
+        if self.scalars.keys() != other.scalars.keys():
+            return True
+        for key, value in self.scalars.items():
+            counterpart = other.scalars[key]
+            if math.isnan(value) and math.isnan(counterpart):
+                continue
+            # 1e-9 より小さい差は「効いた」と見なさない (丸めの揺れと区別する)
+            if value != pytest.approx(counterpart, rel=1e-9, abs=1e-12):
+                return True
+        return False
+
+
+def _outcome(case: _ConfigCase, cfg: object) -> _Outcome:
     try:
         result = case.call(cfg)
     except ValueError as exc:
-        return ("error", str(exc))
-    return ("scalars", dict(result.scalars))
-
-
-def _scalars_equal(left: Mapping[str, float], right: Mapping[str, float]) -> bool:
-    if left.keys() != right.keys():
-        return False
-    for key, value in left.items():
-        other = right[key]
-        if math.isnan(value) and math.isnan(other):
-            continue
-        if value != pytest.approx(other, rel=1e-9, abs=1e-12):
-            return False
-    return True
-
-
-def _outcomes_differ(first: tuple[str, object], second: tuple[str, object]) -> bool:
-    if first[0] != second[0]:
-        return True
-    if first[0] == "error":
-        return first[1] != second[1]
-    left = first[1]
-    right = second[1]
-    assert isinstance(left, dict) and isinstance(right, dict)
-    return not _scalars_equal(left, right)
+        return _Outcome(error=str(exc), scalars={})
+    return _Outcome(error=None, scalars=dict(result.scalars))
 
 
 def _esp_call(
@@ -598,7 +603,7 @@ def test_esp_config_fields_change_output() -> None:
     for case in CONFIG_CASES:
         base = _outcome(case, case.base)
         changed = _outcome(case, case.changed)
-        assert _outcomes_differ(base, changed), (
+        assert base.differs_from(changed), (
             f"{case.config_type.__name__}.{case.field_name} を変えても "
             f"出力が変わりません: {base} -> {changed}"
         )
@@ -611,7 +616,7 @@ def test_all_config_fields_have_a_case() -> None:
     網羅性が静かに落ちる (``test_all_config_fields_are_covered`` と同じ役割)。
     """
     for _, config_type in _CONFIG_TYPES:
-        expected = {f.name for f in fields(config_type)}
+        expected = _field_names(config_type)
         covered = {
             case.field_name for case in CONFIG_CASES if case.config_type is config_type
         }
