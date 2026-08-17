@@ -235,10 +235,18 @@ class StatePropagator(Protocol):
    理由: `seeds._base_seed` と同じ流儀。「他ストリームのシードを参照していない」が
    コードの形から読める。
 5. **各実験セクション (`decay` / `timescale_sweep` / `esp_map`) は `ESNConfig` を
-   内包せず、必要な値だけを平らに持つ** (`leak_rate` / `input_scale` / `n_units` /
-   `density`)。理由: `ESNConfig` を内包すると掃引軸である `spectral_radius` が
-   「YAML から設定できるが実行時に上書きされる死んだフィールド」になり、
-   D-13 が防ごうとしている状態をそのまま作る。
+   内包せず、そのセクション固有の掃引軸だけを平らに持つ** (`decay.rho_grid` /
+   `decay.leak_rate` / `timescale_sweep.leak_rate_grid` / `esp_map.sigma_grid`
+   など)。`input_scale` / `n_units` / `density` / `n_replicates` はセクションに
+   重複させず、`Esp02Config.reservoir` (`ReservoirSweepConfig`) に1本だけ
+   集約する (round 2 実装で確定。F-02-1-004)。理由 (2つ):
+   - `ESNConfig` を内包すると掃引軸である `spectral_radius` が「YAML から
+     設定できるが実行時に上書きされる死んだフィールド」になり、D-13 が
+     防ごうとしている状態をそのまま作る。
+   - 3セクションが `n_units` 等を別々に持つと、値が食い違っても
+     `ConfigError` にならず黙って条件が割れる。1本に集約することで、
+     §8 Q3 でユーザーが承認した「N=200 をサイクル1との連続性のため
+     連載を通して固定する」をコードで構造的に保証する。
 6. **`drive` セクションに `distribution` / `n_steps` / `washout` / `n_pairs` を集約**し、
    実験セクションごとに重複させない。理由: 同じ量が3か所にあると、片方だけ直した
    ときに黙って条件が食い違う。
@@ -304,6 +312,9 @@ class StatePropagator(Protocol):
    - `esn_propagator(esn, u)`: `lambda x, t: esn.step(x, u[t + 1])`。
    - `evaluate_condition(...) -> EspRow`。
    - `EspRow` (宣言順が CSV 列順): `experiment`, `replicate`, `seed_*`, `rho`, `leak_rate`, `input_scale`, `sigma_u`, `input_amplitude`, `input_drive_std`, `n_units`, `density`, `n_steps`, `washout`, `window`, `n_pairs`, `d_initial`, `d_tail`, `converged`, `decay_rate_per_step`, `lyapunov_per_step`, `lyapunov_per_time`, `tau_1e`, `tau_censored`, `tau_integrated`, `wall_time_s`。
+     このうち `input_scale` / `n_units` / `density` は `Esp02Config.reservoir`
+     (`ReservoirSweepConfig`) 由来であり、セクション固有の YAML キーではない
+     (実装メモ5)。
 2. `plotting/figures_esp.py` (D-10 準拠)
    - `plot_esp_decay` / `plot_leak_timescale` (理論線 `-1/log(1-a)` を重ねる) / `plot_esp_map` (ρ×σ、`converged` 率、λ=0 等高線、σ=0 は「no input」として別枠)。副題に **Gallicchio (2019) の再実演**を明記。
 3. `experiment/esp_pipeline.py::run_and_report_esp`。`meta.json` に `esp_defaults` と `verdict_lyapunov_agreement` を載せる。
