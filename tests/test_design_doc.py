@@ -25,6 +25,7 @@ import dataclasses
 import importlib
 import math
 import re
+import statistics
 from pathlib import Path
 
 import pytest
@@ -201,3 +202,90 @@ def test_design_doc_points_at_the_regeneration_command() -> None:
     text = _text()
     assert "make threshold-02" in text
     assert "esp_threshold_sensitivity.csv" in text
+
+
+# --- §9.6 補償なし (pad_series=False) との対比 -------------------------------
+
+
+def _unpadded_washout_table() -> tuple[list[str], list[list[str]]]:
+    """§9.6 の「補償なし」表を (ヘッダ, データ行) に分ける。
+
+    §9.6 には ``| washout | ... |`` 形式の表が2つ (補償あり / 補償なし) ある
+    ので、「補償なし」の見出しより後にある方を探す。
+    """
+    lines = _text().splitlines()
+    start = next(index for index, line in enumerate(lines) if "補償なし" in line)
+    header_pattern = re.compile(r"^\|\s*washout\s*\|")
+    for index in range(start, len(lines)):
+        if not header_pattern.match(lines[index]):
+            continue
+        header = [cell.strip() for cell in lines[index].strip("|").split("|")]
+        rows: list[list[str]] = []
+        for body in lines[index + 2 :]:
+            if not body.startswith("|"):
+                break
+            rows.append([cell.strip() for cell in body.strip("|").split("|")])
+        return header, rows
+    raise AssertionError("docs/design.md §9.6 の補償なし表が見つかりません")
+
+
+def _unpadded_csv_rows() -> list[dict[str, str]]:
+    with UNPADDED_WASHOUT_CSV.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _mg_esn_unpadded_stats_by_washout() -> dict[int, tuple[int, float]]:
+    """``(n_train, レプリケート平均 nrmse)`` を washout ごとに (MG x ESN のみ)。"""
+    grouped: dict[int, list[tuple[int, float]]] = {}
+    for record in _unpadded_csv_rows():
+        if record["task"] != "mackey_glass" or record["method"] != "esn":
+            continue
+        washout = int(record["washout"])
+        grouped.setdefault(washout, []).append(
+            (int(record["n_train"]), float(record["nrmse"]))
+        )
+    return {
+        washout: (values[0][0], statistics.fmean(nrmse for _, nrmse in values))
+        for washout, values in grouped.items()
+    }
+
+
+def test_unpadded_washout_csv_exists() -> None:
+    """補償なし (``pad_series=False``) の一次資料が存在する (D-19 の対比の裏付け)。
+
+    §9.6 の「補償なしでは完全に単調増加する」という記述 —— D-19 の存在意義
+    そのもの —— を裏付ける数値がコミット済みの CSV から検証できることを固定する。
+    """
+    assert UNPADDED_WASHOUT_CSV.is_file(), (
+        "washout.pad_series: false で再生成してください (docs/design.md §9.6)"
+    )
+
+
+def test_unpadded_design_table_matches_the_csv() -> None:
+    """§9.6 の補償なし表 (``n_train`` / MG x ESN の NRMSE) が CSV の実測と一致する。
+
+    ``test_design_table_values_match_the_threshold_csv`` (§9.2) と同じ役割を
+    §9.6 に対して果たす。この一致が崩れたら「補償が無ければ滑らかな単調増加に
+    見える」という D-19 の根拠が手書きの数値に戻っている。
+    """
+    header, table = _unpadded_washout_table()
+    stats = _mg_esn_unpadded_stats_by_washout()
+    washouts = [int(cell) for cell in header[1:]]
+    n_train_row = next(row for row in table if row[0] == "`n_train`")
+    nrmse_row = next(row for row in table if "NRMSE" in row[0])
+    for washout, documented_n_train, documented_nrmse in zip(
+        washouts, n_train_row[1:], nrmse_row[1:], strict=True
+    ):
+        actual_n_train, actual_nrmse = stats[washout]
+        assert int(documented_n_train) == actual_n_train, washout
+        assert float(documented_nrmse) == pytest.approx(actual_nrmse, rel=1.0e-3), (
+            washout
+        )
+
+
+def test_design_doc_points_at_the_unpadded_regeneration_command() -> None:
+    """補償なし表の出どころ (再生成手順と CSV 名) が §9.6 に書いてある。"""
+    text = _text()
+    assert "washout_sensitivity_unpadded.csv" in text
+    assert "pad_series" in text
+    assert "false" in text
