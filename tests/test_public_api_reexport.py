@@ -18,6 +18,8 @@ from types import ModuleType
 
 import pytest
 
+import rc_basics_lab
+
 PACKAGE_NAMES = (
     "diagnostics",
     "reservoir",
@@ -40,6 +42,27 @@ def _public_submodule_names(package: ModuleType) -> set[str]:
         for info in pkgutil.iter_modules(package.__path__)
         if not info.name.startswith("_")
     }
+
+
+def test_package_names_matches_automatic_enumeration() -> None:
+    """``PACKAGE_NAMES`` が実際のトップレベルパッケージ集合と一致する (F-1-020)。
+
+    以前は手書きの固定タプルで、実際の ``rc_basics_lab`` 配下のパッケージ集合と
+    機械的に突き合わせる完全性チェックが無かった。7つ目のトップレベル
+    パッケージが増えても ``PACKAGE_NAMES`` への追記を忘れると黙って検査対象
+    から漏れる。``pkgutil.iter_modules`` の ``ispkg`` でサブパッケージ
+    (``config.py`` 等の単一モジュールは除く) だけを列挙して突き合わせる。
+    """
+    actual = {
+        info.name
+        for info in pkgutil.iter_modules(rc_basics_lab.__path__)
+        if info.ispkg and not info.name.startswith("_")
+    }
+    assert set(PACKAGE_NAMES) == actual, (
+        "PACKAGE_NAMES が実際のトップレベルパッケージ集合と一致しません "
+        f"(不足={sorted(actual - set(PACKAGE_NAMES))}, "
+        f"余剰={sorted(set(PACKAGE_NAMES) - actual)})"
+    )
 
 
 @pytest.mark.parametrize("package_name", PACKAGE_NAMES)
