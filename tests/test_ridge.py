@@ -39,16 +39,16 @@ def _linear_target(phi: FloatArray, seed: int = 1) -> FloatArray:
 
 
 def test_penalty_matrix_has_zero_for_bias() -> None:
-    matrix = penalty_matrix(4)
+    matrix = penalty_matrix(4, bias_column=0)
     assert np.array_equal(np.diag(matrix), np.array([0.0, 1.0, 1.0, 1.0]))
-    assert np.array_equal(penalty_matrix(3, None), np.eye(3))
+    assert np.array_equal(penalty_matrix(3, bias_column=None), np.eye(3))
 
 
 def test_bias_column_is_not_penalized() -> None:
     """定数目標 y = c で、alpha を極端に大きくしてもバイアスは c のまま (D-03)。"""
     phi = _design()
     targets: FloatArray = np.full((phi.shape[0], 1), CONSTANT_TARGET)
-    coefficients = fit_ridge(phi, targets, alpha=1e10)
+    coefficients = fit_ridge(phi, targets, alpha=1e10, bias_column=0)
     assert coefficients[0, 0] == pytest.approx(CONSTANT_TARGET, rel=1e-8)
     assert float(np.max(np.abs(coefficients[1:]))) < 1e-8
     # 予測も定数目標を再現する (NRMSE=1 の基準線が壊れないことの実体)
@@ -62,7 +62,7 @@ def test_bias_absorbs_target_mean_for_large_alpha() -> None:
     """一般の目標でも、alpha→大 で予測は目標の平均に収束する。"""
     phi = _design()
     targets = _linear_target(phi)
-    coefficients = fit_ridge(phi, targets, alpha=1e12)
+    coefficients = fit_ridge(phi, targets, alpha=1e12, bias_column=0)
     assert coefficients[0, 0] == pytest.approx(float(np.mean(targets)), rel=1e-6)
 
 
@@ -71,7 +71,7 @@ def test_alpha_changes_coefficient_norm() -> None:
     phi = _design()
     targets = _linear_target(phi)
     norms = [
-        float(np.linalg.norm(fit_ridge(phi, targets, alpha)[1:]))
+        float(np.linalg.norm(fit_ridge(phi, targets, alpha, bias_column=0)[1:]))
         for alpha in (1e-6, 1e-3, 1.0, 1e2, 1e4)
     ]
     assert all(later < earlier for earlier, later in pairwise(norms))
