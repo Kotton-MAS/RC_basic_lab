@@ -3,12 +3,19 @@
 - ``style``: rcParams (savefig.dpi=200) と CJK フォント探索 (D-10)
 - ``labels``: 日本語 / 英語ラベルの切り替え (豆腐文字を出さない)
 - ``figures``: 記事01の図2枚 (``fig_comparison`` / ``fig_state_space``)
+- ``figures_esp``: 記事02の図3枚 (``fig_esp_decay`` / ``fig_leak_timescale`` /
+  ``fig_esp_map``)
 
 pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI には
 ディスプレイが無いため、既定バックエンドに依存しない経路にそろえる。
 """
 
 from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
+from rc_basics_lab.plotting.figures_esp import (
+    plot_esp_decay,
+    plot_esp_map,
+    plot_leak_timescale,
+)
 from rc_basics_lab.plotting.labels import label
 from rc_basics_lab.plotting.style import (
     StyleContext,
@@ -22,6 +29,9 @@ __all__ = [
     "find_cjk_font",
     "label",
     "plot_comparison",
+    "plot_esp_decay",
+    "plot_esp_map",
+    "plot_leak_timescale",
     "plot_state_space",
     "rc_params_for",
     "setup_style",
