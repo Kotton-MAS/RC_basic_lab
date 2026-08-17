@@ -1,32 +1,29 @@
-"""実験1-A: 3ベースライン比較を1コマンドで再生成する.
+"""実験1-A/1-B: 図まで含めて1コマンドで再生成する.
 
 使い方::
 
     uv run python experiments/01_what_is_rc/run.py \
         --config experiments/01_what_is_rc/config.yaml
 
-``--out`` (既定 ``results``) に ``comparison.csv`` と ``meta.json`` を書く。
+``--out`` (既定 ``results``) に ``comparison.csv`` / ``fig_comparison.png`` /
+``fig_state_space.png`` / ``meta.json`` の4点を書く (受け入れ条件5)。
 実測 wall time は ``meta.json`` の ``wall_time_s`` に記録する (性能受け入れ基準)。
 進捗は ``print`` ではなく ``logging`` で出す (ruff T20)。
+
+計算と書き出しの本体は ``rc_basics_lab.experiment.pipeline.run_and_report`` にあり、
+ここは引数解析だけの薄い層である (``main.py --experiment 01`` と同じ経路を通す)。
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import load_config
-from rc_basics_lab.experiment.report import (
-    COMPARISON_CSV,
-    META_JSON,
-    write_comparison_csv,
-    write_meta,
-)
-from rc_basics_lab.experiment.runner import run_experiment
+from rc_basics_lab.experiment.pipeline import run_and_report
 
 logger = logging.getLogger("rc_basics_lab.experiments.01_what_is_rc")
 
@@ -45,7 +42,7 @@ class Args:
 def parse_args(argv: Sequence[str] | None = None) -> Args:
     """引数を解析する。"""
     parser = argparse.ArgumentParser(
-        description="実験1-A: 線形 / 遅延線 / ESN の比較を実行し CSV を出力する"
+        description="実験1: 線形 / 遅延線 / ESN の比較と PCA 図を1コマンドで作る"
     )
     parser.add_argument(
         "--config",
@@ -62,26 +59,13 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """実験を実行し、``comparison.csv`` と ``meta.json`` を書く。"""
+    """実験を実行し、CSV・図2枚・meta.json を書く。"""
     args = parse_args(argv)
     config = load_config(args.config)
     logger.info(
         "設定を読み込みました: %s (n_replicates=%d)", args.config, config.n_replicates
     )
-
-    started = time.perf_counter()
-    rows = run_experiment(config)
-    wall_time_s = time.perf_counter() - started
-
-    csv_path = write_comparison_csv(rows, args.out / COMPARISON_CSV)
-    meta_path = write_meta(config, wall_time_s, len(rows), args.out / META_JSON)
-    logger.info(
-        "完了: %d 行を %s に、メタ情報を %s に書き出しました (wall_time=%.1fs)",
-        len(rows),
-        csv_path,
-        meta_path,
-        wall_time_s,
-    )
+    run_and_report(config, args.out)
     return 0
 
 
