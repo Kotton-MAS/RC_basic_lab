@@ -1,9 +1,13 @@
-"""1コマンドで4成果物を作る経路 (受け入れ条件5).
+"""1コマンドで5成果物を作る経路 (受け入れ条件5).
 
-``comparison.csv`` / ``fig_comparison.png`` / ``fig_state_space.png`` /
-``meta.json`` の4点をここで一括生成する。CLI (``main.py`` と
-``experiments/01_what_is_rc/run.py``) はこの関数を呼ぶだけの薄い層にして、
-「どのコマンドから走らせても同じ成果物が出る」を構造で保証する。
+``comparison.csv`` / ``comparison_summary.csv`` / ``fig_comparison.png`` /
+``fig_state_space.png`` / ``meta.json`` の5点をここで一括生成する。CLI
+(``main.py`` と ``experiments/01_what_is_rc/run.py``) はこの関数を呼ぶだけの
+薄い層にして、「どのコマンドから走らせても同じ成果物が出る」を構造で保証する。
+
+レプリケート0の ``ReplicatePlan`` はここで1回だけ作り、``run_experiment`` と
+``collect_state_space`` の両方へ明示的に渡す (F-1-009: 図と CSV が同じ乱数列を
+見ているという暗黙の依存を、明示的な受け渡しに変える)。
 """
 
 from __future__ import annotations
@@ -16,11 +20,15 @@ from pathlib import Path
 from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.experiment.report import (
     COMPARISON_CSV,
+    COMPARISON_SUMMARY_CSV,
     META_JSON,
     write_comparison_csv,
     write_meta,
 )
-from rc_basics_lab.experiment.runner import ResultRow, run_experiment
+from rc_basics_lab.experiment.runner import (
+    ResultRow,
+    run_experiment,
+)
 from rc_basics_lab.experiment.state_space import (
     DELAY_EMBEDDED_INPUT,
     RESERVOIR_STATE,
@@ -38,6 +46,7 @@ FIG_STATE_SPACE = "fig_state_space.png"
 
 ARTIFACTS: tuple[str, ...] = (
     COMPARISON_CSV,
+    COMPARISON_SUMMARY_CSV,
     FIG_COMPARISON,
     FIG_STATE_SPACE,
     META_JSON,
