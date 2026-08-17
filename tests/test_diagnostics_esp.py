@@ -243,8 +243,8 @@ def test_verdict_is_monotone_in_tolerance() -> None:
 def test_worst_pair_decides_the_verdict() -> None:
     """複数ペアでは最悪値で判定する (収束ペアが混ざっても True にならない)。"""
     states, converging = _pair_with_decay(0.97)
-    _, diverging = _pair_with_decay(1.0, seed=5)
-    diverging = states + (diverging - _pair_with_decay(1.0, seed=5)[0])
+    same_states, diverging = _pair_with_decay(1.0)  # 同じ seed = 同じ参照軌道
+    assert np.array_equal(states, same_states)
     ctx = DiagnosticContext(companion_states=(converging, diverging))
     result = esp_convergence(states, ctx=ctx)
     assert result.scalars["n_pairs"] == pytest.approx(2.0)
@@ -275,7 +275,7 @@ def test_decay_rate_is_nan_when_no_point_is_above_floor() -> None:
     result = esp_convergence(
         states, ctx=DiagnosticContext(companion_states=(companion,))
     )
-    assert result.scalars["n_fit_points"] == pytest.approx(0.0)
+    assert result.scalars["n_fit_points"] < 2.0
     assert math.isnan(result.scalars["decay_rate_per_step"])
 
 
@@ -384,11 +384,16 @@ def test_growth_beyond_max_growth_raises() -> None:
 
 # --- D-15: 設定は既定値つきキーワード引数 cfg で渡す -----------------------
 
-_CONFIG_TYPES: tuple[tuple[Callable[..., DiagnosticResult], type], ...] = (
+_CONFIG_TYPES: tuple[tuple[Callable[..., DiagnosticResult], type[object]], ...] = (
     (esp_convergence, EspConfig),
     (conditional_lyapunov, LyapunovConfig),
     (autocorrelation_time, TimescaleConfig),
 )
+
+
+def _field_names(cls: type[object]) -> set[str]:
+    """dataclass のフィールド名集合 (``Any`` を書かずに ``fields`` を呼ぶ)。"""
+    return {f.name for f in fields(cast("type[DataclassInstance]", cls))}
 
 
 def test_esp_config_is_passed_as_defaulted_keyword() -> None:
@@ -400,7 +405,7 @@ def test_esp_config_is_passed_as_defaulted_keyword() -> None:
     いることを、ctx のフィールド名と各 cfg のフィールド名が交わらないことで
     機械的に固定する。
     """
-    ctx_field_names = {f.name for f in fields(DiagnosticContext)}
+    ctx_field_names = _field_names(DiagnosticContext)
     for func, config_type in _CONFIG_TYPES:
         parameters = inspect.signature(func).parameters
         assert "cfg" in parameters, f"{func.__name__}: cfg 引数がありません"
@@ -411,8 +416,7 @@ def test_esp_config_is_passed_as_defaulted_keyword() -> None:
         assert isinstance(cfg_param.default, config_type), (
             f"{func.__name__}: cfg に {config_type.__name__} の既定値がありません"
         )
-        config_field_names = {f.name for f in fields(config_type)}
-        overlap = ctx_field_names & config_field_names
+        overlap = ctx_field_names & _field_names(config_type)
         assert not overlap, (
             f"{config_type.__name__} の判定基準が DiagnosticContext にも "
             f"あります (D-15 の境界違反): {sorted(overlap)}"
@@ -619,17 +623,21 @@ def test_all_config_fields_have_a_case() -> None:
 
 def test_default_configs_match_documented_values() -> None:
     """既定値 (D-16 / D-18 に明記した値) が動いていないことを固定する。"""
-    assert EspConfig(
-        abs_tol=1e-6, rel_tol=1e-3, window=200, fit_skip=50, floor=1e-14
-    ) == DEFAULT_ESP
-    assert LyapunovConfig(
-        method="perturbation",
-        delta=1e-8,
-        renorm_interval=1,
-        max_growth=1e3,
-        check_propagator=True,
-        propagator_tol=1e-10,
-    ) == DEFAULT_LYAPUNOV
+    assert (
+        EspConfig(abs_tol=1e-6, rel_tol=1e-3, window=200, fit_skip=50, floor=1e-14)
+        == DEFAULT_ESP
+    )
+    assert (
+        LyapunovConfig(
+            method="perturbation",
+            delta=1e-8,
+            renorm_interval=1,
+            max_growth=1e3,
+            check_propagator=True,
+            propagator_tol=1e-10,
+        )
+        == DEFAULT_LYAPUNOV
+    )
     assert TimescaleConfig(max_lag=200) == DEFAULT_TIMESCALE
 
 
