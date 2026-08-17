@@ -337,7 +337,7 @@ def conditional_lyapunov(
             states, propagator, context.washout, last_start, cfg.propagator_tol
         )
 
-    scale = np.sqrt(n_units)
+    scale = float(np.sqrt(n_units))
     rng = np.random.default_rng(
         _DIRECTION_SEED if context.seed is None else context.seed
     )
