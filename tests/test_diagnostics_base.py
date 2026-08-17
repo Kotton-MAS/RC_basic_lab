@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import inspect
+import pkgutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -30,11 +34,137 @@ def _external_states(n_steps: int = 300, n_units: int = 20) -> FloatArray:
     return rng.standard_normal((n_steps, n_units))
 
 
+def _iter_diagnostic_callables() -> list[tuple[str, Callable[..., DiagnosticResult]]]:
+    """diagnostics パッケージ配下の診断関数を機械的に列挙する (D-01 の被検体探索)。
+
+    列挙条件は「``diagnostics`` の各サブモジュール (``base`` を除く) で定義され
+    (= 別モジュールからの re-export ではなく)、戻り値アノテーションが
+    ``DiagnosticResult`` である public callable」。``pkgutil.iter_modules`` で
+    サブモジュールを網羅する手法は
+    D-12 の guard (``test_diagnostics_package_does_not_transitively_import_reservoir``)
+    と同じであり、02〜05 で新しい診断モジュール (``echo_state`` / ``memory`` /
+    ``ipc`` / ``lyapunov`` / ``criticality``) が追加されれば自動的にここへ入る。
+    ``base`` は Protocol 定義そのもので診断の実装ではないため対象から除く。
+    """
+    package_dir = Path(diagnostics_pkg.__file__).parent
+    found: list[tuple[str, Callable[..., DiagnosticResult]]] = []
+    for info in pkgutil.iter_modules([str(package_dir)]):
+        if info.name == "base":
+            continue
+        module = importlib.import_module(f"rc_basics_lab.diagnostics.{info.name}")
+        for attr_name, attr in vars(module).items():
+            if attr_name.startswith("_") or not inspect.isfunction(attr):
+                continue
+            if attr.__module__ != module.__name__:
+                continue  # 別モジュールで定義され re-export されただけのものは除く
+            try:
+                signature = inspect.signature(attr, eval_str=True)
+            except (NameError, TypeError):
+                continue
+            if signature.return_annotation is DiagnosticResult:
+                found.append((f"{module.__name__}.{attr_name}", attr))
+    return found
+
+
+def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
+    """列挙条件が0件に壊れていないこと自体を固定する。
+
+    列挙条件 (戻り値アノテーションが DiagnosticResult の public callable) を
+    間違えて0件になると、下の契約テストは何も検査せずに緑になってしまう。
+    現時点で存在する2本 (dummy.state_mean_norm / state_space.state_pca) が
+    確実に拾えていることを固定する。
+    """
+    names = {qualname for qualname, _ in _iter_diagnostic_callables()}
+    assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
+    assert "rc_basics_lab.diagnostics.dummy.state_mean_norm" in names
+    assert "rc_basics_lab.diagnostics.state_space.state_pca" in names
+
+
+def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
+    """diagnostics 配下の全診断関数が D-01 の署名契約を満たす (実行時の guard test)。
+
+    従来の guard (``d: Diagnostic = state_mean_norm`` という代入 + X のみでの
+    呼び出し成功) は mypy strict (``make type``) 頼みで、``ctx`` の keyword-only
+    マーカー (``*,``) を外すという実際の D-01 違反を入れても pytest 単体では
+    通ってしまうことが実測された (F-1-018)。Stop フックの範囲限定実行は既定で
+    mypy を含まないため、この経路は赤くならないまま回帰しうる。ここでは
+    ``inspect.signature`` で契約そのものを実行時に検査し、``ctx`` を位置引数で
+    渡すと実際に ``TypeError`` になることまで確認する。``state_mean_norm`` 1本
+    だけでなく ``_iter_diagnostic_callables`` で列挙した全診断が対象。
+    """
+    diagnostics = _iter_diagnostic_callables()
+    assert diagnostics, "検査対象が0件です (列挙条件を確認してください)"
+
+    for qualname, func in diagnostics:
+        signature = inspect.signature(func)
+        params = signature.parameters
+
+        assert "X" in params, f"{qualname}: 第1引数 X がありません"
+        x_param = params["X"]
+        assert x_param.kind in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        ), f"{qualname}: X が位置で渡せません (kind={x_param.kind})"
+        assert x_param.default is inspect.Parameter.empty, (
+            f"{qualname}: X に既定値があります (必須引数である必要があります)"
+        )
+
+        for name in ("u", "y"):
+            assert name in params, f"{qualname}: {name} 引数がありません"
+            p = params[name]
+            assert p.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD, (
+                f"{qualname}: {name} が POSITIONAL_OR_KEYWORD ではありません "
+                f"(kind={p.kind})"
+            )
+            assert p.default is None, (
+                f"{qualname}: {name} の既定値が None ではありません: {p.default!r}"
+            )
+
+        assert "ctx" in params, f"{qualname}: ctx 引数がありません"
+        ctx_param = params["ctx"]
+        assert ctx_param.kind == inspect.Parameter.KEYWORD_ONLY, (
+            f"{qualname}: ctx が keyword-only ではありません (D-01 違反, "
+            f"kind={ctx_param.kind})"
+        )
+        assert ctx_param.default is None, (
+            f"{qualname}: ctx の既定値が None ではありません: {ctx_param.default!r}"
+        )
+
+        extra_required = [
+            name
+            for name, p in params.items()
+            if name not in ("X", "u", "y", "ctx")
+            and p.default is inspect.Parameter.empty
+            and p.kind
+            not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+        ]
+        assert not extra_required, (
+            f"{qualname}: X/u/y/ctx 以外に必須引数があります (D-01 違反): "
+            f"{extra_required}"
+        )
+
+        states = _external_states()
+
+        # 最も鋭い検査: ctx を位置引数として渡すと実際に TypeError になること。
+        # `*,` (keyword-only マーカー) が外れた瞬間にこの呼び出しが成功してしまう。
+        with pytest.raises(TypeError):
+            func(states, None, None, DiagnosticContext())
+
+        # 契約が許す全呼び出しパターンが実際に呼べること。
+        func(states)
+        func(states, None)
+        func(states, None, None)
+        func(states, None, None, ctx=DiagnosticContext())
+        func(states, ctx=DiagnosticContext())
+
+
 def test_dummy_diagnostic_conforms_to_protocol() -> None:
-    """ダミー実装が Diagnostic に代入でき、X だけで呼べる (D-01 の guard test)。
+    """ダミー実装が Diagnostic に代入でき、X だけで呼べる。
 
     下の代入は mypy strict でも検査される (``make type``)。署名を変えると
-    ここで型エラーになる。
+    ここで型エラーになる。D-01 の実行時契約は
+    ``test_all_diagnostics_conform_to_d01_signature_contract`` (D-01 の guard_test)
+    が全診断に対して検査するため、このテストは mypy 側のカバレッジに限定する。
     """
     d: Diagnostic = state_mean_norm
     result = d(_external_states())
