@@ -179,7 +179,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
-    """``MINIMAL_VALID_INPUT`` が列挙された全診断を過不足なく網羅し、かつ動く (F-02-1-015)。
+    """``MINIMAL_VALID_INPUT`` が全診断を過不足なく網羅し、かつ動く (F-02-1-015)。
 
     ``test_all_config_fields_have_a_case`` と同じ「登録漏れを構造的に強制する」
     パターン。新しい診断を追加したとき、この完全性チェックは
