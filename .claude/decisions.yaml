@@ -74,3 +74,53 @@
   rule: "diagnostics/ 配下は rc_basics_lab.types 以外の自作モジュール (特に config / reservoir) を import しない。診断の設定 dataclass は diagnostics/ 側に定義し、YAML 配線が要るときは config.py 側から diagnostics の設定 dataclass を import する (config → diagnostics の向きのみ許可、逆向きは禁止)"
   rationale: "『diagnostics/ は reservoir に依存しない』が 02〜05・memristor-rc-lab への移植性の前提だが、これまで docstring 3か所 (diagnostics/__init__.py / diagnostics/base.py / conventions.md) の散文にしかなく正本が無かった。実測: `uv run python -c \"import importlib,sys; importlib.import_module('rc_basics_lab.config'); print(sorted(k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')))\"` は ['rc_basics_lab.reservoir', 'rc_basics_lab.reservoir.esn'] を返す。config.py が reservoir.esn.ESNConfig を import しているため、tasks/ の前例 (自分の設定 dataclass を config.py から import する) を diagnostics/ が真似ると reservoir が推移的に引き込まれる"
   guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir"
+
+- id: D-13
+  rule: "実験ごとに設定 dataclass を分ける。02 の設定は Esp02Config に置き、ExperimentConfig (01 専用) には1フィールドも足さない。ローダは load_config_as(path, cls) で共有する"
+  rationale: "test_each_parameter_changes_output は『全フィールドが 01 のパイプライン出力を変える』ことを要求する。02 用フィールドを相乗りさせると満たせないフィールドが必ず生まれ、逃がすために例外チャネルを増やすと配線漏れの検出力そのものが落ちる (このテストは本リポジトリ最大の失敗モード『設定したのに効いていない』への唯一の防衛線)。設定を分ければ 01 の被覆は無傷のまま 02 に同型の被覆を作れる。実装では各実験セクション (decay / timescale_sweep / esp_map) に ESNConfig を内包させず、掃引軸だけを平らに持たせた。ESNConfig を内包すると掃引軸である spectral_radius が『YAML から設定できるが実行時に上書きされる死んだフィールド』になり、この決定が防ごうとしている状態を自分で作ることになる。共通のリザバー構造 (input_scale / n_units / density / n_replicates) は Esp02Config.reservoir に1本だけ集約し、3セクションが別々に持って黙って条件が割れる経路を消した"
+  guard_test: "tests/test_config_wiring_esp.py::test_all_esp_config_fields_are_covered"
+
+- id: D-14
+  rule: "初期状態対の生成に4本目の乱数ストリーム SeedStream.PROBE を使う。01 の SeedConfig には probe を足さず、make_rng_for 経由で 02 の EspSeedConfig から渡す。_STREAM_INDEX[PROBE] は末尾の 3 とし、既存3本の index は動かさない"
+  rationale: "ESP 判定の頑健性は『同じ重み・同じ入力で初期状態対だけ振ったときに判定が変わらないか』で測るため、初期状態は reservoir / drive と独立に振れる必要がある。reservoir ストリームから引くと初期状態を変えた瞬間に重みも変わり、この検査が原理的に不可能になる。一方 01 の SeedConfig に probe を足すと D-13 と同じ理由で配線テストが破れる。index を末尾に足すのは、既存3本の spawn_key を動かすと 01 の成果物がバイト単位で再現しなくなるため (test_make_rng_for_matches_make_rng が固定)。make_rng(SeedConfig, PROBE) は ValueError にする —— 無い設定を黙って既定値で埋めるとこの決定が形骸化する"
+  guard_test: "tests/test_seeds.py::test_probe_stream_is_independent_of_seed_config_streams"
+
+- id: D-15
+  rule: "診断の設定値 (閾値・窓・摂動サイズ) は DiagnosticContext ではなく、既定値つきキーワード引数 cfg で渡す。DiagnosticContext には実行時データ (第2軌道・伝播器) だけを入れる"
+  rationale: "D-01 の拡張規約は『ctx への既定値つきフィールド追加』だが、02〜05 の全診断の設定を ctx に積むと、移植先が診断1本を使うために全診断の設定を知る羽目になる。cfg は既定値つきキーワード引数なので D-01 の guard は完全に維持される。境界は『系そのものを表すか (ctx) / 判定基準を表すか (cfg)』。設定 dataclass 自体は純データにし、値域検証は使う側の診断関数が行う (ESNConfig / SplitConfig と同じ流儀)"
+  guard_test: "tests/test_diagnostics_esp.py::test_esp_config_is_passed_as_defaulted_keyword"
+
+- id: D-16
+  rule: "ESP 判定の距離は RMS/ユニット距離 ||x_a - x_b|| / sqrt(N)。判定は『末尾 window ステップの中央値 <= max(abs_tol, rel_tol * d_initial)』。既定 abs_tol=1e-6, rel_tol=1e-3, window=200。複数ペアは最悪値 (d_tail は最大・d_initial は最小) で判定する。初期状態は両方とも U[-1,1]^N から独立に引き、片方をゼロ状態にしない"
+  rationale: "(1) sqrt(N) 正規化により閾値が N に依存せず、N の異なるメモリスタ配列へそのまま移植できる。(2) abs_tol=1e-6 は float64 の eps から十分離れ、初期距離 O(1) から6桁の収縮を要求するので描画の丸めに紛れない。(3) window=200 は 01 の washout と同じ桁。(4) 片方をゼロ状態にすると、無入力では 0 が不動点であるため『2軌道の分離』ではなく『単一軌道の原点への収束』を測ることになり ESP と別の量に化ける。(5) 最悪値の取り方をペアごとの判定の AND にしないのは、報告した d_initial / d_tail と converged が別のペアから来ることになり CSV の3列を見ても判定を再現できなくなるため (この取り方は AND より安全側)。既定値は結論を変えうるので docs/design.md §9 に abs_tol 3 x window 3 の感度表を残した (実測では9通りすべてで sigma_u 別の臨界 rho が1点も動かない)"
+  guard_test: "tests/test_diagnostics_esp.py::test_verdict_is_monotone_in_tolerance"
+
+- id: D-17
+  rule: "入力強度は駆動信号の標準偏差 sigma_u で定義する (振幅ではない)。一様分布では振幅 a = sqrt(3) sigma_u。掃引中 input_scale は固定し、変えるのは信号側だけ。CSV には sigma_u / input_amplitude / input_drive_std の3列を出す"
+  rationale: "要件_02 設計判断4。2-C の横軸が『振幅か分散か』で曖昧になると、記事の主張 (Scholarpedia の再実演) と数値の対応が取れない。標準偏差を主軸に取るのは分布形が変わっても比較可能で、Manjunath & Jaeger 2013 の定式化と同じ土俵に乗るため。振幅も併記するのは Scholarpedia の文言が振幅で書かれているため。input_scale を同時に動かすと『信号を強くした』のか『重みを大きくした』のか分離できなくなる。指定値 sigma_u と実測値 input_drive_std を両方出すのは、駆動生成の取り違えを CSV の2列の食い違いとして表に出すため"
+  guard_test: "tests/test_experiment_esp.py::test_input_strength_is_standard_deviation_not_amplitude"
+
+- id: D-18
+  rule: "条件付き Lyapunov 指数は摂動法で推定する。delta=1e-8 (RMS/ユニット)、再正規化間隔 1 ステップ、method='perturbation' 以外は ValueError。伝播器は ctx.propagator で受け取り、propagator(X[t], t) が X[t+1] に一致することを実行時に検査する (check_propagator 既定 true)"
+  rationale: "要件_02 未確定2・設計判断2。delta=1e-8 は sqrt(eps)=1.5e-8 近傍で、線形性からのずれと丸め誤差が釣り合う古典的な最適点。距離の定義 (D-16) と土俵をそろえるため delta も RMS/ユニットで解釈する (摂動ベクトルの L2 ノルムは delta*sqrt(N))。間隔1は分離が線形域を外れない最も安全な選択で、推定値が解析解と直接照合できる —— 実測では本番 2-C 格子 336 条件の max_observed_growth (1区間あたり成長率の最大) が最大 1.5372 / 中央値 1.0873 で、暴走検出の上限 max_growth=1000 に対して 650 倍の余裕がある (摂動は 1 ステップで 1 桁も成長しておらず線形域の内側にある)。method を文字列にしてあるのは解析 Jacobian 版の差し込み口であり、未実装の値を黙って受理しない。propagator の整合検査は『参照軌道と別の入力で伝播している』配線ミスを実行時に落とすためで、この種のミスは λ が「それらしい値」で出るためレビューでは見つからない (実測: u[t+1] を u[t] に差し替えると λ が -0.02 から +15 へ跳ね、検査を切らない限り全条件で ValueError になる)"
+  guard_test: "tests/test_diagnostics_esp.py::test_matches_analytic_exponent_for_linear_map"
+
+- id: D-19
+  rule: "washout 感度実験では、washout を増やしても訓練/検証/テストの行数が変わらないよう系列長を伸ばして補償する (pad_series=True が既定)。補償量は washout の差分ではなく t0 の差分 length = base_length + (t0(washout) - t0(min(grid))) とし、t0 は系列を作る前に readout.design.first_valid_for から予測する。補償なしは pad_series=False として残し対比に使う"
+  rationale: "make_split は n_usable = T - max_start_offset - t0 で行数を決めるため、washout を増やすと訓練データ量が同時に減る。素直に掃引すると『washout の効果』と『訓練データ量の効果』が交絡し、受け入れ条件5 が別の量の測定になる。この交絡は滑らかな単調曲線として出るため図を見ても気づけない (実測: 補償なしだと MG x ESN の NRMSE が washout に対して完全に単調増加し比 1.0115。補償を入れると単調性が消え比 1.0076 の非単調なノイズになる)。仕様草案の式 base_length + (max(grid) - washout) は符号が逆で、行数をそろえるどころか補償なしより差を広げる (変異注入で行数が 348/310/230/110 に割れることを実測)。補償量を washout の差分にしないのは t0 = max(washout, 各手法の first_valid) が飽和するためで、本番格子では遅延線の最大ラグ 64 により washout=0 と 50 がどちらも t0=64 になり、washout 差分での補償では washout=0 だけ行数がずれる (実測 228 対 230)"
+  guard_test: "tests/test_experiment_washout.py::test_washout_sweep_holds_training_size_constant"
+
+- id: D-20
+  rule: "λ の符号と ESP 判定の整合の要求は非対称にする。『λ>0 なのに収束 (偽の ESP)』は |λ|>0.01 の全条件で 0 件を要求し、『λ<0 なのに非収束』は許容して件数と sigma_u / rho の内訳を meta.json の verdict_lyapunov_agreement に残す。両者の完全一致は駆動が十分ある領域 (sigma_u >= 0.5) でのみ要求する。この非対称性を『揃っていないから』と対称化しない"
+  rationale: "条件付き Lyapunov 指数は参照軌道まわりの局所量なので多安定性を原理的に検出できない。tanh は奇関数なので x* が不動点なら -x* も不動点であり、各不動点は局所安定 (λ<0) でありながら初期状態によって行き先が割れる (= ESP 不成立)。実装者が rho=1.1, sigma_u=0, replicate=0 で4軌道の末尾を直接観測して確認済み —— 4本とも末尾200ステップの時間 s.d. が 6.4e-16 で不動点に到達しており、d(traj0,traj1)=1.2e-16 / d(traj0,traj3)=1.6e-16 に対して d(traj0,traj2)=5.3e-01、しかも ||x0* + x2*||/sqrt(N)=1.3e-16 で traj2 の行き先はちょうど -x0* である (奇対称の対の吸引子)。この条件の λ は -0.032 (局所安定) だが converged=0。対称な一致を要求すると、この実在の現象を実装バグとして潰すことになる。逆向き (λ>0 なのに収束) は理論上あり得ないので 0 件を厳格に要求し、伝播器のインデックスずれや閾値の緩みはそちらで落とす。本番格子の実測: 369 行中、境界近傍 37 件を除く 332 件で偽の ESP は 0 件、『λ<0 なのに非収束』は 27 件 (8.13%) で sigma_u <= 0.2 かつ rho in [1.1, 1.6] に完全に限局し、sigma_u >= 0.5 の 158 件は不一致 0 件"
+  guard_test: "tests/test_experiment_esp.py::test_lyapunov_sign_agrees_with_verdict_away_from_boundary"
+
+- id: D-21
+  rule: "02 の ESN は bias_scale=0 で構成し、無入力条件 (sigma_u=0) を真の無入力にする。比較軌道は n_pairs=10 本引く"
+  rationale: "(1) 定数バイアスは [1; u] の先頭成分に掛かる振幅一定の入力そのものであり、D-17 が入力強度を駆動信号の標準偏差で定義している以上その定義に入らない常時入力は 0 にする。実測: bias_scale=0.1 では無入力・rho=1.2 でも2軌道が収束し受け入れ条件1 が成立しない。(2) 無入力・rho>1 の ESN は +x* / -x* の対をなす吸引子を持つことがあり (D-20 参照)、比較軌道が k 本すべて参照軌道と同じ側へ落ちる確率が約 2^-k 残る。実測: n_pairs=3 では特定のリザバー draw (replicate 2) で rho=1.05〜1.5・無入力が『収束』と誤判定された。10 本 (偽陽性の上限 2^-10 未満) で全レプリケートが正しく非収束になり、rho<1 側の判定は変わらない (n_pairs=30 まで上げても偽陰性なし)。本番 wall time は 43.2s から 83.3s になるが予算 900s の 9%"
+  guard_test: "tests/test_experiment_esp.py::test_no_input_decay_matches_spectral_radius"
+
+- id: D-22
+  rule: "esp_convergence に渡す ctx の washout は 0 に固定する (experiment.esp.ESP_DISTANCE_WASHOUT)。drive.washout は λ と自己相関の ctx にだけ渡す。02 の esp.fit_skip の既定は 10 とし、診断側の既定 (DEFAULT_ESP, fit_skip=50) は変えない"
+  rationale: "esp_convergence で washout が効くのは減衰率の当てはめ開始位置だけで、判定 (末尾 window の中央値) には効かない。2-A は過渡そのものを見せる図であり、距離が floor に届く前に当てはめを始めないと減衰率が測れない。実測: 無入力 rho=0.5 の距離は t=46 付近で 1e-14 を割るため、当てはめ開始が washout(200)+fit_skip(50)=250 だと当てはめ点が 0 点になり decay_rate_per_step が nan になる (rho=0.8 も同様)。過渡を捨てるのは λ と自己相関の側の要求なので、同じ条件でも ctx を2つに分ける"
+  guard_test: "tests/test_experiment_esp.py::test_decay_fit_starts_before_the_distance_underflows"
