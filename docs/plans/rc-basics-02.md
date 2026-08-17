@@ -603,9 +603,93 @@ class StatePropagator(Protocol):
 
 **受け入れ基準**
 
-- [ ] `check_decisions.py` が D-13〜D-19 について緑。
-- [ ] `tests/test_design.py` が §9 の既定値と**コード上の既定値の一致**を検証 (散文とコードの乖離を機械で殺す)。
-- [ ] `results/esp_threshold_sensitivity.csv` が9行以上を持ち design.md の表と行数一致。
+- [x] `check_decisions.py` が D-13〜D-19 について緑。→ **D-13〜D-22 を追記し 22 件で OK**。
+- [x] `tests/test_design.py` が §9 の既定値と**コード上の既定値の一致**を検証 (散文とコードの乖離を機械で殺す)。
+      → 新設した `tests/test_design_doc.py` が担当 (下記の決定2)。
+- [x] `results/esp_threshold_sensitivity.csv` が9行以上を持ち design.md の表と行数一致。
+      → `results/02_esp_and_dynamics/esp_threshold_sensitivity.csv` (9行)。
+
+**実装時に決めたこと (T5 実装者追記。仕様に書かれていなかった選択)**
+
+*閾値感度の測り方 (仕様は「9通りで境界がどれだけ動くか」としか書いていない)*
+
+1. **臨界 rho を「rho の昇順で収束率が過半数を割る最初の rho」と定義**し、格子内に
+   境界が無い場合は `nan` を返す (`experiment/threshold.py::critical_rho`)。理由:
+   「格子の上端」と「境界が格子の外にある」を同じ値で表すと、格子を広げたときに
+   表の読み方が変わる。実測では sigma_u=2.0 が唯一の `nan` (rho=1.9 まで全点 ESP 成立)。
+2. **感度掃引は軌道を1回だけ作り、9通りの `cfg` で判定だけをやり直す**
+   (`run_threshold_sweep`)。`esp_convergence` は `(states, companions, cfg)` の純関数
+   なので判定基準を変えても軌道は変わらない。素直に9回掃引すると実行時間も9倍
+   (実測 60.7 秒 → 9分超) になる。このために `experiment/esp.py` へ
+   **`simulate_condition` / `Trajectories` を追加**し (公開関数の追加のみ)、
+   `evaluate_condition` はそれに委譲する形にした。
+3. **基準の組 (`abs_tol=1e-6`, `window=200`) が格子に無ければ `ValueError`**。
+   理由: `max_abs_shift` / `n_sigma_shifted` は「基準からのずれ」なので、基準が
+   格子に無い掃引を通すと何からのずれか読めない数値が CSV に出る。
+4. **`esp_threshold_sensitivity.csv` を `ESP_ARTIFACTS` に入れない**。
+   `run_02.py --threshold-sweep` (= `make threshold-02`) でのみ再生成する。理由:
+   記事に載る成果物ではなく「既定値が結論を作っていない」ことの根拠であり、
+   2-C の格子をもう一度回すので `make figures-02` に足すと 88 秒 → 149 秒になる。
+   `test_all_four_figures_and_two_csv_in_one_command` (出力ディレクトリを実走査する
+   T4 の決定10) が本体の成果物を7点に固定しているので、混ぜると本体側が壊れる。
+5. **CSV の列は「`ThresholdRow` の宣言順 + `critical_rho_by_sigma` を sigma_u 別の
+   列に展開」**とした。理由: sigma_u 格子は設定値なので列名を dataclass の
+   フィールドとして固定できない。既存の慣習 (「宣言順が CSV 列順の単一の真実」) を
+   1フィールドの展開という形で緩めており、展開規則は
+   `threshold_csv_columns` / `threshold_row_as_dict` の対に閉じて
+   `test_threshold_csv_header_matches_rows` が固定する。
+
+*記録の機械検査 (仕様は「`tests/test_design.py` が検証」とだけ書いていた)*
+
+6. **検査は `tests/test_design.py` ではなく新設の `tests/test_design_doc.py` に置いた**。
+   理由: サイクル1 の `tests/test_design.py` は**設計行列** (`build_design_matrix`) の
+   テストであって design.md のテストではない (仕様の参照先が誤り)。既存ファイルに
+   同居させると、ファイル名から中身が読めなくなる。
+7. **§9 の既定値表は3列目に「コード上の出どころ」をドット区切りで書く**形にし、
+   テストが `importlib` で解決して2列目の値と突き合わせる。frozen + slots の
+   dataclass は既定値がクラス属性として残らないため、dataclass 型への属性参照は
+   `dataclasses.fields` の既定値 (または `default_factory()`) として解決する。
+   理由: 「出どころを書けない値は表に載せられない」という制約が同時に効き、
+   根拠の無い数値が表に紛れ込む経路も塞がる。変異注入 (`window` 200→250) で発火を確認済み。
+8. **感度表は行数だけでなく全セルを CSV と突き合わせる**
+   (`test_design_table_values_match_the_threshold_csv`)。仕様の受け入れ基準は
+   「行数一致」だが、行数だけでは値のドリフトが素通りする。変異注入
+   (臨界 rho 1.7→1.6) で発火を確認済み。
+9. **`max_observed_growth` を `EspRow` (= CSV の列) には足さない**。理由: 公開 API
+   (CSV スキーマ) の変更になるうえ、必要なのは「線形域を外れていない」という
+   1つの主張だけである。本番格子の実測値は design.md §9.3 に置き、
+   `test_perturbation_growth_stays_far_below_the_runaway_limit` で
+   「`max_growth` に対して2桁以上の余裕」を縮小条件で固定した (D-11 と同じ形)。
+
+*ソースの実測値の訂正 (T3 の暫定値が残っていたもの)*
+
+10. `experiment/esp.py` の `STRONG_DRIVE_SIGMA` と `VerdictAgreement` の docstring に
+    あった「不一致 25 件 / 強駆動 140 条件」を、本番実測の **27 件 / 158 条件**に
+    直した (`meta.json` の `verdict_lyapunov_agreement` が正)。T5 は記録の
+    タスクなので、design.md・decisions.yaml と食い違う数値をソースに残さない。
+
+*README (仕様は「手書きを増やすなら突き合わせテストも足す」とだけ書いていた)*
+
+11. **README に足した数値は「臨界 rho の行」と「`meta.json` のキー名つきの4値」だけ**に
+    絞り、`tests/test_readme_summary.py` に突き合わせを追加した。理由: 数値を
+    `wall_time_s = 87.69` のように**生成物のキー名と同じ形**で書くと、読者にとっての
+    出どころとテストの正規表現が同じものになる。テストの**件数**は書かない
+    (design.md §7 の注記どおり)。変異注入 (臨界 rho / 件数 / wall time) で発火を確認済み。
+
+*実測値 (T5 完了時)*
+
+- `check_decisions.py`: **22 件で OK**、全 guard_test が緑。
+- `esp_threshold_sensitivity.csv`: 9 行。**9通りすべてで臨界 rho は不変**
+  (`n_sigma_shifted = 0`)。判定が動いたのは `window=400` の 1 条件のみ (208 → 207)。
+- 臨界 rho (基準): sigma_u = 0 / 0.05 / 0.1 / 0.2 / 0.5 / 1.0 / 2.0 に対し
+  1.0 / 1.1 / 1.1 / 1.3 / 1.5 / 1.7 / 格子外 (>1.9)。
+- `max_observed_growth` (2-C 336 条件): 最大 **1.5372** / 中央値 1.0873 /
+  `max_growth=1000` に対して 650 倍の余裕。
+- 多安定性の直接観測 (rho=1.1, sigma_u=0, rep0): 4軌道とも末尾200ステップの時間 s.d. が
+  6.4e-16、`d(traj0,traj1)=1.2e-16` / `d(traj0,traj3)=1.6e-16` に対し
+  `d(traj0,traj2)=5.3e-01`、かつ `||x0* + x2*||/sqrt(N)=1.3e-16`
+  (= `x2*` はちょうど `-x0*`)。この条件の λ は -0.032 で `converged=0`。
+- `make threshold-02` の wall time: **60.70 秒** (本体 87.69 秒とは別枠)。
 
 ---
 
