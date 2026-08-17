@@ -159,8 +159,28 @@ ESP_SEED_STREAMS: tuple[SeedStream, ...] = (
 
 
 def base_config() -> Esp02Config:
-    """既定値そのままの 02 設定 (このファイルは実験を回さないので縮小不要)。"""
-    return Esp02Config()
+    """秒未満で 2-A / 2-B / 2-C を1周できる縮小設定。
+
+    構造は本番 (``experiments/02_esp_and_dynamics/config.yaml``) と同じで、
+    系列長・ユニット数・格子の点数だけを削ってある。``esp.window`` と
+    ``timescale.max_lag`` も系列長に合わせて下げないと、診断側が
+    「窓が取れない」で ``ValueError`` になる。
+    """
+    return Esp02Config(
+        name="esp-wiring",
+        seeds=EspSeedConfig(reservoir=0, drive=1, probe=3),
+        drive=DriveConfig(distribution="uniform", n_steps=300, washout=40, n_pairs=2),
+        reservoir=ReservoirSweepConfig(
+            input_scale=1.0, n_units=15, density=0.3, n_replicates=1
+        ),
+        decay=EspDecayConfig(rho_grid=(0.6, 1.3), sigma_u=0.0, leak_rate=1.0),
+        timescale_sweep=TimescaleSweepConfig(
+            leak_rate_grid=(0.3, 1.0), rho=0.9, sigma_u=0.5
+        ),
+        esp_map=EspMapConfig(rho_grid=(0.8, 1.4), sigma_grid=(0.0, 1.0), leak_rate=1.0),
+        esp=EspConfig(window=100, fit_skip=5),
+        timescale=TimescaleConfig(max_lag=30),
+    )
 
 
 def _seeds_case(field: str, value: int, stream: SeedStream) -> WiringCase:
@@ -188,32 +208,34 @@ def _pending_case(field: str, value: object, task: str) -> WiringCase:
 
 
 ESP_WIRING_CASES: tuple[WiringCase, ...] = (
-    _pending_case("name", "02-renamed", "T3"),
+    # name は結果行に出ない純粋なメタ情報。meta.json に載ることを確かめる。
+    case("name", "02-renamed", channel=CHANNEL_META),
     _seeds_case("seeds.reservoir", 100, SeedStream.RESERVOIR),
     _seeds_case("seeds.drive", 101, SeedStream.TASK),
     _seeds_case("seeds.probe", 102, SeedStream.PROBE),
     # --- 駆動入力と2軌道の生成条件 (2-A / 2-B / 2-C 共通) ---
-    _pending_case("drive.distribution", "gaussian", "T3"),
-    _pending_case("drive.n_steps", 1200, "T3"),
-    _pending_case("drive.washout", 300, "T3"),
-    _pending_case("drive.n_pairs", 5, "T3"),
+    # 一様分布以外は未対応。黙って一様として扱わないこと自体が配線である。
+    case("drive.distribution", "gaussian", channel=CHANNEL_ERROR),
+    case("drive.n_steps", 420),
+    case("drive.washout", 150),
+    case("drive.n_pairs", 5),
     # --- 2-A/2-B/2-C 共有: リザバー構造 (F-02-1-004, セクション横断で1本) ---
-    _pending_case("reservoir.input_scale", 2.0, "T3"),
-    _pending_case("reservoir.n_units", 40, "T3"),
-    _pending_case("reservoir.density", 0.5, "T3"),
-    _pending_case("reservoir.n_replicates", 2, "T3"),
-    # --- 2-A: ESP の減衰曲線 ---
-    _pending_case("decay.rho_grid", (0.6, 1.3), "T3"),
-    _pending_case("decay.sigma_u", 0.5, "T3"),
-    _pending_case("decay.leak_rate", 0.4, "T3"),
+    case("reservoir.input_scale", 2.0),
+    case("reservoir.n_units", 40),
+    case("reservoir.density", 0.6),
+    case("reservoir.n_replicates", 2),
+    # --- 2-A: ESP の減衰曲線 (他の実験の行を1バイトも動かさないこと) ---
+    case("decay.rho_grid", (0.7, 1.1), scope=EXPERIMENT_DECAY),
+    case("decay.sigma_u", 0.5, scope=EXPERIMENT_DECAY),
+    case("decay.leak_rate", 0.4, scope=EXPERIMENT_DECAY),
     # --- 2-B: リーク率と実効時定数 ---
-    _pending_case("timescale_sweep.leak_rate_grid", (0.2, 0.9), "T3"),
-    _pending_case("timescale_sweep.rho", 0.7, "T3"),
-    _pending_case("timescale_sweep.sigma_u", 0.9, "T3"),
+    case("timescale_sweep.leak_rate_grid", (0.2, 0.9), scope=EXPERIMENT_TIMESCALE),
+    case("timescale_sweep.rho", 0.7, scope=EXPERIMENT_TIMESCALE),
+    case("timescale_sweep.sigma_u", 0.9, scope=EXPERIMENT_TIMESCALE),
     # --- 2-C: rho x 入力強度 の ESP 成立領域 ---
-    _pending_case("esp_map.rho_grid", (0.8, 1.4), "T3"),
-    _pending_case("esp_map.sigma_grid", (0.0, 1.5), "T3"),
-    _pending_case("esp_map.leak_rate", 0.6, "T3"),
+    case("esp_map.rho_grid", (0.7, 1.6), scope=EXPERIMENT_ESP_MAP),
+    case("esp_map.sigma_grid", (0.05, 1.5), scope=EXPERIMENT_ESP_MAP),
+    case("esp_map.leak_rate", 0.6, scope=EXPERIMENT_ESP_MAP),
     # --- 2-D: washout 感度 (base.* は 01 側へ委譲) ---
     _pending_case("washout.grid", (0, 100), "T4"),
     _pending_case("washout.pad_series", False, "T4"),
