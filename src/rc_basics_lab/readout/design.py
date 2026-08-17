@@ -123,6 +123,11 @@ def build_design_matrix(
         raise ValueError(f"u が空です: {inputs.shape}")
 
     layout = _layout_of(spec)
+    first_valid = max(layout.input_lags, default=0)
+    if first_valid >= n_steps:
+        raise ValueError(
+            f"系列長がラグに対して短すぎます: T={n_steps}, first_valid={first_valid}"
+        )
 
     state_array: FloatArray | None = None
     if layout.use_states:
@@ -145,7 +150,7 @@ def build_design_matrix(
         names.append(BIAS_NAME)
     for lag in layout.input_lags:
         block: FloatArray = np.full((n_steps, n_inputs), np.nan, dtype=np.float64)
-        block[lag:] = inputs[: n_steps - lag] if lag else inputs
+        block[lag:] = inputs[: n_steps - lag]
         blocks.append(block)
         names.extend(f"u{dim}_lag{lag}" for dim in range(n_inputs))
     if state_array is not None:
@@ -155,7 +160,6 @@ def build_design_matrix(
         raise ValueError("特徴が1つもありません (bias=False かつ入力も状態も無し)")
 
     phi: FloatArray = np.concatenate(blocks, axis=1)
-    first_valid = max(layout.input_lags, default=0)
     return DesignMatrix(phi=phi, first_valid=first_valid, feature_names=tuple(names))
 
 
