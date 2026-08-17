@@ -154,6 +154,17 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
   - `tests/test_diagnostics_state_space.py::test_low_rank_input_has_smaller_effective_dimension` — rank 3 の合成データで `n_components_95 == 3`
   - `validate_diagnostic_input` が `X.shape[0] != u.shape[0]` で `ValueError` を送出
 - **想定所要**: M
+- **実装時に決めたこと（仕様に無かった箇所。02〜05 はこれに従う）**
+  - `validate_diagnostic_input(X, u=None, y=None, ctx=None)` の `ctx` は**位置引数**（`Diagnostic.__call__` の `ctx` は仕様どおり keyword-only）。理由: 検証関数は診断の内部実装であり、プロトコルの一部ではない
+  - 1次元の `X` / `u` / `y` は受理せず `ValueError`。理由: `(T,)` を `(T, 1)` と黙って解釈すると `(1, T)` の取り違えを検出できなくなる。呼び出し側で明示的に `reshape` させる
+  - `validate_diagnostic_input` は形状に加えて `ctx.washout`（0 以上・系列長未満）、`ctx.dt`（正）、`ctx.companion_states`（各要素が `X` と同形状）も検証する。理由: 02/04 でこれらが実際に使われる前に、配線ミスを1か所で落とす
+  - `DiagnosticResult.to_row()` は `{"diagnostic": name} + params + scalars` を返し、`arrays` は含めない。キー衝突は `ValueError`。理由: 静かな上書きで CSV の列が消えるのを防ぐ
+  - `DiagnosticResult` の `scalars` / `arrays` / `params` は既定値 `{}`（空）。理由: ダミー診断や将来の診断が3種すべてを埋める必要をなくす
+  - `base.resolve_context(ctx)` を追加（`None` → 既定 `DiagnosticContext`）。理由: 各診断が同じ `if ctx is None` を書き写すのを避ける
+  - `state_pca` の `n_components_95` は「累積寄与率が 0.95 **以上**になる最小の主成分数」。閾値はモジュール定数 `_CUMULATIVE_THRESHOLD` に置き、`params["cumulative_threshold"]` として結果にも残す
+  - `state_pca` は共分散行列を作らず SVD で解き、固有値を `s**2 / (T-1)`（不偏）とする。理由: 条件数の悪化を避ける
+  - `state_pca` は `pc_scores` として先頭2成分（`U[:, :2] * s[:2]`）を返す。状態が定数（全分散 0）なら `ValueError`
+  - `diagnostics/__init__.py` は `Diagnostic` / `DiagnosticContext` / `DiagnosticResult` / `validate_diagnostic_input` / `state_mean_norm` / `state_pca` を再輸出し、02〜05 のモジュール名を docstring で予約する
 
 ### T3: ESN コア + 設計行列の単一 API + リッジ/alpha 選択
 
