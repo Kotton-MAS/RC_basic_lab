@@ -292,8 +292,20 @@ def _evaluate(
     return row
 
 
-def run_task(config: ExperimentConfig, task_entry: TaskEntry) -> list[ResultRow]:
-    """1課題について (手法 x レプリケート) を回す。"""
+def run_task(
+    config: ExperimentConfig,
+    task_entry: TaskEntry,
+    *,
+    plan0: ReplicatePlan | None = None,
+) -> list[ResultRow]:
+    """1課題について (手法 x レプリケート) を回す。
+
+    Args:
+        plan0: レプリケート0の ``ReplicatePlan`` を渡すと、その分の
+            ``plan_replicate`` 呼び直しを省く (F-1-009: ``collect_state_space``
+            と計算を共有するための明示的な受け渡し)。省略時はこれまでどおり
+            内部で作る。
+    """
     if config.n_replicates < 1:
         raise ValueError(
             f"n_replicates は 1 以上である必要があります: {config.n_replicates}"
@@ -301,7 +313,11 @@ def run_task(config: ExperimentConfig, task_entry: TaskEntry) -> list[ResultRow]
     methods = build_methods(config)
     rows: list[ResultRow] = []
     for replicate in range(config.n_replicates):
-        plan = plan_replicate(config, task_entry, replicate)
+        plan = (
+            plan0
+            if replicate == 0 and plan0 is not None
+            else plan_replicate(config, task_entry, replicate)
+        )
         logger.info(
             "task=%s replicate=%d t0=%d offset=%d sizes=%s",
             task_entry.name,
@@ -317,11 +333,19 @@ def run_task(config: ExperimentConfig, task_entry: TaskEntry) -> list[ResultRow]
     return rows
 
 
-def run_experiment(config: ExperimentConfig) -> list[ResultRow]:
-    """全課題 x 全手法 x 全レプリケートを回す。"""
+def run_experiment(
+    config: ExperimentConfig, *, plans0: Mapping[str, ReplicatePlan] | None = None
+) -> list[ResultRow]:
+    """全課題 x 全手法 x 全レプリケートを回す。
+
+    Args:
+        plans0: タスク名 -> レプリケート0の ``ReplicatePlan``。渡すとそのタスク
+            のレプリケート0の計算を再利用する (F-1-009)。
+    """
     rows: list[ResultRow] = []
     for task_entry in build_tasks(config):
-        rows.extend(run_task(config, task_entry))
+        plan0 = None if plans0 is None else plans0.get(task_entry.name)
+        rows.extend(run_task(config, task_entry, plan0=plan0))
     return rows
 
 

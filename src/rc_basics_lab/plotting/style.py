@@ -80,26 +80,13 @@ def find_cjk_font(candidates: Sequence[str] = CJK_FONT_CANDIDATES) -> str | None
 
 
 def setup_style() -> StyleContext:
-    """rcParams を設定し、CJK フォントの有無を返す。
+    """CJK フォントの有無を判定し ``StyleContext`` を返す。
 
-    ``savefig.dpi`` は ``SAVEFIG_DPI`` (>= 200) に固定する。CJK フォントが
-    見つからない場合は ``logger.warning`` を出し、``cjk_available=False`` の
-    コンテキストを返す (呼び出し側は英語ラベルで描く)。
+    ``matplotlib.rcParams`` は書き換えない (F-1-008)。CJK フォントが見つから
+    ない場合は ``logger.warning`` を出し、``cjk_available=False`` のコンテキスト
+    を返す (呼び出し側は英語ラベルで描く)。実際の描画設定は ``rc_params_for``
+    を経由して ``matplotlib.rc_context`` で一時適用する。
     """
-    matplotlib.rcParams.update(
-        {
-            "savefig.dpi": SAVEFIG_DPI,
-            "figure.dpi": FIGURE_DPI,
-            "savefig.bbox": "tight",
-            "figure.autolayout": False,
-            "axes.grid": True,
-            "grid.alpha": 0.3,
-            "axes.spines.top": False,
-            "axes.spines.right": False,
-            "font.size": 10,
-            "legend.frameon": False,
-        }
-    )
     cjk_font = find_cjk_font()
     if cjk_font is None:
         logger.warning(
@@ -107,17 +94,40 @@ def setup_style() -> StyleContext:
             ", ".join(CJK_FONT_CANDIDATES),
         )
         return StyleContext(cjk_font=None)
-    sans_serif = list(matplotlib.rcParams["font.sans-serif"])
-    matplotlib.rcParams["font.family"] = "sans-serif"
-    matplotlib.rcParams["font.sans-serif"] = [
-        cjk_font,
-        *(name for name in sans_serif if name != cjk_font),
-    ]
-    # CJK フォントは U+2212 (MINUS SIGN) を持たないことがあり、負の目盛が
-    # 豆腐になる。ASCII のハイフンに落とす。
-    matplotlib.rcParams["axes.unicode_minus"] = False
     logger.info("CJK フォントを使用します: %s", cjk_font)
     return StyleContext(cjk_font=cjk_font)
+
+
+def rc_params_for(style: StyleContext) -> dict[str, object]:
+    """``style`` に応じた rcParams の差分 (``matplotlib.rc_context`` に渡す辞書)。
+
+    プロセス全体の rcParams は書き換えず、描画のたびにこの辞書を
+    ``with matplotlib.rc_context(rc_params_for(style)):`` で一時適用する
+    (F-1-008)。``savefig.dpi`` は ``SAVEFIG_DPI`` (>= 200) に固定する。
+    """
+    params: dict[str, object] = {
+        "savefig.dpi": SAVEFIG_DPI,
+        "figure.dpi": FIGURE_DPI,
+        "savefig.bbox": "tight",
+        "figure.autolayout": False,
+        "axes.grid": True,
+        "grid.alpha": 0.3,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "font.size": 10,
+        "legend.frameon": False,
+    }
+    if style.cjk_font is not None:
+        sans_serif = list(matplotlib.rcParams["font.sans-serif"])
+        params["font.family"] = "sans-serif"
+        params["font.sans-serif"] = [
+            style.cjk_font,
+            *(name for name in sans_serif if name != style.cjk_font),
+        ]
+        # CJK フォントは U+2212 (MINUS SIGN) を持たないことがあり、負の目盛が
+        # 豆腐になる。ASCII のハイフンに落とす。
+        params["axes.unicode_minus"] = False
+    return params
 
 
 __all__ = [
@@ -126,5 +136,6 @@ __all__ = [
     "SAVEFIG_DPI",
     "StyleContext",
     "find_cjk_font",
+    "rc_params_for",
     "setup_style",
 ]

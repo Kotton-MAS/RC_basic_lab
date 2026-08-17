@@ -10,7 +10,12 @@ pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI �
 
 from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
 from rc_basics_lab.plotting.labels import label
-from rc_basics_lab.plotting.style import StyleContext, find_cjk_font, setup_style
+from rc_basics_lab.plotting.style import (
+    StyleContext,
+    find_cjk_font,
+    rc_params_for,
+    setup_style,
+)
 
 __all__ = [
     "StyleContext",
@@ -18,5 +23,6 @@ __all__ = [
     "label",
     "plot_comparison",
     "plot_state_space",
+    "rc_params_for",
     "setup_style",
 ]
