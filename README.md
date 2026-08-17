@@ -1,183 +1,100 @@
-# UV Python Template
+# rc-basics-lab
 
-uv + Docker (Dev Container) を使った Python プロジェクトテンプレート。
+リザバー計算（Reservoir Computing）の基礎を、**同一 API・同一分割・同一探索予算**で
+比較しながら確かめるための実験ラボ。連載記事「RC 基礎編」01〜05 の実装基盤であり、
+本リポジトリは**サイクル01（記事01: リザバー計算とは何か）**の範囲を実装している。
 
-## 前提条件
+- 3ベースライン（**線形 / 遅延線 / ESN**）を `FeatureSpec` の差だけで切り替える
+- 誤差指標は **NRMSE = RMSE / std(y_true)**（`NRMSE = 1` が「平均予測と同等」）
+- 診断層（PCA など）は `X` だけを入力に取り、**ESN に一切依存しない**
+  （他のリザバー実装へそのまま移植できる）
+- 意図的な設計判断は `.claude/decisions.yaml` に **guard_test 付き**で記録している
 
-このテンプレで生成したプロジェクトは claude-pdca-kit が ~/.claude/ にインストールされていることを前提にしている。
-
-> **Note**: claude-pdca-kit (planner / reviewer 群などのエージェント・スキル) は
-> Claude Code の user スコープ (`~/.claude/`) に置かれるため、**Claude Code はホスト側で実行**する。
-> Dev Container はテスト・実行用のランタイム環境であり、コンテナ内から Claude Code を
-> 起動しても pdca-kit のエージェント・スキルは利用できない。
-> コンテナ内で使いたい場合は `compose.yml` のコメントアウトされたマウント設定を参照。
-
-このリポジトリの `.claude/` にはプロジェクト固有のもの (findings スキーマ、
-`decisions.yaml`) だけを置く。フック・ガード・reviewer 群をここにコピーしないこと。
-プロジェクト側のコピーは user スコープより優先されるため、キット側の改良が
-静かに打ち消される。
-
-**エージェントに作業させる前に作業ブランチを切る** (`git switch -c feat/xxx`)。
-キットの自動コミットは `main` / `master` では動かない。
-
-## Features
-
-- **uv** によるパッケージ管理
-- **Dev Container** による Docker 開発環境 (GPU オプション対応)
-- **Ruff** によるリント・フォーマット
-- **pytest** によるテスト・カバレッジ計測
-- **pre-commit** による自動コード品質チェック
-- **GitHub Actions** による CI (lint / format / type check / test)
-- **VS Code** 推奨拡張機能・設定同梱
-
-## Getting Started
-
-### 1. テンプレートからプロジェクト作成
-
-GitHub の **Use this template** ボタン、またはクローンして利用します:
+## 3コマンドで再現する
 
 ```bash
-git clone https://github.com/Kotton-MAS/python_dev_template my-project
-cd my-project
+# 1. 依存をロックどおりに入れる
+uv sync --locked
 
-# プロジェクト名を pyproject.toml の [project] name に合わせて変更する
+# 2. テスト (198 件 / 約 3 秒)
+uv run pytest -q
 
-# 依存関係の同期
-uv sync
+# 3. 実験を回して results/ を再生成する (約 1 秒)
+uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml
 ```
 
-### 2. Dev Container で起動
+3 番目は `make figures-01` でも同じ（`python main.py --experiment 01` も同じ経路）。
+`results/` に次の4点が出る:
 
-VS Code で **Dev Containers: Reopen in Container** を実行すると、Docker 環境が自動でビルドされます。
+| ファイル | 内容 |
+|---|---|
+| `results/comparison.csv` | 2課題 × 3手法 × 5レプリケート = 30行の長形式の結果 |
+| `results/fig_comparison.png` | 課題別の NRMSE（点+誤差棒、`NRMSE=1` の基準線つき） |
+| `results/fig_state_space.png` | 入力空間とリザバー状態空間の PCA |
+| `results/meta.json` | commit / 時刻 / ライブラリ版 / 設定全体 / 実測 wall time / PCA の要約 |
 
-## Project Structure
+図は 200 dpi（retina 相当）。日本語フォント（Hiragino Sans / Noto Sans CJK JP /
+IPAexGothic / Yu Gothic）が見つかる環境では日本語ラベル、見つからない環境では
+**ラベル文字列ごと英語**に切り替わる（豆腐文字を出さないため。D-10）。
+新しい依存は追加していない。
+
+## 何が分かるか（実測値）
+
+テスト区間・5レプリケートの NRMSE 平均 ± 標準偏差:
+
+| 課題 | 線形 | 遅延線 | ESN |
+|---|---|---|---|
+| Mackey-Glass (1ステップ先予測) | 0.1454 ± 0.0002 | **0.0008 ± 0.0000** | 0.0014 ± 0.0001 |
+| 遅延パリティ `y[t]=u[t-1]u[t-2]` | 1.0004 ± 0.0003 | 1.0007 ± 0.0007 | **0.0894 ± 0.0166** |
+
+符号正解率（遅延パリティ）: 線形 0.500 / 遅延線 0.522 / **ESN 1.000**。
+
+- **遅延パリティでは線形も遅延線も解けない**。目標が `{1, u[t-k]}` の張る線形空間に
+  厳密に直交するため、失敗は経験則ではなく解析的な帰結である（`docs/design.md` §2.2）
+- **Mackey-Glass の1ステップ先予測では遅延線が ESN をわずかに上回る**。
+  Δt=1.0 の MG は1ステップ先ならほぼ線形予測できるため。
+  「MG だけを見れば遅延線で足りる。差が出るのは非線形性を要求するパリティの側」
+  という読み方をする（隠さずそのまま記録している）
+- リザバー状態の PCA は、生の入力（1次元）より高次元に広がる一方で、
+  **16ラグの遅延埋め込み（17次元）より `n_components_95` は小さい**。
+  分散で数えた次元数はリザバーの効用と別物であるという実測結果を
+  `docs/design.md` §7.2 に数値付きで残してある
+
+## リポジトリ構成
 
 ```
-.
-├── .devcontainer/          # Dev Container 設定
-│   ├── Dockerfile          # Python 3.12 + uv ベースイメージ
-│   ├── compose.yml         # Docker Compose 設定
-│   ├── devcontainer.json   # VS Code Dev Container 設定
-│   └── postCreateCommand.sh # コンテナ作成後の初期化スクリプト
-├── .github/
-│   └── workflows/
-│       └── python-ci.yaml  # GitHub Actions CI ワークフロー
-├── .vscode/
-│   ├── extensions.json      # 推奨拡張機能
-│   └── settings.json        # エディタ設定 (フォーマッタ等)
-├── .env.example             # 環境変数のテンプレート
-├── .gitignore               # Git 除外ファイル
-├── .pre-commit-config.yaml  # pre-commit フック設定
-├── .python-version          # Python バージョン指定 (3.12)
-├── Makefile                 # 検証コマンドの単一の真実 (make ci)
-├── main.py                  # エントリポイント
-├── tests/                   # pytest テスト
-├── pyproject.toml           # プロジェクト・依存関係定義
-└── uv.lock                  # 依存関係のロックファイル
+src/rc_basics_lab/
+├── config.py / seeds.py / metrics.py / meta.py / types.py   # 土台
+├── diagnostics/     # 状態系列 X だけを見る診断層 (reservoir に依存しない)
+├── reservoir/       # ESN (step / run / x0 / state_noise を公開)
+├── readout/         # 設計行列 (3手法の差はここだけ) とリッジ回帰
+├── experiment/      # 分割・ランナー・PCA 比較・書き出し・1コマンド経路
+└── plotting/        # スタイル (CJK フォント探索) と図
+experiments/01_what_is_rc/{config.yaml,run.py}   # 実験1の設定と CLI
+results/             # 生成物 (コミット対象。再実行で上書きされる)
+docs/design.md       # 数値の根拠と実測結果
+docs/plans/          # 仕様書 (タスク分解と受け入れ基準)
+tests/               # pytest
 ```
 
-## File Details
+## 開発
 
-### `pyproject.toml` - プロジェクト定義
-
-uv が使用するプロジェクトメタデータと依存関係の定義ファイルです。
-
-- **requires-python**: `>=3.12`
-- **dev 依存関係**: `pytest`, `pytest-cov`, `ruff`
+検証コマンドの単一の真実は `Makefile`:
 
 ```bash
-# 依存関係の同期
-uv sync
-
-# パッケージの追加
-uv add <package>
-
-# dev 依存関係の追加
-uv add --group dev <package>
+make ci          # lock-check + lint + fmt-check + type + test (CI と同じ)
+make test        # uv run pytest -q
+make figures-01  # results/ を再生成
 ```
 
-### `.devcontainer/` - Docker 開発環境
+- Python 3.12+ / 依存は **numpy・scipy・matplotlib・pyyaml のみ**
+- `mypy --strict`（`disallow_any_explicit`）と ruff（`print()` 禁止）を緩めない
+- 設定 YAML の**未知キーは即エラー**（`ConfigError`）。タイプミスが黙って無視されると
+  「設定したのに効いていない」実験になるため（D-09）
+- 全設定パラメータについて「値を変えると出力が変わる」ことを
+  `tests/test_config_wiring.py` が網羅的に検査する。パラメータを足したら
+  同ファイルに1行足すまでテストは赤のまま
 
-Dev Container は VS Code 上でコンテナ内の開発環境を提供します。
+## ライセンス
 
-| ファイル               | 役割                                                                      |
-| ---------------------- | ------------------------------------------------------------------------- |
-| `Dockerfile`           | `python:3.12-slim-bookworm` ベースに uv・git・curl 等をインストール       |
-| `compose.yml`          | ワークスペースのマウント、`.env` の読み込み、共有メモリ 8GB 設定          |
-| `devcontainer.json`    | タイムゾーン (`Asia/Tokyo`)、Google Cloud CLI feature、GPU オプション設定 |
-| `postCreateCommand.sh` | コンテナ作成後に git 補完の有効化と `uv sync` を実行                      |
-
-### `.pre-commit-config.yaml` - コミット前の自動チェック
-
-`git commit` 実行時に以下のチェックが自動で走ります:
-
-| フック                   | 説明                                                                               |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| **pre-commit-hooks**     | 末尾空白削除、EOF 改行保証、YAML/TOML 構文チェック、秘密鍵検出、大容量ファイル警告 |
-| **ruff** (lint + format) | Python / Jupyter のリント (`--fix` 付き) とフォーマット                            |
-| **prettier**             | YAML / JSON のフォーマット                                                         |
-| **shellcheck**           | シェルスクリプトの静的解析                                                         |
-| **mdformat**             | Markdown のフォーマット (GFM、テーブル対応)                                        |
-| **codespell**            | スペルミス検出 (`logs/`, `data/`, `*.ipynb` は除外)                                |
-| **nbstripout**           | Jupyter Notebook のセル出力を自動削除                                              |
-
-```bash
-# pre-commit の初期設定
-uv run pre-commit install
-
-# 全ファイルに対して手動実行
-uv run pre-commit run --all-files
-```
-
-### `.github/workflows/python-ci.yaml` - GitHub Actions CI
-
-Pull Request をトリガーに `uv sync --locked` で依存をインストールした後、`make ci` を実行します。
-検証ロジックは Makefile に一元化されており、ローカル・Stop フック・CI がすべて同じコマンドを共有します:
-
-1. **uv lock --check** - lock ファイルの整合性チェック
-2. **ruff check** - リント
-3. **ruff format --check** - フォーマットチェック
-4. **mypy** - 型チェック
-5. **pytest** - テスト実行
-
-### `.vscode/` - エディタ設定
-
-- **extensions.json**: Ruff、Python、Jupyter、Docker、Prettier 等の推奨拡張機能
-- **settings.json**: Python ファイル保存時に Ruff で自動フォーマット・import 整理、JSON/YAML は Prettier でフォーマット
-
-### `.python-version` - Python バージョン固定
-
-uv や pyenv が参照する Python バージョン指定ファイルです。現在 `3.12` に設定されています。
-
-### `.env.example` - 環境変数テンプレート
-
-`.env` ファイルの雛形です。実際の `.env` は `.gitignore` で除外されています。コピーして使用してください:
-
-```bash
-cp .env.example .env
-```
-
-## Common Commands
-
-```bash
-# 依存関係の同期
-uv sync
-
-# テスト実行
-uv run pytest
-
-# カバレッジ付きテスト
-uv run pytest --cov
-
-# リント
-uv run ruff check .
-
-# フォーマット
-uv run ruff format .
-
-# pre-commit を全ファイルに実行
-uv run pre-commit run --all-files
-
-# CIの実行(ruff formatter mypy pytest の一括実行ができる)
-make ci
-```
+Apache License 2.0 — `LICENSE` を参照。Copyright 2026 Takumi Kotooka.
