@@ -377,6 +377,47 @@ def test_summary_rejects_empty_rows() -> None:
         summarize_washout_sensitivity(tiny_sweep_config(), ())
 
 
+def test_find_rejects_a_pair_that_is_not_in_the_sweep() -> None:
+    """``WashoutSensitivity.find`` は掃引に無い (課題, 手法) の組を ``KeyError``。
+
+    ``plotting`` から実運用でも呼ばれる公開メソッドなので、黙って ``None`` を
+    返さず明示的に落ちることを固定する (docstring の Raises)。
+    """
+    config = tiny_sweep_config()
+    sensitivity = summarize_washout_sensitivity(config, run_washout_sweep(config))
+    with pytest.raises(KeyError, match="掃引に含まれない組です"):
+        sensitivity.find("no_such_task", "no_such_method")
+
+
+def test_variant_for_rejects_a_washout_whose_t0_is_below_the_grid_minimum() -> None:
+    """``predicted_t0`` が格子最小値の ``t0`` を下回る ``washout`` は ``ValueError``。
+
+    補償量は ``t0 - baseline_t0`` (格子最小値での ``t0``) で計算するため、これが
+    負になると系列を**縮める**方向に働き、D-19 が防ごうとしている「washout を
+    増やすと訓練データ量が減る」交絡を自ら作ってしまう。``t0 = max(washout,
+    first_valid)`` は飽和するので、格子最小値 (40) より小さい ``washout=0`` を
+    渡すと ``t0`` が ``first_valid`` (< 40) で頭打ちになり、格子最小値の
+    ``t0`` (= 40) を下回る。
+    """
+    section = tiny_sweep_config(grid=(40, 120)).washout
+    with pytest.raises(ValueError, match="t0"):
+        variant_for(section, 0)
+
+
+def test_sensitivity_for_a_pair_with_no_rows_raises() -> None:
+    """``_sensitivity_for`` は対象の (課題, 手法) の行が1つも無ければ ``ValueError``。
+
+    ``summarize_washout_sensitivity`` を経由せず直接この境界を固定する
+    (docstring の Raises)。``by_method`` は ``_task_method_pairs`` から機械的に
+    (課題, 手法) を作るので通常は空にならないが、行を絞り込んでから渡す将来の
+    呼び出しに備えて契約を固定しておく。
+    """
+    config = tiny_sweep_config()
+    rows = run_washout_sweep(config)
+    with pytest.raises(ValueError, match="行がありません"):
+        _sensitivity_for(rows, "no_such_task", "no_such_method", REFERENCE_WASHOUT)
+
+
 # --- 図 --------------------------------------------------------------------
 
 
