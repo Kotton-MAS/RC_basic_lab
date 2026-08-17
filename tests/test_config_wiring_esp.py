@@ -471,8 +471,8 @@ def test_every_esp_parameter_changes_output(
         return
 
     if wiring_case.channel == CHANNEL_WASHOUT:
-        rows = run_washout_case(wiring_case)
-        assert washout_fingerprint(rows) != washout_fingerprint(
+        washout_rows = run_washout_case(wiring_case)
+        assert washout_fingerprint(washout_rows) != washout_fingerprint(
             baseline_washout_rows()
         ), f"{wiring_case.field} を変えても 2-D の出力が変わりません (配線漏れ)"
         # 2-D の設定が 2-A/2-B/2-C の行まで動かしていないこと。3つの図と

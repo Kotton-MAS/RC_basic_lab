@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import json
 import math
 import statistics
@@ -186,7 +187,7 @@ def test_washout_sweep_holds_training_size_constant() -> None:
     assert trains[0] > trains[-1], (
         f"補償なしでも n_train が縮んでいません (交絡を再現できていない): {trains}"
     )
-    for left, right in zip(grid, grid[1:], strict=True):
+    for left, right in itertools.pairwise(grid):
         if unpadded_t0[right] > unpadded_t0[left]:
             assert unpadded_sizes[right][0] < unpadded_sizes[left][0], (
                 f"t0 が増えたのに n_train が減っていません: {unpadded_sizes}"
