@@ -23,7 +23,11 @@ from dataclasses import dataclass
 from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticResult
 from rc_basics_lab.diagnostics.state_space import state_pca
-from rc_basics_lab.experiment.runner import TaskEntry, build_tasks, plan_replicate
+from rc_basics_lab.experiment.runner import (
+    TaskEntry,
+    build_tasks,
+    plan_replicate,
+)
 from rc_basics_lab.readout.design import DelayLineSpec, build_design_matrix
 from rc_basics_lab.types import FloatArray
 
