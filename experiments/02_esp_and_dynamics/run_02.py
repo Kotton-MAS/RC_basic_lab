@@ -45,6 +45,7 @@ class Args:
 
     config: Path
     out: Path
+    threshold_sweep: bool
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
@@ -62,12 +63,29 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
         default=DEFAULT_OUT,
         help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
     )
+    parser.add_argument(
+        "--threshold-sweep",
+        action="store_true",
+        help=(
+            "本体の7成果物は作らず、ESP 判定の閾値感度 "
+            "(esp_threshold_sensitivity.csv) だけを再生成する (D-16 / design.md §9)"
+        ),
+    )
     namespace = parser.parse_args(argv)
-    return Args(config=Path(str(namespace.config)), out=Path(str(namespace.out)))
+    return Args(
+        config=Path(str(namespace.config)),
+        out=Path(str(namespace.out)),
+        threshold_sweep=bool(namespace.threshold_sweep),
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """実験を実行し、CSV1枚・図3枚・meta.json を書く。"""
+    """実験を実行し、CSV2枚・図4枚・meta.json を書く。
+
+    ``--threshold-sweep`` のときは閾値感度 CSV だけを書く。本体と分けるのは、
+    2-C の格子をもう一度回すので実行時間が倍近くになるうえ、記事に載る成果物
+    ではなく「既定値が結論を作っていない」ことの根拠だからである。
+    """
     args = parse_args(argv)
     config = load_config_as(args.config, Esp02Config)
     logger.info(
@@ -77,6 +95,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         config.drive.n_steps,
         config.reservoir.n_replicates,
     )
+    if args.threshold_sweep:
+        run_and_report_threshold_sweep(config, args.out)
+        return 0
     run_and_report_esp(config, args.out)
     return 0
 

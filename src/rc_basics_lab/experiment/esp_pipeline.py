@@ -38,6 +38,12 @@ from rc_basics_lab.experiment.esp import (
     summarize_verdict_agreement,
 )
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.threshold import (
+    ThresholdRow,
+    run_threshold_sweep,
+    threshold_csv_columns,
+    threshold_row_as_dict,
+)
 from rc_basics_lab.experiment.washout import (
     WASHOUT_CSV_COLUMNS,
     WashoutRow,
@@ -288,6 +294,7 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
 __all__ = [
     "ESP_ARTIFACTS",
     "ESP_DIAGNOSTICS_CSV",
+    "ESP_THRESHOLD_SENSITIVITY_CSV",
     "FIG_ESP_DECAY",
     "FIG_ESP_MAP",
     "FIG_LEAK_TIMESCALE",
@@ -295,6 +302,8 @@ __all__ = [
     "WASHOUT_SENSITIVITY_CSV",
     "EspOutputs",
     "run_and_report_esp",
+    "run_and_report_threshold_sweep",
     "write_esp_csv",
+    "write_threshold_csv",
     "write_washout_csv",
 ]
