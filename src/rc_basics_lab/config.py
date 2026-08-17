@@ -7,6 +7,18 @@ YAML 化するため、キーのタイプミスが黙って無視されると「
 
 新しいセクションを足すときは dataclass にフィールドを追加するだけでよい
 (ローダはフィールド型から再帰的に構築する)。
+
+**実験ごとに設定 dataclass を分ける** (D-13)。``ExperimentConfig`` は 01 専用で、
+02 は ``Esp02Config`` を使う。ローダ本体は ``load_config_as(path, cls)`` として
+共有し、``load_config`` はその 01 向けの別名 (呼び出し互換のため署名を保つ)。
+02 のフィールドを ``ExperimentConfig`` に相乗りさせると
+``tests/test_config_wiring.py::test_each_parameter_changes_output``
+(「全フィールドが 01 のパイプライン出力を変える」) を満たせないフィールドが
+生まれ、逃がすための例外チャネルを増やすと配線漏れの検出力そのものが落ちる。
+
+診断の設定 dataclass (``EspConfig`` / ``LyapunovConfig`` / ``TimescaleConfig``)
+は ``diagnostics/`` 側に定義し、ここが import する。``config -> diagnostics``
+は許可された向きで、逆向きは D-12 が禁じている。
 """
 
 from __future__ import annotations
