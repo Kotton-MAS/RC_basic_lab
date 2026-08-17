@@ -329,7 +329,7 @@ def test_diagnostic_sections_cover_the_diagnostic_config_classes() -> None:
 def test_pending_cases_disappear_once_the_experiment_layer_exists() -> None:
     """実験層が生えたら ``CHANNEL_PENDING`` は許されない (先送りの時限装置)。
 
-    サイクル 2a には ``experiment/esp.py`` (も ``esp_pipeline.py``) も無いため、
+    サイクル 2a には ``experiment/esp.py`` も ``esp_pipeline.py`` も無いため、
     格子や系列長のような「実験を回して初めて効く」葉は出力での実測ができない。
     そこを黙って見逃すと「設定したのに効いていない」が 02 で復活するので、
     実験層が生えた瞬間にこのテストが赤くなるようにしてある。
@@ -390,6 +390,17 @@ def test_empty_yaml_gives_esp_defaults(tmp_path: Path) -> None:
         pytest.param(
             "washout:\n  base:\n    n_replicate: 3\n", "n_replicate", id="nested_01"
         ),
+        pytest.param(
+            "decay:\n  n_units: 40\n", "n_units", id="reservoir_field_on_decay"
+        ),
+        pytest.param(
+            "timescale_sweep:\n  n_units: 40\n",
+            "n_units",
+            id="reservoir_field_on_timescale_sweep",
+        ),
+        pytest.param(
+            "esp_map:\n  n_units: 40\n", "n_units", id="reservoir_field_on_esp_map"
+        ),
     ],
 )
 def test_unknown_key_raises_for_esp_config(
@@ -400,6 +411,15 @@ def test_unknown_key_raises_for_esp_config(
     ``seeds.task`` を弾くのは、01 の ``SeedConfig`` のキー名をそのまま書いても
     通らないことの確認 (02 の駆動信号のシードは ``seeds.drive``)。似た名前の
     キーが黙って無視されると、シードを変えたつもりで既定値のまま回る。
+
+    ``decay`` / ``timescale_sweep`` / ``esp_map`` に ``n_units`` を足すケース
+    (F-02-1-004 の中心保証) は、``ReservoirSweepConfig`` への集約が本当に
+    「セクションごとに ``n_units`` 等が食い違う」バグの再発を止めているかを
+    名指しで固定する。現状は D-09 の未知キー検査の副作用として正しく動くが、
+    専用テストが無いと、この3セクションのいずれかへ ``n_units`` 等を
+    フィールドとして復活させる変更が入っても、他の (無関係な) 未知キーケースが
+    緑のままなのを見て「D-09 は生きている」と誤認し、集約の意味が失われた
+    ことに気づけない。
     """
     path = tmp_path / "unknown.yaml"
     path.write_text(yaml_text, encoding="utf-8")
