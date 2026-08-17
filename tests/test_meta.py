@@ -39,3 +39,21 @@ def test_commit_falls_back_to_unknown_when_git_is_unavailable(
 
     monkeypatch.setattr(subprocess, "run", _raise)
     assert meta.collect_meta(ExperimentConfig())["commit"] == meta.UNKNOWN
+
+
+def test_collect_meta_for_rejects_a_non_dataclass_config() -> None:
+    """config が dataclass インスタンスでなければ TypeError (docstring の Raises)。"""
+    with pytest.raises(TypeError, match="config"):
+        meta.collect_meta_for(object(), ExperimentConfig().seeds)
+
+
+def test_collect_meta_for_rejects_a_non_dataclass_seeds() -> None:
+    """seeds が dataclass インスタンスでなければ TypeError (docstring の Raises)。"""
+    with pytest.raises(TypeError, match="seeds"):
+        meta.collect_meta_for(ExperimentConfig(), object())
+
+
+def test_collect_meta_for_rejects_a_dataclass_type_instead_of_an_instance() -> None:
+    """dataclass 型そのもの (インスタンスでない) を渡すのも誤用として TypeError。"""
+    with pytest.raises(TypeError, match="config"):
+        meta.collect_meta_for(ExperimentConfig, ExperimentConfig().seeds)
