@@ -94,7 +94,7 @@ class ESN:
     """漏れ積分型 tanh リザバー。
 
     重みは ``__init__`` で1度だけ引き、以後は読み取り専用にする
- (学習は読み出し層 ``rc_basics_lab.readout`` 側だけで行う)。
+    (学習は読み出し層 ``rc_basics_lab.readout`` 側だけで行う)。
     """
 
     def __init__(

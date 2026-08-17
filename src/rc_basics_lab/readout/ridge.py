@@ -52,7 +52,8 @@ def _check_pair(phi: FloatArray, y: FloatArray) -> tuple[FloatArray, FloatArray]
     # 設計行列の first_valid より手前は NaN。t0 の取り違えをここで大きな音で落とす。
     if not np.all(np.isfinite(features)):
         raise ValueError(
-            "phi に有限でない値があります (first_valid より手前の行を切り落としましたか)"
+            "phi に有限でない値があります "
+            "(first_valid より手前の行を切り落としましたか)"
         )
     if not np.all(np.isfinite(targets)):
         raise ValueError("y に有限でない値があります")
@@ -84,7 +85,7 @@ def fit_ridge(
     *,
     bias_column: int | None = 0,
 ) -> FloatArray:
-    """閉形式のリッジ解 ``(ΦᵀΦ + α·D)⁻¹ ΦᵀY`` を返す。
+    """閉形式のリッジ解 ``inv(Phi.T @ Phi + alpha * D) @ Phi.T @ Y`` を返す。
 
     Args:
         phi: 設計行列 ``(T, F)``。

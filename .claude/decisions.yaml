@@ -20,6 +20,11 @@
   rationale: "要件_01 未確定3。NRMSE=1 が『平均予測と同等』を意味するため、遅延パリティで線形手法が失敗したことを解釈可能な形で示せる (範囲正規化では 1 に意味が無い)。CSV には nmse を併記し 03 の先行研究比較に備える"
   guard_test: "tests/test_metrics.py::test_nrmse_of_mean_predictor_is_one"
 
+- id: D-03
+  rule: "リッジ回帰はバイアス列を正則化しない (罰則行列 D = diag(0,1,1,...))"
+  rationale: "バイアスを縮めると目標の平均がずれ、NRMSE=1 という基準線の意味が壊れる。D-02 の解釈性が前提とする性質であり、実装の簡略化で潰されやすい"
+  guard_test: "tests/test_ridge.py::test_bias_column_is_not_penalized"
+
 - id: D-06
   rule: "乱数はリザバー生成 / タスク生成 / 分割の3ストリームに SeedSequence の spawn_key で分離し、1ストリームの変更が他ストリームの乱数列に影響しない"
   rationale: "要件_01 設計判断4。単一 Generator を共有すると『リザバーだけ変えたときの分散』が測れず、受け入れ条件3 の平均±標準偏差の意味が曖昧になる。split ストリームは系列内の開始オフセット選択に実配線し、未使用パラメータを作らない"
