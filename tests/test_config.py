@@ -155,11 +155,12 @@ def test_broken_yaml_raises(tmp_path: Path) -> None:
 def test_coerce_scalar_rejects_loose_conversions(
     tmp_path: Path, yaml_text: str, match: str
 ) -> None:
-    """_coerce_scalar / _coerce_tuple が拒否する緩い変換を網羅する (F-1-017)。
+    """_coerce_scalar / _coerce_tuple が拒否する緩い変換を網羅する。
 
     bool は Python では int のサブクラスなので、明示的に isinstance(bool) で
     弾かないと ``n_replicates: true`` のような YAML が黙って通ってしまう。
-    このガードはこれまでテストが無く、退行しても何も落ちなかった。
+    D-09（未知キーは ConfigError で即座に失敗させる）と隣接する規律だが、
+    このガード自体はこれまでテストが無く、退行しても何も落ちなかった。
     """
     path = _write(tmp_path, yaml_text)
     with pytest.raises(ConfigError, match=match):
