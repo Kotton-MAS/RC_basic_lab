@@ -8,7 +8,6 @@ import inspect
 import pkgutil
 import subprocess
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +33,7 @@ def _external_states(n_steps: int = 300, n_units: int = 20) -> FloatArray:
     return rng.standard_normal((n_steps, n_units))
 
 
-def _iter_diagnostic_callables() -> list[tuple[str, Callable[..., DiagnosticResult]]]:
+def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
     """diagnostics パッケージ配下の診断関数を機械的に列挙する (D-01 の被検体探索)。
 
     列挙条件は「``diagnostics`` の各サブモジュール (``base`` を除く) で定義され
@@ -47,7 +46,7 @@ def _iter_diagnostic_callables() -> list[tuple[str, Callable[..., DiagnosticResu
     ``base`` は Protocol 定義そのもので診断の実装ではないため対象から除く。
     """
     package_dir = Path(diagnostics_pkg.__file__).parent
-    found: list[tuple[str, Callable[..., DiagnosticResult]]] = []
+    found: list[tuple[str, Diagnostic]] = []
     for info in pkgutil.iter_modules([str(package_dir)]):
         if info.name == "base":
             continue
@@ -147,8 +146,10 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
 
         # 最も鋭い検査: ctx を位置引数として渡すと実際に TypeError になること。
         # `*,` (keyword-only マーカー) が外れた瞬間にこの呼び出しが成功してしまう。
+        # Diagnostic プロトコル上は許されない呼び出しを意図的に行っているため
+        # mypy を抑制する (実行時契約の検査そのものが目的)。
         with pytest.raises(TypeError):
-            func(states, None, None, DiagnosticContext())
+            func(states, None, None, DiagnosticContext())  # type: ignore[misc]
 
         # 契約が許す全呼び出しパターンが実際に呼べること。
         func(states)
