@@ -16,6 +16,7 @@ from rc_basics_lab.readout.design import PassthroughSpec, build_design_matrix
 from rc_basics_lab.readout.ridge import (
     AlphaSelection,
     fit_ridge,
+    fit_ridge_from_gram,
     penalty_matrix,
     predict,
     select_alpha,
@@ -84,24 +85,35 @@ def test_closed_form_matches_naive_solution() -> None:
     phi = _design(n_steps=30, n_inputs=4)
     targets: FloatArray = rng.standard_normal((30, 2))
     alpha = 0.37
-    naive_matrix = np.vstack([phi, np.sqrt(alpha) * penalty_matrix(phi.shape[1])])
+    naive_matrix = np.vstack(
+        [phi, np.sqrt(alpha) * penalty_matrix(phi.shape[1], bias_column=0)]
+    )
     naive_targets = np.vstack([targets, np.zeros((phi.shape[1], 2))])
     naive, *_ = np.linalg.lstsq(naive_matrix, naive_targets, rcond=None)
-    assert fit_ridge(phi, targets, alpha) == pytest.approx(naive, rel=1e-8, abs=1e-10)
+    assert fit_ridge(phi, targets, alpha, bias_column=0) == pytest.approx(
+        naive, rel=1e-8, abs=1e-10
+    )
 
 
 def test_alpha_zero_matches_ordinary_least_squares() -> None:
     phi = _design(n_steps=50, n_inputs=2)
     targets = _linear_target(phi, seed=3)
     ols, *_ = np.linalg.lstsq(phi, targets, rcond=None)
-    assert fit_ridge(phi, targets, alpha=0.0) == pytest.approx(ols, abs=1e-8)
+    assert fit_ridge(phi, targets, alpha=0.0, bias_column=0) == pytest.approx(
+        ols, abs=1e-8
+    )
 
 
 def test_select_alpha_picks_validation_minimum() -> None:
     phi = _design(n_steps=300, seed=0)
     targets = _linear_target(phi)
     selection = select_alpha(
-        phi[:200], targets[:200], phi[200:], targets[200:], DEFAULT_ALPHA_GRID
+        phi[:200],
+        targets[:200],
+        phi[200:],
+        targets[200:],
+        DEFAULT_ALPHA_GRID,
+        bias_column=0,
     )
     assert isinstance(selection, AlphaSelection)
     scores = [score for _, score in selection.curve]
@@ -114,10 +126,14 @@ def test_select_alpha_reads_config_alpha_grid() -> None:
     grid = RidgeConfig().alpha_grid
     phi = _design(n_steps=120)
     targets = _linear_target(phi)
-    selection = select_alpha(phi[:80], targets[:80], phi[80:], targets[80:], grid)
+    selection = select_alpha(
+        phi[:80], targets[:80], phi[80:], targets[80:], grid, bias_column=0
+    )
     assert tuple(alpha for alpha, _ in selection.curve) == tuple(sorted(grid))
     # 格子を変えれば探索範囲も変わる (格子が関数側に埋め込まれていない証拠)
-    narrow = select_alpha(phi[:80], targets[:80], phi[80:], targets[80:], (1.0, 10.0))
+    narrow = select_alpha(
+        phi[:80], targets[:80], phi[80:], targets[80:], (1.0, 10.0), bias_column=0
+    )
     assert tuple(alpha for alpha, _ in narrow.curve) == (1.0, 10.0)
     assert narrow.alpha in {1.0, 10.0}
 
@@ -130,7 +146,9 @@ def test_select_alpha_breaks_ties_toward_larger_alpha() -> None:
     phi: FloatArray = np.column_stack([np.ones(100), np.zeros(100), np.zeros(100)])
     targets: FloatArray = rng.standard_normal((100, 1))
     grid = (1e-3, 1.0, 1e3)
-    selection = select_alpha(phi[:60], targets[:60], phi[60:], targets[60:], grid)
+    selection = select_alpha(
+        phi[:60], targets[:60], phi[60:], targets[60:], grid, bias_column=0
+    )
     scores = [score for _, score in selection.curve]
     assert scores == [pytest.approx(scores[0], rel=1e-12)] * len(grid)
     assert selection.alpha == max(grid)
@@ -140,13 +158,13 @@ def test_select_alpha_rejects_empty_grid() -> None:
     phi = _design(n_steps=20)
     targets = _linear_target(phi)
     with pytest.raises(ValueError, match="alpha 格子"):
-        select_alpha(phi[:10], targets[:10], phi[10:], targets[10:], ())
+        select_alpha(phi[:10], targets[:10], phi[10:], targets[10:], (), bias_column=0)
 
 
 def test_fit_ridge_rejects_negative_alpha() -> None:
     phi = _design(n_steps=20)
     with pytest.raises(ValueError, match="alpha"):
-        fit_ridge(phi, _linear_target(phi), alpha=-1.0)
+        fit_ridge(phi, _linear_target(phi), alpha=-1.0, bias_column=0)
 
 
 def test_fit_ridge_rejects_non_finite_rows() -> None:
@@ -156,17 +174,45 @@ def test_fit_ridge_rejects_non_finite_rows() -> None:
     poisoned = phi.copy()
     poisoned[0, 1] = np.nan
     with pytest.raises(ValueError, match="有限でない"):
-        fit_ridge(poisoned, targets, alpha=1.0)
+        fit_ridge(poisoned, targets, alpha=1.0, bias_column=0)
 
 
 def test_fit_ridge_rejects_one_dimensional_target() -> None:
     phi = _design(n_steps=20)
     with pytest.raises(ValueError, match="2次元"):
-        fit_ridge(phi, np.zeros(20), alpha=1.0)
+        fit_ridge(phi, np.zeros(20), alpha=1.0, bias_column=0)
 
 
 def test_coefficient_shape_supports_multiple_outputs() -> None:
     rng = np.random.default_rng(2)
     phi = _design(n_steps=60, n_inputs=3)
     targets: FloatArray = rng.standard_normal((60, 2))
-    assert fit_ridge(phi, targets, alpha=1.0).shape == (4, 2)
+    assert fit_ridge(phi, targets, alpha=1.0, bias_column=0).shape == (4, 2)
+
+
+def test_bias_column_is_keyword_required() -> None:
+    """``bias_column`` を渡し忘れると TypeError で落ちる (F-1-002)。
+
+    既定値 0 (= 先頭列は必ずバイアス) を持たせないことで、``bias=False`` の
+    設計行列を渡し忘れたときに「静かに少し違う係数」ではなく型エラーになる。
+    """
+    phi = _design(n_steps=20)
+    targets = _linear_target(phi)
+    with pytest.raises(TypeError, match="bias_column"):
+        fit_ridge(phi, targets, alpha=1.0)  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="bias_column"):
+        select_alpha(phi[:10], targets[:10], phi[10:], targets[10:], (1.0,))  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="bias_column"):
+        penalty_matrix(phi.shape[1])  # type: ignore[call-arg]
+
+
+def test_fit_ridge_from_gram_matches_fit_ridge() -> None:
+    """Gram 行列を先に計算する経路 (F-1-010) は ``fit_ridge`` と数学的に同一。"""
+    phi = _design(n_steps=90, n_inputs=3)
+    targets = _linear_target(phi)
+    gram: FloatArray = phi.T @ phi
+    rhs: FloatArray = phi.T @ targets
+    for alpha in (0.0, 1e-3, 1.0, 1e3):
+        direct = fit_ridge(phi, targets, alpha, bias_column=0)
+        from_gram = fit_ridge_from_gram(gram, rhs, alpha, bias_column=0)
+        assert from_gram == pytest.approx(direct, rel=1e-12, abs=1e-12)
