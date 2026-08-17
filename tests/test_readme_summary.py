@@ -15,6 +15,8 @@ README を自動生成する必要はない —— 「どこから引いた数�
 from __future__ import annotations
 
 import csv
+import json
+import math
 import re
 from pathlib import Path
 
@@ -116,3 +118,96 @@ def test_readme_sign_accuracy_matches_comparison_summary_csv() -> None:
     for method, readme_value in readme_values.items():
         expected = summary[("delay_parity", method)]["sign_accuracy_mean"]
         assert readme_value == round(expected, _SIGN_DECIMALS), method
+
+
+# --- サイクル02 (実験02 の実測値) -------------------------------------------
+#
+# 01 と同じ規律を 02 にも適用する。02 の README の数値は
+# ``results/02_esp_and_dynamics/`` の生成物 (閾値感度 CSV と meta.json) から
+# 引いており、実験を回し直して README が取り残されたらここで落ちる。
+
+ESP_DIR = ROOT / "results" / "02_esp_and_dynamics"
+THRESHOLD_CSV = ESP_DIR / "esp_threshold_sensitivity.csv"
+ESP_META = ESP_DIR / "meta.json"
+
+_REFERENCE_ABS_TOL = 1.0e-6
+_REFERENCE_WINDOW = 200
+"""README の臨界 rho の行が対応する判定基準 (D-16 の既定値)。"""
+
+_CRITICAL_ROW_LABEL = "ESP が壊れる最小の"
+_OUT_OF_GRID = "格子外"
+"""格子内に境界が無いこと (CSV では ``nan``) を README で表す語。"""
+
+_META_VALUE_RE = {
+    "wall_time_s": re.compile(r"wall_time_s\s*=\s*([\d.]+)"),
+    "n_false_esp": re.compile(r"n_false_esp\s*=\s*(\d+)"),
+    "n_local_but_not_global": re.compile(r"n_local_but_not_global\s*=\s*(\d+)"),
+    "ratio": re.compile(r"washout_sensitivity\.headline\.ratio\s*=\s*([\d.]+)"),
+}
+
+
+def _reference_threshold_row() -> dict[str, str]:
+    """閾値感度 CSV のうち、既定値 (D-16) に対応する行。"""
+    with THRESHOLD_CSV.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "esp_threshold_sensitivity.csv が空です (make threshold-02)"
+    for row in rows:
+        if (
+            float(row["abs_tol"]) == _REFERENCE_ABS_TOL
+            and int(row["window"]) == _REFERENCE_WINDOW
+        ):
+            return row
+    raise AssertionError("既定値 (abs_tol=1e-6, window=200) の行が CSV にありません")
+
+
+def _readme_critical_rho_cells() -> list[str]:
+    """README の「ESP が壊れる最小の rho」の行のセル (先頭ラベルを除く)。"""
+    for line in README.read_text(encoding="utf-8").splitlines():
+        if line.startswith("|") and _CRITICAL_ROW_LABEL in line:
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            return cells[1:]
+    raise AssertionError("README に臨界 rho の行が見つかりません")
+
+
+def test_readme_mentions_the_experiment_02_artifacts_as_the_source() -> None:
+    """02 の数値の出どころ (生成物と再生成コマンド) が README にある。"""
+    text = README.read_text(encoding="utf-8")
+    assert "esp_threshold_sensitivity.csv" in text
+    assert "make figures-02" in text
+    assert "make threshold-02" in text
+
+
+def test_readme_critical_rho_row_matches_the_threshold_csv() -> None:
+    """README の臨界 rho の行が閾値感度 CSV の既定値の行と一致する。"""
+    row = _reference_threshold_row()
+    critical = [
+        (name, value)
+        for name, value in row.items()
+        if name.startswith("critical_rho_sigma_")
+    ]
+    cells = _readme_critical_rho_cells()
+    assert len(cells) == len(critical), (cells, critical)
+    for cell, (_, value) in zip(cells, critical, strict=True):
+        expected = float(value)
+        if math.isnan(expected):
+            assert _OUT_OF_GRID in cell, cell
+            continue
+        assert float(cell) == expected, (cell, expected)
+
+
+def test_readme_experiment_02_numbers_match_meta_json() -> None:
+    """README に書いた 02 の実測値が ``meta.json`` と一致する。"""
+    meta = json.loads(ESP_META.read_text(encoding="utf-8"))
+    text = README.read_text(encoding="utf-8")
+    found: dict[str, float] = {}
+    for key, pattern in _META_VALUE_RE.items():
+        match = pattern.search(text)
+        assert match, f"README に {key} の記述が見つかりません"
+        found[key] = float(match.group(1))
+
+    agreement = meta["verdict_lyapunov_agreement"]
+    headline = meta["washout_sensitivity"]["headline"]
+    assert found["wall_time_s"] == round(meta["wall_time_s"], 2)
+    assert found["n_false_esp"] == agreement["n_false_esp"]
+    assert found["n_local_but_not_global"] == agreement["n_local_but_not_global"]
+    assert found["ratio"] == round(headline["ratio"], 5)
