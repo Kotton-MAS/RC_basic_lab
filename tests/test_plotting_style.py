@@ -35,6 +35,7 @@ from rc_basics_lab.plotting.style import (
     SAVEFIG_DPI,
     StyleContext,
     find_cjk_font,
+    rc_params_for,
     setup_style,
 )
 
@@ -66,13 +67,28 @@ def test_labels_fall_back_to_english_without_cjk_font(
 
 
 def test_cjk_font_is_used_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    """候補フォントが1つでもあれば日本語ラベルを使い、rcParams に反映する。"""
+    """候補フォントが1つでもあれば日本語ラベルを使い、rc_context 経由で反映される。
+
+    ``setup_style()`` はもうプロセス全体の rcParams を書き換えない (F-1-008)。
+    ``rc_params_for`` が返す辞書の中身と、``matplotlib.rc_context`` で
+    一時適用したときに実際に効くことの両方を見る。
+    """
     _only(monkeypatch, "IPAexGothic", "DejaVu Sans")
     context = setup_style()
     assert context.cjk_font == "IPAexGothic"
     assert context.label("リザバー状態", "reservoir state") == "リザバー状態"
-    assert matplotlib.rcParams["font.sans-serif"][0] == "IPAexGothic"
-    assert matplotlib.rcParams["axes.unicode_minus"] is False
+
+    params = rc_params_for(context)
+    assert params["font.sans-serif"][0] == "IPAexGothic"
+    assert params["axes.unicode_minus"] is False
+
+    # 適用前は既定値のまま (グローバルを汚していないことの確認)
+    assert matplotlib.rcParams["font.sans-serif"][0] != "IPAexGothic"
+    with matplotlib.rc_context(params):
+        assert matplotlib.rcParams["font.sans-serif"][0] == "IPAexGothic"
+        assert matplotlib.rcParams["axes.unicode_minus"] is False
+    # rc_context を抜けたら既定値に戻る
+    assert matplotlib.rcParams["font.sans-serif"][0] != "IPAexGothic"
 
 
 def test_font_candidates_are_tried_in_order(monkeypatch: pytest.MonkeyPatch) -> None:
