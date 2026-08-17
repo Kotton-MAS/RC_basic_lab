@@ -67,6 +67,16 @@ class DesignMatrix:
     first_valid: int
     feature_names: tuple[str, ...]
 
+    @property
+    def bias_column(self) -> int | None:
+        """バイアス列の index (``fit_ridge`` / ``select_alpha`` の無罰則列に渡す)。
+
+        ``bias_column_index(self.feature_names)`` と同じ。呼び出し側が
+        ``feature_names`` から自前で index を導出する必要をなくし、
+        渡し忘れを型で落とすための入口 (F-1-002)。
+        """
+        return bias_column_index(self.feature_names)
+
 
 @dataclass(frozen=True, slots=True)
 class _Layout:
