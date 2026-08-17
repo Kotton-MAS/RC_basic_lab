@@ -12,7 +12,7 @@
 02 以降は ``run_<番号>.py`` を使う。01 の ``run.py`` は既存の公開コマンドなので
 そのまま残す。
 
-``--out`` (既定 ``results``) に ``esp_diagnostics.csv`` /
+``--out`` (既定 ``results/02_esp_and_dynamics``) に ``esp_diagnostics.csv`` /
 ``washout_sensitivity.csv`` / ``fig_esp_decay.png`` / ``fig_leak_timescale.png`` /
 ``fig_esp_map.png`` / ``fig_washout_sensitivity.png`` / ``meta.json`` の7点を書く。
 ``--threshold-sweep`` を付けたときは代わりに
@@ -42,7 +42,7 @@ from rc_basics_lab.experiment.esp_pipeline import (
 logger = logging.getLogger("rc_basics_lab.experiments.02_esp_and_dynamics")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.yaml"
-DEFAULT_OUT = Path("results")
+DEFAULT_OUT = Path("results/02_esp_and_dynamics")
 
 
 @dataclass(frozen=True, slots=True)

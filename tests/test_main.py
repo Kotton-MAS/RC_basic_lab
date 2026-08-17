@@ -117,9 +117,55 @@ def test_unknown_experiment_is_rejected() -> None:
 
 
 def test_parse_args_defaults() -> None:
+    """``--out`` 未指定は ``None`` を返す (実験ごとの既定値は ``main()`` 側で解決)。"""
     args = main.parse_args([])
     assert args.experiment == "01"
-    assert args.out == main.DEFAULT_OUT
+    assert args.out is None
+
+
+def test_experiment_registry_has_unique_default_out_dirs() -> None:
+    """登録済みの全実験の既定出力先が互いに異なる (受け入れ条件: データ損失防止)。
+
+    ``--out`` を明示せずに ``main.py --experiment NN`` を実行しても、
+    別の実験の成果物 (``meta.json`` など) を黙って上書きしないことを
+    レジストリの構造そのものから保証する。03 以降を足したときも
+    ``out_dir`` を使い回すとここが赤くなる。
+    """
+    out_dirs = [spec.out_dir for spec in main.EXPERIMENTS.values()]
+    assert len(out_dirs) == len(set(out_dirs)), f"out_dir が重複しています: {out_dirs}"
+
+
+def test_default_out_dir_does_not_overwrite_other_experiments_meta_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--out`` 未指定の ``--experiment 02`` が 01 の ``results/meta.json`` を触らない。
+
+    HIGH-1: かつては両実験が ``DEFAULT_OUT = Path("results")`` を共有しており、
+    ``--out`` を省略すると 02 が 01 の成果物を黙って上書きしていた。
+    実際の ``run`` (フルの ESN 計算) は縮小できないので、ここでは
+    ``run`` を ``out_dir`` を記録するだけのダミーに差し替え、
+    レジストリの ``out_dir`` が実際に使われることだけを確認する。
+    """
+    monkeypatch.chdir(tmp_path)
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    sentinel = results_dir / "meta.json"
+    sentinel.write_text('{"owner": "01"}', encoding="utf-8")
+
+    recorded: list[Path] = []
+    monkeypatch.setitem(
+        main.EXPERIMENTS,
+        "02",
+        dataclasses.replace(
+            main.EXPERIMENTS["02"],
+            run=recorded.append_out_dir  # type: ignore[arg-type]
+            if False
+            else lambda config_path, out_dir: recorded.append(out_dir),
+        ),
+    )
+    assert main.main(["--experiment", "02"]) == 0
+    assert recorded == [main.EXPERIMENTS["02"].out_dir]
+    assert sentinel.read_text(encoding="utf-8") == '{"owner": "01"}'
 
 
 def test_main_writes_the_four_artifacts(tiny_experiment: tuple[Path, Path]) -> None:
