@@ -7,8 +7,8 @@
 #
 # 由来: docs/plans/rc-basics-01.md §6 (D-01〜D-10)。
 # guard_test は実在するテストしか書けないため、T3〜T5 で実装されるテストに
-# 紐づく D-03 / D-04 / D-05 / D-07 / D-08 / D-10 は、該当タスクの担当者が
-# 実装と同時にここへ追記する。
+# 紐づく決定は、該当タスクの担当者が実装と同時にここへ追記する。
+# 残りは D-10 (T5: 作図の CJK フォントフォールバック) のみ。
 
 - id: D-01
   rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う"
@@ -24,6 +24,16 @@
   rule: "リッジ回帰はバイアス列を正則化しない (罰則行列 D = diag(0,1,1,...))"
   rationale: "バイアスを縮めると目標の平均がずれ、NRMSE=1 という基準線の意味が壊れる。D-02 の解釈性が前提とする性質であり、実装の簡略化で潰されやすい"
   guard_test: "tests/test_ridge.py::test_bias_column_is_not_penalized"
+
+- id: D-04
+  rule: "ridge alpha の探索格子は YAML の単一キー ridge.alpha_grid に集約し、全手法・全タスクが同一格子を読む。手法別の alpha 格子キーは ConfigError とする。alpha は (手法, タスク, レプリケート) ごとに検証分割で最良化する"
+  rationale: "要件_01 設計判断3。esn-vla-uq §11 の教訓 —— alpha を固定すると手法比較で逆の結論が出うる。『格子は揃え、条件ごとに最良化する』が連載全体の規律であり、これが崩れると 01〜05 の全比較が無効になる"
+  guard_test: "tests/test_experiment_fairness.py::test_alpha_grid_is_shared_across_methods"
+
+- id: D-05
+  rule: "1レプリケート内では全手法が完全に同一の行 index で学習・評価する。t0 = max(全手法の first_valid, washout) を単一の基準点にする"
+  rationale: "遅延線は先頭 n_lags 行を失うため、素直に実装すると手法ごとに評価行が変わり比較が無効になる。要件_01 受け入れ条件1 の『同一分割』の実体はこれ"
+  guard_test: "tests/test_experiment_fairness.py::test_all_methods_share_identical_rows"
 
 - id: D-06
   rule: "乱数はリザバー生成 / タスク生成 / 分割の3ストリームに SeedSequence の spawn_key で分離し、1ストリームの変更が他ストリームの乱数列に影響しない"
