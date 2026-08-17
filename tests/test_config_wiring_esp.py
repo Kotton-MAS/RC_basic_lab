@@ -6,23 +6,36 @@
 (「全フィールドが 01 のパイプライン出力を変える」) を満たせないフィールドが
 必ず生まれ、逃がすために例外チャネルを増やすと 01 の検出力そのものが落ちる。
 
-**被覆の3系統**。``Esp02Config`` の葉は効き方が3つに分かれ、それぞれ別の場所で
+**被覆の5系統**。``Esp02Config`` の葉は効き方が分かれ、それぞれ別の場所で
 「実際に効いている」ことが実測される。ここはその**割り当てが漏れていない**ことを
 機械的に固定する。
 
+- ``CHANNEL_ROWS``: 値を変えると縮小した 2-A / 2-B / 2-C の結果行 (=
+  ``esp_diagnostics.csv`` 相当) の指紋が変わる。T3 で実験層が生えたので、
+  格子・系列長・ユニット数はここで**実際に出力が変わること**を測る。
+- ``CHANNEL_META``: 結果行は変えないが ``meta.json`` を変える (``name``)。
+  「行が変わらないこと」も併せて固定する。
+- ``CHANNEL_ERROR``: 値域が1点しかなく、別の値は即座に例外になる
+  (``drive.distribution``)。黙って既定として扱わないこと自体が配線である。
 - ``CHANNEL_SEEDS``: 乱数ストリームの基底シード。``esp_stream_seed`` +
   ``make_rng_for`` は T2 の実装なので、ここで**実際に乱数列が変わること**を測る。
+  (結果行も変わるが、より強い「他ストリームが1バイトも動かない」を測る。)
 - ``CHANNEL_DIAGNOSTIC``: 診断の判定基準 (D-15 の ``cfg``)。効きは
   ``tests/test_diagnostics_esp.py::test_esp_config_fields_change_output`` が
   診断単体のレベルで実測済み。ここでは
   「この葉が確かにその設定クラスのフィールドである」ことを assert して委譲を
   機械的に閉じる (T1 の ``test_all_config_fields_have_a_case`` が、その
   設定クラスの全フィールドにケースがあることを別途強制している)。
-- ``CHANNEL_PENDING``: 消費側 (実験層 ``experiment/esp.py``) がまだ存在しない葉。
-  **サイクル 2a (T1+T2) の時点では「出力が変わる」を測れない**。ここでは
-  YAML → ``Esp02Config`` の経路 (= T2 の成果物) だけを実測し、実験層が生えた
-  瞬間に ``test_pending_cases_disappear_once_the_experiment_layer_exists`` が
-  赤くなるようにしてある (先送りが黙って居座らないようにするため)。
+- ``CHANNEL_PENDING``: 消費側がまだ存在しない葉。**T4 の ``washout.*`` だけ**が
+  残っている。実験層が生えた瞬間に
+  ``test_pending_cases_disappear_once_the_experiment_layer_exists`` が赤くなる
+  (先送りが黙って居座らないようにするため)。
+
+**scope**: セクション固有の葉 (``decay.*`` / ``timescale_sweep.*`` /
+``esp_map.*``) は、担当する実験の行だけを変え、**他の実験の行をバイト単位で
+変えない**ことまで確かめる。3つの図が同じリザバー族を共有する構成
+(F-02-1-004) では「2-A の設定が 2-C の結果まで動かしている」という配線ミスが
+起こりやすく、それが起きても図は自然に見えるためレビューでは落ちない。
 
 ``washout.base.*`` は 01 の ``ExperimentConfig`` をまるごと内包した部分なので、
 被覆は 01 側 (``tests/test_config_wiring.py``) に**委譲**する。委譲先と過不足なく
@@ -73,7 +86,12 @@ CHANNEL_DIAGNOSTIC = "diagnostic"
 """診断の判定基準。効きは tests/test_diagnostics_esp.py が実測する (D-15)。"""
 
 CHANNEL_PENDING = "pending"
-"""消費側が T3 / T4 で生える葉。2a では YAML→設定の経路だけを実測する。"""
+"""消費側が T4 で生える葉 (``washout.*``)。YAML→設定の経路だけを実測する。
+
+T3 のぶん (格子・系列長・ユニット数・駆動条件) は実験層 ``experiment/esp.py``
+が生えたので ``CHANNEL_ROWS`` / ``CHANNEL_META`` / ``CHANNEL_ERROR`` へ
+書き換え済み。
+"""
 
 DELEGATED_PREFIX = "washout.base."
 """01 の ``ExperimentConfig`` を内包した部分。被覆は 01 側に委譲する。"""
@@ -121,13 +139,13 @@ DIAGNOSTIC_SECTIONS: tuple[tuple[str, type[DataclassInstance]], ...] = (
 )
 """``Esp02Config`` のセクション名と、対応する診断側の設定クラス (D-15)。"""
 
-PENDING_SECTIONS = frozenset(
-    {"name", "drive", "reservoir", "decay", "timescale_sweep", "esp_map", "washout"}
-)
+PENDING_SECTIONS = frozenset({"washout"})
 """``CHANNEL_PENDING`` を名乗ってよいセクション。
 
-``seeds`` / ``esp`` / ``lyapunov`` / ``timescale`` はサイクル 2a の時点で
-効きを実測できる (できる検査を pending へ逃がすのを禁じる)。
+T3 で実験層 (``experiment/esp.py``) が生えたので、``name`` / ``drive`` /
+``reservoir`` / ``decay`` / ``timescale_sweep`` / ``esp_map`` は**もう
+pending を名乗れない** (実測できる検査を pending へ逃がすのを禁じる)。
+残るのは 2-D (T4) が消費する ``washout.*`` だけである。
 """
 
 _N_BYTES = 32
