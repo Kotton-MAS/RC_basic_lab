@@ -161,7 +161,7 @@ def plot_comparison(
             linestyle="--",
             linewidth=1.0,
             label=style.label(
-                "NRMSE = 1（平均予測と同等）",
+                "NRMSE = 1 (平均予測と同等)",
                 "NRMSE = 1 (same as predicting the mean)",
             ),
         )
@@ -185,14 +185,14 @@ def plot_comparison(
             n_replicates = max(stats[(task, method)].n for method in methods)
             axis.set_ylabel(
                 style.label(
-                    f"NRMSE（テスト区間・{n_replicates}レプリケートの平均±標準偏差）",
+                    f"NRMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
                     f"NRMSE (test split, mean ± s.d. of {n_replicates} replicates)",
                 )
             )
         axis.legend(loc="best", fontsize=8)
     figure.suptitle(
         style.label(
-            "3ベースラインの比較（同一分割・同一 alpha 格子）",
+            "3ベースラインの比較 (同一分割・同一 alpha 格子)",
             "Three baselines (identical splits and alpha grid)",
         )
     )
@@ -283,7 +283,7 @@ def plot_state_space(
         axis.set_title(
             style.label(
                 f"{_lookup(_TASK_LABELS, report.task, style)}"
-                f"（生の入力は {raw.n_features} 次元）",
+                f" (生の入力は {raw.n_features} 次元)",
                 f"{_lookup(_TASK_LABELS, report.task, style)}"
                 f" (raw input is {raw.n_features}-dim)",
             ),
