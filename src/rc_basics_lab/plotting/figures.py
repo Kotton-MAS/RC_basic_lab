@@ -230,7 +230,10 @@ def plot_comparison(
     methods = _unique(row.method for row in rows)
     stats = aggregate_nrmse(rows)
 
-    with matplotlib.rc_context(rc_params_for(style)):
+    # matplotlib の rc_context 型スタブは rcParams キーの閉じた Literal 集合を
+    # 要求するが、rc_params_for は動的に決まる部分集合の dict[str, object] を
+    # 返す。キー自体は既定の rcParams から取った有効なものなので実行時は安全。
+    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(4.2 * len(tasks), 4.0)
         axes = figure.subplots(1, len(tasks), squeeze=False)
         positions = np.arange(len(methods), dtype=np.float64)
@@ -345,7 +348,7 @@ def plot_state_space(
     """
     if not reports:
         raise ValueError("reports が空です")
-    with matplotlib.rc_context(rc_params_for(style)):
+    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(12.0, 4.0 * len(reports))
         axes = figure.subplots(len(reports), 3, squeeze=False)
         for index, report in enumerate(reports):
