@@ -157,6 +157,21 @@ round 2 は round 1 の HIGH 修正（F-1-001, F-1-017 の対応）に対する�
   ((2) の新規テスト) で機械的に塞ぐ）。
 - **F-2-011** [INFO / style] 別プロセスで実行する probe コードが文字列連結で読みにくかった。
   → `textwrap.dedent` + triple-quote に変更（`tests/test_diagnostics_base.py`）。
+- **F-2-012** [MEDIUM / test] `test_diagnostics_package_does_not_import_reservoir`（AST版）が
+  `diagnostics/__init__.py` に未登録のファイルを見逃す可能性があった（登録漏れそのものを
+  検出する assert が存在しなかった）。
+  → `tests/test_public_api_reexport.py` を新設し、`diagnostics` / `reservoir` / `readout` /
+  `tasks` / `experiment` / `plotting` の6パッケージ全てを対象に、非 private サブモジュール
+  (`_` 始まりを除く `*.py`) が `__init__.py` から再エクスポートされている
+  （`hasattr(package, submodule_name)` が真）ことを機械的に固定した。実測で空振りでないことを
+  確認済み（`diagnostics/` に `__init__.py` 未登録の一時モジュールを置くとテストが
+  `re-export していません: ['tmp_probe_unregistered']` で落ち、`_` 始まりの private モジュールは
+  対象外で通ることを確認、いずれも実測後に元へ戻した）。現状 6パッケージとも登録漏れは無い
+  （`make ci` 緑、237 passed）。対象を6パッケージへ広げた理由: `conventions.md` に記録された
+  「既存6パッケージは全サブモジュールを再エクスポートしている」慣習を機械的に守るため。
+  「意図的に公開したくない内部モジュール」は `_` プレフィックスで対象から外せるため、
+  範囲を広げても実害は無いと判断した。02 で `diagnostics/echo_state.py` 等が追加された際、
+  `__init__.py` への配線漏れをこのテストが自動検出する。
 
 ### 見送り（理由つき）
 

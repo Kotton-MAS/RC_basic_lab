@@ -55,8 +55,7 @@ def test_package_init_reexports_all_public_submodules(package_name: str) -> None
     公開 API から静かに欠落する。
     """
     package = importlib.import_module(f"rc_basics_lab.{package_name}")
-    package_dir = Path(package.__file__).parent
-    expected = _public_submodule_names(package_dir)
+    expected = _public_submodule_names(package)
     assert expected, f"{package_name} 配下に非private モジュールが見つかりません"
 
     missing = sorted(name for name in expected if not hasattr(package, name))
