@@ -15,6 +15,19 @@
 だけである (両方動かすと「信号を強くした」のか「重みを大きくした」のかを
 分離できない)。CSV には ``sigma_u`` / ``input_amplitude`` /
 ``input_drive_std`` の3列を出し、指定値と実測値の食い違いが見えるようにする。
+
+**状態行列の計算と、それを使う診断・回帰は別レイヤー** (F-1-005 / F-1-010)。
+``simulate_reference_trajectory`` は ``ReservoirSweepConfig`` + ``DriveConfig``
++ 基底シードだけで状態行列 ``X`` を1回計算して返す。02 (ESP) はこれに比較
+軌道 n_pairs 本を足す薄い層 (``simulate_condition``) を経由するが、03
+(MC/IPC) のように「同じ ``X`` に対して遅延・次数ごとに読み出し回帰だけを
+繰り返す」設計は ``simulate_reference_trajectory`` を1条件につき1回呼び、
+返ってきた ``states`` を使い回すことで、``ESN.run`` (T に線形) の再実行を
+避けられる。02 の ``_sweep`` は1条件=1回の ``evaluate_condition``呼び出しで
+十分なため (本番 336 条件・実測 53.65秒)、逐次ループのままで良いが、03 の
+想定規模 (delay x degree で 2395 通り) にこのパターンをそのまま複製すると
+``ESN.run`` の再実行コストが支配的になる (実測: N=200, T=1e6 で約4.7秒/回。
+2395 回なら約3.1時間)。
 """
 
 from __future__ import annotations
