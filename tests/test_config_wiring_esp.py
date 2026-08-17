@@ -148,6 +148,13 @@ pending を名乗れない** (実測できる検査を pending へ逃がすの�
 残るのは 2-D (T4) が消費する ``washout.*`` だけである。
 """
 
+EXPERIMENT_LABELS: tuple[str, ...] = (
+    EXPERIMENT_DECAY,
+    EXPERIMENT_TIMESCALE,
+    EXPERIMENT_ESP_MAP,
+)
+"""``scope`` に書ける実験名 (``EspRow.experiment`` の値)。"""
+
 _N_BYTES = 32
 
 ESP_SEED_STREAMS: tuple[SeedStream, ...] = (
@@ -295,6 +302,49 @@ def _round_trip(config: Esp02Config, tmp_path: Path, name: str) -> Esp02Config:
     return load_config_as(path, Esp02Config)
 
 
+VOLATILE_COLUMNS = frozenset({"wall_time_s"})
+"""指紋から外す列 (実測時間は実行ごとに変わる)。"""
+
+
+def fingerprint(rows: Sequence[EspRow], experiment: str | None = None) -> str:
+    """結果行の指紋 (実測時間の列だけ除く)。
+
+    ``experiment`` を渡すとその実験の行だけを見る。セクション固有の葉が
+    他の実験の行を動かしていないことの確認に使う。
+    """
+    selected = [
+        row for row in rows if experiment is None or row.experiment == experiment
+    ]
+    return json.dumps(
+        [
+            {
+                field.name: getattr(row, field.name)
+                for field in fields(EspRow)
+                if field.name not in VOLATILE_COLUMNS
+            }
+            for row in selected
+        ],
+        sort_keys=True,
+    )
+
+
+@lru_cache(maxsize=1)
+def baseline_rows() -> tuple[EspRow, ...]:
+    """基準となる縮小実験の出力 (ケースごとに再計算しない)。"""
+    return run_esp_experiment(base_config()).rows
+
+
+def run_case(wiring_case: WiringCase) -> tuple[EspRow, ...]:
+    """ケースを適用して縮小実験を回す。"""
+    return run_esp_experiment(apply_case(base_config(), wiring_case)).rows
+
+
+def _meta_fingerprint(config: Esp02Config) -> str:
+    """``meta.json`` に載る設定ダンプの指紋。"""
+    meta = collect_meta_for(config, config.seeds)
+    return json.dumps(plain(meta["config"]), sort_keys=True, default=str)
+
+
 @pytest.mark.parametrize(
     "wiring_case", ESP_WIRING_CASES, ids=[item.field for item in ESP_WIRING_CASES]
 )
@@ -309,18 +359,18 @@ def test_every_esp_parameter_changes_output(
     「YAML に書いたのに設定オブジェクトへ届いていない」を殺す。
     """
     base = base_config()
-    changed = apply_case(base, wiring_case)
-    assert changed != base, "差し替えが設定に反映されていません"
+    changed_config = apply_case(base, wiring_case)
+    assert changed_config != base, "差し替えが設定に反映されていません"
 
     # 共通: YAML を往復しても値が保たれ、変わったのはその葉だけであること
-    assert _round_trip(changed, tmp_path, "changed") == changed
-    assert _changed_leaves(base, changed) == {wiring_case.field}, (
+    assert _round_trip(changed_config, tmp_path, "changed") == changed_config
+    assert _changed_leaves(base, changed_config) == {wiring_case.field}, (
         f"{wiring_case.field} の差し替えが他の葉にも波及しています"
     )
 
     if wiring_case.channel == CHANNEL_SEEDS:
         before = _seed_fingerprints(base)
-        after = _seed_fingerprints(changed)
+        after = _seed_fingerprints(changed_config)
         moved = {
             stream for stream in ESP_SEED_STREAMS if before[stream] != after[stream]
         }
@@ -328,6 +378,8 @@ def test_every_esp_parameter_changes_output(
         assert set(names) == {wiring_case.scope}, (
             f"{wiring_case.field} が動かしたストリーム: {names}"
         )
+        # シードは結果行も動かす (ストリーム独立性だけで満足しない)
+        assert fingerprint(run_case(wiring_case)) != fingerprint(baseline_rows())
         return
 
     if wiring_case.channel == CHANNEL_DIAGNOSTIC:
@@ -337,11 +389,40 @@ def test_every_esp_parameter_changes_output(
         )
         return
 
-    assert wiring_case.channel == CHANNEL_PENDING, wiring_case.channel
-    assert wiring_case.field.split(".")[0] in PENDING_SECTIONS, (
-        f"{wiring_case.field} は 2a の時点で効きを実測できるはずです"
+    if wiring_case.channel == CHANNEL_PENDING:
+        assert wiring_case.field.split(".")[0] in PENDING_SECTIONS, (
+            f"{wiring_case.field} は実験層が生えたので効きを実測できるはずです"
+        )
+        assert wiring_case.note, "pending の理由が書かれていません"
+        return
+
+    if wiring_case.channel == CHANNEL_ERROR:
+        with pytest.raises(ValueError):
+            run_case(wiring_case)
+        return
+
+    base_rows = baseline_rows()
+    if wiring_case.channel == CHANNEL_META:
+        assert fingerprint(run_case(wiring_case)) == fingerprint(base_rows), (
+            "メタ情報のはずが結果行を変えています"
+        )
+        assert _meta_fingerprint(changed_config) != _meta_fingerprint(base)
+        return
+
+    assert wiring_case.channel == CHANNEL_ROWS, wiring_case.channel
+    rows = run_case(wiring_case)
+    assert fingerprint(rows) != fingerprint(base_rows), (
+        f"{wiring_case.field} を変えても出力が変わりません (配線漏れ)"
     )
-    assert wiring_case.note, "pending の理由が書かれていません"
+    if wiring_case.scope is not None:
+        assert fingerprint(rows, wiring_case.scope) != fingerprint(
+            base_rows, wiring_case.scope
+        )
+        for other in EXPERIMENT_LABELS:
+            if other != wiring_case.scope:
+                assert fingerprint(rows, other) == fingerprint(base_rows, other), (
+                    f"{wiring_case.field} が {other} の結果まで変えています"
+                )
 
 
 def test_all_esp_config_fields_are_covered() -> None:
