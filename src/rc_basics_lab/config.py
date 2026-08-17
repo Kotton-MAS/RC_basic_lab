@@ -33,8 +33,10 @@ from typing import Protocol, cast, get_args, get_origin, get_type_hints
 import numpy as np
 import yaml
 
+from rc_basics_lab.diagnostics.esp import EspConfig, LyapunovConfig
+from rc_basics_lab.diagnostics.timescale import TimescaleConfig
 from rc_basics_lab.reservoir.esn import ESNConfig
-from rc_basics_lab.seeds import SeedConfig
+from rc_basics_lab.seeds import SeedConfig, SeedStream
 
 
 class _DataclassFactory[T_co](Protocol):
