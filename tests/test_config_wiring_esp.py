@@ -415,19 +415,24 @@ def test_known_experiment_modules_cannot_be_widened_while_pending_remains() -> N
     ``KNOWN_EXPERIMENT_MODULES`` は 01 時点のスナップショットとして凍結して
     いるが、それだけでは「発火を黙らせるために ``esp`` を足す」という改変を
     コードとして防げない。この検査は逆方向から締める: ``TASK_STAGE_MODULES``
-    のある段階のモジュール名が ``KNOWN_EXPERIMENT_MODULES`` に **既に**
-    含まれているなら、その段階の pending は空でなければならない。
-    ``KNOWN_EXPERIMENT_MODULES`` を書き換えて信管を黙らせても、対応する
-    pending を実際に解消していなければこのテストが落ちる。
+    のある段階のモジュール名が ``KNOWN_EXPERIMENT_MODULES`` に **1本でも**
+    含まれているなら、その段階の pending は空でなければならない
+    (``test_pending_cases_disappear_once_the_experiment_layer_exists`` 側が
+    「新規モジュールがその段階のいずれか1本でも増えたら発火する」という
+    intersection 判定なので、こちらも同じ強さ (subset ではなく
+    intersection) で締めないと、段階のうち1本だけを ``KNOWN_EXPERIMENT_MODULES``
+    へ足す抜け道が残る)。``KNOWN_EXPERIMENT_MODULES`` を書き換えて信管を
+    黙らせても、対応する pending を実際に解消していなければこのテストが落ちる。
     """
     pending_tasks = {
         item.task for item in ESP_WIRING_CASES if item.channel == CHANNEL_PENDING
     }
     for task, stage_modules in TASK_STAGE_MODULES.items():
-        if stage_modules <= KNOWN_EXPERIMENT_MODULES:
+        already_known = stage_modules & KNOWN_EXPERIMENT_MODULES
+        if already_known:
             assert task not in pending_tasks, (
                 f"KNOWN_EXPERIMENT_MODULES が {task} のモジュール "
-                f"{sorted(stage_modules)} を含んでいますが、{task} の pending が"
+                f"{sorted(already_known)} を含んでいますが、{task} の pending が"
                 "まだ残っています。モジュール集合を広げる変更は、対応する段階の"
                 "pending 解消と同時に行ってください。"
             )
