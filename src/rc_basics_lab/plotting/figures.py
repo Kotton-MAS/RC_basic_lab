@@ -141,7 +141,7 @@ def plot_comparison(
     methods = _unique(row.method for row in rows)
     stats = aggregate_nrmse(rows)
 
-    figure = Figure(figsize=(4.2 * len(tasks), 4.0))
+    figure = _new_figure(4.2 * len(tasks), 4.0)
     axes = figure.subplots(1, len(tasks), squeeze=False)
     positions = np.arange(len(methods), dtype=np.float64)
     for index, task in enumerate(tasks):
@@ -256,7 +256,7 @@ def plot_state_space(
     """
     if not reports:
         raise ValueError("reports が空です")
-    figure = Figure(figsize=(12.0, 3.6 * len(reports)))
+    figure = _new_figure(12.0, 4.0 * len(reports))
     axes = figure.subplots(len(reports), 3, squeeze=False)
     for index, report in enumerate(reports):
         _scatter_space(axes[index][0], report, RESERVOIR_STATE, style)
