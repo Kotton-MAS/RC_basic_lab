@@ -435,7 +435,7 @@ def test_propagator_returning_wrong_shape_raises() -> None:
     分岐が未検査だった。実装ミスとして十分あり得るケース (例: 末尾を落として
     返す) を、``_rms_distance`` の減算より先に落とせることを確認する。
     """
-    states, _, propagator = _driven_linear_system(0.9)
+    states, _, _ = _driven_linear_system(0.9)
 
     def wrong_shape_propagator(x: FloatArray, t: int) -> FloatArray:
         return x[:-1]

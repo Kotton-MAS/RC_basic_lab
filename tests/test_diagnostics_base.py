@@ -77,12 +77,15 @@ MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov": (
         _minimal_input_conditional_lyapunov
     ),
-    "rc_basics_lab.diagnostics.timescale.autocorrelation_time": _minimal_input_no_extras,
+    "rc_basics_lab.diagnostics.timescale.autocorrelation_time": (
+        _minimal_input_no_extras
+    ),
 }
 """診断 qualname -> 「その診断が最後まで走れる最小限の入力」を返すファクトリ。
 
-F-1-015: 契約テストの必須 assert (``test_all_diagnostics_conform_to_d01_signature_contract``
-の最終行) は、以前は ``u`` を一切用意しない共通の ``ctx`` を全診断へ使い回していた。
+F-1-015: 契約テストの必須 assert
+(``test_all_diagnostics_conform_to_d01_signature_contract`` の最終行) は、
+以前は ``u`` を一切用意しない共通の ``ctx`` を全診断へ使い回していた。
 u が無いと成立しない診断 (03 の IPC/MC 等) が加わると、この共通 ``ctx`` では
 ``ValueError`` が上がり、最も安く緑にする手が「その行も ``suppress`` で包む」に
 なってしまう —— それは今周わざわざ塞いだ穴 (``ValueError`` を投げ続けるだけの
@@ -297,7 +300,7 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
 
 
 def test_extra_diagnostic_parameters_are_keyword_only_and_do_not_overlap_ctx() -> None:
-    """D-01 が許す「X/u/y/ctx 以外の追加引数」の境界を pkgutil 列挙側で守る (D-15 guard, F-1-002)。
+    """D-01 が許す追加引数の境界を pkgutil 列挙側で守る (D-15 guard, F-1-002)。
 
     従来の D-15 guard
     (``tests/test_diagnostics_esp.py::test_esp_config_is_passed_as_defaulted_keyword``)
