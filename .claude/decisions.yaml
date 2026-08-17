@@ -40,6 +40,16 @@
   rationale: "要件_01 設計判断4。単一 Generator を共有すると『リザバーだけ変えたときの分散』が測れず、受け入れ条件3 の平均±標準偏差の意味が曖昧になる。split ストリームは系列内の開始オフセット選択に実配線し、未使用パラメータを作らない"
   guard_test: "tests/test_seeds.py::test_streams_are_independent"
 
+- id: D-07
+  rule: "遅延パリティの既定は n_bits=2, delay=1、入力は ±1 の i.i.d.、目標は該当ラグの積 (y[t] = u[t-1]*u[t-2])"
+  rationale: "要件_01 未確定2・受け入れ条件2。この符号化では目標が {1, u[t-k]} の張る線形空間に厳密に直交するため、線形回帰と遅延線の失敗が finite-sample の偶然ではなく解析的に保証される。遅延線も失敗する点が『最も安い対照は遅延線』(記事01 §6) に対する最も鮮明な実演になる。n_bits/delay は掃引軸として YAML 化し、n_bits=3, delay=2 を副条件として併記する"
+  guard_test: "tests/test_tasks_parity.py::test_target_is_orthogonal_to_lagged_inputs"
+
+- id: D-08
+  rule: "ESN の構造ハイパーパラメータ (N, rho, leak, input_scale, density) は文献既定値に固定し、検証分割で調整しない。検証で選ぶのは alpha (全手法) と遅延線の n_lags のみ"
+  rationale: "要件_01 スコープ『網羅探索はやらない・探索予算を揃えることを優先』。結果として探索予算は対照 (遅延線: alpha x n_lags) の方が ESN (alpha のみ) より大きく、非対称性は ESN に不利な側へ倒れる。Goudarzi 2014 が ESN 側だけ最適化して逆の非対称性を作った (survey Q2) のと反対の立場を明示的に取る"
+  guard_test: "tests/test_experiment_fairness.py::test_esn_hyperparameters_are_not_validation_selected"
+
 - id: D-09
   rule: "実験設定 YAML の未知キーは ConfigError で即座に失敗させる (寛容な読み飛ばしをしない)"
   rationale: "本サイクルで十数個のパラメータを新設するため、キーのタイプミスが黙って無視されると『設定したのに効いていない』が発生し、実験結果が丸ごと無意味になる。この失敗は LLM レビューでは確率的にしか見つからない"
