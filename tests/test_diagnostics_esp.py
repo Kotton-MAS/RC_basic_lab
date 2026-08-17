@@ -316,28 +316,71 @@ def test_matches_analytic_exponent_for_linear_map(rho: float) -> None:
     assert result.scalars["max_observed_growth"] == pytest.approx(rho, rel=1e-6)
 
 
+def _decoupled_quadratic_system(
+    n_steps: int, n_units: int, x0: float, a: float, k: float
+) -> tuple[FloatArray, StatePropagator]:
+    """状態が全ユニット・全時刻で ``x0`` に留まる決定的な不動点系。
+
+    ``f(x) = a*x + k*x**2`` はユニットごとに完全に独立 (非結合) な写像で、
+    ``x0 = (1 - a) / k`` を ``f`` の不動点に選んであるため、参照軌道は
+    定数 ``x0`` のまま厳密に ``propagator`` と整合する。局所的な線形ゲインは
+    解析的に ``f'(x0) = a + 2*k*x0 = 2 - a`` になる。
+
+    このテストが ``_driven_linear_system`` (直交行列による厳密なアフィン系)
+    ではなくこの系を使うのは、直交系では ``growth = separation_norm / scale
+    / delta`` の計算式から ``scale`` の値が厳密に相殺してしまい、``n_units``
+    をいくら振っても ``scale = sqrt(n_units)`` を落とす変異を検出できない
+    ことを実測で確認したため (アフィン写像には曲率が無く、摂動の絶対量
+    ``delta * scale`` がどんな値でも成長率は不変)。この系は2次の曲率項
+    ``k*x**2`` を持つため、``delta`` が表す「ユニットあたりの RMS 摂動量」を
+    誤って ``n_units`` 倍 (``sqrt(n_units)`` 倍ではなく) にする変異を入れると、
+    実際の摂動振幅が N とともに余計に大きくなり、曲率の効きが N に依存して
+    しまう。``delta`` を十分小さく保つことで、正しい実装では曲率補正が
+    ``O(delta**2)`` (N非依存) に留まることも実測で確認済み。
+    """
+    states: FloatArray = np.full((n_steps, n_units), x0, dtype=np.float64)
+
+    def propagator(x: FloatArray, t: int) -> FloatArray:
+        propagated: FloatArray = a * x + k * x**2
+        return propagated
+
+    return states, propagator
+
+
 def test_lyapunov_per_step_is_independent_of_n_units() -> None:
     """``lyapunov_per_step`` はユニット数 N に依存しない (F-1-016, D-16 と対になる)。
 
-    ``_driven_linear_system`` の ``A = rho * Q`` (``Q`` は直交行列) では
-    ``growth = separation_norm / scale / delta`` の式から ``scale`` が厳密に
-    相殺するため、この系で ``n_units`` を固定したまま解析解 ``log(rho)`` と
-    照合するテスト (``test_matches_analytic_exponent_for_linear_map``) は
-    ``scale = sqrt(n_units)`` を落とす変異を原理的に検出できない
-    (実測: 337 件中1件も落ちない)。ここでは異なる ``n_units`` (8 と 32) で
-    同じ ``rho`` を与え、``lyapunov_per_step`` が N に依存しないことを直接
-    assert することでその class のバグを検出可能にする。
+    ``conditional_lyapunov`` 内の ``scale = float(np.sqrt(n_units))``
+    (delta の RMS/ユニット解釈) を検査するテストが存在しなかった。
+    ``_driven_linear_system`` を使う既存テスト
+    (``test_matches_analytic_exponent_for_linear_map``) はアフィン系のため
+    ``scale`` の値に関わらず厳密に解析解と一致してしまい、この class の
+    バグ (``scale`` の sqrt を落とす等) を原理的に検出できない (実測:
+    ``scale = float(n_units)`` という変異を入れても337件中1件も落ちなかった)。
+
+    ``_decoupled_quadratic_system`` (曲率を持つ非結合系) を使い、極端に異なる
+    ``n_units`` (8 と 2000) で同じ ``rho`` を与えて ``lyapunov_per_step`` を
+    比較する。正しい実装では両者の相対差は 0.1% 未満に収まる一方 (実測)、
+    ``scale`` の sqrt を落とす変異を入れると相対差が約 21% まで広がることを
+    実測で確認した (安全手順に従いサンドボックスで確認・復元済み)。
     ``test_distance_is_rms_per_unit_and_independent_of_n_units`` と対になる。
     """
+    a, k, x0 = 0.5, 1.0, 0.5  # x0 = (1 - a) / k: f(x) = a*x + k*x**2 の不動点
+    delta = 1.0e-3
+    cfg = LyapunovConfig(
+        delta=delta, renorm_interval=1, max_growth=1.0e6, propagator_tol=1.0e-9
+    )
     values = []
-    for n_units in (8, 32):
-        states, _, propagator = _driven_linear_system(0.9, n_units=n_units)
+    for n_units in (8, 2000):
+        states, propagator = _decoupled_quadratic_system(20, n_units, x0, a, k)
         result = conditional_lyapunov(
-            states, ctx=DiagnosticContext(propagator=propagator, washout=100)
+            states,
+            ctx=DiagnosticContext(propagator=propagator, washout=2, seed=123),
+            cfg=cfg,
         )
         values.append(result.scalars["lyapunov_per_step"])
-    assert values[0] == pytest.approx(math.log(0.9), rel=1e-6)
-    assert values[0] == pytest.approx(values[1], rel=1e-6)
+    assert values[0] == pytest.approx(math.log(2.0 - a), rel=1e-2)
+    assert values[0] == pytest.approx(values[1], rel=1e-2)
 
 
 def test_lyapunov_per_time_divides_by_dt() -> None:
