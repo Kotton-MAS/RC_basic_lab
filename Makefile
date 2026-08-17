@@ -42,6 +42,11 @@ lock-check:
 # ここを単一の真実とすることで、ローカルと CI の検証ロジック乖離を防ぐ。
 ci: lock-check lint fmt-check type test
 
+# 実験01の成果物 (comparison.csv / fig_comparison.png / fig_state_space.png /
+# meta.json) を results/ に再生成する。ci の構成には入れない (CI は実験を回さない)。
+figures-01:
+	uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml --out results
+
 pre-commit:
 	uv run pre-commit run --all-files
 

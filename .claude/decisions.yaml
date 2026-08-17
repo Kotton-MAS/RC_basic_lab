@@ -8,7 +8,7 @@
 # 由来: docs/plans/rc-basics-01.md §6 (D-01〜D-10)。
 # guard_test は実在するテストしか書けないため、T3〜T5 で実装されるテストに
 # 紐づく決定は、該当タスクの担当者が実装と同時にここへ追記する。
-# 残りは D-10 (T5: 作図の CJK フォントフォールバック) のみ。
+# サイクル1 (T1〜T5) の10件がそろった。
 
 - id: D-01
   rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う"
