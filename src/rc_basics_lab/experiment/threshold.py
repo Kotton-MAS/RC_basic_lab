@@ -48,7 +48,14 @@ WINDOW_GRID: tuple[int, ...] = (100, 200, 400)
 
 REFERENCE_ABS_TOL = 1.0e-6
 REFERENCE_WINDOW = 200
-"""比較の基準にする既定値 (D-16)。``max_abs_shift`` はここからのずれ。"""
+"""格子の既定値 (D-16 の既定値)。``ABS_TOL_GRID`` / ``WINDOW_GRID`` の中心点。
+
+**比較の基準そのものではない**。基準は実際に本番実行が使った判定基準
+``(config.esp.abs_tol, config.esp.window)`` から取る (``run_threshold_sweep``)。
+これらのモジュール定数は掃引の既定格子を組むためだけに使う。基準をこの定数に
+固定してしまうと、``config.esp`` を変えて実行しても基準行が変わらず、
+本番実行が実際には使わなかった判定基準からの「ずれ 0」を報告しうる。
+"""
 
 MAJORITY = 0.5
 """臨界 rho の判定に使う収束率のしきい (これを下回った最初の rho が境界)。"""
@@ -162,14 +169,17 @@ def run_threshold_sweep(
 
     Raises:
         ValueError: 格子が空、または基準の組
-            (``REFERENCE_ABS_TOL`` / ``REFERENCE_WINDOW``) が格子に無い場合。
+            (``config.esp.abs_tol`` / ``config.esp.window``、本番実行が実際に
+            使う判定基準) が格子に無い場合。
     """
     if not abs_tol_grid or not window_grid:
         raise ValueError("abs_tol_grid / window_grid は1点以上必要です")
-    if REFERENCE_ABS_TOL not in abs_tol_grid or REFERENCE_WINDOW not in window_grid:
+    reference_abs_tol = config.esp.abs_tol
+    reference_window = config.esp.window
+    if reference_abs_tol not in abs_tol_grid or reference_window not in window_grid:
         raise ValueError(
-            "基準となる既定値 (D-16) が格子に含まれていません: "
-            f"abs_tol={REFERENCE_ABS_TOL} window={REFERENCE_WINDOW} / "
+            "基準となる config.esp の判定基準が格子に含まれていません: "
+            f"abs_tol={reference_abs_tol} window={reference_window} / "
             f"格子={tuple(abs_tol_grid)} x {tuple(window_grid)}"
         )
     section = config.esp_map
@@ -207,7 +217,7 @@ def run_threshold_sweep(
                         int(result.scalars["converged"])
                     )
 
-    reference = _critical_by_sigma(hits[(REFERENCE_ABS_TOL, REFERENCE_WINDOW)])
+    reference = _critical_by_sigma(hits[(reference_abs_tol, reference_window)])
     rows = tuple(_build_row(case, hits[case], reference) for case in cases)
     logger.info(
         "閾値感度: %d 通り (abs_tol %d x window %d) / 基準からずれた "
