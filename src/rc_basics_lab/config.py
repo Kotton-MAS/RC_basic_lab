@@ -12,18 +12,22 @@ YAML 化するため、キーのタイプミスが黙って無視されると「
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import UnionType
-from typing import TypeVar, cast, get_args, get_origin, get_type_hints
+from typing import Protocol, cast, get_args, get_origin, get_type_hints
 
 import numpy as np
 import yaml
 
 from rc_basics_lab.seeds import SeedConfig
 
-T = TypeVar("T")
+
+class _DataclassFactory[T_co](Protocol):
+    """dataclass のコンストラクタ。``Any`` を書かずにキーワード構築を型付けする。"""
+
+    def __call__(self, **kwargs: object) -> T_co: ...
 
 
 class ConfigError(ValueError):
@@ -144,7 +148,7 @@ def _coerce(value: object, annotation: object, location: str) -> object:
     raise _fail(location, f"未対応の設定型です: {annotation!r}")
 
 
-def _build(cls: type[T], raw: object, location: str) -> T:
+def _build[T](cls: type[T], raw: object, location: str) -> T:
     """dataclass ``cls`` を ``raw`` (マッピング) から構築する。"""
     if not isinstance(raw, Mapping):
         raise _fail(location, f"マッピングが必要です: {raw!r}")
@@ -154,15 +158,16 @@ def _build(cls: type[T], raw: object, location: str) -> T:
     if unknown:
         raise _fail(
             location,
-            f"未知のキーです: {', '.join(unknown)} (既知のキー: {', '.join(sorted(known))})",
+            f"未知のキーです: {', '.join(unknown)}"
+            f" (既知のキー: {', '.join(sorted(known))})",
         )
     hints = get_type_hints(cls)
     kwargs = {
         str(key): _coerce(value, hints[str(key)], f"{location}.{key}")
         for key, value in raw.items()
     }
-    constructor = cast("Callable[..., T]", cls)
-    return constructor(**kwargs)
+    factory = cast("_DataclassFactory[T]", cls)
+    return factory(**kwargs)
 
 
 def load_config(path: Path | str) -> ExperimentConfig:
