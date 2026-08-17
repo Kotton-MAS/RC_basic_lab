@@ -511,6 +511,17 @@ def test_esp_config_is_passed_as_defaulted_keyword() -> None:
     05 まで進んだ時点で ctx が全診断の設定の union になる。境界が守られて
     いることを、ctx のフィールド名と各 cfg のフィールド名が交わらないことで
     機械的に固定する。
+
+    F-1-002: この検査対象は ``_CONFIG_TYPES`` という静的タプルから引いており、
+    新しい診断モジュールを追加してもここへ1行足すのを忘れると検査対象から
+    静かに外れる (D-01 の guard が pkgutil 自動列挙なのと対照的)。この
+    テストは「``cfg`` という名前の引数が、期待した具体的な設定クラス
+    (``EspConfig`` 等) の既定値を持つこと」まで確認する、02 の3診断に固有の
+    詳細な検査として残す。新しい診断へ自動的に効く、より一般的な境界検査
+    (「追加引数はすべて keyword-only かつ既定値つきで、既定値が dataclass
+    なら ctx とフィールド名が重ならない」) は
+    ``tests/test_diagnostics_base.py::test_extra_diagnostic_parameters_are_keyword_only_and_do_not_overlap_ctx``
+    が pkgutil 列挙側で担う。
     """
     ctx_field_names = _field_names(DiagnosticContext)
     for name, func, config_type in _CONFIG_TYPES:

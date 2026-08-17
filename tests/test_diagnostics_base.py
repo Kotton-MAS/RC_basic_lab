@@ -12,7 +12,7 @@ import subprocess
 import sys
 import textwrap
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 
 import numpy as np
@@ -294,6 +294,52 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
         assert isinstance(result, DiagnosticResult), (
             f"{qualname}: DiagnosticResult を返していません: {type(result)}"
         )
+
+
+def test_extra_diagnostic_parameters_are_keyword_only_and_do_not_overlap_ctx() -> None:
+    """D-01 が許す「X/u/y/ctx 以外の追加引数」の境界を pkgutil 列挙側で守る (D-15 guard, F-1-002)。
+
+    従来の D-15 guard
+    (``tests/test_diagnostics_esp.py::test_esp_config_is_passed_as_defaulted_keyword``)
+    は対象診断を ``_CONFIG_TYPES`` という3件の静的タプルから引いていた。D-01 の
+    guard は ``_iter_diagnostic_callables`` による pkgutil 自動列挙なので新診断が
+    黙って外れないのに対し、静的タプル方式は「ESP 専用ファイル内のリストに
+    1行足す」を人間が覚えていないと新診断に一切効かない。ここでは同じ
+    pkgutil 列挙を使い、設定クラスの名前を一切知らなくても新しい診断へ
+    自動的に効く形で D-15 の境界を守る: 追加引数はすべて keyword-only かつ
+    既定値つきであること (既定値なしの追加引数は D-01 の必須引数禁止に違反する
+    ので ``test_all_diagnostics_conform_to_d01_signature_contract`` 側で既に
+    落ちるが、ここでは "keyword-only" 側を独立に固定する)、既定値が dataclass
+    インスタンスならそのフィールド名集合が ``DiagnosticContext`` のフィールド名
+    と交わらないこと (D-15: 判定基準は ``cfg`` へ、系そのものを表すデータのみ
+    ``ctx`` へ、という境界)。
+    """
+    ctx_field_names = {f.name for f in fields(DiagnosticContext)}
+    diagnostics = _iter_diagnostic_callables()
+    assert diagnostics, "検査対象が0件です (列挙条件を確認してください)"
+
+    for qualname, func in diagnostics:
+        params = inspect.signature(func).parameters
+        for name, param in params.items():
+            if name in ("X", "u", "y", "ctx"):
+                continue
+            assert param.kind == inspect.Parameter.KEYWORD_ONLY, (
+                f"{qualname}: 追加引数 {name} が keyword-only ではありません "
+                f"(D-15 違反, kind={param.kind})"
+            )
+            assert param.default is not inspect.Parameter.empty, (
+                f"{qualname}: 追加引数 {name} に既定値がありません (D-01 違反)"
+            )
+            default = param.default
+            if is_dataclass(default) and not isinstance(default, type):
+                default_field_names = {f.name for f in fields(default)}
+                overlap = ctx_field_names & default_field_names
+                assert not overlap, (
+                    f"{qualname}: 追加引数 {name} の既定値 "
+                    f"({type(default).__name__}) が DiagnosticContext と "
+                    f"フィールド名を共有しています (D-15 の境界違反): "
+                    f"{sorted(overlap)}"
+                )
 
 
 @dataclass(frozen=True, slots=True)
