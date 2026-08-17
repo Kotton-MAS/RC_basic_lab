@@ -5,9 +5,11 @@ from __future__ import annotations
 import ast
 import importlib
 import inspect
+import json
 import pkgutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +33,21 @@ def _external_states(n_steps: int = 300, n_units: int = 20) -> FloatArray:
     """ESN を一切使わずに作った「外部由来の」状態系列。"""
     rng = np.random.default_rng(20240101)
     return rng.standard_normal((n_steps, n_units))
+
+
+def _extract_leaked(stdout: str) -> list[str]:
+    """probe の stdout から ``LEAKED=`` 行だけを取り出して JSON デコードする。
+
+    stdout 全体をそのまま解釈すると、検査対象のモジュールが import 時に何か
+    print した場合、その文字列がそのまま「漏れたモジュール名」に混入して
+    しまう (倒れる向きは偽陽性だが、失敗メッセージが原因を指さなくなる)。
+    マーカー付き最終行だけを対象にすることでこれを避ける。
+    """
+    for line in stdout.splitlines():
+        if line.startswith("LEAKED="):
+            payload = json.loads(line.removeprefix("LEAKED="))
+            return [str(name) for name in payload]
+    raise AssertionError(f"probe の stdout に LEAKED= 行が見つかりません: {stdout!r}")
 
 
 def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
@@ -236,23 +253,28 @@ def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
     import 文) は import 時点の ``sys.modules`` に出ないため、この guard では
     検出できない。
     """
-    probe = (
-        "import importlib, pkgutil, sys\n"
-        "pkg = importlib.import_module('rc_basics_lab.diagnostics')\n"
-        "for info in pkgutil.iter_modules(pkg.__path__):\n"
-        "    importlib.import_module(f'rc_basics_lab.diagnostics.{info.name}')\n"
-        "leaked = sorted(\n"
-        "    k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')\n"
-        ")\n"
-        "print(','.join(leaked))\n"
-    )
+    probe = textwrap.dedent("""
+        import importlib
+        import json
+        import pkgutil
+        import sys
+
+        pkg = importlib.import_module("rc_basics_lab.diagnostics")
+        for info in pkgutil.iter_modules(pkg.__path__):
+            importlib.import_module(f"rc_basics_lab.diagnostics.{info.name}")
+
+        leaked = sorted(
+            name for name in sys.modules if name.startswith("rc_basics_lab.reservoir")
+        )
+        print("LEAKED=" + json.dumps(leaked))
+        """)
     completed = subprocess.run(
         [sys.executable, "-c", probe],
         capture_output=True,
         text=True,
         check=True,
     )
-    leaked = [name for name in completed.stdout.strip().split(",") if name]
+    leaked = _extract_leaked(completed.stdout)
     assert leaked == [], (
         "rc_basics_lab.diagnostics の import が rc_basics_lab.reservoir を "
         f"引き込んでいます (推移的依存): {leaked}"
