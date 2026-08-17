@@ -1,0 +1,280 @@
+{
+  "cjk_font": "Hiragino Sans",
+  "commit": "4849bb10709069cf584a1b8a364c93df7b58870e",
+  "config": {
+    "decay": {
+      "leak_rate": 1.0,
+      "rho_grid": [
+        0.5,
+        0.8,
+        0.95,
+        1.2,
+        1.5
+      ],
+      "sigma_u": 0.0
+    },
+    "drive": {
+      "distribution": "uniform",
+      "n_pairs": 10,
+      "n_steps": 3000,
+      "washout": 200
+    },
+    "esp": {
+      "abs_tol": 1e-06,
+      "fit_skip": 10,
+      "floor": 1e-14,
+      "rel_tol": 0.001,
+      "window": 200
+    },
+    "esp_map": {
+      "leak_rate": 1.0,
+      "rho_grid": [
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0,
+        1.1,
+        1.2,
+        1.3,
+        1.4,
+        1.5,
+        1.6,
+        1.7,
+        1.8,
+        1.9
+      ],
+      "sigma_grid": [
+        0.0,
+        0.05,
+        0.1,
+        0.2,
+        0.5,
+        1.0,
+        2.0
+      ]
+    },
+    "lyapunov": {
+      "check_propagator": true,
+      "delta": 1e-08,
+      "max_growth": 1000.0,
+      "method": "perturbation",
+      "propagator_tol": 1e-10,
+      "renorm_interval": 1
+    },
+    "name": "02_esp_and_dynamics",
+    "reservoir": {
+      "density": 0.1,
+      "input_scale": 1.0,
+      "n_replicates": 3,
+      "n_units": 200
+    },
+    "seeds": {
+      "drive": 1,
+      "probe": 3,
+      "reservoir": 0
+    },
+    "timescale": {
+      "max_lag": 200
+    },
+    "timescale_sweep": {
+      "leak_rate_grid": [
+        0.1,
+        0.2,
+        0.3,
+        0.5,
+        0.7,
+        1.0
+      ],
+      "rho": 0.9,
+      "sigma_u": 0.5
+    },
+    "washout": {
+      "base": {
+        "delay_parity": {
+          "delay": 1,
+          "length": 8200,
+          "n_bits": 2
+        },
+        "esn_delay_parity": {
+          "activation": "tanh",
+          "bias_scale": 0.1,
+          "density": 0.1,
+          "input_scale": 1.0,
+          "leak_rate": 1.0,
+          "n_units": 200,
+          "spectral_radius": 0.9,
+          "state_noise": 0.0
+        },
+        "esn_mackey_glass": {
+          "activation": "tanh",
+          "bias_scale": 0.1,
+          "density": 0.1,
+          "input_scale": 0.5,
+          "leak_rate": 0.3,
+          "n_units": 200,
+          "spectral_radius": 0.9,
+          "state_noise": 0.0
+        },
+        "mackey_glass": {
+          "beta": 0.2,
+          "exponent": 10,
+          "gamma": 0.1,
+          "horizon": 1,
+          "integration_burn_in": 1000,
+          "length": 8200,
+          "rk4_step": 0.1,
+          "sample_interval": 10,
+          "tau": 17.0
+        },
+        "n_replicates": 5,
+        "name": "02_washout_sensitivity",
+        "ridge": {
+          "alpha_grid": [
+            1e-10,
+            1e-09,
+            1e-08,
+            1e-07,
+            1e-06,
+            1e-05,
+            0.0001,
+            0.001,
+            0.01,
+            0.1,
+            1.0,
+            10.0,
+            100.0
+          ],
+          "n_lags_grid": [
+            1,
+            2,
+            4,
+            8,
+            16,
+            32,
+            64
+          ]
+        },
+        "seeds": {
+          "reservoir": 0,
+          "split": 2,
+          "task": 1
+        },
+        "split": {
+          "max_start_offset": 200,
+          "test_ratio": 0.35,
+          "train_ratio": 0.5,
+          "val_ratio": 0.15,
+          "washout": 200
+        }
+      },
+      "grid": [
+        0,
+        50,
+        100,
+        200,
+        400,
+        800
+      ],
+      "pad_series": true
+    }
+  },
+  "esp_defaults": {
+    "bias_scale": 0.0,
+    "boundary_lambda": 0.01,
+    "drive_distribution": "uniform",
+    "esp": {
+      "abs_tol": 1e-06,
+      "fit_skip": 10,
+      "floor": 1e-14,
+      "rel_tol": 0.001,
+      "window": 200
+    },
+    "esp_distance_washout": 0,
+    "input_amplitude_per_sigma": 1.7320508075688772,
+    "lyapunov": {
+      "check_propagator": true,
+      "delta": 1e-08,
+      "max_growth": 1000.0,
+      "method": "perturbation",
+      "propagator_tol": 1e-10,
+      "renorm_interval": 1
+    },
+    "strong_drive_sigma": 0.5,
+    "timescale": {
+      "max_lag": 200
+    }
+  },
+  "matplotlib_version": "3.11.1",
+  "n_rows": 369,
+  "numpy_version": "2.5.2",
+  "package_version": "0.1.0",
+  "platform": "macOS-26.3-arm64-arm-64bit",
+  "python_version": "3.12.5",
+  "scipy_version": "1.18.0",
+  "seeds": {
+    "drive": 1,
+    "probe": 3,
+    "reservoir": 0
+  },
+  "timestamp_utc": "2026-08-17T10:16:26.263567+00:00",
+  "verdict_lyapunov_agreement": {
+    "boundary_lambda": 0.01,
+    "disagreement_by_rho": [
+      {
+        "n": 6,
+        "rho": 1.1
+      },
+      {
+        "n": 6,
+        "rho": 1.2
+      },
+      {
+        "n": 4,
+        "rho": 1.3
+      },
+      {
+        "n": 4,
+        "rho": 1.4
+      },
+      {
+        "n": 5,
+        "rho": 1.5
+      },
+      {
+        "n": 2,
+        "rho": 1.6
+      }
+    ],
+    "disagreement_by_sigma": [
+      {
+        "n": 8,
+        "sigma_u": 0.0
+      },
+      {
+        "n": 7,
+        "sigma_u": 0.05
+      },
+      {
+        "n": 8,
+        "sigma_u": 0.1
+      },
+      {
+        "n": 4,
+        "sigma_u": 0.2
+      }
+    ],
+    "disagreement_rate": 0.08132530120481928,
+    "n_compared": 332,
+    "n_compared_strong_drive": 158,
+    "n_disagreement_strong_drive": 0,
+    "n_false_esp": 0,
+    "n_local_but_not_global": 27,
+    "n_near_boundary": 37,
+    "n_rows": 369,
+    "strong_drive_sigma": 0.5
+  },
+  "wall_time_s": 83.25779070799763
+}
