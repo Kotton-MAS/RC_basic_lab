@@ -367,6 +367,7 @@ def _plot_no_input_panel(
 
 
 def _plot_driven_panel(
+    figure: Figure,
     axis: Axes,
     rates: FloatArray,
     lambdas: FloatArray,
@@ -375,26 +376,30 @@ def _plot_driven_panel(
     norm: Normalize,
     style: StyleContext,
 ) -> None:
-    """駆動下 (sigma_u > 0) の ESP 成立領域と λ=0 の等高線。"""
+    """駆動下 (sigma_u > 0) の ESP 成立領域と λ=0 の等高線。
+
+    ``rates`` / ``lambdas`` は ``(len(rhos), len(sigmas))`` の格子。横軸は
+    sigma_u の**順位**にする (格子が等比的に広がるので、値そのものを軸に取ると
+    強入力側だけが潰れて読めなくなる)。
+    """
     mesh = axis.pcolormesh(
         np.arange(len(sigmas) + 1, dtype=np.float64),
         _edges(rhos),
-        rates.T,
+        rates,
         cmap="RdYlBu",
         norm=norm,
         shading="flat",
     )
-    axis.figure.colorbar(mesh, ax=axis, label=style.label(*_CONVERGED_LABEL))
+    figure.colorbar(mesh, ax=axis, label=style.label(*_CONVERGED_LABEL))
     if len(sigmas) >= _MIN_CONTOUR_POINTS and len(rhos) >= _MIN_CONTOUR_POINTS:
-        contours = axis.contour(
+        axis.contour(
             np.arange(len(sigmas), dtype=np.float64) + 0.5,
             np.asarray(rhos, dtype=np.float64),
-            lambdas.T,
+            lambdas,
             levels=[0.0],
             colors="black",
             linewidths=1.5,
         )
-        contours.collections  # noqa: B018 - 生成を強制して凡例の色見本をそろえる
     axis.axhline(
         1.0,
         color="black",
@@ -461,6 +466,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
                 style.label("スペクトル半径 rho", "spectral radius rho")
             )
         _plot_driven_panel(
+            figure,
             driven_axis,
             _grid(converged, rhos, driven).T,
             _grid(lyapunov, rhos, driven).T,
