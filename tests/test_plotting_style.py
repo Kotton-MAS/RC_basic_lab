@@ -99,11 +99,16 @@ def test_font_candidates_are_tried_in_order(monkeypatch: pytest.MonkeyPatch) -> 
     assert find_cjk_font() == CJK_FONT_CANDIDATES[-2]
 
 
-def test_savefig_dpi_is_retina() -> None:
-    """``setup_style()`` 後の savefig.dpi が retina 相当 (受け入れ条件5)。"""
-    setup_style()
+def test_savefig_dpi_is_retina(tmp_path: Path) -> None:
+    """保存される図が retina 相当の dpi であること (受け入れ条件5)。
+
+    ``setup_style()`` はもう rcParams を書き換えない (F-1-008) ので、
+    グローバル rcParams ではなく**実際に保存した PNG から実測**する。
+    """
     assert SAVEFIG_DPI >= RETINA_DPI
-    assert float(matplotlib.rcParams["savefig.dpi"]) >= RETINA_DPI
+    context = setup_style()
+    path = figures.plot_comparison(_rows(), tmp_path / "dpi.png", style=context)
+    assert png_dpi(path) >= RETINA_DPI
 
 
 def test_label_requires_both_languages() -> None:
