@@ -11,7 +11,7 @@ help:
 	@echo "  type         - Run mypy"
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
-	@echo "  figures-02   - Regenerate results/ for experiment 02 (CSV + 3 figures + meta)"
+	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
 
@@ -49,8 +49,9 @@ ci: lock-check lint fmt-check type test
 figures-01:
 	uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml --out results
 
-# 実験02の成果物 (esp_diagnostics.csv / fig_esp_decay.png / fig_leak_timescale.png /
-# fig_esp_map.png / meta.json) を results/02_esp_and_dynamics/ に再生成する。
+# 実験02の成果物 (esp_diagnostics.csv / washout_sensitivity.csv / fig_esp_decay.png /
+# fig_leak_timescale.png / fig_esp_map.png / fig_washout_sensitivity.png /
+# meta.json) を results/02_esp_and_dynamics/ に再生成する。
 # 01 と出力先を分けるのは meta.json / results 直下のファイル名が衝突するため。
 figures-02:
 	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics
