@@ -69,18 +69,74 @@ IPAexGothic / Yu Gothic）が見つかる環境では日本語ラベル、見つ
   検証 NRMSE は alpha に対して単調増加で内点解が存在せず、下端 1e-10 は
   `cond(Phi^T Phi) ≈ 2e16` に由来する数値限界である（`docs/design.md` §8 / D-11）
 
+## 実験02: ESP はスペクトル半径だけでは決まらない
+
+```bash
+# 7成果物 (CSV2枚 + 図4枚 + meta.json) を再生成する (実測 wall_time_s = 87.69 秒)
+make figures-02
+
+# ESP 判定の閾値感度 CSV だけを再生成する (実測 60.70 秒)
+make threshold-02
+```
+
+`make figures-02` は `python main.py --experiment 02` と同じ経路。
+出力先は `results/02_esp_and_dynamics/`（01 と `meta.json` の名前が衝突するため分けている）:
+
+| ファイル | 内容 |
+|---|---|
+| `esp_diagnostics.csv` | 369行（2-A 15 + 2-B 18 + 2-C 336）。ESP 判定・λ・実効時定数を条件ごとに |
+| `washout_sensitivity.csv` | 180行（6 washout × 2課題 × 3手法 × 5レプリケート） |
+| `fig_esp_decay.png` | 2-A: 無入力での状態距離の減衰（ρ 別） |
+| `fig_leak_timescale.png` | 2-B: リーク率と実効時定数（理論線 `-1/log(1-a)` を重ねる） |
+| `fig_esp_map.png` | 2-C: ρ × 入力強度 の ESP 成立領域（記事の目玉） |
+| `fig_washout_sensitivity.png` | 2-D: washout 長への性能感度 |
+| `meta.json` | commit / 設定全体 / `esp_defaults` / λ と判定の整合の内訳 / 2-D の変動幅 |
+| `esp_threshold_sensitivity.csv` | 判定閾値 9通りの感度（`make threshold-02` でのみ更新） |
+
+### 何が分かるか（実測値）
+
+**入力を強くすると、ESP が成立する ρ の上限が上がる**
+（この行は `results/02_esp_and_dynamics/esp_threshold_sensitivity.csv` の
+既定値の行そのもの。乖離したら `tests/test_readme_summary.py` が落ちる）:
+
+| 入力強度 σ_u | 0 | 0.05 | 0.1 | 0.2 | 0.5 | 1.0 | 2.0 |
+|---|---|---|---|---|---|---|---|
+| ESP が壊れる最小の ρ | 1.0 | 1.1 | 1.1 | 1.3 | 1.5 | 1.7 | 格子外 (>1.9) |
+
+- 無入力（σ_u=0）では通説どおり **ρ=1.0 が境界**だが、σ_u を上げると境界は単調に
+  上がり、σ_u=2.0 では **ρ=1.9 でも ESP が成立する**。
+  「ESP を ρ<1 と同一視するのは広く流布した誤り」（Scholarpedia / Jaeger）の再実演
+- **この境界は判定閾値の選び方に依存しない**。`abs_tol` を 1e-4〜1e-8、
+  `window` を 100〜400 で振った9通りすべてで臨界 ρ は1点も動かない
+  （`docs/design.md` §9.2）
+- **条件付き Lyapunov 指数（局所量）と ESP 判定（大域量）は完全には一致しない**。
+  `meta.json` の実測で「λ>0 なのに収束（偽の ESP）」は `n_false_esp = 0` 件、
+  一方「λ<0 なのに非収束」が `n_local_but_not_global = 27` 件ある。後者は実装バグ
+  ではなく**多安定性**（tanh が奇関数なので `x*` と `-x*` が対の吸引子になる）で、
+  4軌道を直接観測して確認した（`docs/design.md` §9.5 / D-20）
+- **washout 長は性能をほとんど動かさない**。訓練データ量との交絡を除く補償
+  （D-19）を入れると、MG × ESN の NRMSE の (最大/最小) 比は
+  `washout_sensitivity.headline.ratio = 1.00763` にとどまり、変動幅は
+  **レプリケート間のばらつきの 1/17**（6組すべてで
+  `exceeds_replicate_noise = false`）。補償を入れないと同じ曲線が
+  **完全に単調増加**（比 1.01151）に見えるが、それは訓練データ量の効果である
+
 ## リポジトリ構成
 
 ```
 src/rc_basics_lab/
 ├── config.py / seeds.py / metrics.py / meta.py / types.py   # 土台
 ├── diagnostics/     # 状態系列 X だけを見る診断層 (reservoir に依存しない)
+│                   #   PCA / ESP 判定 / 条件付き Lyapunov / 実効時定数
 ├── reservoir/       # ESN (step / run / x0 / state_noise を公開)
 ├── readout/         # 設計行列 (3手法の差はここだけ) とリッジ回帰
 ├── experiment/      # 分割・ランナー・PCA 比較・書き出し・1コマンド経路
+│                   #   02: esp / washout / threshold と esp_pipeline
 └── plotting/        # スタイル (CJK フォント探索) と図
-experiments/01_what_is_rc/{config.yaml,run.py}   # 実験1の設定と CLI
+experiments/01_what_is_rc/{config.yaml,run.py}         # 実験1の設定と CLI
+experiments/02_esp_and_dynamics/{config.yaml,run_02.py}  # 実験2の設定と CLI
 results/             # 生成物 (コミット対象。再実行で上書きされる)
+results/02_esp_and_dynamics/  # 実験2の生成物
 docs/design.md       # 数値の根拠と実測結果
 docs/plans/          # 仕様書 (タスク分解と受け入れ基準)
 tests/               # pytest
@@ -91,9 +147,11 @@ tests/               # pytest
 検証コマンドの単一の真実は `Makefile`:
 
 ```bash
-make ci          # lock-check + lint + fmt-check + type + test (CI と同じ)
-make test        # uv run pytest -q
-make figures-01  # results/ を再生成
+make ci           # lock-check + lint + fmt-check + type + test (CI と同じ)
+make test         # uv run pytest -q
+make figures-01   # 実験01 の results/ を再生成
+make figures-02   # 実験02 の results/02_esp_and_dynamics/ を再生成
+make threshold-02 # 実験02 の閾値感度 CSV だけを再生成
 ```
 
 - Python 3.12+ / 依存は **numpy・scipy・matplotlib・pyyaml のみ**
