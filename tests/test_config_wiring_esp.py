@@ -99,7 +99,7 @@ DIAGNOSTIC_SECTIONS: tuple[tuple[str, type[DataclassInstance]], ...] = (
 """``Esp02Config`` のセクション名と、対応する診断側の設定クラス (D-15)。"""
 
 PENDING_SECTIONS = frozenset(
-    {"name", "drive", "decay", "timescale_sweep", "esp_map", "washout"}
+    {"name", "drive", "reservoir", "decay", "timescale_sweep", "esp_map", "washout"}
 )
 """``CHANNEL_PENDING`` を名乗ってよいセクション。
 
@@ -155,30 +155,23 @@ ESP_WIRING_CASES: tuple[WiringCase, ...] = (
     _pending_case("drive.n_steps", 1200, "T3"),
     _pending_case("drive.washout", 300, "T3"),
     _pending_case("drive.n_pairs", 5, "T3"),
+    # --- 2-A/2-B/2-C 共有: リザバー構造 (F-1-004, セクション横断で1本) ---
+    _pending_case("reservoir.input_scale", 2.0, "T3"),
+    _pending_case("reservoir.n_units", 40, "T3"),
+    _pending_case("reservoir.density", 0.5, "T3"),
+    _pending_case("reservoir.n_replicates", 2, "T3"),
     # --- 2-A: ESP の減衰曲線 ---
     _pending_case("decay.rho_grid", (0.6, 1.3), "T3"),
     _pending_case("decay.sigma_u", 0.5, "T3"),
     _pending_case("decay.leak_rate", 0.4, "T3"),
-    _pending_case("decay.input_scale", 2.0, "T3"),
-    _pending_case("decay.n_units", 40, "T3"),
-    _pending_case("decay.density", 0.5, "T3"),
-    _pending_case("decay.n_replicates", 2, "T3"),
     # --- 2-B: リーク率と実効時定数 ---
     _pending_case("timescale_sweep.leak_rate_grid", (0.2, 0.9), "T3"),
     _pending_case("timescale_sweep.rho", 0.7, "T3"),
     _pending_case("timescale_sweep.sigma_u", 0.9, "T3"),
-    _pending_case("timescale_sweep.input_scale", 0.5, "T3"),
-    _pending_case("timescale_sweep.n_units", 40, "T3"),
-    _pending_case("timescale_sweep.density", 0.5, "T3"),
-    _pending_case("timescale_sweep.n_replicates", 2, "T3"),
     # --- 2-C: rho x 入力強度 の ESP 成立領域 ---
     _pending_case("esp_map.rho_grid", (0.8, 1.4), "T3"),
     _pending_case("esp_map.sigma_grid", (0.0, 1.5), "T3"),
     _pending_case("esp_map.leak_rate", 0.6, "T3"),
-    _pending_case("esp_map.input_scale", 0.25, "T3"),
-    _pending_case("esp_map.n_units", 40, "T3"),
-    _pending_case("esp_map.density", 0.5, "T3"),
-    _pending_case("esp_map.n_replicates", 2, "T3"),
     # --- 2-D: washout 感度 (base.* は 01 側へ委譲) ---
     _pending_case("washout.grid", (0, 100), "T4"),
     _pending_case("washout.pad_series", False, "T4"),

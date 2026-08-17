@@ -317,6 +317,10 @@ class Esp02Config:
 
     ``esp`` / ``lyapunov`` / ``timescale`` は診断層の設定 (D-15) をそのまま
     載せたもの。YAML から診断の判定基準まで届くのはこの経路だけである。
+
+    ``reservoir`` は 2-A/2-B/2-C が共有するリザバー構造 (F-1-004)。3セクション
+    それぞれに同じフィールドを持たせず、ここに1本だけ持つことで
+    セクションごとに ``n_units`` 等が食い違う事故を構造的に禁じる。
     """
 
     name: str = "02_esp_and_dynamics"
@@ -461,6 +465,7 @@ __all__ = [
     "ExperimentConfig",
     "LyapunovConfig",
     "MackeyGlassConfig",
+    "ReservoirSweepConfig",
     "RidgeConfig",
     "SplitConfig",
     "TimescaleConfig",
