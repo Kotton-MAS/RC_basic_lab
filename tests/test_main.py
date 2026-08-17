@@ -109,6 +109,20 @@ def test_experiment_registry_covers_the_experiment_directories() -> None:
     assert set(main.EXPERIMENTS) == directories
 
 
+@pytest.mark.parametrize("number", sorted(main.EXPERIMENTS))
+def test_run_script_default_out_matches_the_registry(number: str) -> None:
+    """``experiments/NN_*/run*.py`` の ``DEFAULT_OUT`` がレジストリの既定出力先と一致する。
+
+    既定出力先は ``main.EXPERIMENTS[NN].out_dir`` と各実験の
+    ``experiments/NN_*/run*.py:DEFAULT_OUT`` に手で二重定義されている。
+    どちらも ``--out`` 未指定時に使われるが、一致を固定するテストが無いと
+    03 以降を足したときに片方だけ書き換えて食い違う経路が HIGH-1 と同じ形で
+    再発する。``main.EXPERIMENTS`` を直接回すので実験追加時に自動で対象が増える。
+    """
+    module = _load_run_module_for(number)
+    assert main.EXPERIMENTS[number].out_dir == module.DEFAULT_OUT
+
+
 def test_unknown_experiment_is_rejected() -> None:
     """未登録の実験番号は argparse が弾く (静かに既定へ落ちない)。"""
     with pytest.raises(SystemExit) as excinfo:

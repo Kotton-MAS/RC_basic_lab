@@ -95,8 +95,6 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
 (``test_experiment_registry_has_unique_default_out_dirs`` が機械的に守る)。
 """
 
-DEFAULT_OUT = EXPERIMENTS["01"].out_dir
-
 
 @dataclass(frozen=True, slots=True)
 class Args:
