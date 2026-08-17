@@ -181,9 +181,13 @@ class WashoutSensitivity:
         pad_series: 行数を補償したか。
         reference_washout: 01 の本番値 (図の垂直線の位置)。
         n_rows: ``washout_sensitivity.csv`` の行数。
-        training_size_is_constant: 全格子点で ``(n_train, n_val, n_test)`` が一致。
-        sizes_by_washout: washout ごとの ``(n_train, n_val, n_test)``。
-        t0_by_washout: washout ごとの ``t0``。
+        training_size_is_constant: **課題ごとに** 格子全体で
+            ``(n_train, n_val, n_test)`` が一致するか (F-1-003)。課題間で
+            行数が異なることは許容する (課題ごとに系列長・first_valid が
+            異なりうるため) が、同じ課題の中で washout を振って行数が動く
+            ことは D-19 の補償が外れたことを意味する。
+        sizes_by_washout: (課題, washout) ごとの ``(n_train, n_val, n_test)``。
+        t0_by_washout: (課題, washout) ごとの ``t0``。
         by_method: (課題, 手法) ごとの変動幅。
         headline: ``HEADLINE_TASK`` x ``HEADLINE_METHOD`` の変動幅。
     """
@@ -193,8 +197,8 @@ class WashoutSensitivity:
     reference_washout: int
     n_rows: int
     training_size_is_constant: bool
-    sizes_by_washout: tuple[tuple[int, tuple[int, int, int]], ...]
-    t0_by_washout: tuple[tuple[int, int], ...]
+    sizes_by_washout: tuple[tuple[tuple[str, int], tuple[int, int, int]], ...]
+    t0_by_washout: tuple[tuple[tuple[str, int], int], ...]
     by_method: tuple[MethodSensitivity, ...]
     headline: MethodSensitivity
 
@@ -208,15 +212,17 @@ class WashoutSensitivity:
             "training_size_is_constant": self.training_size_is_constant,
             "sizes_by_washout": [
                 {
+                    "task": task,
                     "washout": washout,
                     "n_train": sizes[0],
                     "n_val": sizes[1],
                     "n_test": sizes[2],
                 }
-                for washout, sizes in self.sizes_by_washout
+                for (task, washout), sizes in self.sizes_by_washout
             ],
             "t0_by_washout": [
-                {"washout": washout, "t0": t0} for washout, t0 in self.t0_by_washout
+                {"task": task, "washout": washout, "t0": t0}
+                for (task, washout), t0 in self.t0_by_washout
             ],
             "by_method": [item.to_summary() for item in self.by_method],
             "headline": self.headline.to_summary(),
@@ -467,11 +473,17 @@ def summarize_washout_sensitivity(
         raise ValueError("2-D の行がありません")
     section = config.washout
     reference_washout = section.base.split.washout
-    sizes: dict[int, tuple[int, int, int]] = {}
-    t0s: dict[int, int] = {}
+    sizes: dict[tuple[str, int], tuple[int, int, int]] = {}
+    t0s: dict[tuple[str, int], int] = {}
     for row in rows:
-        sizes[row.washout] = (row.n_train, row.n_val, row.n_test)
-        t0s[row.washout] = row.t0
+        sizes[row.task, row.washout] = (row.n_train, row.n_val, row.n_test)
+        t0s[row.task, row.washout] = row.t0
+    sizes_by_task: dict[str, set[tuple[int, int, int]]] = {}
+    for (task, _washout), size in sizes.items():
+        sizes_by_task.setdefault(task, set()).add(size)
+    training_size_is_constant = all(
+        len(distinct_sizes) == 1 for distinct_sizes in sizes_by_task.values()
+    )
     by_method = tuple(
         _sensitivity_for(rows, task, method, reference_washout)
         for task, method in _task_method_pairs(rows)
@@ -493,7 +505,7 @@ def summarize_washout_sensitivity(
         pad_series=section.pad_series,
         reference_washout=reference_washout,
         n_rows=len(rows),
-        training_size_is_constant=len(set(sizes.values())) == 1,
+        training_size_is_constant=training_size_is_constant,
         sizes_by_washout=tuple(sorted(sizes.items())),
         t0_by_washout=tuple(sorted(t0s.items())),
         by_method=by_method,
