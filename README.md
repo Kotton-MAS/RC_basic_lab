@@ -29,6 +29,7 @@ uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_r
 | ファイル | 内容 |
 |---|---|
 | `results/comparison.csv` | 2課題 × 3手法 × 5レプリケート = 30行の長形式の結果 |
+| `results/comparison_summary.csv` | (課題, 手法) ごとの NRMSE 平均±標準偏差・符号正解率平均（集計版） |
 | `results/fig_comparison.png` | 課題別の NRMSE（点+誤差棒、`NRMSE=1` の基準線つき） |
 | `results/fig_state_space.png` | 入力空間とリザバー状態空間の PCA |
 | `results/meta.json` | commit / 時刻 / ライブラリ版 / 設定全体 / 実測 wall time / PCA の要約 |
@@ -40,7 +41,10 @@ IPAexGothic / Yu Gothic）が見つかる環境では日本語ラベル、見つ
 
 ## 何が分かるか（実測値）
 
-テスト区間・5レプリケートの NRMSE 平均 ± 標準偏差:
+テスト区間・5レプリケートの NRMSE 平均 ± 標準偏差
+（**この表は `results/comparison_summary.csv` の値**。集計ロジックは
+`experiment.summary.aggregate_nrmse` にあり、乖離したら
+`tests/test_readme_summary.py` が落ちる）:
 
 | 課題 | 線形 | 遅延線 | ESN |
 |---|---|---|---|
