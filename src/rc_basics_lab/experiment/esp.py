@@ -205,6 +205,67 @@ ESP_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(EspRow))
 
 
 @dataclass(frozen=True, slots=True)
+class Trajectories:
+    """1条件ぶんの軌道と、伝播器を作るのに要る材料。
+
+    ``esp_convergence`` は ``(states, companions)`` の純関数なので、判定基準
+    (``EspConfig``) を変えるだけの掃引 (2-C の閾値感度。``experiment/threshold.py``)
+    は軌道を作り直す必要が無い。その再利用のために ``evaluate_condition`` から
+    シミュレーション部分だけを切り出したのがこの型である。
+    """
+
+    esn: ESN
+    drive: FloatArray
+    states: FloatArray
+    companions: tuple[FloatArray, ...]
+
+
+def simulate_condition(
+    config: Esp02Config,
+    *,
+    rho: float,
+    leak_rate: float,
+    sigma_u: float,
+    replicate: int,
+) -> Trajectories:
+    """1条件 (rho, leak_rate, sigma_u, replicate) の軌道を作る。
+
+    乱数は3ストリームに分ける (D-14)。リザバー重み ``RESERVOIR`` / 駆動信号
+    ``TASK`` / 初期状態対 ``PROBE`` が独立なので、「初期状態だけを振ったときに
+    判定が変わるか」を重みを固定したまま測れる。
+    """
+    drive_rng = make_rng_for(
+        esp_stream_seed(config.seeds, SeedStream.TASK), SeedStream.TASK, replicate
+    )
+    u = make_drive(
+        sigma_u,
+        config.drive.n_steps,
+        drive_rng,
+        distribution=config.drive.distribution,
+    )
+    reservoir_rng = make_rng_for(
+        esp_stream_seed(config.seeds, SeedStream.RESERVOIR),
+        SeedStream.RESERVOIR,
+        replicate,
+    )
+    esn = ESN(
+        build_esn_config(config, rho, leak_rate), reservoir_rng, n_inputs=_N_INPUTS
+    )
+    probe_rng = make_rng_for(
+        esp_stream_seed(config.seeds, SeedStream.PROBE), SeedStream.PROBE, replicate
+    )
+    initial_states = make_initial_states(
+        config.reservoir.n_units, config.drive.n_pairs, probe_rng
+    )
+    return Trajectories(
+        esn=esn,
+        drive=u,
+        states=esn.run(u, x0=initial_states[0]),
+        companions=tuple(esn.run(u, x0=x0) for x0 in initial_states[1:]),
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class ConditionOutcome:
     """1条件ぶんの結果。行に加えて図が必要とする曲線を持つ。
 
