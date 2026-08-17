@@ -114,7 +114,7 @@ def _extract_leaked(stdout: str) -> list[str]:
 
 
 def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
-    """diagnostics パッケージ配下の診断 callable を機械的に列挙する (D-01 の被検体探索)。
+    """diagnostics パッケージ配下の診断 callable を機械的に列挙する (D-01の被検体探索)。
 
     列挙条件は「``diagnostics`` の各サブモジュール (``base`` を除く) で定義され
     (= 別モジュールからの re-export ではなく)、戻り値アノテーションが
@@ -152,7 +152,6 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
         for attr_name, attr in vars(module).items():
             if attr_name.startswith("_"):
                 continue
-            candidate: Callable[..., object]
             if inspect.isfunction(attr):
                 candidate = attr
             elif not inspect.isclass(attr) and callable(attr):
