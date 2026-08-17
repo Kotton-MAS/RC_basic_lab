@@ -12,8 +12,10 @@
 NRMSE → 1.0 / 符号正解率 → 0.5 に落ちる。失敗は経験則ではなく解析的な帰結である
 (``tests/test_tasks_parity.py::test_target_is_orthogonal_to_lagged_inputs``)。
 
-先頭 ``delay + n_bits - 1`` 行ぶんの入力は**先読み分として内部で余分に生成**し、
-返す前に切り落とす。目標に NaN を混ぜないためで、返る ``u`` / ``y`` は全行が有効。
+先頭 ``delay + n_bits - 1`` 行の目標は、返さない ±1 履歴を内部で余分に引いて
+定義する。目標に NaN を混ぜないためで、返る ``u`` / ``y`` は全行が有限値。
+この数行だけは入力系列から観測できない過去に依存するが、実験ランナーは
+``t0 >= washout`` 行目から評価するため使われない。
 """
 
 from __future__ import annotations
@@ -45,13 +47,16 @@ def generate_delay_parity(cfg: DelayParityConfig, rng: np.random.Generator) -> T
     """遅延パリティの入出力系列を作る。返す行数は ``cfg.length``。"""
     _validate(cfg)
     lead = lead_in(cfg)
-    total = cfg.length + lead
-    bits: FloatArray = np.where(rng.integers(0, 2, total) == 1, 1.0, -1.0)
+    # 入力を先に引くことで、n_bits / delay を変えても同一シードの u は不変になり、
+    # 「目標だけが変わった」ことを test_n_bits_and_delay_change_target で見られる。
+    bits: FloatArray = np.where(rng.integers(0, 2, cfg.length) == 1, 1.0, -1.0)
+    history: FloatArray = np.where(rng.integers(0, 2, lead) == 1, 1.0, -1.0)
+    extended: FloatArray = np.concatenate([history, bits])
     target: FloatArray = np.ones(cfg.length, dtype=np.float64)
     for shift in range(cfg.delay, cfg.delay + cfg.n_bits):
         start = lead - shift
-        target = target * bits[start : start + cfg.length]
-    u: FloatArray = bits[lead:].reshape(-1, 1)
+        target = target * extended[start : start + cfg.length]
+    u: FloatArray = bits.reshape(-1, 1)
     y: FloatArray = target.reshape(-1, 1)
     params = {
         "n_bits": str(cfg.n_bits),
