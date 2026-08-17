@@ -182,3 +182,5 @@ settings.local.json
 # (diff.patch / changed-files.txt / base-ref / findings/round-N/*.json)。
 # SubagentStop の auto-commit.sh は git add -A するため、無視しないとコミットに混ざる。
 .claude/tmp/
+# macOS
+.DS_Store
