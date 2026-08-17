@@ -52,6 +52,8 @@ from rc_basics_lab.experiment.esp import (
     make_initial_states,
     run_decay_sweep,
     run_esp_experiment,
+    simulate_condition,
+    simulate_reference_trajectory,
     summarize_verdict_agreement,
 )
 from rc_basics_lab.reservoir.esn import ESN
@@ -312,6 +314,86 @@ def test_sweep_rejects_fewer_than_one_replicate() -> None:
     )
     with pytest.raises(ValueError, match="n_replicates"):
         run_decay_sweep(config)
+
+
+# --- F-1-005: 03 (MC/IPC) が写経せずに再利用できる継ぎ目 --------------------
+
+
+def test_simulate_reference_trajectory_does_not_require_esp02_config() -> None:
+    """``simulate_reference_trajectory`` は ``Esp02Config`` を要求しない。
+
+    ``inspect.signature`` でパラメータの型注釈を見て、``ReservoirSweepConfig`` /
+    ``DriveConfig`` / 基底シード (int) だけで呼べることを固定する。03 が
+    ``Esp02Config`` 全体を写経せずにこの関数を再利用できることの根拠。
+    """
+    import inspect
+
+    # ``from __future__ import annotations`` により注釈は文字列になるため、
+    # 型オブジェクトの同一性ではなく名前で確認する。
+    signature = inspect.signature(simulate_reference_trajectory)
+    annotations = {
+        name: parameter.annotation for name, parameter in signature.parameters.items()
+    }
+    assert annotations["reservoir"] == ReservoirSweepConfig.__name__
+    assert annotations["drive_config"] == DriveConfig.__name__
+    assert "Esp02Config" not in str(signature)
+
+
+def test_simulate_reference_trajectory_matches_simulate_condition_bit_for_bit() -> None:
+    """参照軌道の切り出しが ``simulate_condition`` の数値を1バイトも変えない。
+
+    F-1-005 は ``simulate_condition`` を ``simulate_reference_trajectory`` +
+    比較軌道の薄い層に書き換える修正だが、既存の成果物 (``results/``) は
+    不変でなければならない。ここでは両者の駆動入力・参照軌道の状態系列が
+    完全一致することを直接固定する。
+    """
+    config = small_config()
+    trajectories = simulate_condition(
+        config, rho=0.9, leak_rate=1.0, sigma_u=0.5, replicate=0
+    )
+    probe_rng = make_rng_for(config.seeds.probe, SeedStream.PROBE, 0)
+    initial_states = make_initial_states(
+        config.reservoir.n_units, config.drive.n_pairs, probe_rng
+    )
+    reference = simulate_reference_trajectory(
+        config.reservoir,
+        config.drive,
+        reservoir_seed=config.seeds.reservoir,
+        drive_seed=config.seeds.drive,
+        rho=0.9,
+        leak_rate=1.0,
+        sigma_u=0.5,
+        replicate=0,
+        x0=initial_states[0],
+    )
+    assert np.array_equal(reference.drive, trajectories.drive)
+    assert np.array_equal(reference.states, trajectories.states)
+
+
+def test_simulate_reference_trajectory_defaults_to_a_zero_initial_state() -> None:
+    """``x0`` を省略すると ``ESN.run`` の既定 (零ベクトル) が使われる。
+
+    MC/IPC は参照軌道1本だけを要るので、ESP のように ``SeedStream.PROBE`` から
+    ランダムな初期状態対を引く必要が無い。
+    """
+    config = small_config()
+    reference = simulate_reference_trajectory(
+        config.reservoir,
+        config.drive,
+        reservoir_seed=config.seeds.reservoir,
+        drive_seed=config.seeds.drive,
+        rho=0.9,
+        leak_rate=1.0,
+        sigma_u=0.5,
+        replicate=0,
+    )
+    esn = ESN(
+        build_esn_config(config.reservoir, 0.9, 1.0),
+        make_rng_for(config.seeds.reservoir, SeedStream.RESERVOIR, 0),
+        n_inputs=1,
+    )
+    expected = esn.run(reference.drive)
+    assert np.array_equal(reference.states, expected)
 
 
 # --- 受け入れ条件1: 無入力の減衰がスペクトル半径と一致する -------------------
