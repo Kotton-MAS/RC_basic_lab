@@ -415,6 +415,7 @@ def test_context_has_all_defaults() -> None:
     assert ctx.dt == pytest.approx(1.0)
     assert ctx.seed is None
     assert ctx.companion_states == ()
+    assert ctx.propagator is None
 
 
 def test_companion_states_carry_second_trajectory() -> None:
