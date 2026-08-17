@@ -76,7 +76,9 @@ from wiring import (
 import rc_basics_lab.experiment as experiment_pkg
 from rc_basics_lab.config import (
     ConfigError,
+    DelayParityConfig,
     DriveConfig,
+    ESNConfig,
     Esp02Config,
     EspConfig,
     EspDecayConfig,
@@ -84,9 +86,13 @@ from rc_basics_lab.config import (
     EspSeedConfig,
     ExperimentConfig,
     LyapunovConfig,
+    MackeyGlassConfig,
     ReservoirSweepConfig,
+    RidgeConfig,
+    SplitConfig,
     TimescaleConfig,
     TimescaleSweepConfig,
+    WashoutSweepConfig,
     esp_stream_seed,
     load_config,
     load_config_as,
@@ -98,6 +104,7 @@ from rc_basics_lab.experiment.esp import (
     EspRow,
     run_esp_experiment,
 )
+from rc_basics_lab.experiment.washout import WashoutRow, run_washout_sweep
 from rc_basics_lab.meta import collect_meta_for
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 
@@ -372,15 +379,45 @@ def fingerprint(rows: Sequence[EspRow], experiment: str | None = None) -> str:
     )
 
 
+def washout_fingerprint(rows: Sequence[WashoutRow]) -> str:
+    """2-D の結果行の指紋 (実測時間の列だけ除く)。
+
+    2-A/2-B/2-C とは列が違う別 CSV なので、指紋も別に取る。同じ関数に
+    まとめると「どちらの行が動いたか」を分けて言えなくなる。
+    """
+    return json.dumps(
+        [
+            {
+                field.name: getattr(row, field.name)
+                for field in fields(WashoutRow)
+                if field.name not in VOLATILE_COLUMNS
+            }
+            for row in rows
+        ],
+        sort_keys=True,
+    )
+
+
 @lru_cache(maxsize=1)
 def baseline_rows() -> tuple[EspRow, ...]:
     """基準となる縮小実験の出力 (ケースごとに再計算しない)。"""
     return run_esp_experiment(base_config()).rows
 
 
+@lru_cache(maxsize=1)
+def baseline_washout_rows() -> tuple[WashoutRow, ...]:
+    """基準となる縮小 2-D 掃引の出力 (ケースごとに再計算しない)。"""
+    return run_washout_sweep(base_config())
+
+
 def run_case(wiring_case: WiringCase) -> tuple[EspRow, ...]:
     """ケースを適用して縮小実験を回す。"""
     return run_esp_experiment(apply_case(base_config(), wiring_case)).rows
+
+
+def run_washout_case(wiring_case: WiringCase) -> tuple[WashoutRow, ...]:
+    """ケースを適用して縮小 2-D 掃引を回す。"""
+    return run_washout_sweep(apply_case(base_config(), wiring_case))
 
 
 def _meta_fingerprint(config: Esp02Config) -> str:
@@ -430,6 +467,19 @@ def test_every_esp_parameter_changes_output(
         section, _, name = wiring_case.field.partition(".")
         assert name in _diagnostic_field_names(section), (
             f"{wiring_case.field} は診断の設定クラスのフィールドではありません"
+        )
+        return
+
+    if wiring_case.channel == CHANNEL_WASHOUT:
+        rows = run_washout_case(wiring_case)
+        assert washout_fingerprint(rows) != washout_fingerprint(
+            baseline_washout_rows()
+        ), f"{wiring_case.field} を変えても 2-D の出力が変わりません (配線漏れ)"
+        # 2-D の設定が 2-A/2-B/2-C の行まで動かしていないこと。3つの図と
+        # 2-D は同じ Esp02Config を共有するので、掃引の土台 (01 の設定) を
+        # 誤って共有側へ配線しても図は自然に見え、レビューでは落ちない。
+        assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
+            f"{wiring_case.field} が 2-A/2-B/2-C の結果まで変えています"
         )
         return
 
