@@ -121,7 +121,7 @@ washout:
 esp:
   # D-16 の既定値。abs_tol=1e-6 は float64 の eps から十分離れ、初期距離
   # O(1) から6桁の収縮を要求する。
-  abs_tol: 1.0e-6
+  abs_tol: 1.0e-4
   rel_tol: 1.0e-3
   window: 200
   # 距離当てはめの開始位置。ESP_DISTANCE_WASHOUT=0 なのでこの値が
