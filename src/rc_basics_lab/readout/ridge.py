@@ -80,12 +80,56 @@ def penalty_matrix(n_features: int, *, bias_column: int | None) -> FloatArray:
     return np.diag(diagonal)
 
 
+def fit_ridge_from_gram(
+    gram: FloatArray,
+    rhs: FloatArray,
+    alpha: float,
+    *,
+    bias_column: int | None,
+) -> FloatArray:
+    """Gram 行列 ``Phi.T @ Phi`` と ``Phi.T @ y`` から閉形式解を返す。
+
+    ``gram`` / ``rhs`` は alpha に依存しないため、alpha 格子を走査する
+    呼び出し側 (``select_alpha``) はこれを1回だけ計算して使い回せる
+    (F-1-010)。``fit_ridge`` はこの関数に委譲しており、数学的に同一の
+    経路 (``solve(gram + alpha * D, rhs, assume_a="pos")``) を通る。
+
+    Args:
+        gram: ``Phi.T @ Phi`` ``(F, F)``。
+        rhs: ``Phi.T @ y`` ``(F, D_out)``。
+        alpha: 正則化係数 (0 以上)。
+        bias_column: 正則化しない列の index。``DesignMatrix.bias_column`` を渡す。
+
+    Returns:
+        係数 ``(F, D_out)``。
+
+    Raises:
+        ValueError: 形状不整合、``alpha < 0``。
+    """
+    if gram.ndim != 2 or gram.shape[0] != gram.shape[1]:
+        raise ValueError(f"gram は正方行列が必要です: {gram.shape}")
+    if rhs.ndim != 2 or rhs.shape[0] != gram.shape[0]:
+        raise ValueError(
+            f"rhs の行数が gram と一致しません: {rhs.shape} vs {gram.shape}"
+        )
+    if alpha < 0.0:
+        raise ValueError(f"alpha は 0 以上である必要があります: {alpha}")
+    n_features = gram.shape[0]
+    penalized: FloatArray = gram + alpha * penalty_matrix(
+        n_features, bias_column=bias_column
+    )
+    coefficients: FloatArray = np.asarray(
+        solve(penalized, rhs, assume_a="pos"), dtype=np.float64
+    )
+    return coefficients
+
+
 def fit_ridge(
     phi: FloatArray,
     y: FloatArray,
     alpha: float,
     *,
-    bias_column: int | None = 0,
+    bias_column: int | None,
 ) -> FloatArray:
     """閉形式のリッジ解 ``inv(Phi.T @ Phi + alpha * D) @ Phi.T @ Y`` を返す。
 
@@ -93,7 +137,9 @@ def fit_ridge(
         phi: 設計行列 ``(T, F)``。
         y: 目標 ``(T, D_out)``。
         alpha: 正則化係数 (0 以上)。
-        bias_column: 正則化しない列の index (既定 0 = 先頭のバイアス列)。
+        bias_column: 正則化しない列の index。既定値を持たない (キーワード必須)。
+            渡し忘れると「先頭列が黙ってバイアス扱い」という誤りが型で
+            落ちる (F-1-002)。``DesignMatrix.bias_column`` を渡すこと。
 
     Returns:
         係数 ``(F, D_out)``。
@@ -102,16 +148,9 @@ def fit_ridge(
         ValueError: 形状不整合、非有限値、``alpha < 0``。
     """
     features, targets = _check_pair(phi, y)
-    if alpha < 0.0:
-        raise ValueError(f"alpha は 0 以上である必要があります: {alpha}")
-    n_features = features.shape[1]
     gram: FloatArray = features.T @ features
-    penalized: FloatArray = gram + alpha * penalty_matrix(n_features, bias_column)
     rhs: FloatArray = features.T @ targets
-    coefficients: FloatArray = np.asarray(
-        solve(penalized, rhs, assume_a="pos"), dtype=np.float64
-    )
-    return coefficients
+    return fit_ridge_from_gram(gram, rhs, alpha, bias_column=bias_column)
 
 
 def predict(phi: FloatArray, coefficients: FloatArray) -> FloatArray:
