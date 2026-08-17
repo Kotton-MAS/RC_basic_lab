@@ -189,8 +189,9 @@ def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
 
     キー集合の一致だけでは「診断を登録はするが不十分なファクトリを割り当てる」
     (例: ``u`` 依存の診断に ``_minimal_input_no_extras`` を誤って割り当てる)
-    という抜け道を検出できない。そのため各ファクトリを実際に呼び出し、対応する
-    診断関数が ``DiagnosticResult`` を返すところまで確認する。
+    という抜け道を検出できない (F-02-2-001: オーケストレータが実測で確認)。
+    そのため各ファクトリを実際に呼び出し、対応する診断関数が
+    ``DiagnosticResult`` を返すところまで確認する。
     """
     diagnostics = _iter_diagnostic_callables()
     names = {qualname for qualname, _ in diagnostics}
@@ -302,12 +303,36 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
         with contextlib.suppress(ValueError):
             func(states, ctx=DiagnosticContext())
 
-        # 必須データをそろえれば、どの診断も最後まで走って結果を返すこと。
-        # (上で ValueError を許容した分の穴をここで塞ぐ。ValueError を投げ続ける
-        #  だけの診断が契約テストを通り抜けないようにする。) 診断ごとの最小入力は
-        # MINIMAL_VALID_INPUT レジストリから取得する (F-02-1-015)。suppress では
-        # 囲まない: ここで ValueError が上がるのは「診断の入力要件を満たす最小入力を
-        # 登録し忘れている」ことを意味し、そのまま失敗させて登録漏れを可視化する。
+
+def test_minimal_valid_input_actually_produces_a_result() -> None:
+    """必須データをそろえれば、どの診断も最後まで走って結果を返す (F-02-2-001)。
+
+    F-02-1-015 でこの assert は ``MINIMAL_VALID_INPUT`` レジストリ経由に
+    変わったが、``test_all_diagnostics_conform_to_d01_signature_contract``
+    という同じ関数の中に、``contextlib.suppress(ValueError)`` を5回含む
+    探索的な呼び出しブロックと同居していた。オーケストレータが実測で
+    確認した通り、同じ関数内に既に ``suppress`` が5回あると「この行も
+    ``suppress`` で囲む」が最も安い変更に見えてしまい、契約テストの
+    独立性が事実上失われる (不十分なファクトリを登録した状態でも
+    ``suppress`` さえ足せば両テストとも緑のまま通ってしまう)。
+
+    ここでは ``suppress`` を一切書かない別関数として切り出し、
+    「必須データをそろえた呼び出しは ``ValueError`` を許容しない」ことを
+    構造的に保証する。将来この行を ``suppress`` で囲もうとしても、
+    囲む対象がこの関数の外にあるため「ついでに」は起きない。
+    ``test_minimal_valid_input_registry_covers_all_diagnostics`` (登録された
+    ファクトリが実際に動くかを検査) とは独立した防御であり、片方だけを
+    回避しても、もう片方が赤くなる。
+    """
+    diagnostics = _iter_diagnostic_callables()
+    assert diagnostics, "検査対象が0件です (列挙条件を確認してください)"
+    states = _external_states()
+
+    for qualname, func in diagnostics:
+        # 診断ごとの最小入力は MINIMAL_VALID_INPUT レジストリから取得する
+        # (F-02-1-015)。suppress では囲まない: ここで ValueError が上がるのは
+        # 「診断の入力要件を満たす最小入力を登録し忘れている」ことを意味し、
+        # そのまま失敗させて登録漏れを可視化する。
         minimal_x, minimal_u, minimal_y, minimal_ctx = MINIMAL_VALID_INPUT[qualname](
             states
         )
