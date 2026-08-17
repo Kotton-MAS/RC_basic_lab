@@ -41,6 +41,22 @@ import numpy as np
 from rc_basics_lab.types import FloatArray
 
 
+class StatePropagator(Protocol):
+    """時刻 ``t`` の状態 ``x`` から時刻 ``t+1`` の状態を返す写像。
+
+    契約: ``propagator(X[t], t)`` は ``X[t+1]`` に一致すること。``X[t]`` は
+    ``u[t]`` を**処理した後**の状態なので、ESN のアダプタは
+    ``lambda x, t: esn.step(x, u[t + 1])`` になる。``u[t]`` を渡すと 1 ステップ
+    ずれた指数が"それらしい値"で出てレビューでは気づけないため、
+    ``conditional_lyapunov`` は既定でこの一致を実行時に検査する (D-18)。
+
+    ``reservoir`` を import しない構造的型付け (Protocol) なので、ESN でも
+    実素子のシミュレータでも同じ診断がそのまま動く (D-12)。
+    """
+
+    def __call__(self, x: FloatArray, t: int) -> FloatArray: ...
+
+
 @dataclass(frozen=True, slots=True)
 class DiagnosticContext:
     """診断に渡す付随情報。全フィールドに既定値を持つ。
@@ -51,12 +67,16 @@ class DiagnosticContext:
         seed: サロゲート生成などに使う乱数シード (03 の IPC で使う)。
         companion_states: 第2軌道・摂動軌道 (02 の ESP / 条件付き Lyapunov で使う)。
             各要素は ``X`` と同じ形状であること。
+        propagator: 状態を1ステップ進める写像 (02 の条件付き Lyapunov で使う)。
+            「系そのものを表すデータ」なので ``ctx`` に置く。判定閾値や摂動幅の
+            ような**判定基準**は ``ctx`` ではなく各診断の ``cfg`` 引数で渡す (D-15)。
     """
 
     washout: int = 0
     dt: float = 1.0
     seed: int | None = None
     companion_states: tuple[FloatArray, ...] = ()
+    propagator: StatePropagator | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,6 +185,7 @@ __all__ = [
     "Diagnostic",
     "DiagnosticContext",
     "DiagnosticResult",
+    "StatePropagator",
     "resolve_context",
     "validate_diagnostic_input",
 ]
