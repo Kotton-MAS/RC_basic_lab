@@ -304,6 +304,88 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
   - `LICENSE` は Apache-2.0 全文 + 付録、`Copyright 2026 Takumi Kotooka`（個人名義）。`pyproject.toml` の `license = "Apache-2.0"` と一致
   - T5 の「触るファイル」に無い追加: `src/rc_basics_lab/experiment/{pipeline,state_space}.py`、`tests/{conftest.py,test_state_space.py}`、`main.py` / `tests/test_main.py`（不明点 Q2 の回答どおり CLI エントリへ置換）。`Makefile` は `figures-01` の追加のみで `ci` の構成は不変
 
+### 追補: 探索格子の拡張とその実測（サイクル1 の仕上げ）
+
+T4 の実測で、Mackey-Glass では **alpha が 14/15 回で格子下端 1e-8**、**遅延線の
+`n_lags` が 5/5 回で格子上端 16** を選んでいた。「格子の端が選ばれている＝探索が
+収束していない」という一般則に照らし、ユーザー承認のうえ
+`experiments/01_what_is_rc/config.yaml` の格子を拡張して実験を再実行した:
+
+- `alpha_grid`: 下端 `1.0e-8` → **`1.0e-10`**
+- `n_lags_grid`: 上端 `16` → **`64`**（`[1,2,4,8,16,32,64]`）
+
+**格子の値はこれで確定であり、以後は変更しない。** 拡張後に検証曲線そのものを
+実測した結果、当初の見立ては次のように修正された。
+
+#### 1. alpha: 見立ては誤りだった（内点解が存在しない）
+
+MG の検証 NRMSE は alpha に対して**単調増加**で、最適は alpha → 0（OLS）にある。
+実測（レプリケート0・遅延線 k=64）: `1e-10 → 5.292627e-04`, `1e-9 → 5.946133e-04`,
+`1e-8 → 7.258906e-04`, `1e-7 → 9.625484e-04`, …（単調）…, `100 → 2.467684e-01`。
+ESN N=200 も同形（`1e-10 → 8.171786e-04` … `100 → 2.044276e-01`）。
+
+つまり**格子下端が選ばれるのは探索の失敗ではなく期待される挙動**であり、
+「格子端が選ばれている＝探索予算が足りない」を機械的に適用すると誤診になる。
+下端 1e-10 自体も数値限界である: `cond(Phi^T Phi)` は遅延線 k=64 で 2.0e16、
+ESN N=200 で 8.0e18 に達し、`alpha <= 1e-11` では `fit_ridge` の
+`scipy.linalg.solve(assume_a="pos")` が `LinAlgError`（singular matrix）で落ちる。
+
+これを **D-11** として `.claude/decisions.yaml` に記録し、guard_test
+`tests/test_alpha_grid_lower_bound.py::test_mackey_glass_validation_nrmse_is_monotone_in_alpha`
+を新規実装した（縮小設定で「単調増加」と「最良は格子下端」を固定する。内点解が
+現れた瞬間に落ちる）。
+
+#### 2. `n_lags`: 見立ては当たっていたが、「収束」ではなくプラトー
+
+alpha を各点で最良化した MG の検証 NRMSE: `k=16 → 5.875641e-04`,
+`k=32 → 5.607482e-04`, `k=64 → 5.292627e-04`, `k=96 → 5.091023e-04`,
+`k=128 → 5.072052e-04`。初版の上端 16 は k=64 比で約 10% 悪く、遅延線を
+過少評価していた（拡張は正しかった）。一方 96 → 128 の改善は 0.4% で、
+**k=64 は実質天井**である。上端 64 が選ばれ続けるのは効きの飽和であり、
+これ以上広げても D-08 の探索予算の非対称性を広げるだけで結論は変わらない。
+
+#### 3. 再実行後の実測値と、更新したドキュメント
+
+`results/comparison.csv`（5レプリケート・テスト区間の NRMSE 平均 ± 標準偏差):
+
+| task | linear | delay_line | esn |
+|---|---|---|---|
+| mackey_glass | 0.1454 ± 0.0002 | **0.0005 ± 0.0000** | 0.0007 ± 0.0001 |
+| delay_parity | 1.0004 ± 0.0003 | 1.0007 ± 0.0007 | **0.0894 ± 0.0166** |
+
+符号正解率（パリティ）: linear 0.500 / delay_line 0.522 / **esn 1.000**。
+**MG では遅延線が ESN を上回る**という結果は言い換えずそのまま残す（連載の筋は
+「MG の1ステップ先予測だけ見れば遅延線で足りる。差が出るのは非線形性を要求する
+パリティ」であり、この向きは格子を両側に広げても変わらなかった）。
+
+- `docs/design.md` §7.1 / §7.2 の数値を再実行値に差し替え、**§8「探索格子」を新設**
+  （拡張の経緯・単調性・プラトー・数値限界）
+- `README.md` の実測表・テスト件数（198 → 200）・PCA の記述を更新
+- §7.2 の遅延埋め込み空間は 16 ラグ（17 次元）→ **64 ラグ（65 次元）** になった。
+  PCA の埋め込みラグ数が `max(ridge.n_lags_grid)` に配線されているため、格子拡張が
+  そのまま図と表に波及する（`n_components_95` は MG 2→2 / 遅延埋め込み 2→5、
+  パリティ 4→4 / 遅延埋め込み 17→62）
+
+#### 4. 実装時に決めたこと（仕様に無かった箇所）
+
+- **`alpha <= 1e-11` で `LinAlgError` になることはテストにしない**。理由: 失敗の
+  出方（例外の種類・境目の alpha）が BLAS/LAPACK 実装に依存し、環境差で偽陽性を
+  生む。D-11 の本命は単調性（内点解の不在）なのでそちらを guard_test にした
+- 補強として `test_alpha_grid_lower_bound_is_a_numerical_limit` を同ファイルに置き、
+  (a) 無正則化の Gram が `cond > 1/eps ≈ 4.5e15` で数値的に特異、(b) 格子下端では
+  実際に解ける、の2点だけを測る。「下端 alpha は丸め誤差と同じ桁」という主張は
+  **数値的に誤り**（1e-10 は Gram 対角スケール × eps ≈ 1.9e-13 より3桁大きい）なので
+  採らない。正しい構図は「無正則化では既に数値的に特異で、alpha が正定値性を
+  供給している」である
+- guard_test は既存ファイルに足さず `tests/test_alpha_grid_lower_bound.py` を新設した。
+  理由: 主張の対象が単一モジュールではなく「格子の値 + MG のデータ + リッジ解法」の
+  組であり、`test_ridge.py`（ソルバの性質）とは検査している層が違う。テストは本番の
+  `config.yaml` から格子を読むので、格子を動かせばこの guard が反応する
+- `experiments/01_what_is_rc/config.yaml` の**コメントのみ**修正した（格子の値は不変）。
+  理由: 拡張時のコメントに「下端を 1e-12 まで延ばしてある」という実際の値
+  （1.0e-10）と食い違う記述と、「内点解が得られるまで延ばすこと」という D-11 と
+  矛盾する指示が残っており、次の周の reviewer / fixer が読むと誤診に誘導されるため
+
 > L タスクは T3・T4 の2本（分割不足の警告閾値 3本には未達）。
 
 ## 5. 評価軸（Check フェーズに渡す）
@@ -390,6 +472,12 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
   rule: "日本語フォント対応に新規依存 (japanize-matplotlib 等) を追加せず、実行時に CJK フォントを探索し、見つからない場合はラベルを英語にフォールバックする"
   rationale: "要件_01 制約『依存は最小構成を維持』と『図は日本語フォント対応』の両立。フォント設定だけをフォールバックすると CI 上で豆腐文字の図が生成されるため、ラベル文字列ごと切り替える。記事用の図はローカル (CJK あり) で生成し、CI は生成の成否のみ検証する"
   guard_test: "tests/test_plotting_style.py::test_labels_fall_back_to_english_without_cjk_font"
+
+# 格子拡張後の実測から追加 (上記「§4 追補」を参照)
+- id: D-11
+  rule: "alpha 格子の下端 1.0e-10 は数値条件数による限界であり、恣意的な打ち切りではない。Mackey-Glass では検証 NRMSE が alpha に対して単調増加で内点解が存在しないため、格子下端が選ばれることは探索の失敗ではなく期待される挙動として扱う"
+  rationale: "実測で検証 NRMSE は alpha=1e-10 から 100 まで単調増加し、最適は alpha->0 (OLS) 側にある。cond(Phi^T Phi) は遅延線 k=64 で 2.0e16、ESN N=200 で 8.0e18 に達し、alpha <= 1e-11 では Cholesky が特異行列として落ちる。『格子端が選ばれている = 探索予算が足りない』をこの実験に機械的に適用すると誤診になる"
+  guard_test: "tests/test_alpha_grid_lower_bound.py::test_mackey_glass_validation_nrmse_is_monotone_in_alpha"
 ```
 
 ## 7. 受け入れ条件 → タスク対応表
@@ -399,7 +487,7 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
 | 1 | 3ベースラインが同一 API で切り替わり、同一分割・同一 alpha 格子で比較できる | **T3** (API) / T4 (ランナー) | `test_three_specs_share_one_api`, `test_all_methods_share_identical_rows`, `test_alpha_grid_is_shared_across_methods` |
 | 2 | 遅延パリティで線形が解けず ESN が解けることを数値で示せる | **T4** | `test_target_is_orthogonal_to_lagged_inputs`, `test_linear_baselines_fail_and_esn_solves_delay_parity`, `comparison.csv` |
 | 3 | MG 予測で3手法の誤差 + シード5本以上の平均±標準偏差 | **T4** | `comparison.csv` に30行、`n_replicates: 5`、`fig_comparison.png` の誤差棒 |
-| 4 | リザバー状態の PCA が入力空間より高次元に広がる | **T2** (診断) / T5 (図) | `state_pca` の `n_components_95` 比較値 + `fig_state_space.png`。**実測: 生の入力 (1次元) に対しては成立、遅延埋め込み入力 (17次元) に対しては不成立**。T5 の「実装時に決めたこと」と `docs/design.md` §7.2 を参照 |
+| 4 | リザバー状態の PCA が入力空間より高次元に広がる | **T2** (診断) / T5 (図) | `state_pca` の `n_components_95` 比較値 + `fig_state_space.png`。**実測: 生の入力 (1次元) に対しては成立、遅延埋め込み入力 (格子拡張後は 65次元) に対しては不成立**。T5 の「実装時に決めたこと」と `docs/design.md` §7.2 を参照 |
 | 5 | 図2枚が1コマンドで再生成、retina 解像度 | **T5** | `run.py` 1発で4ファイル、`test_savefig_dpi_is_retina` |
 | 6 | 診断層インターフェース `f(X,u,y)` の定義 + ダミー実装 + テスト | **T2** | `test_dummy_diagnostic_conforms_to_protocol`, `test_diagnostic_accepts_external_state_series`, `test_diagnostics_package_does_not_import_reservoir` |
 | 7 | pytest green + 最小 CI + README (3コマンド再現) | **T1** (基盤) / **T5** (README・仕上げ) | `make ci` 緑、GitHub Actions 緑、README の3コマンドを実行して再現 |
