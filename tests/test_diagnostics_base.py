@@ -207,12 +207,13 @@ class _ParameterizedDummyDiagnostic:
 
 
 def test_parameterized_callable_conforms_to_d01_signature_contract() -> None:
-    """frozen dataclass の ``__call__`` (構築時パラメータ) も D-01 契約を満たす (F-1-006)。
+    """frozen dataclass の ``__call__`` (構築時パラメータ) も D-01 契約を満たす。
 
-    D-01 の rule に「診断固有のパラメータは ctx ではなくパラメータ化した callable
-    (frozen dataclass の ``__call__``) の構築時に渡す」を追記した。この guard は
-    その形が実際に ``Diagnostic`` に代入でき、``test_all_diagnostics_conform_to_d01_signature_contract``
-    と同じ実行時契約 (``ctx`` が keyword-only であること等) を満たすことを固定する。
+    F-1-006: D-01 の rule に「診断固有のパラメータは ctx ではなくパラメータ化
+    した callable (frozen dataclass の ``__call__``) の構築時に渡す」を追記した。
+    この guard は、その形が実際に ``Diagnostic`` に代入でき、
+    ``test_all_diagnostics_conform_to_d01_signature_contract`` と同じ実行時契約
+    (``ctx`` が keyword-only であること等) を満たすことを固定する。
     ``_ParameterizedDummyDiagnostic`` はインスタンス (関数ではない) なので
     ``_iter_diagnostic_callables`` の列挙 (``inspect.isfunction`` で絞り込む) には
     乗らず、上のテストの対象には自動では入らない。そのためこのテストを別に置く。
