@@ -10,6 +10,7 @@ import pkgutil
 import subprocess
 import sys
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,7 @@ from rc_basics_lab.diagnostics.base import (
     Diagnostic,
     DiagnosticContext,
     DiagnosticResult,
+    resolve_context,
     validate_diagnostic_input,
 )
 from rc_basics_lab.diagnostics.dummy import state_mean_norm
