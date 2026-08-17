@@ -10,7 +10,7 @@ from __future__ import annotations
 import inspect
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -211,6 +211,16 @@ def test_decay_rate_matches_prescribed_decay() -> None:
     assert result.scalars["n_fit_points"] == pytest.approx(float(N_STEPS - 50))
 
 
+def _esp_config_with_abs_tol(tol: float) -> EspConfig:
+    """``abs_tol`` だけを振る cfg (``rel_tol`` は 0 にして交絡を消す)。"""
+    return EspConfig(abs_tol=tol, rel_tol=0.0)
+
+
+def _esp_config_with_rel_tol(tol: float) -> EspConfig:
+    """``rel_tol`` だけを振る cfg (``abs_tol`` は 0 にして交絡を消す)。"""
+    return EspConfig(abs_tol=0.0, rel_tol=tol)
+
+
 def test_verdict_is_monotone_in_tolerance() -> None:
     """閾値を緩めると判定が True→False に戻らない (D-16 guard)。
 
@@ -224,15 +234,13 @@ def test_verdict_is_monotone_in_tolerance() -> None:
     ctx = DiagnosticContext(companion_states=(companion,))
     tolerances = (1.0e-14, 1.0e-12, 1.0e-10, 1.0e-8, 1.0e-6)
 
-    for base, field_name in (
-        (EspConfig(rel_tol=0.0), "abs_tol"),
-        (EspConfig(abs_tol=0.0), "rel_tol"),
+    for make_cfg, field_name in (
+        (_esp_config_with_abs_tol, "abs_tol"),
+        (_esp_config_with_rel_tol, "rel_tol"),
     ):
         verdicts = [
             bool(
-                esp_convergence(
-                    states, ctx=ctx, cfg=replace(base, **{field_name: tol})
-                ).scalars["converged"]
+                esp_convergence(states, ctx=ctx, cfg=make_cfg(tol)).scalars["converged"]
             )
             for tol in tolerances
         ]
@@ -393,11 +401,16 @@ def test_growth_beyond_max_growth_raises() -> None:
 
 # --- D-15: 設定は既定値つきキーワード引数 cfg で渡す -----------------------
 
-_CONFIG_TYPES: tuple[tuple[Callable[..., DiagnosticResult], type[object]], ...] = (
-    (esp_convergence, EspConfig),
-    (conditional_lyapunov, LyapunovConfig),
-    (autocorrelation_time, TimescaleConfig),
+_CONFIG_TYPES: tuple[tuple[str, Diagnostic, type[object]], ...] = (
+    ("esp_convergence", esp_convergence, EspConfig),
+    ("conditional_lyapunov", conditional_lyapunov, LyapunovConfig),
+    ("autocorrelation_time", autocorrelation_time, TimescaleConfig),
 )
+"""``(名前, 診断, 対応する設定クラス)``。
+
+``Diagnostic`` として持てるのは、``cfg`` が**既定値つき**だから (D-01 の署名
+契約を一切変えていないことがここでも型で示される)。
+"""
 
 
 def _field_names(cls: type[object]) -> set[str]:

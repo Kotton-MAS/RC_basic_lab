@@ -341,7 +341,9 @@ def conditional_lyapunov(
     rng = np.random.default_rng(
         _DIRECTION_SEED if context.seed is None else context.seed
     )
-    direction: FloatArray = rng.standard_normal(n_units)
+    direction: FloatArray = np.asarray(
+        rng.standard_normal(size=n_units), dtype=np.float64
+    )
     direction = direction / float(np.linalg.norm(direction))
 
     log_growth_total = 0.0
