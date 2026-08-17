@@ -107,6 +107,13 @@ def aggregate_nrmse(rows: Sequence[ResultRow]) -> dict[tuple[str, str], _Aggrega
     }
 
 
+def _new_figure(width: float, height: float) -> Figure:
+    """constrained layout の Figure を作る (軸ラベルとタイトルの重なりを防ぐ)。"""
+    figure = Figure(figsize=(width, height))
+    figure.set_layout_engine("constrained")
+    return figure
+
+
 def _save(figure: Figure, path: Path) -> Path:
     """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
     path.parent.mkdir(parents=True, exist_ok=True)
