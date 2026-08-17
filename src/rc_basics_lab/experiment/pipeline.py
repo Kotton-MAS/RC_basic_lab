@@ -23,10 +23,14 @@ from rc_basics_lab.experiment.report import (
     COMPARISON_SUMMARY_CSV,
     META_JSON,
     write_comparison_csv,
+    write_comparison_summary_csv,
     write_meta,
 )
 from rc_basics_lab.experiment.runner import (
+    ReplicatePlan,
     ResultRow,
+    build_tasks,
+    plan_replicate,
     run_experiment,
 )
 from rc_basics_lab.experiment.state_space import (
@@ -36,6 +40,7 @@ from rc_basics_lab.experiment.state_space import (
     collect_state_space,
     summarize,
 )
+from rc_basics_lab.experiment.summary import aggregate_nrmse
 from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
 from rc_basics_lab.plotting.style import setup_style
 
@@ -91,8 +96,19 @@ def _log_state_space(reports: tuple[StateSpaceReport, ...]) -> None:
         )
 
 
+def _plan_zero_by_task(config: ExperimentConfig) -> dict[str, ReplicatePlan]:
+    """タスク名 -> レプリケート0の ``ReplicatePlan``。
+
+    ``run_experiment`` と ``collect_state_space`` の両方がレプリケート0を
+    使うため、ここで1回だけ作って両方へ渡す (F-1-009)。
+    """
+    return {
+        entry.name: plan_replicate(config, entry, 0) for entry in build_tasks(config)
+    }
+
+
 def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs:
-    """実験を実行し、CSV・図2枚・meta.json を書き出す。
+    """実験を実行し、CSV2枚・図2枚・meta.json を書き出す。
 
     Args:
         config: 実験設定。
@@ -102,14 +118,17 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
         生成した行・PCA 比較・ファイルパス・実測 wall time。
     """
     started = time.perf_counter()
-    rows = tuple(run_experiment(config))
-    reports = collect_state_space(config)
+    plans0 = _plan_zero_by_task(config)
+    rows = tuple(run_experiment(config, plans0=plans0))
+    reports = collect_state_space(config, plans=plans0)
     wall_time_s = time.perf_counter() - started
     _log_state_space(reports)
 
+    stats = aggregate_nrmse(rows)
     style = setup_style()
     paths = (
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
+        write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
         plot_comparison(rows, out_dir / FIG_COMPARISON, style=style),
         plot_state_space(reports, out_dir / FIG_STATE_SPACE, style=style),
         write_meta(
