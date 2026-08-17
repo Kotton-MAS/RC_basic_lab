@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -11,6 +11,7 @@ help:
 	@echo "  type         - Run mypy"
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
+	@echo "  figures-02   - Regenerate results/ for experiment 02 (CSV + 3 figures + meta)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
 
@@ -47,6 +48,12 @@ ci: lock-check lint fmt-check type test
 # 入れない (CI は実験を回さない)。
 figures-01:
 	uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml --out results
+
+# 実験02の成果物 (esp_diagnostics.csv / fig_esp_decay.png / fig_leak_timescale.png /
+# fig_esp_map.png / meta.json) を results/02_esp_and_dynamics/ に再生成する。
+# 01 と出力先を分けるのは meta.json / results 直下のファイル名が衝突するため。
+figures-02:
+	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics
 
 pre-commit:
 	uv run pre-commit run --all-files

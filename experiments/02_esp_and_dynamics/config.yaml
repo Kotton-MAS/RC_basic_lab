@@ -135,7 +135,8 @@ lyapunov:
   method: perturbation
   delta: 1.0e-8
   renorm_interval: 1
-  max_growth: 1.0e3
+  # YAML 1.1 は 1.0e3 を文字列と解釈する (指数に符号が要る)。1000.0 と書く。
+  max_growth: 1000.0
   # 伝播器の入力インデックスずれを実行時に落とす。切ってはいけない (D-18)。
   check_propagator: true
   propagator_tol: 1.0e-10
