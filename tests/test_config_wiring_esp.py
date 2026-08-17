@@ -81,7 +81,8 @@ DELEGATED_PREFIX = "washout.base."
 KNOWN_EXPERIMENT_MODULES = frozenset(
     {"pipeline", "report", "runner", "split", "state_space", "summary"}
 )
-"""サイクル1 (01) 時点で存在する ``experiment/`` 配下の公開モジュール集合。
+"""**サイクル1 (01) 時点のスナップショットとして凍結**した ``experiment/``
+配下の公開モジュール集合。以後この値そのものを更新しない。
 
 F-02-1-005: 以前の信管は ``find_spec("rc_basics_lab.experiment.esp")`` という
 モジュール名1個だけを見ていた。T3 は ``experiment/esp.py`` と
@@ -89,7 +90,29 @@ F-02-1-005: 以前の信管は ``find_spec("rc_basics_lab.experiment.esp")`` と
 ``esp_pipeline.py`` が先に生え、実験層が動き出しているのに信管が沈黙する
 期間が生まれ得る。信管をこの既知集合との差分 (= 新しい公開モジュールが
 1本でも増えたか) に広げることで、02 の実験層がどの名前で追加されても
-(``esp.py`` だろうと ``esp_pipeline.py`` だろうと) 発火するようにする。"""
+(``esp.py`` だろうと ``esp_pipeline.py`` だろうと) 発火するようにする。
+
+F-02-2-004: この集合は「発火時に1語足せば黙って解除できる」経路そのもの
+だった (例: ``esp`` を足すだけで T3 の pending を実装せずに信管を黙らせる)。
+これを塞ぐため、``TASK_STAGE_MODULES`` のどれかがこの集合に含まれるように
+なった時点で、対応する段階の pending が空であることを
+``test_known_experiment_modules_cannot_be_widened_while_pending_remains``
+が要求する。つまりこの集合を書き換える (=広げる) 変更は、対応する pending
+の解消と同時にしか通らない。"""
+
+TASK_STAGE_MODULES: Mapping[str, frozenset[str]] = {
+    "T3": frozenset({"esp", "esp_pipeline"}),
+    "T4": frozenset({"washout"}),
+}
+"""タスク段階ごとに「その段階の消費側が実装された」と判定するモジュール名
+(``experiment/`` 直下、拡張子なし)。
+
+F-02-2-004: 以前の信管は「新規モジュールが1本でも増えたら、段階を問わず
+全ての pending を禁じる」形だったため、T3 が ``experiment/esp.py`` を
+作った時点で T4 (``washout``) 担当の pending まで巻き添えで赤くなり、
+T3 完了〜T4 着手の間テストが緑にならなかった。段階とモジュールの対応表を
+ここに固定し、``ESP_WIRING_CASES`` の ``task`` フィールドと突き合わせることで
+「どの段階の消費側が生えたか」だけを見て判定を絞る。"""
 
 DIAGNOSTIC_SECTIONS: tuple[tuple[str, type[DataclassInstance]], ...] = (
     ("esp", EspConfig),
