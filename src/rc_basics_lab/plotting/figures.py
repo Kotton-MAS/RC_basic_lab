@@ -182,6 +182,11 @@ def plot_comparison(
                 fontsize=8,
             )
         axis.set_yscale("log")
+        # 注記と基準線のぶんの余白 (対数軸なので係数で確保する)
+        axis.set_ylim(
+            float(np.min(means - lower)) / 3.0,
+            max(float(np.max(means + stds)), REFERENCE_NRMSE) * 3.0,
+        )
         axis.set_xticks(positions)
         axis.set_xticklabels(
             [_lookup(_METHOD_LABELS, method, style) for method in methods]
