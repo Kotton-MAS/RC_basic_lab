@@ -135,6 +135,22 @@ class ExperimentConfig:
     esn_delay_parity: ESNConfig = field(default_factory=_delay_parity_esn)
 
 
+TASK_LENGTH_FIELDS: Mapping[str, str] = {
+    "mackey_glass": "mackey_glass",
+    "delay_parity": "delay_parity",
+}
+"""``build_tasks`` (``experiment/runner.py``) が返す課題名 -> ``ExperimentConfig``
+上で対応する、系列長 (``length: int`` 属性) を持つフィールド名。
+
+課題の列挙点は ``build_tasks`` が唯一の真実 (``conventions.md``) だが、washout
+感度実験 (D-19) の系列長補償 (``experiment.washout.variant_for``) は
+「どの課題がどのフィールドの ``length`` を持つか」を別に知る必要がある。この
+対応をここ1か所に集約し、``build_tasks`` に課題を追加してもここへの登録を
+忘れると、その課題の系列長は補償されず D-19 の交絡除去が黙って効かなくなる
+(``variant_for`` は未登録の課題があれば ``ValueError`` にする)。
+"""
+
+
 DEFAULT_ESP_MAP_RHO_GRID: tuple[float, ...] = tuple(
     round(float(value), 3) for value in np.linspace(0.4, 1.9, 16)
 )
@@ -476,6 +492,7 @@ __all__ = [
     "DEFAULT_ALPHA_GRID",
     "DEFAULT_ESP_MAP_RHO_GRID",
     "DEFAULT_ESP_MAP_SIGMA_GRID",
+    "TASK_LENGTH_FIELDS",
     "ConfigError",
     "DelayParityConfig",
     "DriveConfig",
