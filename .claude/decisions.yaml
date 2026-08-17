@@ -9,6 +9,11 @@
 # guard_test は実在するテストしか書けないため、T3〜T5 で実装されるテストに
 # 紐づく決定は、該当タスクの担当者が実装と同時にここへ追記する。
 # サイクル1 (T1〜T5) の10件がそろった。
+#
+# サイクル2 (docs/plans/rc-basics-02.md §6) で D-13〜D-22 を追記した。
+# rule / rationale は仕様書の草案そのままではなく、**T1〜T4 が実装に合わせて
+# 訂正した版**が正本である (特に D-19 の補償式)。背景と実測値は
+# docs/design.md §9 を参照。
 
 - id: D-01
   rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う。DiagnosticContext が持つのはデータの素性 (washout / dt / seed / companion_states) のみとし、診断固有のパラメータはパラメータ化した callable (frozen dataclass の __call__) の構築時に渡す"
