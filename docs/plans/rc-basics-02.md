@@ -158,6 +158,10 @@ class StatePropagator(Protocol):
 
 19. `test_all_config_fields_have_a_case` (`tests/test_diagnostics_esp.py`) —— 3設定クラスのフィールド追加時に `test_esp_config_fields_change_output` のケース登録を強制する。理由: `test_all_config_fields_are_covered` (01) と同じ役割。これが無いと「全フィールドで出力が変わる」を名乗ったまま網羅性が静かに落ちる。
 
+*サイクル2a round 2 での修正 (F-02-2-002)*
+
+20. `_iter_diagnostic_callables()` (`tests/test_diagnostics_base.py`) の列挙述語を **`inspect.isfunction` 限定から「関数、または `__call__` の戻り値アノテーションが `DiagnosticResult` である public callable インスタンス (クラス自体は除外)」へ拡張**した。理由: 上記18で docstring に書いた第2形 (frozen dataclass の `__call__`) が、`isfunction` 限定の列挙では構造的に拾えず、第2形の診断が `diagnostics/` に現れた瞬間に `MINIMAL_VALID_INPUT` 登録の強制・D-15 guard・D-01 契約テストの3つが同時に静かに無効化される穴があった (reviewer-architecture / オーケストレータが実測)。**03 の IPC (サロゲート本数・最大遅延/次数を持つ) はこのルールが名指しで推奨する対象**であり、03 着手前に塞ぐ必要があった。安全な変異注入 (`diagnostics/_tmp_second_form.py` を一時追加して検証後に即削除) で3guardすべての有効性を実測済み。既存5診断 (すべて第1形) は列挙件数・内容とも変わらない。詳細は `docs/review-findings-02.md` の F-02-2-002。
+
 *実測値 (T1 完了時)*
 
 - `lyapunov_per_step` vs `log ρ` (相対誤差): ρ=0.5 → 5.0e-10 / ρ=0.9 → 8.8e-12 / ρ=1.1 → 2.2e-09
