@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import cast
 
 import matplotlib
 import numpy as np
@@ -79,12 +80,13 @@ def test_cjk_font_is_used_when_available(monkeypatch: pytest.MonkeyPatch) -> Non
     assert context.label("リザバー状態", "reservoir state") == "リザバー状態"
 
     params = rc_params_for(context)
-    assert params["font.sans-serif"][0] == "IPAexGothic"
+    sans_serif = cast("list[str]", params["font.sans-serif"])
+    assert sans_serif[0] == "IPAexGothic"
     assert params["axes.unicode_minus"] is False
 
     # 適用前は既定値のまま (グローバルを汚していないことの確認)
     assert matplotlib.rcParams["font.sans-serif"][0] != "IPAexGothic"
-    with matplotlib.rc_context(params):
+    with matplotlib.rc_context(params):  # type: ignore[arg-type]
         assert matplotlib.rcParams["font.sans-serif"][0] == "IPAexGothic"
         assert matplotlib.rcParams["axes.unicode_minus"] is False
     # rc_context を抜けたら既定値に戻る
