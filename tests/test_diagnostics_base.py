@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -79,6 +81,40 @@ def test_diagnostics_package_does_not_import_reservoir() -> None:
         # 遅延 import や importlib 経由の抜け道も塞ぐ (docstring の言及は許す)
         assert f"import {FORBIDDEN_MODULE}" not in text
         assert f'"{FORBIDDEN_MODULE}"' not in text
+
+
+def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
+    """diagnostics を import しても reservoir が sys.modules に載らない (推移閉包)。
+
+    上の ``test_diagnostics_package_does_not_import_reservoir`` は diagnostics
+    配下の *.py の AST を直接 import 検査するだけなので、
+    ``diagnostics/x.py`` が ``config.py`` 経由で間接的に ``reservoir`` を
+    引き込んでも検出できない (config.py は ``ESNConfig`` を import している)。
+    このテストは実際に別プロセスで ``rc_basics_lab.diagnostics`` だけを import し、
+    その後の ``sys.modules`` に ``rc_basics_lab.reservoir`` で始まるモジュールが
+    1つも無いことを assert することで、直接 import ではなく import の**結果**を
+    検証する。tasks/ 側の前例 (自分の設定 dataclass を config.py から import する)
+    を diagnostics/ が真似た瞬間にここが赤くなる。
+    """
+    probe = (
+        "import importlib, sys\n"
+        "importlib.import_module('rc_basics_lab.diagnostics')\n"
+        "leaked = sorted(\n"
+        "    k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')\n"
+        ")\n"
+        "print(','.join(leaked))\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    leaked = [name for name in completed.stdout.strip().split(",") if name]
+    assert leaked == [], (
+        "rc_basics_lab.diagnostics の import が rc_basics_lab.reservoir を "
+        f"引き込んでいます (推移的依存): {leaked}"
+    )
 
 
 def test_context_has_all_defaults() -> None:

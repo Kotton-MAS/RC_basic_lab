@@ -3,6 +3,15 @@
 **このサイクルで確定し、02〜05 では変更しない**。拡張は
 ``DiagnosticContext`` への「既定値つきフィールド追加」のみ許可する。
 位置引数を増やすと診断ごとに署名が割れ、移植性が失われる。
+
+診断の設定 dataclass (例: 02 の ``EspConfig``) は ``diagnostics/`` 側に置き、
+``config.py`` からは import しない。``config.py`` は
+``rc_basics_lab.reservoir.esn.ESNConfig`` を import しているため、
+``tasks/`` の前例 (自分の設定 dataclass を ``config.py`` から import する) を
+``diagnostics/`` が真似ると、``reservoir`` が推移的に引き込まれ、この
+パッケージの移植性の前提 (``reservoir`` 非依存) が崩れる。これは
+``tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir``
+で機械的に検査する。
 """
 
 from __future__ import annotations
