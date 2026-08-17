@@ -7,8 +7,29 @@
 - ``report``: ``comparison.csv`` / ``comparison_summary.csv`` / ``meta.json``
   への書き出し
 - ``pipeline``: 1コマンドで5成果物をそろえる経路 (CLI はここを呼ぶだけ)
+- ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ唯一の場所)
+- ``esp_pipeline``: 02 の成果物 (CSV1枚 + 図3枚 + meta.json) をそろえる経路
 """
 
+from rc_basics_lab.experiment.esp import (
+    ESP_CSV_COLUMNS,
+    ConditionOutcome,
+    EspResults,
+    EspRow,
+    VerdictAgreement,
+    esn_propagator,
+    evaluate_condition,
+    make_drive,
+    make_initial_states,
+    run_esp_experiment,
+    summarize_verdict_agreement,
+)
+from rc_basics_lab.experiment.esp_pipeline import (
+    ESP_ARTIFACTS,
+    EspOutputs,
+    run_and_report_esp,
+    write_esp_csv,
+)
 from rc_basics_lab.experiment.pipeline import (
     ARTIFACTS,
     ExperimentOutputs,
@@ -18,6 +39,7 @@ from rc_basics_lab.experiment.report import (
     write_comparison_csv,
     write_comparison_summary_csv,
     write_meta,
+    write_meta_for,
 )
 from rc_basics_lab.experiment.runner import (
     CSV_COLUMNS,
@@ -41,7 +63,13 @@ from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
 __all__ = [
     "ARTIFACTS",
     "CSV_COLUMNS",
+    "ESP_ARTIFACTS",
+    "ESP_CSV_COLUMNS",
     "Aggregate",
+    "ConditionOutcome",
+    "EspOutputs",
+    "EspResults",
+    "EspRow",
     "ExperimentOutputs",
     "Method",
     "ReplicatePlan",
@@ -49,17 +77,27 @@ __all__ = [
     "Split",
     "StateSpaceReport",
     "TaskEntry",
+    "VerdictAgreement",
     "aggregate_nrmse",
     "build_methods",
     "build_tasks",
     "collect_state_space",
     "compute_t0",
+    "esn_propagator",
+    "evaluate_condition",
+    "make_drive",
+    "make_initial_states",
     "make_split",
     "plan_replicate",
     "run_and_report",
+    "run_and_report_esp",
+    "run_esp_experiment",
     "run_experiment",
     "run_task",
+    "summarize_verdict_agreement",
     "write_comparison_csv",
     "write_comparison_summary_csv",
+    "write_esp_csv",
     "write_meta",
+    "write_meta_for",
 ]
