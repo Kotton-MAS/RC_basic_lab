@@ -32,7 +32,6 @@
 from __future__ import annotations
 
 import dataclasses
-import importlib.util
 from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
@@ -77,8 +76,18 @@ CHANNEL_PENDING = "pending"
 DELEGATED_PREFIX = "washout.base."
 """01 の ``ExperimentConfig`` を内包した部分。被覆は 01 側に委譲する。"""
 
-EXPERIMENT_LAYER_MODULE = "rc_basics_lab.experiment.esp"
-"""02 の実験層 (T3)。生えた時点で ``CHANNEL_PENDING`` は許されなくなる。"""
+KNOWN_EXPERIMENT_MODULES = frozenset(
+    {"pipeline", "report", "runner", "split", "state_space", "summary"}
+)
+"""サイクル1 (01) 時点で存在する ``experiment/`` 配下の公開モジュール集合。
+
+F-1-005: 以前の信管は ``find_spec("rc_basics_lab.experiment.esp")`` という
+モジュール名1個だけを見ていた。T3 は ``experiment/esp.py`` と
+``experiment/esp_pipeline.py`` の2本を作る計画で、実装順によっては
+``esp_pipeline.py`` が先に生え、実験層が動き出しているのに信管が沈黙する
+期間が生まれ得る。信管をこの既知集合との差分 (= 新しい公開モジュールが
+1本でも増えたか) に広げることで、02 の実験層がどの名前で追加されても
+(``esp.py`` だろうと ``esp_pipeline.py`` だろうと) 発火するようにする。"""
 
 DIAGNOSTIC_SECTIONS: tuple[tuple[str, type[DataclassInstance]], ...] = (
     ("esp", EspConfig),
