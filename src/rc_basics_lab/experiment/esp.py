@@ -28,7 +28,9 @@ from dataclasses import dataclass, fields
 import numpy as np
 
 from rc_basics_lab.config import (
+    DriveConfig,
     Esp02Config,
+    ReservoirSweepConfig,
     esp_stream_seed,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, StatePropagator
@@ -708,6 +710,7 @@ __all__ = [
     "ConditionOutcome",
     "EspResults",
     "EspRow",
+    "ReferenceTrajectory",
     "Trajectories",
     "VerdictAgreement",
     "build_esn_config",
@@ -721,5 +724,6 @@ __all__ = [
     "run_esp_map",
     "run_timescale_sweep",
     "simulate_condition",
+    "simulate_reference_trajectory",
     "summarize_verdict_agreement",
 ]
