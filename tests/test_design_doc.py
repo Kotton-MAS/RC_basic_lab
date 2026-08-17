@@ -36,6 +36,9 @@ DESIGN = ROOT / "docs" / "design.md"
 THRESHOLD_CSV = (
     ROOT / "results" / "02_esp_and_dynamics" / "esp_threshold_sensitivity.csv"
 )
+UNPADDED_WASHOUT_CSV = (
+    ROOT / "results" / "02_esp_and_dynamics" / "washout_sensitivity_unpadded.csv"
+)
 
 _PACKAGE = "rc_basics_lab"
 _DEFAULTS_ROW = re.compile(
