@@ -316,6 +316,30 @@ def test_matches_analytic_exponent_for_linear_map(rho: float) -> None:
     assert result.scalars["max_observed_growth"] == pytest.approx(rho, rel=1e-6)
 
 
+def test_lyapunov_per_step_is_independent_of_n_units() -> None:
+    """``lyapunov_per_step`` はユニット数 N に依存しない (F-1-016, D-16 と対になる)。
+
+    ``_driven_linear_system`` の ``A = rho * Q`` (``Q`` は直交行列) では
+    ``growth = separation_norm / scale / delta`` の式から ``scale`` が厳密に
+    相殺するため、この系で ``n_units`` を固定したまま解析解 ``log(rho)`` と
+    照合するテスト (``test_matches_analytic_exponent_for_linear_map``) は
+    ``scale = sqrt(n_units)`` を落とす変異を原理的に検出できない
+    (実測: 337 件中1件も落ちない)。ここでは異なる ``n_units`` (8 と 32) で
+    同じ ``rho`` を与え、``lyapunov_per_step`` が N に依存しないことを直接
+    assert することでその class のバグを検出可能にする。
+    ``test_distance_is_rms_per_unit_and_independent_of_n_units`` と対になる。
+    """
+    values = []
+    for n_units in (8, 32):
+        states, _, propagator = _driven_linear_system(0.9, n_units=n_units)
+        result = conditional_lyapunov(
+            states, ctx=DiagnosticContext(propagator=propagator, washout=100)
+        )
+        values.append(result.scalars["lyapunov_per_step"])
+    assert values[0] == pytest.approx(math.log(0.9), rel=1e-6)
+    assert values[0] == pytest.approx(values[1], rel=1e-6)
+
+
 def test_lyapunov_per_time_divides_by_dt() -> None:
     """``ctx.dt`` は時間正規化にだけ効く (ステップ単位の値は変わらない)。"""
     states, _, propagator = _driven_linear_system(0.9)
