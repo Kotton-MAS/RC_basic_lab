@@ -36,8 +36,11 @@
 
 ## 設計判断
 
-1. **ESP判定は `f(state_sequence_a, state_sequence_b) -> ESPResult` の純関数**。
-   リザバーの生成方法(ESN / メモリスタ回路)に一切依存させない
+1. **ESP判定は D-01 の共通署名 `f(X, u=None, y=None, *, ctx: DiagnosticContext | None) -> DiagnosticResult` に従う**
+   (D-01 に合わせて更新: 旧`f(state_sequence_a, state_sequence_b) -> ESPResult`から変更)。
+   比較対象の第2軌道は `ctx.companion_states` で渡し、位置引数を増やさない。
+   リザバーの生成方法(ESN / メモリスタ回路)に一切依存させない(`X` / `ctx.companion_states` に
+   渡す状態系列がどう生成されたかを問わない)
 2. **条件付きLyapunovはまず数値摂動法**で実装(解析Jacobianは素子モデルごとに手計算が要るため後回し)。
    インターフェースは後から解析版を差し込める形にしておく
 3. **ESP判定の閾値と窓は設定可能にし、既定値の根拠をdocs/design.mdに記録する**

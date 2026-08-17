@@ -29,7 +29,20 @@ ROOT = Path(__file__).resolve().parent
 EXPERIMENTS: dict[str, Path] = {
     "01": ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
 }
-"""実験番号 -> 設定 YAML。サイクル 02〜05 はここに1行足す。"""
+"""実験番号 -> 設定 YAML。
+
+**「ここに1行足すだけ」では 02〜05 は動かない**:
+- YAML が ``ExperimentConfig`` に無いキーを持つ場合 D-09 により ``ConfigError``
+  で落ちる (01 専用の設定クラスしか無いため)。
+- ``run_and_report`` は ``run_experiment`` / ``collect_state_space`` /
+  ``plot_comparison`` / ``plot_state_space`` という 01 専用の4成果物に
+  ハードコードされている。02 の成果物 (``fig_esp_map.png`` /
+  ``esp_diagnostics.csv`` 等) はこの経路を通らない。
+
+02 着手時は、実験ごとの設定クラスとパイプライン関数の組をどう選択させるか
+(``EXPERIMENTS`` の値を YAML パスから ``(設定ローダ, パイプライン関数, YAML パス)``
+の組へ変える、など) をこの構造ごと見直すこと。
+"""
 
 DEFAULT_OUT = Path("results")
 
