@@ -13,7 +13,7 @@
 - id: D-01
   rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う"
   rationale: "要件_01 設計判断1。02 の ESP は2軌道、03 の IPC はサロゲート用シード、04 は dt を要するが、これらを位置引数にすると診断ごとに署名が割れて memristor-rc-lab への移植性が失われる。ctx.companion_states / ctx.dt / ctx.seed に逃がせば 02〜05 の全診断が署名変更なしで乗る"
-  guard_test: "tests/test_diagnostics_base.py::test_dummy_diagnostic_conforms_to_protocol"
+  guard_test: "tests/test_diagnostics_base.py::test_all_diagnostics_conform_to_d01_signature_contract"
 
 - id: D-02
   rule: "誤差指標は NRMSE = RMSE / std(y_true) (ddof=0) に統一する。範囲正規化 (max-min) は使わない"
