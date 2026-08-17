@@ -98,6 +98,15 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
   - `tests/test_seeds.py::test_streams_are_independent` — `reservoir` シードのみ変えると reservoir ストリームの乱数列が変わり、`task`/`split` ストリームは**バイト単位で不変**。3ストリームすべてについて対称に検証
   - `tests/test_meta.py::test_meta_is_json_serializable` — `json.dumps` が通り、`commit` キーが存在する
 - **想定所要**: M
+- **実装時に決めたこと（仕様に無かった箇所。T3〜T5 はこれに合わせる）**
+  - `ExperimentConfig` の初期セクションは `name / n_replicates / seeds / split / ridge / mackey_glass / delay_parity` とした。理由: §3 で数値が確定しているものだけを T1 で持ち、`esn` セクションは T3 の `ESNConfig` を再利用して T4 で追加する（同じ dataclass を2箇所に書かないため）。ローダはフィールド型から再帰的に構築するので、セクション追加時にローダ側の変更は不要
+  - `SplitConfig` に `max_start_offset: int = 200` を置いた。理由: T4 の「split シードで系列内の開始オフセットを選ぶ」（D-06）にオフセット上限のパラメータが要るため。値は washout と同じ 200
+  - `RidgeConfig` に `n_lags_grid: tuple[int, ...] = (1, 2, 4, 8, 16)` を置いた。理由: D-08 の「検証で選ぶのは alpha と遅延線の `n_lags` のみ」を YAML で表現するため。alpha 格子と同じく単一キーに集約する
+  - `nrmse` は `std(y_true) == 0` のとき `ValueError`。理由: 0 除算で inf/nan を返すと下流の集計が静かに壊れる。定数目標は本連載に現れない
+  - `sign_accuracy` は `sign(0) = +1`（§3 の指定を実装に反映）
+  - 設定値の型変換は暗黙の緩和をしない（`int` フィールドに float を渡すと `ConfigError`、`bool` は `int` として受理しない）。理由: D-09 と同じ動機で、静かな誤読を作らない
+  - `src/rc_basics_lab/py.typed` を追加した。理由: これが無いと、インストール済みパッケージとして `rc_basics_lab` を import する外部ファイル（T4/T5 の `experiments/*/run.py` が該当しうる）で mypy が型を読めず、`Diagnostic` プロトコル適合の検査（D-01 の guard）が静かに無効化される
+  - `.claude/decisions.yaml` には D-01/D-02/D-06/D-09 のみ記載した。理由: `check_decisions.py` が guard_test の実在を検証するため、T3〜T5 のテストに紐づく D-03/D-04/D-05/D-07/D-08/D-10 は各担当タスクで追記する（ファイル冒頭のコメントに明記済み）
 
 ### T2: 診断層インターフェース（02〜05 の土台）+ PCA 診断 + ダミー実装
 
