@@ -37,6 +37,25 @@ def _external_states(n_steps: int = 300, n_units: int = 20) -> FloatArray:
     return rng.standard_normal((n_steps, n_units))
 
 
+def _full_context(states: FloatArray, washout: int = 0) -> DiagnosticContext:
+    """全診断が実際に最後まで走れるだけの情報を持つ ``ctx``。
+
+    ``esp_convergence`` は ``companion_states`` を、``conditional_lyapunov`` は
+    ``propagator`` を必須にしている (第2軌道や伝播器が渡っていないのに判定や
+    指数だけが返る事故を殺すため)。伝播器は参照軌道と厳密に整合する形
+    (Jacobian が恒等) にしてあるので、既定で有効な整合検査を通る。
+    """
+    companion: FloatArray = states + 0.1
+
+    def propagator(x: FloatArray, t: int) -> FloatArray:
+        shifted: FloatArray = states[t + 1] + (x - states[t])
+        return shifted
+
+    return DiagnosticContext(
+        washout=washout, companion_states=(companion,), propagator=propagator
+    )
+
+
 def _extract_leaked(stdout: str) -> list[str]:
     """probe の stdout から ``LEAKED=`` 行だけを取り出して JSON デコードする。
 
@@ -84,18 +103,37 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
     return found
 
 
+KNOWN_DIAGNOSTICS = (
+    "rc_basics_lab.diagnostics.dummy.state_mean_norm",
+    "rc_basics_lab.diagnostics.state_space.state_pca",
+    "rc_basics_lab.diagnostics.esp.esp_convergence",
+    "rc_basics_lab.diagnostics.esp.conditional_lyapunov",
+    "rc_basics_lab.diagnostics.timescale.autocorrelation_time",
+)
+"""現時点で存在する全診断 (サイクル1 の2本 + サイクル2 で追加した3本)。
+
+件数まで固定するのは、列挙条件を壊して件数が減っても
+``test_all_diagnostics_conform_to_d01_signature_contract`` が緑のまま通る
+経路を塞ぐため。診断を追加したらここへ1行足す (追加を忘れると赤くなる)。
+"""
+
+
 def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
-    """列挙条件が0件に壊れていないこと自体を固定する。
+    """列挙条件が壊れていないこと自体を固定する (件数まで固定)。
 
     列挙条件 (戻り値アノテーションが DiagnosticResult の public callable) を
     間違えて0件になると、下の契約テストは何も検査せずに緑になってしまう。
-    現時点で存在する2本 (dummy.state_mean_norm / state_space.state_pca) が
-    確実に拾えていることを固定する。
+    サイクル2 で ``esp`` / ``timescale`` の3本が加わり、列挙件数は 2 から 5 に
+    増えた。
     """
     names = {qualname for qualname, _ in _iter_diagnostic_callables()}
     assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
-    assert "rc_basics_lab.diagnostics.dummy.state_mean_norm" in names
-    assert "rc_basics_lab.diagnostics.state_space.state_pca" in names
+    assert names == set(KNOWN_DIAGNOSTICS), (
+        "列挙された診断が想定と一致しません "
+        f"(不足={sorted(set(KNOWN_DIAGNOSTICS) - names)}, "
+        f"余剰={sorted(names - set(KNOWN_DIAGNOSTICS))})"
+    )
+    assert len(names) == 5
 
 
 def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
@@ -171,11 +209,29 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
             func(states, None, None, DiagnosticContext())  # type: ignore[misc]
 
         # 契約が許す全呼び出しパターンが実際に呼べること。
-        func(states)
-        func(states, None)
-        func(states, None, None)
-        func(states, None, None, ctx=DiagnosticContext())
-        func(states, ctx=DiagnosticContext())
+        # ``esp_convergence`` / ``conditional_lyapunov`` は ctx に必須データ
+        # (companion_states / propagator) が無いと ValueError を投げる。これは
+        # 署名契約 (D-01) ではなく入力要件の話なので、ここでは ValueError だけを
+        # 許容し、TypeError (= 呼び出し規約の破れ) は失敗として扱う。
+        for call in (
+            lambda: func(states),
+            lambda: func(states, None),
+            lambda: func(states, None, None),
+            lambda: func(states, None, None, ctx=DiagnosticContext()),
+            lambda: func(states, ctx=DiagnosticContext()),
+        ):
+            try:
+                call()
+            except ValueError:
+                pass
+
+        # 必須データをそろえれば、どの診断も最後まで走って結果を返すこと。
+        # (上で ValueError を許容した分の穴をここで塞ぐ。ValueError を投げ続ける
+        #  だけの診断が契約テストを通り抜けないようにする。)
+        result = func(states, None, None, ctx=_full_context(states))
+        assert isinstance(result, DiagnosticResult), (
+            f"{qualname}: DiagnosticResult を返していません: {type(result)}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
