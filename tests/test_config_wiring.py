@@ -70,7 +70,8 @@ CHANNEL_ERROR = "error"
 VOLATILE_COLUMNS = frozenset({"wall_time_s"})
 """指紋から外す列 (実測時間は実行ごとに変わる)。"""
 
-EXPERIMENT_CONFIG_PATH = Path("experiments/01_what_is_rc/config.yaml")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+EXPERIMENT_CONFIG_PATH = REPO_ROOT / "experiments" / "01_what_is_rc" / "config.yaml"
 REQUIRED_REPLICATES = 5
 """受け入れ条件3 が要求するシード本数。"""
 

@@ -147,7 +147,9 @@ def _without_wall_time(csv_text: str) -> list[list[str]]:
 
 def _load_run_module() -> ModuleType:
     """``experiments/01_what_is_rc/run.py`` を読み込む (パッケージ外のため)。"""
-    path = Path("experiments/01_what_is_rc/run.py")
+    path = (
+        Path(__file__).resolve().parents[1] / "experiments" / "01_what_is_rc" / "run.py"
+    )
     spec = importlib.util.spec_from_file_location("experiment_01_run", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"読み込めません: {path}")
