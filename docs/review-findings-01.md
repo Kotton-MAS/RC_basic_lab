@@ -187,10 +187,6 @@ round 2 は round 1 の HIGH 修正（F-1-001, F-1-017 の対応）に対する�
 - **F-2-009** [MEDIUM / style] 新規 parametrize が `pytest.param(..., id=...)` 形式で、既存3箇所の
   `ids=[...]` 別引数形式と異なる（inferred, 実測なし）。既存に揃えるか、新形式を標準として
   `conventions.md` に明記するかは実装判断。
-- **F-2-012** [MEDIUM / test] `test_diagnostics_package_does_not_import_reservoir`（AST版）が
-  `diagnostics/__init__.py` に未登録のファイルを見逃す可能性がある（`test_diagnostics_package_does_not_import_reservoir`
-  の対象は `package_dir.glob("*.py")` でファイル網羅だが、登録漏れそのものを検出する assert は無い）。
-  02 で新規診断モジュールを追加する際に、`__init__.py` への配線漏れを検出する仕組みを足すことを検討。
 
 ---
 
@@ -198,5 +194,6 @@ round 2 は round 1 の HIGH 修正（F-1-001, F-1-017 の対応）に対する�
 
 1. **受け入れ条件4 の記事での扱い** — ユーザー判断待ち。02 着手前に決めておくと後戻りがない。
    （F-1-006 は decisions.yaml へ反映済み、対応済みに移動）
-2. **F-2-012**（`__init__.py` 登録漏れの検出）— 02 で診断モジュールを追加する直前に。
-3. **F-2-009**（parametrize の `ids` 形式統一）— 優先度低。
+2. **F-2-009**（parametrize の `ids` 形式統一）— 優先度低。
+
+（F-2-012 は `__init__.py` 登録漏れの検出テストを追加し対応済みに移動）
