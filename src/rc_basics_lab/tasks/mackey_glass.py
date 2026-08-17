@@ -62,7 +62,7 @@ def _validate(cfg: MackeyGlassConfig) -> None:
 def delay_steps(cfg: MackeyGlassConfig) -> int:
     """``tau / rk4_step``。整数にならない設定は ``ValueError``。"""
     ratio = cfg.tau / cfg.rk4_step
-    steps = int(round(ratio))
+    steps = round(ratio)
     if steps < 1 or abs(ratio - steps) > _RATIO_TOLERANCE * max(1.0, ratio):
         raise ValueError(
             "tau / rk4_step が整数になりません "

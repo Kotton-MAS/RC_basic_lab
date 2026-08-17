@@ -1,4 +1,4 @@
-"""実験1-A ランナー — (課題 × 手法 × レプリケート) を回して長形式の行を作る.
+"""実験1-A ランナー — (課題 x 手法 x レプリケート) を回して長形式の行を作る.
 
 **学習・評価パスに手法ごとの分岐は無い** (受け入れ条件1)。手法の定義は
 ``build_methods`` の1か所だけで、そこから先はすべて「候補 ``FeatureSpec`` の列」
@@ -294,7 +294,7 @@ def _evaluate(
 
 
 def run_task(config: ExperimentConfig, task_entry: TaskEntry) -> list[ResultRow]:
-    """1課題について (手法 × レプリケート) を回す。"""
+    """1課題について (手法 x レプリケート) を回す。"""
     if config.n_replicates < 1:
         raise ValueError(
             f"n_replicates は 1 以上である必要があります: {config.n_replicates}"
@@ -319,7 +319,7 @@ def run_task(config: ExperimentConfig, task_entry: TaskEntry) -> list[ResultRow]
 
 
 def run_experiment(config: ExperimentConfig) -> list[ResultRow]:
-    """全課題 × 全手法 × 全レプリケートを回す。"""
+    """全課題 x 全手法 x 全レプリケートを回す。"""
     rows: list[ResultRow] = []
     for task_entry in build_tasks(config):
         rows.extend(run_task(config, task_entry))

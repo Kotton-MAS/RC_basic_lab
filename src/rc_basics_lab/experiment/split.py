@@ -119,7 +119,8 @@ def make_split(
     n_test = n_usable - n_train - n_val
     if min(n_train, n_val, n_test) < 1:
         raise ValueError(
-            f"各分割に 1 行以上必要です: {(n_train, n_val, n_test)} (n_usable={n_usable})"
+            "各分割に 1 行以上必要です: "
+            f"{(n_train, n_val, n_test)} (n_usable={n_usable})"
         )
 
     offset = int(rng.integers(0, cfg.max_start_offset + 1))
