@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import math
 from pathlib import Path
 
@@ -175,6 +176,48 @@ def test_reference_case_must_be_in_the_grid() -> None:
         )
     with pytest.raises(ValueError, match="1点以上"):
         run_threshold_sweep(small_config(), abs_tol_grid=(), window_grid=())
+
+
+def test_reference_follows_config_esp_not_the_module_defaults() -> None:
+    """基準行は ``config.esp`` から取る (モジュール定数 ``REFERENCE_*`` は使わない)。
+
+    ``config.esp`` を掃引の既定値からずらして (``abs_tol`` を格子内の別点に)
+    実行しても、実行時に本当に使った判定基準がずれ 0 の行になることを確かめる。
+    基準をモジュール定数に固定したままだと、この行だけが「ずれ 0」にならず、
+    本番実行が実際には使わなかった基準 (``REFERENCE_ABS_TOL``) からの
+    ずれが報告される。
+    """
+    config = dataclasses.replace(
+        small_config(),
+        esp=EspConfig(abs_tol=1.0e-4, window=REFERENCE_WINDOW, fit_skip=10),
+    )
+    rows = run_threshold_sweep(
+        config, abs_tol_grid=TEST_ABS_TOL_GRID, window_grid=TEST_WINDOW_GRID
+    )
+    moved_reference = next(
+        row for row in rows if (row.abs_tol, row.window) == (1.0e-4, REFERENCE_WINDOW)
+    )
+    assert moved_reference.n_sigma_shifted == 0
+    assert moved_reference.max_abs_shift == 0.0
+    # 掃引の既定値 (REFERENCE_ABS_TOL) はもう基準ではないので、自己一致を
+    # 要求しない (このテストの前提が空振りしていないことの確認)。
+    old_reference = next(
+        row
+        for row in rows
+        if (row.abs_tol, row.window) == (REFERENCE_ABS_TOL, REFERENCE_WINDOW)
+    )
+    assert old_reference is not moved_reference
+
+
+def test_config_esp_outside_the_grid_raises() -> None:
+    """``config.esp`` の判定基準が格子に無ければ ``ValueError`` (基準が特定できない)。"""
+    config = dataclasses.replace(
+        small_config(), esp=EspConfig(abs_tol=1.0e-2, window=REFERENCE_WINDOW)
+    )
+    with pytest.raises(ValueError, match="config.esp"):
+        run_threshold_sweep(
+            config, abs_tol_grid=TEST_ABS_TOL_GRID, window_grid=TEST_WINDOW_GRID
+        )
 
 
 # --- CSV -------------------------------------------------------------------
