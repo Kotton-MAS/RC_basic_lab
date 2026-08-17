@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import importlib
 import inspect
 import json
@@ -213,17 +214,16 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
         # (companion_states / propagator) が無いと ValueError を投げる。これは
         # 署名契約 (D-01) ではなく入力要件の話なので、ここでは ValueError だけを
         # 許容し、TypeError (= 呼び出し規約の破れ) は失敗として扱う。
-        for call in (
-            lambda: func(states),
-            lambda: func(states, None),
-            lambda: func(states, None, None),
-            lambda: func(states, None, None, ctx=DiagnosticContext()),
-            lambda: func(states, ctx=DiagnosticContext()),
-        ):
-            try:
-                call()
-            except ValueError:
-                pass
+        with contextlib.suppress(ValueError):
+            func(states)
+        with contextlib.suppress(ValueError):
+            func(states, None)
+        with contextlib.suppress(ValueError):
+            func(states, None, None)
+        with contextlib.suppress(ValueError):
+            func(states, None, None, ctx=DiagnosticContext())
+        with contextlib.suppress(ValueError):
+            func(states, ctx=DiagnosticContext())
 
         # 必須データをそろえれば、どの診断も最後まで走って結果を返すこと。
         # (上で ValueError を許容した分の穴をここで塞ぐ。ValueError を投げ続ける
