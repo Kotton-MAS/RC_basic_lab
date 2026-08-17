@@ -80,6 +80,9 @@ MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.timescale.autocorrelation_time": (
         _minimal_input_no_extras
     ),
+    "rc_basics_lab.diagnostics._tmp_second_form.tmp_param_diagnostic": (
+        _minimal_input_no_extras
+    ),
 }
 """診断 qualname -> 「その診断が最後まで走れる最小限の入力」を返すファクトリ。
 
