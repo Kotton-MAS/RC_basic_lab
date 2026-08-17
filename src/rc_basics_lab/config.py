@@ -133,6 +133,187 @@ class ExperimentConfig:
     esn_delay_parity: ESNConfig = field(default_factory=_delay_parity_esn)
 
 
+DEFAULT_ESP_MAP_RHO_GRID: tuple[float, ...] = tuple(
+    round(float(value), 3) for value in np.linspace(0.4, 1.9, 16)
+)
+"""実験 2-C の ρ 格子 (16点、仕様 §8 Q3)。1.0 の両側を等間隔に挟む。"""
+
+DEFAULT_ESP_MAP_SIGMA_GRID: tuple[float, ...] = (
+    0.0,
+    0.05,
+    0.1,
+    0.2,
+    0.5,
+    1.0,
+    2.0,
+)
+"""実験 2-C の入力強度 σ_u 格子 (7点、仕様 §8 Q3)。
+
+σ=0 は「無入力」で別枠 (図では別パネル)。以降は対数的に広げ、ρ>1 でも ESP が
+成立する側 (σ>=1) まで届かせる。強度は**標準偏差**であって振幅ではない (D-17)。
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class EspSeedConfig:
+    """02 の実験 2-A / 2-B / 2-C が使う3ストリームの基底シード (D-14)。
+
+    01 の ``SeedConfig`` とは別クラスにする。初期状態対は ``probe``
+    ストリームから引き、リザバー重み (``reservoir``) や駆動信号 (``drive``) と
+    独立に振れる必要があるため。``SeedConfig`` に ``probe`` を足すと 01 の
+    配線テストの被覆が破れる (D-13 と同じ理由)。
+
+    Attributes:
+        reservoir: リザバー重みの基底シード (``SeedStream.RESERVOIR``)。
+        drive: 駆動入力の基底シード (``SeedStream.TASK``)。
+        probe: 初期状態対の基底シード (``SeedStream.PROBE``)。
+    """
+
+    reservoir: int = 0
+    drive: int = 1
+    probe: int = 3
+
+
+def esp_stream_seed(seeds: EspSeedConfig, stream: SeedStream) -> int:
+    """02 の設定からストリームの基底シードを取り出す (D-14)。
+
+    他ストリームのシードを一切参照しないことが独立性の根拠なので、
+    ``getattr`` ではなく明示的な分岐で書く (``seeds._base_seed`` と同じ流儀)。
+
+    Raises:
+        ValueError: ``EspSeedConfig`` が基底シードを持たないストリームの場合。
+    """
+    match stream:
+        case SeedStream.RESERVOIR:
+            return seeds.reservoir
+        case SeedStream.TASK:
+            return seeds.drive
+        case SeedStream.PROBE:
+            return seeds.probe
+        case SeedStream.SPLIT:
+            raise ValueError(
+                "実験 2-A/2-B/2-C は分割を行いません (SPLIT ストリームは未使用)。"
+                " 2-D の分割は washout.base.seeds.split を使ってください"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class DriveConfig:
+    """駆動入力と2軌道生成の共通条件 (実験 2-A / 2-B / 2-C)。
+
+    Attributes:
+        distribution: 駆動信号の分布。``"uniform"`` (i.i.d. 一様) 以外は未対応で、
+            実験層が ``ValueError`` にする (黙って一様として扱わない)。
+        n_steps: 生成する系列長 [ステップ]。
+        washout: 判定・当てはめから外す先頭ステップ数。
+        n_pairs: 参照軌道と比べる第2軌道の本数 (最悪値で判定する, D-16)。
+    """
+
+    distribution: str = "uniform"
+    n_steps: int = 3000
+    washout: int = 200
+    n_pairs: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class EspDecayConfig:
+    """実験 2-A: ρ を振ったときの状態距離の減衰曲線。
+
+    無入力 (``sigma_u = 0``) が既定。ρ<1 で指数減衰し ρ>1 で減衰しないことを
+    見る図であり、入力を入れると主張が変わる (受け入れ条件1)。
+    """
+
+    rho_grid: tuple[float, ...] = (0.5, 0.8, 0.95, 1.2, 1.5)
+    sigma_u: float = 0.0
+    leak_rate: float = 1.0
+    input_scale: float = 1.0
+    n_units: int = 200
+    density: float = 0.1
+    n_replicates: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class TimescaleSweepConfig:
+    """実験 2-B: リーク率を振ったときの実効時定数。
+
+    理論線 ``-1 / log(1 - a)`` と重ねるため、``rho`` は 1 未満に固定して
+    リーク率だけを動かす (受け入れ条件4)。最大ラグは診断側の
+    ``Esp02Config.timescale.max_lag`` が持つ (二重定義しない)。
+    """
+
+    leak_rate_grid: tuple[float, ...] = (0.1, 0.2, 0.3, 0.5, 0.7, 1.0)
+    rho: float = 0.9
+    sigma_u: float = 0.5
+    input_scale: float = 1.0
+    n_units: int = 200
+    density: float = 0.1
+    n_replicates: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class EspMapConfig:
+    """実験 2-C: ρ × 入力強度 の ESP 成立領域 (記事の目玉)。
+
+    ``input_scale`` は掃引中固定し、動かすのは信号側の ``sigma_grid`` だけ
+    (D-17)。同時に動かすと「信号を強くした」のか「重みを大きくした」のかを
+    分離できなくなる。
+    """
+
+    rho_grid: tuple[float, ...] = DEFAULT_ESP_MAP_RHO_GRID
+    sigma_grid: tuple[float, ...] = DEFAULT_ESP_MAP_SIGMA_GRID
+    leak_rate: float = 1.0
+    input_scale: float = 1.0
+    n_units: int = 200
+    density: float = 0.1
+    n_replicates: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class WashoutSweepConfig:
+    """実験 2-D: washout 長への性能感度 (D-19)。
+
+    実体は ``base`` の washout を差し替えて 01 の ``run_experiment`` を回す
+    ループなので、公平性 (D-04 / D-05 / D-08) は既存経路が担保する。
+
+    Attributes:
+        grid: 掃引する washout の値 [ステップ]。
+        pad_series: 真なら ``length`` を伸ばして訓練/検証/テストの行数を格子
+            全体で一定に保つ (washout の効果と訓練データ量の効果の交絡を除く)。
+            偽は交絡ありの設計を再現する対比用モード。
+        base: 掃引の土台となる 01 の設定。``washout`` 以外は差し替えない。
+    """
+
+    grid: tuple[int, ...] = (0, 50, 100, 200, 400, 800)
+    pad_series: bool = True
+    base: ExperimentConfig = field(default_factory=ExperimentConfig)
+
+
+@dataclass(frozen=True, slots=True)
+class Esp02Config:
+    """実験02 (ESP・スペクトル半径・リーク率) 1本ぶんの設定 (D-13)。
+
+    ``ExperimentConfig`` とはローダ (``load_config_as``) だけを共有し、
+    フィールドは一切共有しない。2-D だけは 01 のパイプラインを再利用するため、
+    ``washout.base`` として ``ExperimentConfig`` をまるごと内包する
+    (``washout.base.*`` の配線は 01 側の
+    ``tests/test_config_wiring.py`` が被覆する)。
+
+    ``esp`` / ``lyapunov`` / ``timescale`` は診断層の設定 (D-15) をそのまま
+    載せたもの。YAML から診断の判定基準まで届くのはこの経路だけである。
+    """
+
+    name: str = "02_esp_and_dynamics"
+    seeds: EspSeedConfig = field(default_factory=EspSeedConfig)
+    drive: DriveConfig = field(default_factory=DriveConfig)
+    decay: EspDecayConfig = field(default_factory=EspDecayConfig)
+    timescale_sweep: TimescaleSweepConfig = field(default_factory=TimescaleSweepConfig)
+    esp_map: EspMapConfig = field(default_factory=EspMapConfig)
+    washout: WashoutSweepConfig = field(default_factory=WashoutSweepConfig)
+    esp: EspConfig = field(default_factory=EspConfig)
+    lyapunov: LyapunovConfig = field(default_factory=LyapunovConfig)
+    timescale: TimescaleConfig = field(default_factory=TimescaleConfig)
+
+
 def _fail(location: str, message: str) -> ConfigError:
     return ConfigError(f"{location}: {message}")
 
@@ -207,8 +388,16 @@ def _build[T](cls: type[T], raw: object, location: str) -> T:
     return factory(**kwargs)
 
 
-def load_config(path: Path | str) -> ExperimentConfig:
-    """YAML から ``ExperimentConfig`` を読み込む。
+def load_config_as[T](path: Path | str, cls: type[T]) -> T:
+    """YAML から任意の設定 dataclass ``cls`` を読み込む (D-13)。
+
+    実験ごとに設定クラスは分かれるが、読み込み規律 (未知キーで即失敗・暗黙の
+    型変換をしない・再帰構築) は1か所に置く。02 以降の実験がローダを写経すると
+    D-09 の強度が実験ごとに割れるため。
+
+    Args:
+        path: YAML ファイルのパス。
+        cls: 構築する設定 dataclass。
 
     Raises:
         ConfigError: ファイルが無い / 未知キーがある / 型が合わない場合。
@@ -222,17 +411,44 @@ def load_config(path: Path | str) -> ExperimentConfig:
         raise ConfigError(f"{config_path}: YAML の解析に失敗しました: {exc}") from exc
     if raw is None:
         raw = {}
-    return _build(ExperimentConfig, raw, str(config_path))
+    return _build(cls, raw, str(config_path))
+
+
+def load_config(path: Path | str) -> ExperimentConfig:
+    """YAML から 01 の ``ExperimentConfig`` を読み込む。
+
+    ``load_config_as(path, ExperimentConfig)`` への委譲。既存の呼び出し
+    (``experiments/01_what_is_rc/run.py`` / ``main.py``) を壊さないため署名は
+    そのまま残す。
+
+    Raises:
+        ConfigError: ファイルが無い / 未知キーがある / 型が合わない場合。
+    """
+    return load_config_as(path, ExperimentConfig)
 
 
 __all__ = [
     "DEFAULT_ALPHA_GRID",
+    "DEFAULT_ESP_MAP_RHO_GRID",
+    "DEFAULT_ESP_MAP_SIGMA_GRID",
     "ConfigError",
     "DelayParityConfig",
+    "DriveConfig",
     "ESNConfig",
+    "Esp02Config",
+    "EspConfig",
+    "EspDecayConfig",
+    "EspMapConfig",
+    "EspSeedConfig",
     "ExperimentConfig",
+    "LyapunovConfig",
     "MackeyGlassConfig",
     "RidgeConfig",
     "SplitConfig",
+    "TimescaleConfig",
+    "TimescaleSweepConfig",
+    "WashoutSweepConfig",
+    "esp_stream_seed",
     "load_config",
+    "load_config_as",
 ]
