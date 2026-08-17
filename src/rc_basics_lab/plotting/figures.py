@@ -8,13 +8,17 @@
 
 pyplot を使わず ``Figure`` + ``FigureCanvasAgg`` を直接組む。CI にはディスプレイが
 無いため、既定バックエンドに依存しない非対話経路を選ぶ。
+
+描画設定 (``savefig.dpi`` など) はプロセス全体の ``matplotlib.rcParams`` を
+書き換えず、``matplotlib.rc_context`` で描画中だけ一時適用する (F-1-008)。
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -27,8 +31,8 @@ from rc_basics_lab.experiment.state_space import (
     RESERVOIR_STATE,
     StateSpaceReport,
 )
-from rc_basics_lab.experiment.summary import aggregate_nrmse
-from rc_basics_lab.plotting.style import StyleContext
+from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
+from rc_basics_lab.plotting.style import StyleContext, rc_params_for
 from rc_basics_lab.types import FloatArray
 
 REFERENCE_NRMSE = 1.0
@@ -94,6 +98,119 @@ def _save(figure: Figure, path: Path) -> Path:
     return path
 
 
+def _compute_errorbars(
+    stats: Mapping[tuple[str, str], Aggregate], task: str, methods: Sequence[str]
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """1課題ぶんの誤差棒の値を計算する (平均・下側誤差・標準偏差)。"""
+    means: FloatArray = np.array(
+        [stats[(task, method)].mean for method in methods], dtype=np.float64
+    )
+    stds: FloatArray = np.array(
+        [stats[(task, method)].std for method in methods], dtype=np.float64
+    )
+    # 対数軸なので下側の誤差棒が 0 以下に落ちないよう抑える
+    lower: FloatArray = np.minimum(stds, means * 0.999)
+    return means, lower, stds
+
+
+def _draw_reference_line(axis: Axes, style: StyleContext) -> None:
+    """NRMSE = 1 (平均予測と同等) の水平基準線を描く (D-02)。"""
+    axis.axhline(
+        REFERENCE_NRMSE,
+        color="tab:red",
+        linestyle="--",
+        linewidth=1.0,
+        label=style.label(
+            "NRMSE = 1 (平均予測と同等)",
+            "NRMSE = 1 (same as predicting the mean)",
+        ),
+    )
+
+
+def _annotate_means(axis: Axes, positions: FloatArray, means: FloatArray) -> None:
+    """各点の上に平均値を数値で注記する。"""
+    for position, mean in zip(positions, means, strict=True):
+        axis.annotate(
+            f"{mean:.4f}",
+            (position, mean),
+            textcoords="offset points",
+            xytext=(0, 10),
+            ha="center",
+            fontsize=8,
+        )
+
+
+def _style_task_axis(
+    axis: Axes,
+    task: str,
+    methods: Sequence[str],
+    positions: FloatArray,
+    means: FloatArray,
+    lower: FloatArray,
+    stds: FloatArray,
+    n_replicates: int,
+    style: StyleContext,
+    *,
+    show_ylabel: bool,
+) -> None:
+    """1課題ぶんの軸範囲・目盛・タイトル・凡例を設定する。"""
+    axis.set_yscale("log")
+    # 注記と基準線のぶんの余白 (対数軸なので係数で確保する)
+    axis.set_ylim(
+        float(np.min(means - lower)) / 3.0,
+        max(float(np.max(means + stds)), REFERENCE_NRMSE) * 3.0,
+    )
+    axis.set_xticks(positions)
+    axis.set_xticklabels([_lookup(_METHOD_LABELS, method, style) for method in methods])
+    axis.set_xlim(-0.5, len(methods) - 0.5)
+    axis.set_title(_lookup(_TASK_LABELS, task, style))
+    if show_ylabel:
+        axis.set_ylabel(
+            style.label(
+                f"NRMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
+                f"NRMSE (test split, mean ± s.d. of {n_replicates} replicates)",
+            )
+        )
+    axis.legend(loc="best", fontsize=8)
+
+
+def _plot_task_panel(
+    axis: Axes,
+    task: str,
+    methods: Sequence[str],
+    positions: FloatArray,
+    stats: Mapping[tuple[str, str], Aggregate],
+    style: StyleContext,
+    *,
+    show_ylabel: bool,
+) -> None:
+    """1課題ぶんの NRMSE 比較パネル (誤差棒+基準線+注記+軸装飾) を描く。"""
+    means, lower, stds = _compute_errorbars(stats, task, methods)
+    axis.errorbar(
+        positions,
+        means,
+        yerr=np.vstack([lower, stds]),
+        fmt="o",
+        capsize=5,
+        color="tab:blue",
+    )
+    _draw_reference_line(axis, style)
+    _annotate_means(axis, positions, means)
+    n_replicates = max(stats[(task, method)].n for method in methods)
+    _style_task_axis(
+        axis,
+        task,
+        methods,
+        positions,
+        means,
+        lower,
+        stds,
+        n_replicates,
+        style,
+        show_ylabel=show_ylabel,
+    )
+
+
 def plot_comparison(
     rows: Sequence[ResultRow], path: Path, *, style: StyleContext
 ) -> Path:
@@ -113,74 +230,27 @@ def plot_comparison(
     methods = _unique(row.method for row in rows)
     stats = aggregate_nrmse(rows)
 
-    figure = _new_figure(4.2 * len(tasks), 4.0)
-    axes = figure.subplots(1, len(tasks), squeeze=False)
-    positions = np.arange(len(methods), dtype=np.float64)
-    for index, task in enumerate(tasks):
-        axis = axes[0][index]
-        means = np.array(
-            [stats[(task, method)].mean for method in methods], dtype=np.float64
-        )
-        stds = np.array(
-            [stats[(task, method)].std for method in methods], dtype=np.float64
-        )
-        # 対数軸なので下側の誤差棒が 0 以下に落ちないよう抑える
-        lower = np.minimum(stds, means * 0.999)
-        axis.errorbar(
-            positions,
-            means,
-            yerr=np.vstack([lower, stds]),
-            fmt="o",
-            capsize=5,
-            color="tab:blue",
-        )
-        axis.axhline(
-            REFERENCE_NRMSE,
-            color="tab:red",
-            linestyle="--",
-            linewidth=1.0,
-            label=style.label(
-                "NRMSE = 1 (平均予測と同等)",
-                "NRMSE = 1 (same as predicting the mean)",
-            ),
-        )
-        for position, mean in zip(positions, means, strict=True):
-            axis.annotate(
-                f"{mean:.4f}",
-                (position, mean),
-                textcoords="offset points",
-                xytext=(0, 10),
-                ha="center",
-                fontsize=8,
+    with matplotlib.rc_context(rc_params_for(style)):
+        figure = _new_figure(4.2 * len(tasks), 4.0)
+        axes = figure.subplots(1, len(tasks), squeeze=False)
+        positions = np.arange(len(methods), dtype=np.float64)
+        for index, task in enumerate(tasks):
+            _plot_task_panel(
+                axes[0][index],
+                task,
+                methods,
+                positions,
+                stats,
+                style,
+                show_ylabel=index == 0,
             )
-        axis.set_yscale("log")
-        # 注記と基準線のぶんの余白 (対数軸なので係数で確保する)
-        axis.set_ylim(
-            float(np.min(means - lower)) / 3.0,
-            max(float(np.max(means + stds)), REFERENCE_NRMSE) * 3.0,
-        )
-        axis.set_xticks(positions)
-        axis.set_xticklabels(
-            [_lookup(_METHOD_LABELS, method, style) for method in methods]
-        )
-        axis.set_xlim(-0.5, len(methods) - 0.5)
-        axis.set_title(_lookup(_TASK_LABELS, task, style))
-        if index == 0:
-            n_replicates = max(stats[(task, method)].n for method in methods)
-            axis.set_ylabel(
-                style.label(
-                    f"NRMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
-                    f"NRMSE (test split, mean ± s.d. of {n_replicates} replicates)",
-                )
+        figure.suptitle(
+            style.label(
+                "3ベースラインの比較 (同一分割・同一 alpha 格子)",
+                "Three baselines (identical splits and alpha grid)",
             )
-        axis.legend(loc="best", fontsize=8)
-    figure.suptitle(
-        style.label(
-            "3ベースラインの比較 (同一分割・同一 alpha 格子)",
-            "Three baselines (identical splits and alpha grid)",
         )
-    )
-    return _save(figure, path)
+        return _save(figure, path)
 
 
 def _thin(array: FloatArray) -> FloatArray:
@@ -219,6 +289,48 @@ def _scatter_space(
     )
 
 
+def _plot_cumulative_ratio_panel(
+    axis: Axes, report: StateSpaceReport, style: StyleContext
+) -> None:
+    """1課題ぶんの累積寄与率パネル (曲線+95%基準線+軸装飾) を描く。"""
+    for space in (RESERVOIR_STATE, DELAY_EMBEDDED_INPUT):
+        summary = report.space(space)
+        curve = summary.cumulative_ratio[:_MAX_COMPONENTS_SHOWN]
+        components = np.arange(1, len(curve) + 1)
+        axis.plot(
+            components,
+            curve,
+            marker="o",
+            markersize=3,
+            color=_SPACE_COLORS[space],
+            label=(
+                f"{_lookup(_SPACE_LABELS, space, style)} "
+                f"(95%: {summary.n_components_95})"
+            ),
+        )
+        axis.axvline(
+            summary.n_components_95,
+            color=_SPACE_COLORS[space],
+            linestyle=":",
+            linewidth=1.0,
+        )
+    axis.axhline(0.95, color="tab:red", linestyle="--", linewidth=1.0)
+    axis.set_xlabel(style.label("主成分の数", "number of components"))
+    axis.set_ylabel(style.label("累積寄与率", "cumulative explained variance"))
+    raw = report.space(RAW_INPUT)
+    axis.set_title(
+        style.label(
+            f"{_lookup(_TASK_LABELS, report.task, style)}"
+            f" (生の入力は {raw.n_features} 次元)",
+            f"{_lookup(_TASK_LABELS, report.task, style)}"
+            f" (raw input is {raw.n_features}-dim)",
+        ),
+        fontsize=9,
+    )
+    axis.set_ylim(0.0, 1.02)
+    axis.legend(loc="lower right", fontsize=8)
+
+
 def plot_state_space(
     reports: Sequence[StateSpaceReport], path: Path, *, style: StyleContext
 ) -> Path:
@@ -233,55 +345,20 @@ def plot_state_space(
     """
     if not reports:
         raise ValueError("reports が空です")
-    figure = _new_figure(12.0, 4.0 * len(reports))
-    axes = figure.subplots(len(reports), 3, squeeze=False)
-    for index, report in enumerate(reports):
-        _scatter_space(axes[index][0], report, RESERVOIR_STATE, style)
-        _scatter_space(axes[index][1], report, DELAY_EMBEDDED_INPUT, style)
-        axis = axes[index][2]
-        for space in (RESERVOIR_STATE, DELAY_EMBEDDED_INPUT):
-            summary = report.space(space)
-            curve = summary.cumulative_ratio[:_MAX_COMPONENTS_SHOWN]
-            components = np.arange(1, len(curve) + 1)
-            axis.plot(
-                components,
-                curve,
-                marker="o",
-                markersize=3,
-                color=_SPACE_COLORS[space],
-                label=(
-                    f"{_lookup(_SPACE_LABELS, space, style)} "
-                    f"(95%: {summary.n_components_95})"
-                ),
-            )
-            axis.axvline(
-                summary.n_components_95,
-                color=_SPACE_COLORS[space],
-                linestyle=":",
-                linewidth=1.0,
-            )
-        axis.axhline(0.95, color="tab:red", linestyle="--", linewidth=1.0)
-        axis.set_xlabel(style.label("主成分の数", "number of components"))
-        axis.set_ylabel(style.label("累積寄与率", "cumulative explained variance"))
-        raw = report.space(RAW_INPUT)
-        axis.set_title(
+    with matplotlib.rc_context(rc_params_for(style)):
+        figure = _new_figure(12.0, 4.0 * len(reports))
+        axes = figure.subplots(len(reports), 3, squeeze=False)
+        for index, report in enumerate(reports):
+            _scatter_space(axes[index][0], report, RESERVOIR_STATE, style)
+            _scatter_space(axes[index][1], report, DELAY_EMBEDDED_INPUT, style)
+            _plot_cumulative_ratio_panel(axes[index][2], report, style)
+        figure.suptitle(
             style.label(
-                f"{_lookup(_TASK_LABELS, report.task, style)}"
-                f" (生の入力は {raw.n_features} 次元)",
-                f"{_lookup(_TASK_LABELS, report.task, style)}"
-                f" (raw input is {raw.n_features}-dim)",
-            ),
-            fontsize=9,
+                "入力空間とリザバー状態空間の PCA",
+                "PCA of the input space and the reservoir state space",
+            )
         )
-        axis.set_ylim(0.0, 1.02)
-        axis.legend(loc="lower right", fontsize=8)
-    figure.suptitle(
-        style.label(
-            "入力空間とリザバー状態空間の PCA",
-            "PCA of the input space and the reservoir state space",
-        )
-    )
-    return _save(figure, path)
+        return _save(figure, path)
 
 
 __all__ = [

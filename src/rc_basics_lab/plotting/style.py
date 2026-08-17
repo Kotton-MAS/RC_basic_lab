@@ -6,6 +6,11 @@
 
 記事用の図は CJK フォントのあるローカルで生成し、CI は「生成できること」だけを
 検証する。
+
+``setup_style()`` は CJK フォントの探索と ``StyleContext`` の生成だけを行い、
+``matplotlib.rcParams`` をプロセス全体に書き換えない (F-1-008)。実際の描画設定は
+``rc_params_for`` が返す辞書を呼び出し側が ``matplotlib.rc_context`` に渡して
+描画中だけ一時適用する (``plotting/figures.py`` が行う)。
 """
 
 from __future__ import annotations
