@@ -187,7 +187,7 @@ def test_bias_scale_is_zero_so_that_zero_sigma_is_truly_no_input() -> None:
     """
     config = small_config()
     assert BIAS_SCALE == 0.0
-    esn_config = build_esn_config(config, 0.5, 1.0)
+    esn_config = build_esn_config(config.reservoir, 0.5, 1.0)
     assert esn_config.bias_scale == 0.0
 
     zero_drive: FloatArray = np.zeros((400, 1), dtype=np.float64)
@@ -222,7 +222,7 @@ def test_propagator_uses_the_next_input() -> None:
     """
     config = small_config()
     esn = ESN(
-        build_esn_config(config, 0.9, 1.0),
+        build_esn_config(config.reservoir, 0.9, 1.0),
         make_rng_for(0, SeedStream.RESERVOIR, 0),
         n_inputs=1,
     )
@@ -252,7 +252,7 @@ def test_perturbation_growth_stays_far_below_the_runaway_limit() -> None:
     observed = []
     for rho in (0.9, 1.8):
         esn = ESN(
-            build_esn_config(config, rho, 1.0),
+            build_esn_config(config.reservoir, rho, 1.0),
             make_rng_for(0, SeedStream.RESERVOIR, 0),
             n_inputs=1,
         )
