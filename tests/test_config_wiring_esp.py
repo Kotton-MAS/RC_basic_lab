@@ -79,7 +79,7 @@ DELEGATED_PREFIX = "washout.base."
 """01 の ``ExperimentConfig`` を内包した部分。被覆は 01 側に委譲する。"""
 
 KNOWN_EXPERIMENT_MODULES = frozenset(
-    {"pipeline", "report", "runner", "split", "state_space", "summary"}
+    {"pipeline", "report", "runner", "split", "state_space", "summary", "esp"}
 )
 """**サイクル1 (01) 時点のスナップショットとして凍結**した ``experiment/``
 配下の公開モジュール集合。以後この値そのものを更新しない。
