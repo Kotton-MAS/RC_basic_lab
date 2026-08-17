@@ -626,6 +626,36 @@ length = base_length + ( t0(washout) - t0(min(grid)) )
 
 **補償なし（`pad_series = False`）との対比 —— D-19 の存在意義**:
 
+一次資料は `results/02_esp_and_dynamics/washout_sensitivity_unpadded.csv`
+（`config.washout.pad_series` を `False` に変えた本番設定で `run_washout_sweep`
+を実行した生データ。`washout_sensitivity.csv`（補償あり）とは別ファイルに分けて
+コミットしてある）。再生成は、`experiments/02_esp_and_dynamics/config.yaml` の
+`washout.pad_series` を `false` に書き換えたうえで次を実行する:
+
+```
+uv run python -c "
+import dataclasses
+from pathlib import Path
+from rc_basics_lab.config import Esp02Config, load_config_as
+from rc_basics_lab.experiment.washout import run_washout_sweep
+from rc_basics_lab.experiment.esp_pipeline import write_washout_csv
+
+config = load_config_as(
+    Path('experiments/02_esp_and_dynamics/config.yaml'), Esp02Config
+)
+unpadded = dataclasses.replace(
+    config, washout=dataclasses.replace(config.washout, pad_series=False)
+)
+write_washout_csv(
+    run_washout_sweep(unpadded),
+    Path('results/02_esp_and_dynamics/washout_sensitivity_unpadded.csv'),
+)
+"
+```
+
+下表と CSV の**行数・値の一致**は `tests/test_design_doc.py` が機械照合する
+（§9.2 の閾値感度表と同じ規律）。
+
 | washout | 0 | 50 | 100 | 200 | 400 | 800 |
 |---|---|---|---|---|---|---|
 | `n_train` | 3968 | 3968 | 3950 | 3900 | 3800 | 3600 |
