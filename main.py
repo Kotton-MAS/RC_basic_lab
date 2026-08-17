@@ -42,10 +42,13 @@ class ExperimentSpec:
     Attributes:
         config_path: 既定の設定 YAML。
         run: ``(設定 YAML, 出力ディレクトリ)`` を受けて成果物を書く関数。
+        out_dir: ``--out`` 未指定時に使う既定の出力ディレクトリ。実験ごとに
+            異ならなければならない (成果物が衝突すると黙って上書きされる)。
     """
 
     config_path: Path
     run: Callable[[Path, Path], None]
+    out_dir: Path
 
 
 def _run_01(config_path: Path, out_dir: Path) -> None:
@@ -74,10 +77,12 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
     "01": ExperimentSpec(
         config_path=ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
         run=_run_01,
+        out_dir=Path("results"),
     ),
     "02": ExperimentSpec(
         config_path=ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml",
         run=_run_02,
+        out_dir=Path("results/02_esp_and_dynamics"),
     ),
 }
 """実験番号 -> ``ExperimentSpec``。
@@ -85,10 +90,12 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
 03〜05 を足すときは、その実験の設定クラスとパイプラインを呼ぶ ``_run_XX`` を
 書いてここに1行足す。**設定クラスを 01 の ``ExperimentConfig`` に相乗りさせ
 ない** (D-13)。相乗りさせると YAML の未知キー検査 (D-09) と配線テストの
-被覆が同時に壊れる。
+被覆が同時に壊れる。**``out_dir`` は実験ごとに異なる値にする** —— 揃えると
+``--out`` 未指定の実行が別実験の成果物 (``meta.json`` など) を黙って上書きする
+(``test_experiment_registry_has_unique_default_out_dirs`` が機械的に守る)。
 """
 
-DEFAULT_OUT = Path("results")
+DEFAULT_OUT = EXPERIMENTS["01"].out_dir
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,11 +103,17 @@ class Args:
     """コマンドライン引数。"""
 
     experiment: str
-    out: Path
+    out: Path | None
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
-    """引数を解析する。未知の実験番号は argparse が弾く。"""
+    """引数を解析する。未知の実験番号は argparse が弾く。
+
+    ``--out`` を省略した場合は ``None`` を返す。既定の出力先は実験ごとに
+    異なる (``EXPERIMENTS[experiment].out_dir``) ため、この時点 (実験番号と
+    独立に引数を解析する段階) では確定できない。実際の既定値解決は
+    ``main()`` が ``args.experiment`` を見てから行う。
+    """
     parser = argparse.ArgumentParser(description="rc-basics-lab の実験ランナー")
     parser.add_argument(
         "--experiment",
@@ -110,18 +123,26 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
     )
     parser.add_argument(
         "--out",
-        default=DEFAULT_OUT,
-        help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
+        default=None,
+        help="出力ディレクトリ (既定: 実験ごとに異なる。EXPERIMENTS[番号].out_dir)",
     )
     namespace = parser.parse_args(argv)
-    return Args(experiment=str(namespace.experiment), out=Path(str(namespace.out)))
+    out = None if namespace.out is None else Path(str(namespace.out))
+    return Args(experiment=str(namespace.experiment), out=out)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """指定した実験を実行し、成果物を ``--out`` に書き出す。"""
+    """指定した実験を実行し、成果物を ``--out`` に書き出す。
+
+    ``--out`` 未指定時は ``EXPERIMENTS[experiment].out_dir`` (実験ごとに異なる
+    既定値) を使う。かつては全実験が同じ ``DEFAULT_OUT = Path("results")`` を
+    共有しており、``--out`` を付けずに ``--experiment 02`` を実行すると 01 の
+    ``results/meta.json`` を黙って上書きしていた。
+    """
     args = parse_args(argv)
     spec = EXPERIMENTS[args.experiment]
-    spec.run(spec.config_path, args.out)
+    out_dir = spec.out_dir if args.out is None else args.out
+    spec.run(spec.config_path, out_dir)
     return 0
 
 
