@@ -288,8 +288,21 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
   - `tests/test_config_wiring.py::test_all_config_fields_are_covered` — `ExperimentConfig` の全フィールドが上記 parametrize に登場する（配線漏れの構造的検出）
   - 1コマンドで `results/{comparison.csv, fig_comparison.png, fig_state_space.png, meta.json}` が生成され、PNG が 200 dpi 以上
   - `n_components_95(reservoir_states) > n_components_95(delay_embedded_input)` が `comparison` 実行時に数値として記録される（受け入れ条件4）
+    - **実装後の実測: 数値の記録は達成、不等号は成立しなかった**。下記「実装時に決めたこと」の3番目を参照
   - `make ci` 緑、GitHub Actions 緑
 - **想定所要**: M
+- **実装時に決めたこと（仕様に無かった箇所。02〜05 はこれに従う）**
+  - **`esn_*.state_noise` の配線漏れを実バグとして修正した**。`runner.plan_replicate` が `ESN.run(u)` を rng 無しで呼んでいたため、YAML で `state_noise > 0` を設定すると実験全体が `ValueError` で落ちていた（設定はできるが使えないパラメータ）。重み生成に使った reservoir ストリームの Generator をそのまま `ESN.run(u, rng=...)` に渡す形に変更。`state_noise = 0.0` では1個も乱数を引かないため、T4 の 30 行は**実測でバイト単位に不変**（`comparison.csv` の `wall_time_s` 以外の全列が一致することを確認済み）。`tests/test_config_wiring.py::test_each_parameter_changes_output[esn_*.state_noise]` がこの配線を守る
+  - **`test_config_wiring.py` は「効き方」を3チャネルに分けた**。`rows`（結果行が変わる。大半のパラメータ）/ `meta`（結果行は変わらないが `meta.json` が変わる。`name` のみ。行が変わらないことも併せて固定する）/ `error`（値域が1点しかなく別の値は即例外。`esn_*.activation` のみ）。加えて課題別セクション（`mackey_glass` / `delay_parity` / `esn_*`）には `scope` を持たせ、**担当課題の行だけが変わり、もう一方の課題の行はバイト単位で不変**であることまで検査する（片方の課題の設定をもう片方に使う配線ミスが落ちる）。`split.*_ratio` の3つは「合計 1」という単体制約の上にあり単独では動かせないため、2つ同時に動かしたうえで `n_train` / `n_val` / `n_test` のどれが動いたかで帰属を切り分ける（`test_split_ratio_isolation` が、val/test だけ動かしたときに `n_train` が不変であることを実測して帰属の根拠にする）。`name` を「出力に影響しない純粋なメタ情報」として扱う根拠は、`comparison.csv` の列に `name` を持たせていないこと（実験名は `meta.json` の設定ダンプに残る）
+  - **受け入れ条件4 は「生の入力」に対しては成立し、「遅延埋め込みした入力」に対しては成立しない**（実測。`docs/design.md` §7.2 に数値を記録）。MG は状態 2 対 遅延埋め込み 2、遅延パリティは状態 4 対 遅延埋め込み 17 で、後者は**状態空間の方が低い**。原因は分散基準の次元数の性質にある（±1 の i.i.d. 入力の遅延埋め込みは等方 17 次元になり自動的に 17、一方リザバーは低次元へ圧縮し、パリティを解く交差項は分散の小さい裾の主成分に載る）。**成立しない不等号をテストで主張しない**方針を取り、`tests/test_state_space.py` では (a) 生の入力に対する不等号（1 → 2 / 1 → 4）を固定し、(b) 遅延埋め込みとの比較値は「向きに関わらず必ず記録される」ことだけを固定した。記事01 では「主成分数が増える」ではなく `fig_state_space.png` 下段左の**8個のクラスタ分離**（線形分離できる配置への置き換え）を主張する。分散基準の次元数で効用を測れるかはサイクル03（IPC）の論点
+  - `src/rc_basics_lab/experiment/pipeline.py` を新設し、`run_and_report(config, out_dir)` に計算と4成果物の書き出しを集約した。理由: CLI が2本（`main.py --experiment 01` と `run.py --config ...`）あるため、書き出し手順を両方に書くと片方だけ図が出ない状態が作れてしまう。`tests/test_main.py::test_run_py_and_main_py_agree` が両経路の CSV 一致を実測する
+  - `src/rc_basics_lab/experiment/state_space.py` を新設（PCA 比較の配線）。PCA を取る行は**実験の評価窓と同一**（`split.start` 〜 `split.test.stop`）、遅延埋め込みのラグ数は `max(ridge.n_lags_grid)`（= 遅延線ベースラインが実際に使う最大の特徴空間）。理由: 別の区間・別のラグ数で語ると図と表が実験と食い違う。診断そのものは `diagnostics.state_pca` を呼ぶだけで、この配線モジュールは `diagnostics` の外に置く（`diagnostics` は `reservoir` に依存しない、を保つ）
+  - `write_meta` に**キーワード引数 `extra` を追加**した（既存シグネチャは変更していない）。`meta.json` に `state_space`（3空間の `n_features` / `n_components_95` / `participation_ratio`）と `cjk_font`（採用フォント名。図が日英どちらで生成されたかの記録）が載る。キー衝突は `ValueError`
+  - `main.py` は「実験番号 → 設定 YAML パス」のレジストリだけを持つ。`--experiment` は `argparse` の `choices` で弾く（未登録番号が黙って既定に落ちない）。02〜05 では `EXPERIMENTS` に1行足す
+  - 図は **pyplot を使わず** `Figure` + `FigureCanvasAgg` を直接組む。理由: CI にディスプレイが無く、既定バックエンドに依存しない経路にそろえるため（`matplotlib.use()` の副作用も避けられる）。レイアウトは `constrained`、`fig_comparison` は対数軸（MG の 0.0008 とパリティの 1.0 を同じ図で読むため）
+  - PNG の解像度は rcParams ではなく**保存後のファイルの `pHYs` チャンクから実測**する（`tests/conftest.py::png_dpi`）。理由: 「rcParams には設定したが savefig には効いていない」を検出できるのは実測だけ。`pHYs` は整数 px/m のため 200 dpi は 199.9996 として記録される（小数第2位で丸める）
+  - `LICENSE` は Apache-2.0 全文 + 付録、`Copyright 2026 Takumi Kotooka`（個人名義）。`pyproject.toml` の `license = "Apache-2.0"` と一致
+  - T5 の「触るファイル」に無い追加: `src/rc_basics_lab/experiment/{pipeline,state_space}.py`、`tests/{conftest.py,test_state_space.py}`、`main.py` / `tests/test_main.py`（不明点 Q2 の回答どおり CLI エントリへ置換）。`Makefile` は `figures-01` の追加のみで `ci` の構成は不変
 
 > L タスクは T3・T4 の2本（分割不足の警告閾値 3本には未達）。
 
