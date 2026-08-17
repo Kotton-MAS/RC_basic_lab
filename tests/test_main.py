@@ -138,7 +138,7 @@ def test_experiment_registry_has_unique_default_out_dirs() -> None:
 def test_default_out_dir_does_not_overwrite_other_experiments_meta_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``--out`` 未指定の ``--experiment 02`` が 01 の ``results/meta.json`` を触らない。
+    """``--experiment 02`` を ``--out`` 未指定で実行しても 01 の meta.json は触らない。
 
     HIGH-1: かつては両実験が ``DEFAULT_OUT = Path("results")`` を共有しており、
     ``--out`` を省略すると 02 が 01 の成果物を黙って上書きしていた。
