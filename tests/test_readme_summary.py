@@ -130,10 +130,6 @@ ESP_DIR = ROOT / "results" / "02_esp_and_dynamics"
 THRESHOLD_CSV = ESP_DIR / "esp_threshold_sensitivity.csv"
 ESP_META = ESP_DIR / "meta.json"
 
-_REFERENCE_ABS_TOL = 1.0e-6
-_REFERENCE_WINDOW = 200
-"""README の臨界 rho の行が対応する判定基準 (D-16 の既定値)。"""
-
 _CRITICAL_ROW_LABEL = "ESP が壊れる最小の"
 _OUT_OF_GRID = "格子外"
 """格子内に境界が無いこと (CSV では ``nan``) を README で表す語。"""
