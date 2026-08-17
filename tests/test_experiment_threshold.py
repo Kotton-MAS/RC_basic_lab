@@ -210,11 +210,11 @@ def test_reference_follows_config_esp_not_the_module_defaults() -> None:
 
 
 def test_config_esp_outside_the_grid_raises() -> None:
-    """``config.esp`` の判定基準が格子に無ければ ``ValueError`` (基準が特定できない)。"""
+    """``config.esp`` の基準が格子に無ければ ``ValueError`` (基準が特定できない)。"""
     config = dataclasses.replace(
         small_config(), esp=EspConfig(abs_tol=1.0e-2, window=REFERENCE_WINDOW)
     )
-    with pytest.raises(ValueError, match="config.esp"):
+    with pytest.raises(ValueError, match=r"config\.esp"):
         run_threshold_sweep(
             config, abs_tol_grid=TEST_ABS_TOL_GRID, window_grid=TEST_WINDOW_GRID
         )
