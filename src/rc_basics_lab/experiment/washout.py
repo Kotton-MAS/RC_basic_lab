@@ -442,7 +442,6 @@ def summarize_washout_sensitivity(
 
 
 __all__ = [
-    "EXPERIMENT_WASHOUT",
     "HEADLINE_METHOD",
     "HEADLINE_TASK",
     "WASHOUT_CSV_COLUMNS",
