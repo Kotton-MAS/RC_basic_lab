@@ -83,9 +83,15 @@ class ThresholdRow:
         n_converged: そのうち ESP 成立と判定された条件数。
         converged_fraction: ``n_converged / n_conditions``。
         n_sigma_with_boundary: 臨界 rho が格子内に見つかった sigma_u の数。
-        n_sigma_shifted: 基準 (D-16 の既定値) と臨界 rho が違う sigma_u の数。
+        n_sigma_shifted: 基準と臨界 rho が違う sigma_u の数。基準は D-16 の
+            既定値ではなく、本番実行が実際に使った判定基準
+            (``config.esp.abs_tol`` / ``config.esp.window``) から取る
+            (``run_threshold_sweep``)。
         max_abs_shift: 基準からの臨界 rho のずれの最大値 (両方有限な
             sigma_u のみで取る。1つも無ければ 0.0)。
+        is_reference: この行が基準行 (``config.esp.abs_tol`` /
+            ``config.esp.window`` と一致する行) かどうか。CSV 単体から基準行を
+            特定できるようにするための列であり、行の値そのものには使わない。
         critical_rho_by_sigma: ``(sigma_u, 臨界 rho)`` を sigma_u の昇順で。
     """
 
@@ -97,6 +103,7 @@ class ThresholdRow:
     n_sigma_with_boundary: int
     n_sigma_shifted: int
     max_abs_shift: float
+    is_reference: bool
     critical_rho_by_sigma: tuple[tuple[float, float], ...]
 
 
@@ -218,7 +225,15 @@ def run_threshold_sweep(
                     )
 
     reference = _critical_by_sigma(hits[(reference_abs_tol, reference_window)])
-    rows = tuple(_build_row(case, hits[case], reference) for case in cases)
+    rows = tuple(
+        _build_row(
+            case,
+            hits[case],
+            reference,
+            is_reference=case == (reference_abs_tol, reference_window),
+        )
+        for case in cases
+    )
     logger.info(
         "閾値感度: %d 通り (abs_tol %d x window %d) / 基準からずれた "
         "(sigma_u, 臨界 rho) は %d 件",
@@ -246,6 +261,8 @@ def _build_row(
     case: tuple[float, int],
     verdicts: Mapping[float, Mapping[float, Sequence[int]]],
     reference: Mapping[float, float],
+    *,
+    is_reference: bool,
 ) -> ThresholdRow:
     abs_tol, window = case
     critical = _critical_by_sigma(verdicts)
@@ -268,6 +285,7 @@ def _build_row(
         ),
         n_sigma_shifted=sum(1 for shifted, _ in shifts if shifted),
         max_abs_shift=max(finite) if finite else 0.0,
+        is_reference=is_reference,
         critical_rho_by_sigma=tuple(
             (sigma, critical[sigma]) for sigma in sorted(critical)
         ),
