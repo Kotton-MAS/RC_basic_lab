@@ -168,9 +168,14 @@ def select_alpha(
     y_val: FloatArray,
     alphas: Sequence[float],
     *,
-    bias_column: int | None = 0,
+    bias_column: int | None,
 ) -> AlphaSelection:
     """検証 NRMSE が最小の alpha を選ぶ。同点なら**大きい** alpha (保守側)。
+
+    Gram 行列 ``Phi_tr.T @ Phi_tr`` と ``Phi_tr.T @ y_tr`` は alpha に依存しないため、
+    alpha 格子1本につき1回だけ計算し、格子の走査では ``fit_ridge_from_gram`` で
+    solve のみを繰り返す (F-1-010)。``fit_ridge`` を alpha ごとに呼ぶのと
+    数学的に同一の経路で、結果は変わらない。
 
     Args:
         phi_tr: 学習設計行列 ``(T_tr, F)``。
@@ -178,18 +183,22 @@ def select_alpha(
         phi_val: 検証設計行列 ``(T_val, F)``。
         y_val: 検証目標 ``(T_val, D_out)``。
         alphas: 探索格子。``config.ridge.alpha_grid`` をそのまま渡す (D-04)。
-        bias_column: ``fit_ridge`` に渡す無罰則列。
+        bias_column: ``fit_ridge`` に渡す無罰則列。既定値を持たない
+            (キーワード必須)。``DesignMatrix.bias_column`` を渡すこと (F-1-002)。
 
     Raises:
         ValueError: ``alphas`` が空の場合。
     """
     if len(alphas) == 0:
         raise ValueError("alpha 格子が空です")
+    features_tr, targets_tr = _check_pair(phi_tr, y_tr)
+    gram: FloatArray = features_tr.T @ features_tr
+    rhs: FloatArray = features_tr.T @ targets_tr
     curve: list[tuple[float, float]] = []
     best_alpha = float("nan")
     best_score = float("inf")
     for alpha in sorted(float(value) for value in alphas):
-        coefficients = fit_ridge(phi_tr, y_tr, alpha, bias_column=bias_column)
+        coefficients = fit_ridge_from_gram(gram, rhs, alpha, bias_column=bias_column)
         score = nrmse(y_val, predict(phi_val, coefficients))
         curve.append((alpha, score))
         # 昇順に走査し「以下」で更新するため、同点では大きい alpha が残る。
@@ -202,6 +211,7 @@ def select_alpha(
 __all__ = [
     "AlphaSelection",
     "fit_ridge",
+    "fit_ridge_from_gram",
     "penalty_matrix",
     "predict",
     "select_alpha",
