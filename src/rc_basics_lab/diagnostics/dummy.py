@@ -23,7 +23,6 @@ def state_mean_norm(
     X: FloatArray,
     u: FloatArray | None = None,
     y: FloatArray | None = None,
-    extra_required_arg: int,
     *,
     ctx: DiagnosticContext | None = None,
 ) -> DiagnosticResult:
