@@ -12,8 +12,11 @@
 02 以降は ``run_<番号>.py`` を使う。01 の ``run.py`` は既存の公開コマンドなので
 そのまま残す。
 
-``--out`` (既定 ``results``) に ``esp_diagnostics.csv`` / ``fig_esp_decay.png`` /
-``fig_leak_timescale.png`` / ``fig_esp_map.png`` / ``meta.json`` の5点を書く。
+``--out`` (既定 ``results``) に ``esp_diagnostics.csv`` /
+``washout_sensitivity.csv`` / ``fig_esp_decay.png`` / ``fig_leak_timescale.png`` /
+``fig_esp_map.png`` / ``fig_washout_sensitivity.png`` / ``meta.json`` の7点を書く。
+``--threshold-sweep`` を付けたときは代わりに
+``esp_threshold_sensitivity.csv`` (D-16 の閾値感度) だけを書く。
 実測 wall time は ``meta.json`` の ``wall_time_s`` に記録する (性能受け入れ基準)。
 進捗は ``print`` ではなく ``logging`` で出す (ruff T20)。
 
@@ -31,7 +34,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import Esp02Config, load_config_as
-from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
+from rc_basics_lab.experiment.esp_pipeline import (
+    run_and_report_esp,
+    run_and_report_threshold_sweep,
+)
 
 logger = logging.getLogger("rc_basics_lab.experiments.02_esp_and_dynamics")
 

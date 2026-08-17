@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 threshold-02 pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -12,6 +12,7 @@ help:
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
+	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
 
@@ -55,6 +56,12 @@ figures-01:
 # 01 と出力先を分けるのは meta.json / results 直下のファイル名が衝突するため。
 figures-02:
 	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics
+
+# ESP 判定の閾値感度 (esp_threshold_sensitivity.csv) を再生成する。
+# abs_tol 3点 x window 3点で 2-C の格子を判定し直すので figures-02 とは
+# 分けてある (docs/design.md §9 の感度表の一次資料)。
+threshold-02:
+	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics --threshold-sweep
 
 pre-commit:
 	uv run pre-commit run --all-files
