@@ -31,7 +31,6 @@ from rc_basics_lab.readout.design import (
     FeatureSpec,
     PassthroughSpec,
     ReservoirSpec,
-    bias_column_index,
     build_design_matrix,
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
@@ -222,7 +221,7 @@ def _select(
             _rows(design.phi, split.val),
             y_val,
             alphas,
-            bias_column=bias_column_index(design.feature_names),
+            bias_column=design.bias_column,
         )
         if best is None or selection.val_nrmse < best.val_nrmse:
             best = _Selection(
@@ -246,7 +245,7 @@ def _evaluate(
     started = time.perf_counter()
     split = plan.split
     best = _select(plan, plan.designs[method.name], config.ridge.alpha_grid)
-    bias_column = bias_column_index(best.design.feature_names)
+    bias_column = best.design.bias_column
     coefficients = fit_ridge(
         _rows(best.design.phi, split.train),
         _rows(plan.task.y, split.train),

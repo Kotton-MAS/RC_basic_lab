@@ -18,6 +18,7 @@ from rc_basics_lab.readout.design import (
 from rc_basics_lab.readout.ridge import (
     AlphaSelection,
     fit_ridge,
+    fit_ridge_from_gram,
     penalty_matrix,
     predict,
     select_alpha,
@@ -34,6 +35,7 @@ __all__ = [
     "bias_column_index",
     "build_design_matrix",
     "fit_ridge",
+    "fit_ridge_from_gram",
     "penalty_matrix",
     "predict",
     "select_alpha",
