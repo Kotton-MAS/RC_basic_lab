@@ -152,7 +152,7 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
         for attr_name, attr in vars(module).items():
             if attr_name.startswith("_"):
                 continue
-            candidate: object
+            candidate: Callable[..., object]
             if inspect.isfunction(attr):
                 candidate = attr
             elif not inspect.isclass(attr) and callable(attr):
@@ -168,7 +168,7 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
             except (NameError, TypeError):
                 continue
             if signature.return_annotation is DiagnosticResult:
-                found.append((f"{module.__name__}.{attr_name}", candidate))  # type: ignore[arg-type]
+                found.append((f"{module.__name__}.{attr_name}", candidate))
     return found
 
 
