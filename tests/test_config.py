@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -97,5 +98,6 @@ def test_broken_yaml_raises(tmp_path: Path) -> None:
 
 def test_config_is_frozen() -> None:
     config = ExperimentConfig()
-    with pytest.raises(AttributeError):
-        config.n_replicates = 7  # type: ignore[misc]  # frozen 検証のため意図的
+    # 静的にも代入不可なので、実行時の凍結確認には setattr を使う
+    with pytest.raises(FrozenInstanceError):
+        setattr(config, "n_replicates", 7)  # noqa: B010  # frozen 検証のため意図的
