@@ -18,6 +18,16 @@
 ``diagnostics`` の設定 dataclass を import する向き (``config -> diagnostics``)
 で配線する。これは ``config.py`` が既に ``reservoir.esn.ESNConfig`` を import
 しているのと同じ向きであり、この向きは許可される。
+
+``DiagnosticContext`` に足してよいのは **データの素性** (``washout`` /
+``dt`` / ``seed`` / ``companion_states``) のみであり、診断固有のパラメータ
+(例: 02 の ESP 判定の閾値・窓、03 の IPC のサロゲート本数・最大遅延/次数) は
+``ctx`` に足さず、``Diagnostic`` は ``__call__`` を持つ Protocol なので
+**frozen dataclass の** ``__call__`` **として書き、構築時**に渡す
+(例: ``StatePca(cumulative_threshold=0.9)``)。こうすれば D-01 の署名は
+一切変えずに済む。全診断固有パラメータを ``ctx`` に集約すると、05 まで
+進んだ時点で ``DiagnosticContext`` が全診断の設定の union になり、
+「どのフィールドをどの診断が読むか」が型から読み取れなくなる (F-1-006)。
 """
 
 from __future__ import annotations

@@ -97,13 +97,21 @@ finding ID（`F-1-xxx` / `F-2-xxx`）を「なぜこうなっているか」の�
 - **F-1-021** [INFO / uv] `pythonpath = ["."]` は `tests/test_main.py` がルートの `main.py` / `conftest`
   を import するため今も必要。
   → 対応不要（確認事項の記録）。
+- **F-1-006** [INFO / architecture] D-01 の rule 本文が「拡張は `DiagnosticContext` への既定値つき
+  フィールド追加のみ」とだけ書いており、診断固有のパラメータまで `ctx` に押し込む読み方を誘発していた。
+  05 まで進むと `DiagnosticContext` が全診断の設定の union になり、要件_02 設計判断3（ESP判定の閾値と窓は
+  設定可能）・要件_03（IPC のサロゲート本数・最大遅延/次数）のパラメータをどこに置くかが決まらない問題が
+  あった。→ ユーザー承認のうえ対応済み。D-01 の `rule` に「`DiagnosticContext` が持つのはデータの素性
+  (`washout`/`dt`/`seed`/`companion_states`) のみとし、診断固有パラメータはパラメータ化した callable
+  (frozen dataclass の `__call__`) の構築時に渡す」を追記し（`.claude/decisions.yaml`）、
+  `diagnostics/base.py` の docstring に使い分けの例を追記、guard test に
+  `tests/test_diagnostics_base.py::test_parameterized_callable_conforms_to_d01_signature_contract`
+  を追加（frozen dataclass の `__call__` も D-01 の署名契約を満たすことを実行時に固定）。
+  `diagnostics/state_space.py` の `state_pca` を dataclass 化する対応自体は、02 で実際に必要性が
+  出てから行う判断とし、今回はスコープ外（ルールと guard の整備のみ）。
 
 ### MEDIUM/INFO — ユーザー判断待ち
 
-- **F-1-006** [INFO / architecture] D-01 の rule 本文に「`DiagnosticContext` が持つのはデータの素性のみ。
-  診断固有パラメータはパラメータ化した callable の構築時に渡す」という1文を追加する提案。
-  **`.claude/decisions.yaml` の記録済み決定の文言変更にあたるため、ユーザーの承認が要る。**
-  → **保留**（未反映）。
 - **受け入れ条件4 の記事での扱い**（F-1-009 issue 内 (4)）: 「リザバー状態 > 遅延埋め込み入力」という
   当初期待が実測で不成立（数値は `docs/design.md` §7.2・`meta.json` に記録済み）。実装上の対応は不要だが、
   記事本文でこの結果をどう扱うか（正直に書く / 追加実験で条件を変える 等）は編集判断であり、
@@ -173,7 +181,7 @@ round 2 は round 1 の HIGH 修正（F-1-001, F-1-017 の対応）に対する�
 
 ## 着手順の提案（残っているものだけ）
 
-1. **F-1-006 の decisions.yaml 反映の可否**、**受け入れ条件4 の記事での扱い** — ユーザー判断待ち。
-   02 着手前に決めておくと後戻りがない。
+1. **受け入れ条件4 の記事での扱い** — ユーザー判断待ち。02 着手前に決めておくと後戻りがない。
+   （F-1-006 は decisions.yaml へ反映済み、対応済みに移動）
 2. **F-2-012**（`__init__.py` 登録漏れの検出）— 02 で診断モジュールを追加する直前に。
 3. **F-2-009**（parametrize の `ids` 形式統一）— 優先度低。
