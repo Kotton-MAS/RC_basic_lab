@@ -668,8 +668,8 @@ class StatePropagator(Protocol):
   guard_test: "tests/test_diagnostics_esp.py::test_matches_analytic_exponent_for_linear_map"
 
 - id: D-19
-  rule: "washout 感度実験では、washout を増やしても訓練/検証/テストの行数が変わらないよう系列長を伸ばして補償する (pad_series=True が既定)。補償なしは pad_series=False として残し対比に使う"
-  rationale: "make_split は n_usable = T - max_start_offset - t0 で行数を決めるため、washout を増やすと訓練データ量が同時に減る。素直に掃引すると『washout の効果』と『訓練データ量の効果』が交絡し、受け入れ条件5 が別の量の測定になる。この交絡は滑らかな単調曲線として出るため図を見ても気づけない"
+  rule: "washout 感度実験では、washout を増やしても訓練/検証/テストの行数が変わらないよう系列長を伸ばして補償する (pad_series=True が既定)。補償量は washout の差分ではなく t0 の差分 length = base_length + (t0(washout) - t0(min(grid))) とし、t0 は系列を作る前に readout.design.first_valid_for から予測する。補償なしは pad_series=False として残し対比に使う"
+  rationale: "make_split は n_usable = T - max_start_offset - t0 で行数を決めるため、washout を増やすと訓練データ量が同時に減る。素直に掃引すると『washout の効果』と『訓練データ量の効果』が交絡し、受け入れ条件5 が別の量の測定になる。この交絡は滑らかな単調曲線として出るため図を見ても気づけない (実測: 補償なしだと MG x ESN の NRMSE が washout に対して完全に単調増加し、比 1.0115。補償を入れると単調性が消え比 1.0076 の非単調なノイズになる)。補償量を washout の差分にしないのは t0 = max(washout, 各手法の first_valid) が飽和するためで、本番格子では遅延線の最大ラグ 64 により washout=0 と 50 がどちらも t0=64 になり、washout 差分での補償では washout=0 だけ行数がずれる (実測 228 対 230)"
   guard_test: "tests/test_experiment_washout.py::test_washout_sweep_holds_training_size_constant"
 
 # T3 実装中に生まれた決定 (ユーザー承認済み)。T5 で decisions.yaml へ転記する。
