@@ -325,10 +325,137 @@ class StatePropagator(Protocol):
 - [ ] **受け入れ条件1**: `test_no_input_decay_matches_spectral_radius` —— σ=0 で ρ ∈ {0.5,0.8,0.95} は収束、{1.2,1.5} は非収束。`decay_rate_per_step` が `log ρ` と 20% 以内。
 - [ ] **受け入れ条件2**: `test_strong_input_restores_esp_above_unit_spectral_radius` —— ρ=1.5・σ≥1.0 で収束する条件が存在し、同 ρ・σ=0 は非収束。**図ではなくデータで固定**。
 - [ ] **受け入れ条件3**: `test_lyapunov_sign_agrees_with_verdict_away_from_boundary` (`|λ| > 0.01` の全条件)。境界近傍の件数は `meta.json` に記録。
+      → **実装時に非対称な要求へ変更** (下記の決定1。ユーザー承認済み)。
 - [ ] **受け入れ条件4**: `test_timescale_is_monotone_in_leak_rate`。
 - [ ] **D-17 guard**: `test_input_strength_is_standard_deviation_not_amplitude`。
 - [ ] `test_artifacts_are_regenerated_in_one_command` (PNG dpi を `conftest.png_dpi` で実測)。
 - [ ] 性能: 本番 `wall_time_s < 900`、02 関連テスト合計 < 60 秒。
+
+**実装時に決めたこと (T3 実装者追記。仕様に書かれていなかった選択)**
+
+決定は T5 で `.claude/decisions.yaml` / `docs/design.md` §9 に転記する。
+1〜4 は着手前にユーザー承認済み (実測を添えて確認した)。5 以降は実装中の判断。
+
+*承認を取った4件 (受け入れ条件の成否に直結するもの)*
+
+1. **λ の符号と ESP 判定の整合の要求を非対称にする → D-20 として登録予定**。
+   「`λ>0` なのに収束 (**偽の ESP**) は全条件で 0 件」と「`σ_u >= 0.5` の全条件で
+   `sign(λ)<0 ⇔ converged==1`」の2本を要求し、「`λ<0` なのに非収束」は許容して
+   件数と内訳を `meta.json` に残す。理由: 条件付き Lyapunov 指数は参照軌道まわりの
+   **局所**量なので**多安定性を原理的に検出できない**。tanh は奇関数なので `x*` が
+   不動点なら `-x*` も不動点であり、どちらも局所安定 (λ<0) でありながら初期状態に
+   よって行き先が割れる (= ESP 不成立)。ρ=1.1・σ=0 で4軌道を直接観測して確認した
+   (末尾200ステップの時間標準偏差 4.7e-16 = 全軌道が不動点に到達、うち3本が同一点、
+   1本が距離 0.526 の別の点)。§7 のリスク2 が疑えという「伝播器の入力インデックス
+   ずれ」は先に否定済み (下記の実測値を参照)。**この非対称性を「揃っていないから」と
+   対称化しないこと**。対称化すると実在の現象を実装バグとして潰すことになる。
+2. **02 の ESN は `bias_scale = 0.0` で構成する** (`experiment/esp.py::BIAS_SCALE`)。
+   `ReservoirSweepConfig` に `bias_scale` の葉は無く `ESNConfig` の既定 0.1 が効くが、
+   定数バイアスは `[1; u]` の先頭成分に掛かる**振幅一定の入力そのもの**であり、
+   `sigma_u = 0` を「無入力」と呼べなくなる。実測: `bias_scale=0.1` では無入力・
+   ρ=1.2 でも2軌道が収束し受け入れ条件1 が成立しない。D-17 が入力強度を駆動信号の
+   標準偏差で定義している以上、その定義に入らない常時入力は 0 にする。
+3. **`DriveConfig.n_pairs` の既定を 3 → 10 に上げる**。無入力・ρ>1 の ESN は `+x*` /
+   `-x*` の対をなす吸引子を持つことがあり、比較軌道が k 本すべて参照軌道と同じ側へ
+   落ちる確率が約 `2^-k` 残る。実測: `n_pairs=3` では特定のリザバー draw
+   (replicate 2) で ρ=1.05〜1.5・無入力が「収束」と誤判定され、受け入れ条件1 が
+   全レプリケートでは成立しなかった。10 本にすると全レプリケートで正しく非収束に
+   なり、ρ<1 側の判定は変わらない (n_pairs=30 まで上げても偽陰性なし)。
+   本番 wall time は 43.2s → 83.3s (予算 900s の 9%)。
+4. **`esp_convergence` に渡す ctx の washout を 0 固定にする**
+   (`experiment/esp.py::ESP_DISTANCE_WASHOUT`)。λ と自己相関の ctx には
+   `drive.washout` を渡す (両者は別の要求)。`esp_convergence` で washout が効くのは
+   減衰率の当てはめ開始位置だけで、判定 (末尾 window の中央値) には効かない。一方
+   2-A は**過渡そのものを見せる図**であり、距離が `floor` に届く前に当てはめを
+   始めないと減衰率が測れない。実測: 無入力 ρ=0.5 の距離は t≈46 で 1e-14 を割る
+   ため、当てはめ開始が `washout(200) + fit_skip(50) = 250` だと当てはめ点が 0 点に
+   なり `decay_rate_per_step` が `nan` になる (ρ=0.8 も同様)。あわせて 02 の
+   `Esp02Config.esp` の既定を `EspConfig(fit_skip=10)` にした
+   (`config._esp_criteria_for_02`)。D-16 の診断側の既定 (`DEFAULT_ESP`, fit_skip=50)
+   は変えていない。guard は `test_decay_fit_starts_before_the_distance_underflows`
+   と `test_production_yaml_can_measure_the_decay_rate`。
+
+*実装中の判断 (承認不要な範囲)*
+
+5. **`evaluate_condition` の戻り値を `EspRow` ではなく `ConditionOutcome`
+   (`row` + 距離曲線 + ACF) にした**。理由: 2-A の図は距離曲線そのものが主役で、
+   行だけ返すと図のために全条件をもう一度回すことになる (実測 83 秒が倍になる)。
+   `ConditionOutcome.row` が `EspRow` なので CSV 列順の単一の真実は変わらない。
+6. **`meta.py::collect_meta_for(config, seeds)` と
+   `experiment/report.py::write_meta_for(...)` を追加**し、既存の `collect_meta` /
+   `write_meta` はそこへの委譲にした (署名は不変)。理由: 実験ごとに設定クラスは
+   分かれる (D-13) が、`meta.json` の項目と書き出し規律は1か所に置きたい。
+   `load_config` / `load_config_as` と `make_rng` / `make_rng_for` と同じ形。
+7. **`main.EXPERIMENTS` の値は `(ローダ, パイプライン, YAML パス)` の組ではなく
+   `ExperimentSpec(config_path, run)`** にした。理由: ローダの戻り値型が実験ごとに
+   違う (`ExperimentConfig` / `Esp02Config`) ため、組のままでは `Any` を使わずに型を
+   付けられない。「設定を読んでパイプラインへ渡す」までを1つの `run` に閉じると、
+   実験ごとの型が関数の内側に収まりレジストリは単一の型で書ける。
+8. **02 の CLI は `experiments/02_esp_and_dynamics/run_02.py`** (01 の `run.py` と
+   名前を揃えていない)。理由: mypy がリポジトリ配下の同名トップレベルモジュールを
+   `Duplicate module named "run"` として解析を止める。実験ディレクトリ名は数字始まりで
+   パッケージにできず (`01_what_is_rc is not a valid Python package name`)、
+   `[tool.mypy]` の設定は変更しない制約がある。03 以降も `run_<番号>.py` を使う。
+9. **本番 YAML の `lyapunov.max_growth` は `1000.0` と書く**。`1.0e3` は YAML 1.1 では
+   指数部に符号が無いため**文字列**として読まれ `ConfigError` になる (実測)。
+   同種の誤りを CI で落とすため `test_esp_config_yaml_matches_the_real_experiment` を
+   足し、本番 YAML を実際にローダへ通すようにした (01 の同名テストと同じ役割)。
+10. **`Makefile` に `figures-02` を追加**し、出力先を `results/02_esp_and_dynamics/`
+    にした。理由: 01 と同じ `results/` に出すと `meta.json` が衝突して 01 の成果物が
+    上書きされる。`make ci` の構成は変えていない。
+11. **2-A の図は横軸を「測れている区間 + 余白」で切る** (`_decay_x_limit`)。理由:
+    系列長 3000 をそのまま横軸に取ると、測れている区間 (ρ=0.5 で 46 ステップ、
+    ρ=0.95 でも 680 ステップ) が左端に潰れ、図の主役である傾きの違いが読めない。
+    切ったことは軸ラベルに数値で書く (本番では「系列長 3000 のうち先頭 885 を表示」)。
+12. **`plot_esp_map` の横軸は sigma_u の順位**にした (値そのものではない)。理由:
+    格子が 0.05〜2.0 と等比的に広がるので、値を軸に取ると強入力側が潰れて読めない。
+    λ=0 の等高線は各軸 2 点以上あるときだけ描く (格子を縮めても図が落ちないように)。
+13. **`CHANNEL_PENDING` の T3 分 (20件) を実チャネルへ書き換えた**。
+    `name` → `CHANNEL_META` / `drive.distribution` → `CHANNEL_ERROR` / 残り 18 件 →
+    `CHANNEL_ROWS`。セクション固有の葉 (`decay.*` / `timescale_sweep.*` /
+    `esp_map.*`) には `scope` を付け、**担当する実験の行だけを変え他の実験の行を
+    バイト単位で変えない**ことまで要求する。`PENDING_SECTIONS` は
+    `frozenset({"washout"})` に絞り、T3 のセクションが pending へ戻る経路を塞いだ。
+    時限装置の実効性は変異注入で確認済み (1件を pending へ戻すと
+    `test_pending_cases_disappear_once_the_experiment_layer_exists` が発火)。
+14. **`test_experiment_registry_covers_the_experiment_directories` を追加**。
+    `experiments/` のディレクトリ番号と `main.EXPERIMENTS` のキーが一致することを
+    強制する (実験を足して登録し忘れると CLI から静かに消えるため)。
+
+*実測値 (T3 完了時。本番設定 `experiments/02_esp_and_dynamics/config.yaml`)*
+
+- **wall_time_s = 83.26 秒** / 369 行 (2-A 15 + 2-B 18 + 2-C 336)。内訳は
+  2-A 3.38s / 2-B 4.06s / 2-C 75.82s。予算 900 秒に対して 9%。
+- **受け入れ条件1** (σ_u=0、3レプリケート):
+
+  | ρ | converged | `decay_rate_per_step` (rep0/1/2) | `log ρ` | 相対誤差 |
+  |---|---|---|---|---|
+  | 0.5 | 1 / 1 / 1 | -0.7466 / -0.7318 / -0.7286 | -0.6931 | 7.71% / 5.58% / 5.12% |
+  | 0.8 | 1 / 1 / 1 | -0.2324 / -0.2349 / -0.2290 | -0.2231 | 4.13% / 5.26% / 2.61% |
+  | 0.95 | 1 / 1 / 1 | -0.05147 / -0.05152 / -0.05142 | -0.05129 | 0.35% / 0.44% / 0.24% |
+  | 1.2 | 0 / 0 / 0 | 約 +1e-5 (減衰しない) | +0.1823 | — |
+  | 1.5 | 0 / 0 / 0 | 約 +2e-5 (減衰しない) | +0.4055 | — |
+
+- **受け入れ条件2** (ρ=1.5、3レプリケート全て): σ_u=0 / 0.05 / 0.1 / 0.2 / 0.5 は
+  `converged=0`、**σ_u=1.0 と 2.0 は `converged=1`** (`d_tail` は 2.4e-16 / 1.4e-16)。
+  記事の目玉はデータで固定された。
+- **受け入れ条件3**: `n_rows=369` / 境界近傍 (`|λ|<=0.01`) 37 件 / 比較対象 332 件。
+  **`n_false_esp = 0`**。「λ<0 なのに非収束」27 件 (8.13%)。
+  強駆動 (σ_u>=0.5) は **158 件中 0 件の不一致**。
+  不一致の内訳: σ_u = 0.0 (8件) / 0.05 (7件) / 0.1 (8件) / 0.2 (4件)、
+  ρ = 1.1 (6件) / 1.2 (6件) / 1.3 (4件) / 1.4 (4件) / 1.5 (5件) / 1.6 (2件)。
+  **σ_u >= 0.5 と ρ <= 1.0 には1件も無い**。
+- **受け入れ条件4** (ρ=0.9, σ_u=0.5): `tau_1e` のレプリケート平均は
+  リーク率 0.1→1.0 で 13.389 / 6.297 / 3.712 / 1.931 / 1.111 / 0.615 (単調非増加)。
+  理論線 `-1/log(1-a)` は 9.491 / 4.481 / 2.804 / 1.443 / 0.831 / (a=1 は 0)。
+  実測が理論線より大きいのは線形域の近似が再帰項を無視しているため (単調性は一致)。
+- **伝播器のインデックスずれは否定済み**: `check_propagator=True` のまま 336 条件が
+  通過。`u[t]` に差し替えると全条件で `ValueError`、検査を切ると λ が
+  +15.17 / +17.16 / +16.78 (正しい値は -0.019 / -0.064 / -0.234) になる。
+- **図**: 3枚とも 200 dpi (`conftest.png_dpi` で実測)。
+- **01 の成果物は 1 バイトも変わっていない**: `comparison.csv` (`wall_time_s` 除く) と
+  `comparison_summary.csv` が再生成前後で完全一致。
+- テスト: 339 → 365 件 (+26)、全体 9.80 秒 (増分 6.7 秒。予算 90 秒に対して 7%)。
 
 ### T4: 実験 2-D —— washout 感度 (想定所要: **M**)
 
