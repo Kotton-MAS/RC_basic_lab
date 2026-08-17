@@ -20,14 +20,23 @@
 しているのと同じ向きであり、この向きは許可される。
 
 ``DiagnosticContext`` に足してよいのは **データの素性** (``washout`` /
-``dt`` / ``seed`` / ``companion_states``) のみであり、診断固有のパラメータ
-(例: 02 の ESP 判定の閾値・窓、03 の IPC のサロゲート本数・最大遅延/次数) は
-``ctx`` に足さず、``Diagnostic`` は ``__call__`` を持つ Protocol なので
-**frozen dataclass の** ``__call__`` **として書き、構築時**に渡す
-(例: ``StatePca(cumulative_threshold=0.9)``)。こうすれば D-01 の署名は
-一切変えずに済む。全診断固有パラメータを ``ctx`` に集約すると、05 まで
-進んだ時点で ``DiagnosticContext`` が全診断の設定の union になり、
-「どのフィールドをどの診断が読むか」が型から読み取れなくなる (F-1-006)。
+``dt`` / ``seed`` / ``companion_states`` / ``propagator``) のみであり、
+診断固有のパラメータ (例: 02 の ESP 判定の閾値・窓、03 の IPC の
+サロゲート本数・最大遅延/次数) は ``ctx`` に足さない。境界は
+**「系そのものを表すか (``ctx``) / 判定基準を表すか (``cfg``)」** である
+(D-15)。全診断固有パラメータを ``ctx`` に集約すると、05 まで進んだ時点で
+``DiagnosticContext`` が全診断の設定の union になり、「どのフィールドを
+どの診断が読むか」が型から読み取れなくなる (F-1-006)。
+
+診断固有パラメータの渡し方は次の2形のいずれか。どちらも D-01 の署名契約
+(X/u/y/ctx 以外に**必須**引数を作らない) を一切変えない。
+
+1. **既定値つきキーワード引数** ``cfg`` (02 以降の標準。D-15)。
+   例: ``esp_convergence(X, *, ctx=None, cfg: EspConfig = DEFAULT_ESP)``。
+   関数のまま書けるので ``pkgutil`` による D-01 の自動列挙にそのまま乗る。
+2. パラメータ化した callable (``frozen dataclass`` の ``__call__``)。
+   例: ``StatePca(cumulative_threshold=0.9)``。構築時にパラメータを固定したい
+   場合に使う。
 """
 
 from __future__ import annotations
