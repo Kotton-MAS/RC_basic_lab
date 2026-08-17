@@ -26,7 +26,6 @@ from rc_basics_lab.config import (
     ESNConfig,
     ExperimentConfig,
     RidgeConfig,
-    SeedConfig,
     SplitConfig,
     load_config,
 )
@@ -45,6 +44,7 @@ from rc_basics_lab.experiment.split import compute_t0, make_split
 from rc_basics_lab.readout.design import DelayLineSpec
 from rc_basics_lab.readout.ridge import AlphaSelection
 from rc_basics_lab.readout.ridge import select_alpha as real_select_alpha
+from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng
 from rc_basics_lab.types import FloatArray
 
 TINY_ALPHA_GRID = (1e-4, 1e-2, 1.0)
@@ -171,8 +171,6 @@ def test_split_seed_changes_boundaries() -> None:
     t0 = config.split.washout
 
     def offset_for(seeds: SeedConfig) -> int:
-        from rc_basics_lab.seeds import SeedStream, make_rng
-
         rng = make_rng(seeds, SeedStream.SPLIT, 0)
         return make_split(config.split, n_steps, t0, rng).offset
 

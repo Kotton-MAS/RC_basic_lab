@@ -112,15 +112,18 @@ def test_non_integer_delay_ratio_raises() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    "cfg",
     [
-        ("rk4_step", 0.0),
-        ("sample_interval", 0),
-        ("length", 0),
-        ("horizon", 0),
-        ("integration_burn_in", -1),
+        dataclasses.replace(SHORT, rk4_step=0.0),
+        dataclasses.replace(SHORT, tau=0.0),
+        dataclasses.replace(SHORT, sample_interval=0),
+        dataclasses.replace(SHORT, length=0),
+        dataclasses.replace(SHORT, horizon=0),
+        dataclasses.replace(SHORT, integration_burn_in=-1),
+        dataclasses.replace(SHORT, exponent=0),
     ],
+    ids=["rk4_step", "tau", "sample_interval", "length", "horizon", "burn_in", "n"],
 )
-def test_invalid_parameters_raise(field: str, value: float) -> None:
+def test_invalid_parameters_raise(cfg: MackeyGlassConfig) -> None:
     with pytest.raises(ValueError):
-        generate_mackey_glass(dataclasses.replace(SHORT, **{field: value}), _rng())
+        generate_mackey_glass(cfg, _rng())
