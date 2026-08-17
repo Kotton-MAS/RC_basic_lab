@@ -210,6 +210,21 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
   - `tests/test_ridge.py::test_alpha_changes_coefficient_norm` — alpha 単調増加に対し係数ノルムが単調減少
   - `tests/test_ridge.py::test_closed_form_matches_naive_solution` — 小さい系で `np.linalg.lstsq` ベースの素朴解と一致
 - **想定所要**: L
+- **実装時に決めたこと（仕様に無かった箇所。T4・T5 と 02〜05 はこれに合わせる）**
+  - `ESN.__init__(config, rng, *, n_inputs: int = 1)` とした。理由: `W_in` の形状 `(N, 1+D_in)` に入力次元が要るが、`D_in` は課題側が決める量であり YAML の構造ハイパーパラメータではない。`ESNConfig` に入れると「設定したのに課題と食い違う」経路を作るため、コンストラクタの keyword 引数にした（仕様の `ESN(config, rng)` 呼び出しはそのまま有効）
+  - `bias_scale` は `W_in` の**先頭列（定数入力 1 に対応）だけ**に適用し、残りの入力列は `input_scale` を使う。既定値は `bias_scale = 0.1`。理由: 仕様は `W_in ~ U[-input_scale, input_scale]` とだけ書いており `bias_scale` の作用点が未定義だった。定数入力の寄与が入力の寄与を上回ると tanh が飽和側に張り付くため、入力スケールより小さい値を既定にした（実験で使う値は T4 の YAML で明示する）
+  - `ESNConfig` の値の検証は `ESN.__init__` で行い、dataclass 側には `__post_init__` を置かない。理由: T1 の設定 dataclass 群と同じ「純粋なデータ保持」に揃える。YAML 起因の失敗は `ConfigError`、値域の失敗は `ValueError` と発生源が分かれる
+  - `state_noise > 0` かつ `rng is None` は `ValueError`。理由: 黙ってノイズ無しで走ると「設定したのに効いていない」実験になる（D-09 と同じ動機）
+  - `ESN.run` は `ESN.step` を逐次呼ぶのとビット単位で同一の結果を返す（入力射影を系列全体でまとめて計算する最適化をしていない）。理由: 04 の閉ループで `step` に切り替えた瞬間に軌道が変わる事故を防ぐ。`tests/test_reservoir.py::test_run_equals_repeated_step` で固定した
+  - `ESN.W` / `ESN.W_in` は生成後に read-only（`setflags(write=False)`）。理由: 学習は読み出し層だけで行うという分担を機械的に守る
+  - `activation` は `"tanh"` 以外を `ValueError`。理由: 未対応の値を黙って tanh として扱わない
+  - 設計行列の `first_valid` より手前の行は **NaN** で埋め、`fit_ridge` は非有限値を `ValueError` にする。理由: 0 埋めにすると `t0` の取り違えが「少しずれた学習結果」として静かに通り、D-05 の防衛線をすり抜ける
+  - `build_design_matrix` は内部で `FeatureSpec` を `_Layout(bias, input_lags, use_states)` に正規化し、組み立て経路は1本に合流させる。手法ごとの分岐は `_layout_of` の `match` 1か所のみ（受け入れ条件1）
+  - 特徴名は `bias`, `u{次元}_lag{ラグ}`, `x{ユニット}`。`bias_column_index(feature_names)` を公開し、`fit_ridge(..., bias_column=...)` に渡す。理由: `bias=False` の設計行列に `D = diag(0,1,...)` を当てると先頭の実特徴だけが無罰則になり、D-03 が静かに別物になる
+  - `fit_ridge` / `select_alpha` の `y` は `(T, D_out)` の2次元のみ受理する（1次元は `ValueError`）。理由: 診断層の入力規約（T2）と揃える
+  - `select_alpha` の `alphas` に既定値を持たせない（呼び出し側が `config.ridge.alpha_grid` を渡す）。理由: 格子の既定値が config と ridge の2箇所に存在すると D-04 が静かに破れる。同点判定は昇順走査＋`<=` 更新で「大きい alpha が残る」を実現
+  - `readout.predict(phi, coefficients)` を公開した。理由: `select_alpha` が内部で使う予測を T4 のランナーが書き写さずに済むようにする（1行だが、書き写すと `first_valid` の扱いが分岐しうる）
+  - ESN の既定値（MG 用・パリティ用）は `docs/design.md` §6 に根拠付きで記録した。`ESNConfig` の dataclass 既定値は MG 用の組に一致させてある
 
 ### T4: タスク2種 + 実験1-A ランナー + comparison.csv
 
