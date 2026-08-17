@@ -656,6 +656,9 @@ write_washout_csv(
 "
 ```
 
+上と同じ処理は `make washout-02-unpadded` でも一発実行できる（§9.2 の
+`make threshold-02` と同じ規律）。
+
 下表と CSV の**行数・値の一致**は `tests/test_design_doc.py` が機械照合する
 （§9.2 の閾値感度表と同じ規律）。
 
