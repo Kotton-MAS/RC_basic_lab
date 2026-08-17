@@ -92,16 +92,18 @@ def test_alpha_grid_lower_bound_is_a_numerical_limit() -> None:
     """下端 1e-10 は恣意的な打ち切りではなく、条件数の限界である (D-11 の根拠).
 
     ``alpha <= 1e-11`` で Cholesky が落ちること自体は環境依存なので主張しない。
-    ここでは「下端付近の正則化量が Gram 行列の数値誤差と同じ桁にある」ことを
-    条件数で測る。
+    代わりに、正則化なしの Gram 行列が**数値的に特異**であること
+    (最小固有値が丸め誤差の床 ``||G||*eps`` より下) と、格子下端がその床の
+    上にあること (= これ以上下げると正定値性が数値的に保てない) を測る。
     """
     grid = _experiment_alpha_grid()
     assert min(grid) == pytest.approx(GRID_LOWER_BOUND)
 
     phi_tr, _, _, _ = _train_val_blocks(_experiment_max_n_lags())
     gram: FloatArray = phi_tr.T @ phi_tr
-    condition_number = float(np.linalg.cond(gram))
-    assert condition_number > ILL_CONDITIONED
-    # 下端の alpha は Gram 行列の対角スケールに対して無視できる大きさ
-    # (= これ以上下げても OLS に漸近するだけで、数値的にしか変わらない)
-    assert min(grid) < float(np.max(np.diag(gram))) * np.finfo(np.float64).eps
+    assert float(np.linalg.cond(gram)) > ILL_CONDITIONED
+
+    eigenvalues: FloatArray = np.linalg.eigvalsh(gram)
+    rounding_floor = float(eigenvalues[-1]) * float(np.finfo(np.float64).eps)
+    assert float(eigenvalues[0]) < rounding_floor
+    assert min(grid) > rounding_floor
