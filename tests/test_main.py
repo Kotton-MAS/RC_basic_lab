@@ -10,6 +10,7 @@ retina 相当であることを見る。
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import sys
