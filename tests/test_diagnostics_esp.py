@@ -20,6 +20,7 @@ if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
 
 from rc_basics_lab.diagnostics.base import (
+    Diagnostic,
     DiagnosticContext,
     DiagnosticResult,
     StatePropagator,
@@ -428,15 +429,15 @@ def test_esp_config_is_passed_as_defaulted_keyword() -> None:
     機械的に固定する。
     """
     ctx_field_names = _field_names(DiagnosticContext)
-    for func, config_type in _CONFIG_TYPES:
+    for name, func, config_type in _CONFIG_TYPES:
         parameters = inspect.signature(func).parameters
-        assert "cfg" in parameters, f"{func.__name__}: cfg 引数がありません"
+        assert "cfg" in parameters, f"{name}: cfg 引数がありません"
         cfg_param = parameters["cfg"]
         assert cfg_param.kind == inspect.Parameter.KEYWORD_ONLY, (
-            f"{func.__name__}: cfg が keyword-only ではありません"
+            f"{name}: cfg が keyword-only ではありません"
         )
         assert isinstance(cfg_param.default, config_type), (
-            f"{func.__name__}: cfg に {config_type.__name__} の既定値がありません"
+            f"{name}: cfg に {config_type.__name__} の既定値がありません"
         )
         overlap = ctx_field_names & _field_names(config_type)
         assert not overlap, (
@@ -636,7 +637,7 @@ def test_all_config_fields_have_a_case() -> None:
     ケース未登録のまま「全フィールドで出力が変わる」を名乗ると、検査の
     網羅性が静かに落ちる (``test_all_config_fields_are_covered`` と同じ役割)。
     """
-    for _, config_type in _CONFIG_TYPES:
+    for _, _func, config_type in _CONFIG_TYPES:
         expected = _field_names(config_type)
         covered = {
             case.field_name for case in CONFIG_CASES if case.config_type is config_type
