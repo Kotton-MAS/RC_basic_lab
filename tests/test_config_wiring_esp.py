@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import pkgutil
 from collections.abc import Mapping, Sequence
 from dataclasses import fields
@@ -677,3 +678,77 @@ def test_split_stream_is_rejected_for_esp_seeds() -> None:
     """2-A/2-B/2-C は分割を行わないので ``SPLIT`` は取り出せない (D-14)。"""
     with pytest.raises(ValueError, match="SPLIT"):
         esp_stream_seed(Esp02Config().seeds, SeedStream.SPLIT)
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ESP_CONFIG_PATH = REPO_ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml"
+
+REQUIRED_RHO_POINTS = 16
+REQUIRED_SIGMA_POINTS = 7
+REQUIRED_REPLICATES = 3
+REQUIRED_PAIRS = 10
+REQUIRED_UNITS = 200
+REQUIRED_STEPS = 3000
+STRONG_SIGMA = 1.0
+
+
+def test_esp_config_yaml_matches_the_real_experiment() -> None:
+    """本番の設定ファイルが同じローダを通り、承認された格子を持つ。
+
+    縮小設定だけが通る状態を防ぐ (01 の
+    ``test_experiment_config_yaml_matches_the_real_experiment`` と同じ役割)。
+    これは形式的な検査ではない: 実測で ``max_growth: 1.0e3`` が YAML 1.1 では
+    **文字列**として読まれ (指数部に符号が要る) ``ConfigError`` になった。
+    本番 YAML をローダに通すテストが無いと、この種の誤りは
+    ``make figures-02`` を実際に走らせるまで発覚しない。
+
+    格子の点数は §8 Q3 でユーザーが承認した値 (rho16 x sigma7 x 3rep,
+    N=200, T=3000)。勝手に削られていないことをここで固定する。
+    """
+    config = load_config_as(ESP_CONFIG_PATH, Esp02Config)
+
+    assert len(config.esp_map.rho_grid) == REQUIRED_RHO_POINTS
+    assert len(config.esp_map.sigma_grid) == REQUIRED_SIGMA_POINTS
+    assert min(config.esp_map.rho_grid) < 1.0 < max(config.esp_map.rho_grid)
+    assert 0.0 in config.esp_map.sigma_grid, "無入力の対照が格子にありません"
+    assert max(config.esp_map.sigma_grid) >= STRONG_SIGMA, (
+        "rho>1 で ESP が戻る強度まで格子が届いていません (受け入れ条件2)"
+    )
+    assert config.reservoir.n_units == REQUIRED_UNITS
+    assert config.reservoir.n_replicates >= REQUIRED_REPLICATES
+    assert config.drive.n_steps == REQUIRED_STEPS
+    assert config.drive.n_pairs >= REQUIRED_PAIRS, (
+        "比較軌道が少ないと多安定なリザバーを「収束」と誤判定する"
+    )
+
+
+def test_production_yaml_keeps_the_propagator_check_enabled() -> None:
+    """本番設定で ``check_propagator`` を切らない (D-18)。
+
+    伝播器の入力インデックスずれは λ が"それらしい値"で出るためレビューでは
+    落ちない。入力が弱い条件では ``max_growth`` にも届かないので、この検査が
+    唯一の防波堤になる。YAML で切れてしまう経路をここで塞ぐ。
+    """
+    config = load_config_as(ESP_CONFIG_PATH, Esp02Config)
+    assert config.lyapunov.check_propagator is True
+    assert config.lyapunov.method == "perturbation"
+    assert isinstance(config.lyapunov.max_growth, float)
+
+
+def test_production_yaml_can_measure_the_decay_rate() -> None:
+    """本番設定の ``esp.fit_skip`` が当てはめ区間を食い潰していない。
+
+    ESP の距離当てはめは washout を掛けない (``ESP_DISTANCE_WASHOUT`` = 0) ので
+    当てはめ開始は ``fit_skip`` そのもの。無入力 rho=0.5 の距離は
+    ``d_initial ~ 0.8`` から ``rho**t`` で落ち、``log(floor / 0.8) / log(rho)``
+    ステップで床に届く。開始がそれを超えていると当てはめ点が 2 点未満になり
+    ``decay_rate_per_step`` が ``nan`` になる (受け入れ条件1 が測定不能)。
+    """
+    config = load_config_as(ESP_CONFIG_PATH, Esp02Config)
+    fastest = min(config.decay.rho_grid)
+    assert fastest < 1.0
+    steps_to_floor = math.log(config.esp.floor / 0.8) / math.log(fastest)
+    assert config.esp.fit_skip + 2 < steps_to_floor, (
+        "fit_skip が最速の減衰の測定可能区間を超えています: "
+        f"fit_skip={config.esp.fit_skip}, 床に届くのは t={steps_to_floor:.1f}"
+    )
