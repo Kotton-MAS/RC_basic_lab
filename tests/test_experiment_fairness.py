@@ -48,7 +48,11 @@ from rc_basics_lab.readout.ridge import select_alpha as real_select_alpha
 from rc_basics_lab.types import FloatArray
 
 TINY_ALPHA_GRID = (1e-4, 1e-2, 1.0)
-TINY_N_LAGS_GRID = (1, 3)
+TINY_WASHOUT = 50
+# **max(n_lags_grid) > washout にしてある**。washout が全 n_lags を覆っていると、
+# 「手法ごとに first_valid を使う」誤実装でも行集合が偶然一致してしまい、
+# test_all_methods_share_identical_rows が何も守らなくなるため。
+TINY_N_LAGS_GRID = (1, 64)
 
 
 def tiny_config() -> ExperimentConfig:
@@ -56,7 +60,7 @@ def tiny_config() -> ExperimentConfig:
     return ExperimentConfig(
         n_replicates=2,
         seeds=SeedConfig(reservoir=0, task=1, split=2),
-        split=SplitConfig(washout=50, max_start_offset=20),
+        split=SplitConfig(washout=TINY_WASHOUT, max_start_offset=20),
         ridge=RidgeConfig(alpha_grid=TINY_ALPHA_GRID, n_lags_grid=TINY_N_LAGS_GRID),
         delay_parity=DelayParityConfig(n_bits=2, delay=1, length=800),
         esn_delay_parity=ESNConfig(n_units=30, leak_rate=1.0, input_scale=1.0),
@@ -129,6 +133,8 @@ def test_per_method_alpha_grid_key_is_config_error(tmp_path: Path) -> None:
 def test_all_methods_share_identical_rows(monkeypatch: pytest.MonkeyPatch) -> None:
     """1レプリケート内で全手法の train/val/test 行集合が完全一致する (D-05)。"""
     config = dataclasses.replace(tiny_config(), n_replicates=1)
+    # 手法ごとに first_valid を使う誤実装なら行がずれる構成であること
+    assert max(config.ridge.n_lags_grid) > config.split.washout
     spy, rows = _spy_run(monkeypatch, config)
     # 目標行がバイト一致 = 同じ行 index を見ている (目標は手法によらず1本)
     assert len(set(spy.train_targets)) == 1
