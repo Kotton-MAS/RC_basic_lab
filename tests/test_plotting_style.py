@@ -5,7 +5,9 @@
 「正常に」生成されてしまうため、ラベル文字列ごと英語へ切り替わることを固定する。
 
 図そのものは Agg キャンバスで書く (ディスプレイ非依存)。解像度は rcParams では
-なく**保存した PNG から実測**する。
+なく**保存した PNG から実測**する。``setup_style()`` はプロセス全体の rcParams
+を書き換えないため (F-1-008)、rcParams への反映は ``rc_params_for`` が返す辞書と
+``matplotlib.rc_context`` の組で確認する。
 """
 
 from __future__ import annotations
@@ -37,14 +39,6 @@ from rc_basics_lab.plotting.style import (
 )
 
 RETINA_DPI = 200
-
-
-@pytest.fixture(autouse=True)
-def _restore_rcparams() -> object:
-    """``setup_style`` が rcParams を汚すので毎回戻す。"""
-    saved = matplotlib.rcParams.copy()
-    yield None
-    matplotlib.rcParams.update(saved)
 
 
 def _no_fonts(monkeypatch: pytest.MonkeyPatch) -> None:
