@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 
@@ -142,30 +144,43 @@ def test_states_are_bounded_by_tanh() -> None:
     assert float(np.max(np.abs(states))) < 1.0
 
 
-def test_invalid_config_raises() -> None:
-    rng = np.random.default_rng(0)
-    with pytest.raises(ValueError, match="n_units"):
-        ESN(ESNConfig(n_units=0), rng)
-    with pytest.raises(ValueError, match="活性化関数"):
-        ESN(ESNConfig(n_units=10, activation="relu"), rng)
-    with pytest.raises(ValueError, match="density"):
-        ESN(ESNConfig(n_units=10, density=0.0), rng)
-    with pytest.raises(ValueError, match="leak_rate"):
-        ESN(ESNConfig(n_units=10, leak_rate=1.5), rng)
-    with pytest.raises(ValueError, match="state_noise"):
-        ESN(ESNConfig(n_units=10, state_noise=-0.1), rng)
+@pytest.mark.parametrize(
+    ("config", "match"),
+    [
+        (ESNConfig(n_units=0), "n_units"),
+        (ESNConfig(n_units=10, activation="relu"), "活性化関数"),
+        (ESNConfig(n_units=10, density=0.0), "density"),
+        (ESNConfig(n_units=10, leak_rate=1.5), "leak_rate"),
+        (ESNConfig(n_units=10, state_noise=-0.1), "state_noise"),
+    ],
+    ids=["n_units", "activation", "density", "leak_rate", "state_noise"],
+)
+def test_invalid_config_raises(config: ESNConfig, match: str) -> None:
+    """不正な ESNConfig はそれぞれ該当パラメータ名を含む ValueError を送出する。"""
+    with pytest.raises(ValueError, match=match):
+        ESN(config, np.random.default_rng(0))
 
 
-def test_shape_errors() -> None:
+@pytest.mark.parametrize(
+    ("action", "match"),
+    [
+        (lambda esn: esn.run(np.zeros(20)), "2次元"),
+        (lambda esn: esn.run(np.zeros((20, 2))), "入力次元"),
+        (lambda esn: esn.step(np.zeros(9), np.zeros(1)), "状態"),
+        (lambda esn: esn.step(np.zeros(10), np.zeros(2)), "入力"),
+    ],
+    ids=[
+        "run_not_2d",
+        "run_wrong_input_dim",
+        "step_wrong_state_dim",
+        "step_wrong_input_dim",
+    ],
+)
+def test_shape_errors(action: Callable[[ESN], object], match: str) -> None:
+    """形状不整合な呼び出しはそれぞれ該当箇所を含む ValueError を送出する。"""
     esn = ESN(ESNConfig(n_units=10), np.random.default_rng(0))
-    with pytest.raises(ValueError, match="2次元"):
-        esn.run(np.zeros(20))
-    with pytest.raises(ValueError, match="入力次元"):
-        esn.run(np.zeros((20, 2)))
-    with pytest.raises(ValueError, match="状態"):
-        esn.step(np.zeros(9), np.zeros(1))
-    with pytest.raises(ValueError, match="入力"):
-        esn.step(np.zeros(10), np.zeros(2))
+    with pytest.raises(ValueError, match=match):
+        action(esn)
 
 
 def test_spectral_radius_requires_square_matrix() -> None:
