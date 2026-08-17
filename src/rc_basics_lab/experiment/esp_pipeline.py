@@ -142,26 +142,54 @@ def _log_agreement(agreement: VerdictAgreement) -> None:
     )
 
 
+def _log_sensitivity(sensitivity: WashoutSensitivity) -> None:
+    """2-D の変動幅を**数値として**ログに残す (受け入れ条件5)。"""
+    headline = sensitivity.headline
+    logger.info(
+        "2-D washout 感度 (%s x %s): 変動幅 (最大/最小) = %.4f 倍 "
+        "(%.4g @ washout=%d .. %.4g @ washout=%d) / "
+        "レプリケート間 s.d. 最大 %.4g -> %s / "
+        "pad_series=%s (行数一定=%s)",
+        headline.task,
+        headline.method,
+        headline.ratio,
+        headline.nrmse_min,
+        headline.washout_at_min,
+        headline.nrmse_max,
+        headline.washout_at_max,
+        headline.replicate_std_max,
+        "ばらつきを超える"
+        if headline.exceeds_replicate_noise
+        else "ばらつき以下 (washout に反応したとは言えない)",
+        sensitivity.pad_series,
+        sensitivity.training_size_is_constant,
+    )
+
+
 def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
-    """実験 2-A / 2-B / 2-C を実行し、CSV1枚・図3枚・meta.json を書き出す。
+    """実験 2-A / 2-B / 2-C / 2-D を実行し、CSV2枚・図4枚・meta.json を書き出す。
 
     Args:
         config: 02 の実験設定。
         out_dir: 出力ディレクトリ (無ければ作る)。
 
     Returns:
-        生成した結果・整合の要約・ファイルパス・実測 wall time。
+        生成した結果・整合の要約・2-D の行と要約・ファイルパス・実測 wall time。
     """
     started = time.perf_counter()
     results = run_esp_experiment(config)
+    washout_rows = run_washout_sweep(config)
     wall_time_s = time.perf_counter() - started
     rows = results.rows
     agreement = summarize_verdict_agreement(rows)
+    sensitivity = summarize_washout_sensitivity(config, washout_rows)
     _log_agreement(agreement)
+    _log_sensitivity(sensitivity)
 
     style = setup_style()
     paths = (
         write_esp_csv(rows, out_dir / ESP_DIAGNOSTICS_CSV),
+        write_washout_csv(washout_rows, out_dir / WASHOUT_SENSITIVITY_CSV),
         plot_esp_decay(results.decay, out_dir / FIG_ESP_DECAY, style=style),
         plot_leak_timescale(
             results.timescale, out_dir / FIG_LEAK_TIMESCALE, style=style
@@ -171,27 +199,43 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
             out_dir / FIG_ESP_MAP,
             style=style,
         ),
+        plot_washout_sensitivity(
+            washout_rows,
+            out_dir / FIG_WASHOUT_SENSITIVITY,
+            style=style,
+            sensitivity=sensitivity,
+        ),
         write_meta_for(
             config,
             config.seeds,
             wall_time_s,
+            # n_rows は esp_diagnostics.csv の行数。2-D は列が違う別 CSV なので
+            # 足し込まず washout_sensitivity.n_rows に分けて残す (足すと
+            # 「どちらの CSV の行数か」が meta.json から読めなくなる)。
             len(rows),
             out_dir / META_JSON,
             extra={
                 "esp_defaults": esp_defaults(config),
                 "verdict_lyapunov_agreement": agreement.to_summary(),
+                "washout_sensitivity": sensitivity.to_summary(),
                 "cjk_font": style.cjk_font,
             },
         ),
     )
     logger.info(
-        "完了: %d 行 / wall_time=%.2fs / 出力=%s",
+        "完了: %d 行 (2-A/2-B/2-C) + %d 行 (2-D) / wall_time=%.2fs / 出力=%s",
         len(rows),
+        len(washout_rows),
         wall_time_s,
         ", ".join(str(path) for path in paths),
     )
     return EspOutputs(
-        results=results, agreement=agreement, paths=paths, wall_time_s=wall_time_s
+        results=results,
+        agreement=agreement,
+        washout_rows=washout_rows,
+        sensitivity=sensitivity,
+        paths=paths,
+        wall_time_s=wall_time_s,
     )
 
 
@@ -201,7 +245,10 @@ __all__ = [
     "FIG_ESP_DECAY",
     "FIG_ESP_MAP",
     "FIG_LEAK_TIMESCALE",
+    "FIG_WASHOUT_SENSITIVITY",
+    "WASHOUT_SENSITIVITY_CSV",
     "EspOutputs",
     "run_and_report_esp",
     "write_esp_csv",
+    "write_washout_csv",
 ]
