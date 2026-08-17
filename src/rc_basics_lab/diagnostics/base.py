@@ -11,7 +11,13 @@
 ``diagnostics/`` が真似ると、``reservoir`` が推移的に引き込まれ、この
 パッケージの移植性の前提 (``reservoir`` 非依存) が崩れる。これは
 ``tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir``
-で機械的に検査する。
+で機械的に検査する (``.claude/decisions.yaml`` D-12)。
+
+禁止しているのは ``diagnostics -> config`` の向きだけである。02 の ESP 判定の
+閾値・窓のように、YAML 経由で設定できる必要がある値は、``config.py`` 側が
+``diagnostics`` の設定 dataclass を import する向き (``config -> diagnostics``)
+で配線する。これは ``config.py`` が既に ``reservoir.esn.ESNConfig`` を import
+しているのと同じ向きであり、この向きは許可される。
 """
 
 from __future__ import annotations

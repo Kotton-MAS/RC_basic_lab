@@ -64,3 +64,8 @@
   rule: "alpha 格子の下端 1.0e-10 は数値条件数による限界であり、恣意的な打ち切りではない。Mackey-Glass では検証 NRMSE が alpha に対して単調増加で内点解が存在しないため、格子下端が選ばれることは探索の失敗ではなく期待される挙動として扱う (下端が選ばれたことを理由に格子をさらに下へ延ばさない)"
   rationale: "実測 (レプリケート0・遅延線 k=64): 検証 NRMSE は alpha=1e-10 の 5.292627e-04 から alpha=100 の 2.467684e-01 まで単調増加で、最適は alpha->0 (OLS) 側にある。ESN N=200 も同形 (8.171786e-04 -> 2.044276e-01)。下端をこれ以上下げられないのは数値限界のため —— cond(Phi^T Phi) は遅延線 k=64 で 2.0e16、ESN N=200 で 8.0e18 に達し、alpha <= 1.0e-11 では fit_ridge の scipy.linalg.solve(assume_a='pos') が LinAlgError (singular matrix) で落ちる。「格子端が選ばれている = 探索予算が足りない」という一般則 (D-04/D-08 の規律の背景にある考え方) をこの実験に機械的に適用すると誤診になる、というのがこの決定の要点。LinAlgError の出方は BLAS/LAPACK 実装に依存するため guard_test では主張せず、単調性 (= 下端が最良) を固定する"
   guard_test: "tests/test_alpha_grid_lower_bound.py::test_mackey_glass_validation_nrmse_is_monotone_in_alpha"
+
+- id: D-12
+  rule: "diagnostics/ 配下は rc_basics_lab.types 以外の自作モジュール (特に config / reservoir) を import しない。診断の設定 dataclass は diagnostics/ 側に定義し、YAML 配線が要るときは config.py 側から diagnostics の設定 dataclass を import する (config → diagnostics の向きのみ許可、逆向きは禁止)"
+  rationale: "『diagnostics/ は reservoir に依存しない』が 02〜05・memristor-rc-lab への移植性の前提だが、これまで docstring 3か所 (diagnostics/__init__.py / diagnostics/base.py / conventions.md) の散文にしかなく正本が無かった。実測: `uv run python -c \"import importlib,sys; importlib.import_module('rc_basics_lab.config'); print(sorted(k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')))\"` は ['rc_basics_lab.reservoir', 'rc_basics_lab.reservoir.esn'] を返す。config.py が reservoir.esn.ESNConfig を import しているため、tasks/ の前例 (自分の設定 dataclass を config.py から import する) を diagnostics/ が真似ると reservoir が推移的に引き込まれる"
+  guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir"
