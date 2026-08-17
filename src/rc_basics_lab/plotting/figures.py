@@ -79,33 +79,6 @@ def _unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
-@dataclass(frozen=True, slots=True)
-class _Aggregate:
-    """1 (課題, 手法) の集計値。"""
-
-    mean: float
-    std: float
-    n: int
-
-
-def aggregate_nrmse(rows: Sequence[ResultRow]) -> dict[tuple[str, str], _Aggregate]:
-    """(課題, 手法) ごとの NRMSE の平均と標準偏差 (受け入れ条件3)。
-
-    標準偏差は標本標準偏差 (ddof=1)。レプリケートが1本のときは 0 とする。
-    """
-    grouped: dict[tuple[str, str], list[float]] = {}
-    for row in rows:
-        grouped.setdefault((row.task, row.method), []).append(row.nrmse)
-    return {
-        key: _Aggregate(
-            mean=statistics.fmean(values),
-            std=statistics.stdev(values) if len(values) > 1 else 0.0,
-            n=len(values),
-        )
-        for key, values in grouped.items()
-    }
-
-
 def _new_figure(width: float, height: float) -> Figure:
     """constrained layout の Figure を作る (軸ラベルとタイトルの重なりを防ぐ)。"""
     figure = Figure(figsize=(width, height))
