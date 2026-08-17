@@ -29,6 +29,10 @@
 制約 (単体) の上にあり、1つだけ変えると ``make_split`` が正しく ``ValueError``
 にする。そこで比のケースは2つを同時に動かし、「どのフィールドが効いたか」は
 ``n_train`` / ``n_val`` / ``n_test`` の変化で切り分ける (``changed_sizes``)。
+
+ケースの記述と設定の差し替えの機構は ``tests/wiring.py`` に置き、02 の
+``tests/test_config_wiring_esp.py`` と共有する (D-13)。実験ごとに機構を写経すると、
+01 で効いている検出力が 02 で静かに落ちても誰も気づかない。
 """
 
 from __future__ import annotations
@@ -36,13 +40,21 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import fields
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, get_type_hints
+from typing import cast
 
 import pytest
 import yaml
+from wiring import (
+    CHANNEL_ERROR,
+    CHANNEL_META,
+    WiringCase,
+    apply_case,
+    case,
+    leaf_paths,
+)
 
 from rc_basics_lab.config import (
     DelayParityConfig,
@@ -57,15 +69,8 @@ from rc_basics_lab.experiment.runner import ResultRow, run_experiment
 from rc_basics_lab.meta import collect_meta
 from rc_basics_lab.seeds import SeedConfig
 
-if TYPE_CHECKING:
-    from _typeshed import DataclassInstance
-
 MACKEY_GLASS = "mackey_glass"
 DELAY_PARITY = "delay_parity"
-
-CHANNEL_ROWS = "rows"
-CHANNEL_META = "meta"
-CHANNEL_ERROR = "error"
 
 VOLATILE_COLUMNS = frozenset({"wall_time_s"})
 """指紋から外す列 (実測時間は実行ごとに変わる)。"""
@@ -102,41 +107,6 @@ def base_config() -> ExperimentConfig:
         esn_delay_parity=ESNConfig(
             n_units=20, density=0.3, leak_rate=1.0, input_scale=1.0
         ),
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class WiringCase:
-    """1パラメータぶんの配線テスト。
-
-    Attributes:
-        field: 検査対象のフィールド (ドット区切り)。coverage の単位。
-        overrides: 実際に差し替える (パス, 値) の並び。制約のあるフィールド
-            (分割比) だけ2つ以上になる。
-        channel: 効き方 (``rows`` / ``meta`` / ``error``)。
-        scope: 変化してよい課題名。``None`` なら全課題。
-        changed_sizes: 変化していることを追加で要求する分割サイズの列名。
-        note: 単独で動かせない等の理由。
-    """
-
-    field: str
-    overrides: tuple[tuple[str, object], ...]
-    channel: str = CHANNEL_ROWS
-    scope: str | None = None
-    changed_sizes: tuple[str, ...] = ()
-    note: str = ""
-
-
-def case(
-    field: str,
-    value: object,
-    *,
-    channel: str = CHANNEL_ROWS,
-    scope: str | None = None,
-) -> WiringCase:
-    """単独で動かせるパラメータのケース。"""
-    return WiringCase(
-        field=field, overrides=((field, value),), channel=channel, scope=scope
     )
 
 
@@ -200,21 +170,6 @@ WIRING_CASES: tuple[WiringCase, ...] = (
     *_esn_cases("esn_mackey_glass", MACKEY_GLASS, leak_rate=0.9),
     *_esn_cases("esn_delay_parity", DELAY_PARITY, leak_rate=0.4),
 )
-
-
-def _replace_path(instance: object, path: str, value: object) -> object:
-    """ドット区切りのパスで frozen dataclass を差し替えた複製を返す。"""
-    head, _, rest = path.partition(".")
-    new_value = _replace_path(getattr(instance, head), rest, value) if rest else value
-    return dataclasses.replace(cast("DataclassInstance", instance), **{head: new_value})
-
-
-def apply_case(config: ExperimentConfig, wiring_case: WiringCase) -> ExperimentConfig:
-    """ケースの差し替えを適用した設定を返す。"""
-    changed: object = config
-    for path, value in wiring_case.overrides:
-        changed = _replace_path(changed, path, value)
-    return cast("ExperimentConfig", changed)
 
 
 def fingerprint(rows: Sequence[ResultRow], task: str | None = None) -> str:
@@ -308,19 +263,6 @@ def test_split_ratio_isolation() -> None:
     assert sizes(rows)["n_val"] != sizes(base_rows)["n_val"]
 
 
-def _leaf_paths(cls: type, prefix: str = "") -> set[str]:
-    """dataclass の葉フィールドをドット区切りのパスで列挙する。"""
-    hints = get_type_hints(cls)
-    paths: set[str] = set()
-    for field in fields(cast("type[DataclassInstance]", cls)):
-        annotation = hints[field.name]
-        if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
-            paths |= _leaf_paths(annotation, f"{prefix}{field.name}.")
-        else:
-            paths.add(f"{prefix}{field.name}")
-    return paths
-
-
 def test_all_config_fields_are_covered() -> None:
     """``ExperimentConfig`` の全フィールドが上の parametrize に登場する.
 
@@ -328,7 +270,7 @@ def test_all_config_fields_are_covered() -> None:
     「設定したのに効いていない」を構造的に防ぐのはこのテスト。
     """
     covered = {item.field for item in WIRING_CASES}
-    expected = _leaf_paths(ExperimentConfig)
+    expected = leaf_paths(ExperimentConfig)
     assert covered == expected, (
         f"未登録: {sorted(expected - covered)} / 余分: {sorted(covered - expected)}"
     )
