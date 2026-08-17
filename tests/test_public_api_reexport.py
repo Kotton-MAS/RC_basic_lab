@@ -45,7 +45,7 @@ def _public_submodule_names(package: ModuleType) -> set[str]:
 
 
 def test_package_names_matches_automatic_enumeration() -> None:
-    """``PACKAGE_NAMES`` が実際のトップレベルパッケージ集合と一致する (F-1-020)。
+    """``PACKAGE_NAMES`` が実際のトップレベルパッケージ集合と一致する (F-02-1-020)。
 
     以前は手書きの固定タプルで、実際の ``rc_basics_lab`` 配下のパッケージ集合と
     機械的に突き合わせる完全性チェックが無かった。7つ目のトップレベル

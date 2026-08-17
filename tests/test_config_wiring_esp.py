@@ -83,7 +83,7 @@ KNOWN_EXPERIMENT_MODULES = frozenset(
 )
 """サイクル1 (01) 時点で存在する ``experiment/`` 配下の公開モジュール集合。
 
-F-1-005: 以前の信管は ``find_spec("rc_basics_lab.experiment.esp")`` という
+F-02-1-005: 以前の信管は ``find_spec("rc_basics_lab.experiment.esp")`` という
 モジュール名1個だけを見ていた。T3 は ``experiment/esp.py`` と
 ``experiment/esp_pipeline.py`` の2本を作る計画で、実装順によっては
 ``esp_pipeline.py`` が先に生え、実験層が動き出しているのに信管が沈黙する
@@ -155,7 +155,7 @@ ESP_WIRING_CASES: tuple[WiringCase, ...] = (
     _pending_case("drive.n_steps", 1200, "T3"),
     _pending_case("drive.washout", 300, "T3"),
     _pending_case("drive.n_pairs", 5, "T3"),
-    # --- 2-A/2-B/2-C 共有: リザバー構造 (F-1-004, セクション横断で1本) ---
+    # --- 2-A/2-B/2-C 共有: リザバー構造 (F-02-1-004, セクション横断で1本) ---
     _pending_case("reservoir.input_scale", 2.0, "T3"),
     _pending_case("reservoir.n_units", 40, "T3"),
     _pending_case("reservoir.density", 0.5, "T3"),
@@ -335,7 +335,7 @@ def test_pending_cases_disappear_once_the_experiment_layer_exists() -> None:
     実験層が生えた瞬間にこのテストが赤くなるようにしてある。
     T3 では各 pending ケースを実際の出力チャネルへ書き換えること。
 
-    F-1-005: 信管は特定のモジュール名1個ではなく、``KNOWN_EXPERIMENT_MODULES``
+    F-02-1-005: 信管は特定のモジュール名1個ではなく、``KNOWN_EXPERIMENT_MODULES``
     (01 時点の公開モジュール集合) を ``pkgutil.iter_modules`` で列挙した実際の
     集合が超えたかどうかで判定する。これにより T3 がどの名前でモジュールを
     追加しても (``esp.py`` でも ``esp_pipeline.py`` でも、実装順に関わらず)

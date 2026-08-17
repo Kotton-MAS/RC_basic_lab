@@ -83,7 +83,7 @@ MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
 }
 """診断 qualname -> 「その診断が最後まで走れる最小限の入力」を返すファクトリ。
 
-F-1-015: 契約テストの必須 assert
+F-02-1-015: 契約テストの必須 assert
 (``test_all_diagnostics_conform_to_d01_signature_contract`` の最終行) は、
 以前は ``u`` を一切用意しない共通の ``ctx`` を全診断へ使い回していた。
 u が無いと成立しない診断 (03 の IPC/MC 等) が加わると、この共通 ``ctx`` では
@@ -179,7 +179,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
-    """``MINIMAL_VALID_INPUT`` が列挙された全診断を過不足なく網羅し、かつ動く (F-1-015)。
+    """``MINIMAL_VALID_INPUT`` が列挙された全診断を過不足なく網羅し、かつ動く (F-02-1-015)。
 
     ``test_all_config_fields_have_a_case`` と同じ「登録漏れを構造的に強制する」
     パターン。新しい診断を追加したとき、この完全性チェックは
@@ -305,7 +305,7 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
         # 必須データをそろえれば、どの診断も最後まで走って結果を返すこと。
         # (上で ValueError を許容した分の穴をここで塞ぐ。ValueError を投げ続ける
         #  だけの診断が契約テストを通り抜けないようにする。) 診断ごとの最小入力は
-        # MINIMAL_VALID_INPUT レジストリから取得する (F-1-015)。suppress では
+        # MINIMAL_VALID_INPUT レジストリから取得する (F-02-1-015)。suppress では
         # 囲まない: ここで ValueError が上がるのは「診断の入力要件を満たす最小入力を
         # 登録し忘れている」ことを意味し、そのまま失敗させて登録漏れを可視化する。
         minimal_x, minimal_u, minimal_y, minimal_ctx = MINIMAL_VALID_INPUT[qualname](
@@ -318,7 +318,7 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
 
 
 def test_extra_diagnostic_parameters_are_keyword_only_and_do_not_overlap_ctx() -> None:
-    """D-01 が許す追加引数の境界を pkgutil 列挙側で守る (D-15 guard, F-1-002)。
+    """D-01 が許す追加引数の境界を pkgutil 列挙側で守る (D-15 guard, F-02-1-002)。
 
     従来の D-15 guard
     (``tests/test_diagnostics_esp.py::test_esp_config_is_passed_as_defaulted_keyword``)

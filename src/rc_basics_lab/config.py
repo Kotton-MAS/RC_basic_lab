@@ -219,7 +219,7 @@ class DriveConfig:
 
 @dataclass(frozen=True, slots=True)
 class ReservoirSweepConfig:
-    """2-A / 2-B / 2-C が共有するリザバー構造パラメータ (F-1-004)。
+    """2-A / 2-B / 2-C が共有するリザバー構造パラメータ (F-02-1-004)。
 
     ``EspDecayConfig`` / ``TimescaleSweepConfig`` / ``EspMapConfig`` は同一の
     リザバー族を見る図であり (仕様 §8 Q3: N=200 をサイクル1との連続性のため
@@ -247,7 +247,7 @@ class EspDecayConfig:
 
     無入力 (``sigma_u = 0``) が既定。rho<1 で指数減衰し rho>1 で減衰しないことを
     見る図であり、入力を入れると主張が変わる (受け入れ条件1)。リザバー構造は
-    ``Esp02Config.reservoir`` を参照する (F-1-004)。
+    ``Esp02Config.reservoir`` を参照する (F-02-1-004)。
     """
 
     rho_grid: tuple[float, ...] = (0.5, 0.8, 0.95, 1.2, 1.5)
@@ -262,7 +262,7 @@ class TimescaleSweepConfig:
     理論線 ``-1 / log(1 - a)`` と重ねるため、``rho`` は 1 未満に固定して
     リーク率だけを動かす (受け入れ条件4)。最大ラグは診断側の
     ``Esp02Config.timescale.max_lag`` が持つ (二重定義しない)。リザバー構造は
-    ``Esp02Config.reservoir`` を参照する (F-1-004)。
+    ``Esp02Config.reservoir`` を参照する (F-02-1-004)。
     """
 
     leak_rate_grid: tuple[float, ...] = (0.1, 0.2, 0.3, 0.5, 0.7, 1.0)
@@ -277,7 +277,7 @@ class EspMapConfig:
     ``input_scale`` は掃引中固定し、動かすのは信号側の ``sigma_grid`` だけ
     (D-17)。同時に動かすと「信号を強くした」のか「重みを大きくした」のかを
     分離できなくなる。``input_scale`` を含むリザバー構造は
-    ``Esp02Config.reservoir`` を参照する (F-1-004)。
+    ``Esp02Config.reservoir`` を参照する (F-02-1-004)。
     """
 
     rho_grid: tuple[float, ...] = DEFAULT_ESP_MAP_RHO_GRID
@@ -318,7 +318,7 @@ class Esp02Config:
     ``esp`` / ``lyapunov`` / ``timescale`` は診断層の設定 (D-15) をそのまま
     載せたもの。YAML から診断の判定基準まで届くのはこの経路だけである。
 
-    ``reservoir`` は 2-A/2-B/2-C が共有するリザバー構造 (F-1-004)。3セクション
+    ``reservoir`` は 2-A/2-B/2-C が共有するリザバー構造 (F-02-1-004)。3セクション
     それぞれに同じフィールドを持たせず、ここに1本だけ持つことで
     セクションごとに ``n_units`` 等が食い違う事故を構造的に禁じる。
     """

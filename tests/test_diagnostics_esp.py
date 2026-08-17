@@ -348,7 +348,7 @@ def _decoupled_quadratic_system(
 
 
 def test_lyapunov_per_step_is_independent_of_n_units() -> None:
-    """``lyapunov_per_step`` はユニット数 N に依存しない (F-1-016, D-16 と対になる)。
+    """``lyapunov_per_step`` はユニット数 N に依存しない (F-02-1-016, D-16 と対になる)。
 
     ``conditional_lyapunov`` 内の ``scale = float(np.sqrt(n_units))``
     (delta の RMS/ユニット解釈) を検査するテストが存在しなかった。
@@ -429,7 +429,7 @@ def test_inconsistent_propagator_raises() -> None:
 
 
 def test_propagator_returning_wrong_shape_raises() -> None:
-    """伝播器が状態と異なる形状の配列を返すと ``ValueError`` (F-1-017, D-18)。
+    """伝播器が状態と異なる形状の配列を返すと ``ValueError`` (F-02-1-017, D-18)。
 
     ``_check_propagator_consistency`` の ``predicted.shape != states[t].shape``
     分岐が未検査だった。実装ミスとして十分あり得るケース (例: 末尾を落として
@@ -512,7 +512,7 @@ def test_esp_config_is_passed_as_defaulted_keyword() -> None:
     いることを、ctx のフィールド名と各 cfg のフィールド名が交わらないことで
     機械的に固定する。
 
-    F-1-002: この検査対象は ``_CONFIG_TYPES`` という静的タプルから引いており、
+    F-02-1-002: この検査対象は ``_CONFIG_TYPES`` という静的タプルから引いており、
     新しい診断モジュールを追加してもここへ1行足すのを忘れると検査対象から
     静かに外れる (D-01 の guard が pkgutil 自動列挙なのと対照的)。この
     テストは「``cfg`` という名前の引数が、期待した具体的な設定クラス
