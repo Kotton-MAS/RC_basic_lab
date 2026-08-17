@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "7673f1a14a6528d80c0936c3caa527f8f3054d93",
+  "commit": "2a2cd9b273aebf9c8658c6646d5a878e05ec8440",
   "config": {
     "delay_parity": {
       "delay": 1,
@@ -42,6 +42,8 @@
     "name": "01_what_is_rc",
     "ridge": {
       "alpha_grid": [
+        1e-10,
+        1e-09,
         1e-08,
         1e-07,
         1e-06,
@@ -59,7 +61,9 @@
         2,
         4,
         8,
-        16
+        16,
+        32,
+        64
       ]
     },
     "seeds": {
@@ -89,7 +93,7 @@
   },
   "state_space": [
     {
-      "n_lags": 16,
+      "n_lags": 64,
       "n_rows": 7800,
       "replicate": 0,
       "spaces": [
@@ -100,9 +104,9 @@
           "space": "raw_input"
         },
         {
-          "n_components_95": 2,
-          "n_features": 17,
-          "participation_ratio": 1.867744561411968,
+          "n_components_95": 5,
+          "n_features": 65,
+          "participation_ratio": 2.7278002175033067,
           "space": "delay_embedded_input"
         },
         {
@@ -115,7 +119,7 @@
       "task": "mackey_glass"
     },
     {
-      "n_lags": 16,
+      "n_lags": 64,
       "n_rows": 7800,
       "replicate": 0,
       "spaces": [
@@ -126,9 +130,9 @@
           "space": "raw_input"
         },
         {
-          "n_components_95": 17,
-          "n_features": 17,
-          "participation_ratio": 16.95368495407245,
+          "n_components_95": 62,
+          "n_features": 65,
+          "participation_ratio": 64.33071532170287,
           "space": "delay_embedded_input"
         },
         {
@@ -141,6 +145,6 @@
       "task": "delay_parity"
     }
   ],
-  "timestamp_utc": "2026-08-17T02:24:28.918315+00:00",
-  "wall_time_s": 0.9409007500071311
+  "timestamp_utc": "2026-08-17T02:31:28.353725+00:00",
+  "wall_time_s": 1.0369335840077838
 }
