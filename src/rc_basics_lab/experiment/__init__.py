@@ -8,7 +8,8 @@
   への書き出し
 - ``pipeline``: 1コマンドで5成果物をそろえる経路 (CLI はここを呼ぶだけ)
 - ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ唯一の場所)
-- ``esp_pipeline``: 02 の成果物 (CSV1枚 + 図3枚 + meta.json) をそろえる経路
+- ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
+- ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
 """
 
 from rc_basics_lab.experiment.esp import (
@@ -29,6 +30,7 @@ from rc_basics_lab.experiment.esp_pipeline import (
     EspOutputs,
     run_and_report_esp,
     write_esp_csv,
+    write_washout_csv,
 )
 from rc_basics_lab.experiment.pipeline import (
     ARTIFACTS,
@@ -59,12 +61,24 @@ from rc_basics_lab.experiment.state_space import (
     collect_state_space,
 )
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
+from rc_basics_lab.experiment.washout import (
+    WASHOUT_CSV_COLUMNS,
+    MethodSensitivity,
+    WashoutRow,
+    WashoutSensitivity,
+    mean_nrmse_by_washout,
+    predicted_t0,
+    run_washout_sweep,
+    summarize_washout_sensitivity,
+    variant_for,
+)
 
 __all__ = [
     "ARTIFACTS",
     "CSV_COLUMNS",
     "ESP_ARTIFACTS",
     "ESP_CSV_COLUMNS",
+    "WASHOUT_CSV_COLUMNS",
     "Aggregate",
     "ConditionOutcome",
     "EspOutputs",
@@ -72,12 +86,15 @@ __all__ = [
     "EspRow",
     "ExperimentOutputs",
     "Method",
+    "MethodSensitivity",
     "ReplicatePlan",
     "ResultRow",
     "Split",
     "StateSpaceReport",
     "TaskEntry",
     "VerdictAgreement",
+    "WashoutRow",
+    "WashoutSensitivity",
     "aggregate_nrmse",
     "build_methods",
     "build_tasks",
@@ -88,16 +105,22 @@ __all__ = [
     "make_drive",
     "make_initial_states",
     "make_split",
+    "mean_nrmse_by_washout",
     "plan_replicate",
+    "predicted_t0",
     "run_and_report",
     "run_and_report_esp",
     "run_esp_experiment",
     "run_experiment",
     "run_task",
+    "run_washout_sweep",
     "summarize_verdict_agreement",
+    "summarize_washout_sensitivity",
+    "variant_for",
     "write_comparison_csv",
     "write_comparison_summary_csv",
     "write_esp_csv",
     "write_meta",
     "write_meta_for",
+    "write_washout_csv",
 ]

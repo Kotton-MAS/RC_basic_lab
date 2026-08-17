@@ -42,11 +42,14 @@ from rc_basics_lab.experiment.washout import (
     WASHOUT_CSV_COLUMNS,
     WashoutRow,
     WashoutSensitivity,
+    run_washout_sweep,
+    summarize_washout_sensitivity,
 )
 from rc_basics_lab.plotting.figures_esp import (
     plot_esp_decay,
     plot_esp_map,
     plot_leak_timescale,
+    plot_washout_sensitivity,
 )
 from rc_basics_lab.plotting.style import setup_style
 
