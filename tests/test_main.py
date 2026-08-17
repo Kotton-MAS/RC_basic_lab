@@ -68,18 +68,44 @@ esn_delay_parity:
 def tiny_experiment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, Path]:
-    """縮小設定を ``--experiment 01`` に差し替える (本番設定は数十秒かかるため)。"""
+    """縮小設定を ``--experiment 01`` に差し替える (本番設定は数十秒かかるため)。
+
+    ``EXPERIMENTS`` の値は ``ExperimentSpec`` (設定 YAML + 実行関数) なので、
+    差し替えるのは ``config_path`` だけにして実行経路は本物を通す。
+    """
     config_path = tmp_path / "config.yaml"
     config_path.write_text(TINY_CONFIG, encoding="utf-8")
-    monkeypatch.setitem(main.EXPERIMENTS, "01", config_path)
+    monkeypatch.setitem(
+        main.EXPERIMENTS,
+        "01",
+        dataclasses.replace(main.EXPERIMENTS["01"], config_path=config_path),
+    )
     return config_path, tmp_path / "out"
 
 
 def test_experiment_registry_points_at_existing_configs() -> None:
     """登録済みの実験番号の設定ファイルが実在する。"""
     assert main.EXPERIMENTS
-    for number, path in main.EXPERIMENTS.items():
-        assert path.is_file(), f"実験 {number} の設定が見つかりません: {path}"
+    for number, spec in main.EXPERIMENTS.items():
+        assert spec.config_path.is_file(), (
+            f"実験 {number} の設定が見つかりません: {spec.config_path}"
+        )
+
+
+def test_experiment_registry_covers_the_experiment_directories() -> None:
+    """``experiments/`` のディレクトリと登録済みの実験番号が一致する。
+
+    実験を追加したのに ``EXPERIMENTS`` へ足し忘れると
+    ``main.py --experiment NN`` から静かに消える (逆に、登録だけして
+    ディレクトリが無いと実行時に落ちる)。ディレクトリ名の接頭辞
+    (``01_what_is_rc`` -> ``01``) と突き合わせて機械的に固定する。
+    """
+    directories = {
+        path.name.split("_", maxsplit=1)[0]
+        for path in (Path(__file__).resolve().parents[1] / "experiments").iterdir()
+        if path.is_dir() and not path.name.startswith((".", "_"))
+    }
+    assert set(main.EXPERIMENTS) == directories
 
 
 def test_unknown_experiment_is_rejected() -> None:

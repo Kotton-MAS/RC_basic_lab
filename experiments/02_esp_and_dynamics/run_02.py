@@ -2,8 +2,15 @@
 
 使い方::
 
-    uv run python experiments/02_esp_and_dynamics/run.py \
+    uv run python experiments/02_esp_and_dynamics/run_02.py \
         --config experiments/02_esp_and_dynamics/config.yaml
+
+ファイル名が 01 の ``run.py`` と揃っていないのは、**mypy がリポジトリ配下の
+同名トップレベルモジュールを重複と見なして解析を止める**ため
+(``Duplicate module named "run"``)。実験ディレクトリ名は数字始まりで
+パッケージにできず、``[tool.mypy]`` の設定は変更しない制約があるので、
+02 以降は ``run_<番号>.py`` を使う。01 の ``run.py`` は既存の公開コマンドなので
+そのまま残す。
 
 ``--out`` (既定 ``results``) に ``esp_diagnostics.csv`` / ``fig_esp_decay.png`` /
 ``fig_leak_timescale.png`` / ``fig_esp_map.png`` / ``meta.json`` の5点を書く。
