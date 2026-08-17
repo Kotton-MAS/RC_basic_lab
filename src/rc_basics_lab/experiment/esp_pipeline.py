@@ -1,15 +1,20 @@
-"""1コマンドで 02 の5成果物を作る経路 (受け入れ条件7 の T3 ぶん).
+"""1コマンドで 02 の7成果物を作る経路 (受け入れ条件7).
 
-``esp_diagnostics.csv`` / ``fig_esp_decay.png`` / ``fig_leak_timescale.png`` /
-``fig_esp_map.png`` / ``meta.json`` をここで一括生成する。CLI
+``esp_diagnostics.csv`` / ``washout_sensitivity.csv`` / ``fig_esp_decay.png`` /
+``fig_leak_timescale.png`` / ``fig_esp_map.png`` /
+``fig_washout_sensitivity.png`` / ``meta.json`` をここで一括生成する。CLI
 (``main.py --experiment 02`` と ``experiments/02_esp_and_dynamics/run.py``) は
 この関数を呼ぶだけの薄い層にして、「どのコマンドから走らせても同じ成果物が
 出る」を構造で保証する (01 の ``pipeline.py`` と同じ規律)。
 
 ``meta.json`` には ``esp_defaults`` (コード側にしか無い固定値) と
-``verdict_lyapunov_agreement`` (λ の符号と ESP 判定の整合の内訳) を載せる。
-後者は「λ<0 なのに非収束」がどこで起きたかを sigma_u と rho の分布まで残すので、
-記事で多安定性を説明するときの一次資料になる。
+``verdict_lyapunov_agreement`` (λ の符号と ESP 判定の整合の内訳) と
+``washout_sensitivity`` (2-D の変動幅) を載せる。
+``verdict_lyapunov_agreement`` は「λ<0 なのに非収束」がどこで起きたかを
+sigma_u と rho の分布まで残すので、記事で多安定性を説明するときの一次資料になる。
+``washout_sensitivity`` は受け入れ条件5 (「washout 長の性能変動が定量化されて
+いる」) の一次資料で、変動幅そのものに加えて**行数が格子全体で一定だったか**
+(D-19 の補償が効いた実行か) も残す。
 """
 
 from __future__ import annotations
@@ -33,6 +38,11 @@ from rc_basics_lab.experiment.esp import (
     summarize_verdict_agreement,
 )
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.washout import (
+    WASHOUT_CSV_COLUMNS,
+    WashoutRow,
+    WashoutSensitivity,
+)
 from rc_basics_lab.plotting.figures_esp import (
     plot_esp_decay,
     plot_esp_map,
@@ -43,21 +53,27 @@ from rc_basics_lab.plotting.style import setup_style
 logger = logging.getLogger(__name__)
 
 ESP_DIAGNOSTICS_CSV = "esp_diagnostics.csv"
+WASHOUT_SENSITIVITY_CSV = "washout_sensitivity.csv"
 FIG_ESP_DECAY = "fig_esp_decay.png"
 FIG_LEAK_TIMESCALE = "fig_leak_timescale.png"
 FIG_ESP_MAP = "fig_esp_map.png"
+FIG_WASHOUT_SENSITIVITY = "fig_washout_sensitivity.png"
 
 ESP_ARTIFACTS: tuple[str, ...] = (
     ESP_DIAGNOSTICS_CSV,
+    WASHOUT_SENSITIVITY_CSV,
     FIG_ESP_DECAY,
     FIG_LEAK_TIMESCALE,
     FIG_ESP_MAP,
+    FIG_WASHOUT_SENSITIVITY,
     META_JSON,
 )
-"""1コマンドで必ず出る 02 の成果物 (T3 ぶん)。
+"""1コマンドで必ず出る 02 の成果物 (図4枚 + CSV2枚 + meta.json)。
 
-2-D (``fig_washout_sensitivity.png`` / ``washout_sensitivity.csv``) は T4 で
-この並びに加わる。
+2-D の行は 2-A/2-B/2-C と列が異なるため CSV を分ける (仕様 §3 ソフト制約:
+要件書の6成果物 +1)。1枚にまとめると、どちらかの列が空欄だらけになるか、
+``EspRow`` と ``WashoutRow`` のどちらかの宣言順が CSV 列順の単一の真実で
+なくなる。
 """
 
 
@@ -68,18 +84,22 @@ class EspOutputs:
     Attributes:
         results: 3実験ぶんの条件別の結果 (行 + 図が使う曲線)。
         agreement: λ の符号と ESP 判定の整合の要約。
+        washout_rows: 2-D の長形式の行 (``washout_sensitivity.csv`` と同じ)。
+        sensitivity: 2-D の変動幅の要約。
         paths: 生成したファイル (``ESP_ARTIFACTS`` と同じ並び)。
         wall_time_s: 計算部分の実測 wall time (図の書き出しは含まない)。
     """
 
     results: EspResults
     agreement: VerdictAgreement
+    washout_rows: tuple[WashoutRow, ...]
+    sensitivity: WashoutSensitivity
     paths: tuple[Path, ...]
     wall_time_s: float
 
     @property
     def rows(self) -> tuple[EspRow, ...]:
-        """``esp_diagnostics.csv`` と同じ行。"""
+        """``esp_diagnostics.csv`` と同じ行 (2-A/2-B/2-C)。"""
         return self.results.rows
 
 
@@ -88,6 +108,17 @@ def write_esp_csv(rows: Sequence[EspRow], path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(ESP_CSV_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(dataclasses.asdict(row))
+    return path
+
+
+def write_washout_csv(rows: Sequence[WashoutRow], path: Path) -> Path:
+    """2-D の結果を CSV に書く (列順は ``WashoutRow`` の宣言順)。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(WASHOUT_CSV_COLUMNS))
         writer.writeheader()
         for row in rows:
             writer.writerow(dataclasses.asdict(row))
