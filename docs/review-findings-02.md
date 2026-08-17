@@ -22,6 +22,7 @@
 | ID | 概要 |
 |---|---|
 | F-02-1-002 | D-01 契約テストの追加引数境界チェック (D-15 guard) を、`_CONFIG_TYPES` という静的タプルから `pkgutil` 自動列挙 (`_iter_diagnostic_callables`) へ移設。新診断が黙って検査対象から外れる問題を解消。 |
+| F-02-1-004 | `EspDecayConfig` / `TimescaleSweepConfig` / `EspMapConfig` が `input_scale` / `n_units` / `density` / `n_replicates` を重複定義していたのを `ReservoirSweepConfig`（`Esp02Config.reservoir` 直下の1インスタンス）に集約。セクションごとに `n_units` 等が食い違う事故を構造的に禁止。 |
 | F-02-1-005 | 実験層の未着手を検出する時限装置の信管を、モジュール名1個 (`find_spec("rc_basics_lab.experiment.esp")`) から `experiment/` 配下のモジュール集合の変化 (`KNOWN_EXPERIMENT_MODULES` との突き合わせ) へ拡張。 |
 | F-02-1-015 | D-01 契約テスト (`test_all_diagnostics_conform_to_d01_signature_contract`) の必須 assert が `u` を用意しない共通 `ctx` を使い回しており、`u` 依存の新診断で `suppress` に頼る回避策が最も安くなる構造だった。`MINIMAL_VALID_INPUT` レジストリ (診断 qualname → 最小有効入力) と、完全性を強制する `test_minimal_valid_input_registry_covers_all_diagnostics` を導入。 |
 | F-02-1-016 | `conditional_lyapunov` 内の `scale = float(np.sqrt(n_units))` を検査するテストが存在しなかった。曲率を持つ `_decoupled_quadratic_system` を新設し、`test_lyapunov_per_step_is_independent_of_n_units` (N=8 vs 2000) を追加。 |
