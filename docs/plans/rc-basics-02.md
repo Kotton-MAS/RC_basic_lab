@@ -551,6 +551,22 @@ class StatePropagator(Protocol):
   rule: "washout 感度実験では、washout を増やしても訓練/検証/テストの行数が変わらないよう系列長を伸ばして補償する (pad_series=True が既定)。補償なしは pad_series=False として残し対比に使う"
   rationale: "make_split は n_usable = T - max_start_offset - t0 で行数を決めるため、washout を増やすと訓練データ量が同時に減る。素直に掃引すると『washout の効果』と『訓練データ量の効果』が交絡し、受け入れ条件5 が別の量の測定になる。この交絡は滑らかな単調曲線として出るため図を見ても気づけない"
   guard_test: "tests/test_experiment_washout.py::test_washout_sweep_holds_training_size_constant"
+
+# T3 実装中に生まれた決定 (ユーザー承認済み)。T5 で decisions.yaml へ転記する。
+- id: D-20
+  rule: "λ の符号と ESP 判定の整合の要求は非対称にする。『λ>0 なのに収束 (偽の ESP)』は |λ|>0.01 の全条件で 0 件を要求し、『λ<0 なのに非収束』は許容して件数と σ_u / ρ の内訳を meta.json の verdict_lyapunov_agreement に残す。両者の完全一致は駆動が十分ある領域 (σ_u >= 0.5) でのみ要求する"
+  rationale: "条件付き Lyapunov 指数は参照軌道まわりの局所量なので多安定性を原理的に検出できない。tanh は奇関数なので x* が不動点なら -x* も不動点であり、どちらも局所安定 (λ<0) でありながら初期状態によって行き先が割れる (= ESP 不成立)。ρ=1.1・σ_u=0 で4軌道を直接観測して確認済み (全軌道が不動点に到達し、3本が同一点・1本が距離 0.526 の別の点)。対称な一致を要求すると、この実在の現象を実装バグとして潰すことになる。逆向き (λ>0 なのに収束) は理論上あり得ないので 0 件を厳格に要求し、伝播器のインデックスずれや閾値の緩みはそちらで落とす。本番格子 336 条件の実測で偽の ESP は 0 件、σ_u>=0.5 の 158 件も不一致 0 件"
+  guard_test: "tests/test_experiment_esp.py::test_lyapunov_sign_agrees_with_verdict_away_from_boundary"
+
+- id: D-21
+  rule: "02 の ESN は bias_scale=0 で構成し、無入力条件 (sigma_u=0) を真の無入力にする。比較軌道は n_pairs=10 本引く"
+  rationale: "(1) 定数バイアスは [1; u] の先頭成分に掛かる振幅一定の入力そのものであり、D-17 が入力強度を駆動信号の標準偏差で定義している以上その定義に入らない常時入力は 0 にする。実測: bias_scale=0.1 では無入力・ρ=1.2 でも2軌道が収束し受け入れ条件1 が成立しない。(2) 無入力・ρ>1 の ESN は +x* / -x* の対をなす吸引子を持つことがあり、比較軌道が k 本すべて参照軌道と同じ側へ落ちる確率が約 2^-k 残る。実測: n_pairs=3 では特定の draw で ρ=1.05〜1.5・無入力が『収束』と誤判定された。10 本で全レプリケートが正しく非収束になり、ρ<1 側の判定は変わらない"
+  guard_test: "tests/test_experiment_esp.py::test_no_input_decay_matches_spectral_radius"
+
+- id: D-22
+  rule: "esp_convergence に渡す ctx の washout は 0 に固定する (ESP_DISTANCE_WASHOUT)。drive.washout は λ と自己相関の ctx にだけ渡す。02 の esp.fit_skip の既定は 10"
+  rationale: "esp_convergence で washout が効くのは減衰率の当てはめ開始位置だけで、判定 (末尾 window の中央値) には効かない。2-A は過渡そのものを見せる図であり、距離が floor に届く前に当てはめを始めないと減衰率が測れない。実測: 無入力 ρ=0.5 の距離は t≈46 で 1e-14 を割るため、当てはめ開始が washout(200)+fit_skip(50)=250 だと当てはめ点が 0 点になり decay_rate_per_step が nan になる (ρ=0.8 も同様)。過渡を捨てるのは λ と自己相関の側の要求なので、ctx を分ける"
+  guard_test: "tests/test_experiment_esp.py::test_decay_fit_starts_before_the_distance_underflows"
 ```
 
 ---
@@ -559,6 +575,10 @@ class StatePropagator(Protocol):
 
 1. **2-C で「強入力なら ρ>1 でも ESP」が再現できない**。確認順序: (a) `input_scale` が弱すぎないか (2-C では 1.0 固定を推奨)、(b) 判定窓が短すぎないか、(c) `n_steps` が過渡を含んでいないか。それでも出なければ格子を無制限に広げる前に相談。
 2. **λ の符号と ESP 判定が広範囲で食い違う**。境界近傍以外で不一致が 5% を超えたら実装誤りの可能性が高い (最有力は伝播器の入力インデックスずれ)。
+   → **T3 で発火した (実測 8.13%)。調査の結果、実装誤りではなく多安定性という実在の現象**だった。
+   伝播器のインデックスずれは先に否定済み (`check_propagator` が全条件で通過。`u[t]` へ差し替えると全条件で `ValueError` になり、検査を切ると λ が +15〜+17 という桁違いの値になる)。
+   結論は D-20 として登録する。**次にこの比率を見たときは、まず「λ<0 なのに非収束」の一方向に偏っているか、σ_u <= 0.2 かつ ρ > 1 に限局しているかを確認すること**。
+   偏っていれば多安定性、偏っていなければ実装を疑う。`λ>0 なのに収束` が 1 件でもあれば実装誤りである。
 3. **実行時間が予算 (15分) を超える**。削り方 (格子を粗く vs 系列を短く vs レプリケート減) は結論の頑健性に直結するので、数値を測ってから相談。
 
 ---
