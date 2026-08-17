@@ -185,6 +185,111 @@ class StatePropagator(Protocol):
 - [ ] **D-14 guard**: `test_probe_stream_is_independent_of_seed_config_streams`。
 - [ ] `load_config(path)` の既存呼び出しが無改変で通る。
 
+**実装時に決めたこと (T2 実装者追記。仕様に書かれていなかった選択)**
+
+決定は T5 で `.claude/decisions.yaml` / `docs/design.md` §9 に転記する。
+
+*`test_every_esp_parameter_changes_output` の意味 (最重要。T3 で必ず読むこと)*
+
+1. **サイクル 2a には消費側 (実験層 `experiment/esp.py`) が無いため、格子・系列長・
+   ユニット数のような葉は「出力が変わる」を実測できない**。ここで「出力」を
+   テスト側で作った消費関数で捏造すると、テストがテスト自身を検査することになり
+   検出力は 0 になる。そこで `tests/test_config_wiring_esp.py` は葉を3チャネルに
+   割り当て、**割り当てに漏れが無いこと**を機械的に固定する設計にした。
+   - `CHANNEL_SEEDS` (`seeds.*` 3件): `esp_stream_seed` + `make_rng_for` は T2 の
+     実装なので、**実際に乱数列が変わり他ストリームが1バイトも動かないこと**を実測する。
+   - `CHANNEL_DIAGNOSTIC` (`esp.*` / `lyapunov.*` / `timescale.*` 12件): 効きの実測は
+     T1 の `test_esp_config_fields_change_output` に委譲する。委譲が閉じていることは
+     `test_diagnostic_sections_cover_the_diagnostic_config_classes`
+     (セクションの全葉 = 設定クラスの全フィールド) と T1 の
+     `test_all_config_fields_have_a_case` (全フィールドにケースがある) の対で担保する。
+   - `CHANNEL_PENDING` (残り 28件): **T3 / T4 で本物のチャネルへ書き換える**。
+     2a では「YAML を往復して値がその葉にだけ届く」(= T2 が実装したローダそのもの)
+     だけを実測する。
+   - 全チャネル共通で `_changed_leaves(base, changed) == {case.field}` を assert し、
+     差し替えが他の葉へ波及しないことを固定している。
+2. **先送りを時限装置にした**: `test_pending_cases_disappear_once_the_experiment_layer_exists`
+   は `importlib.util.find_spec("rc_basics_lab.experiment.esp")` が真になった瞬間に
+   `CHANNEL_PENDING` が残っていると失敗する。**T3 の実装者は、実験層を作った時点で
+   このテストが赤くなる**。pending ケースを本物の出力チャネル (01 の `CHANNEL_ROWS` /
+   `CHANNEL_ERROR` に相当) へ書き換えるまで緑にならない。
+   併せて `PENDING_SECTIONS` により、2a で実測できるセクション (`seeds` / `esp` /
+   `lyapunov` / `timescale`) を pending へ逃がすことを禁じている。
+   `drive.distribution` と `lyapunov.method` は §5 の指示どおり値域1点だが、
+   前者は消費側 (`make_drive`) が無いので現状 pending、後者は T1 の診断が既に
+   `ValueError` にするので `CHANNEL_DIAGNOSTIC` に置いた。
+
+*`config.py`*
+
+3. **`EspSeedConfig` は `reservoir` / `drive` / `probe` の3本**とし `split` を持たない。
+   2-A/2-B/2-C は分割しないため。`esp_stream_seed(seeds, SeedStream.SPLIT)` は
+   `ValueError` (2-D の分割は `washout.base.seeds.split` を使う)。理由: 使われない
+   フィールドを設定に残すと「設定しても効かない葉」が生まれ、D-13 が避けたい状況を
+   自分で作ることになる。
+4. **フィールド名とストリーム名が1対1でない** (`drive` ↔ `SeedStream.TASK`) ため、
+   対応は `esp_stream_seed` の明示的な `match` で書き、`getattr` を使わない。
+   理由: `seeds._base_seed` と同じ流儀。「他ストリームのシードを参照していない」が
+   コードの形から読める。
+5. **各実験セクション (`decay` / `timescale_sweep` / `esp_map`) は `ESNConfig` を
+   内包せず、必要な値だけを平らに持つ** (`leak_rate` / `input_scale` / `n_units` /
+   `density`)。理由: `ESNConfig` を内包すると掃引軸である `spectral_radius` が
+   「YAML から設定できるが実行時に上書きされる死んだフィールド」になり、
+   D-13 が防ごうとしている状態をそのまま作る。
+6. **`drive` セクションに `distribution` / `n_steps` / `washout` / `n_pairs` を集約**し、
+   実験セクションごとに重複させない。理由: 同じ量が3か所にあると、片方だけ直した
+   ときに黙って条件が食い違う。
+7. **値域検証は行わない** (`ConfigError` は型不一致と未知キーのみ)。理由: 「設定
+   dataclass は純データ、検証は使う側」という既存の慣習 (`ESNConfig` / `SplitConfig` /
+   T1 の決定4)。`drive.distribution` の値域検査は T3 の `make_drive` が持つ。
+8. **既定値**: `esp_map.rho_grid` = `linspace(0.4, 1.9, 16)` (小数第3位で丸め)、
+   `esp_map.sigma_grid` = `(0.0, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0)` の7点 (§8 Q3 の 16×7)。
+   `decay.rho_grid` = `(0.5, 0.8, 0.95, 1.2, 1.5)` (受け入れ条件1 の値そのもの)。
+   `timescale_sweep.leak_rate_grid` = `(0.1, 0.2, 0.3, 0.5, 0.7, 1.0)`。
+   `washout.grid` = `(0, 50, 100, 200, 400, 800)` (01 の本番値 200 を含む)。
+   `n_steps=3000` / `n_units=200` は §8 Q3。**T3 で実測 wall time を見て調整してよい**
+   (ソフト制約)。
+9. `Esp02Config.name` の既定値は `"02_esp_and_dynamics"` (T3 で作る実験ディレクトリ名)。
+
+*`seeds.py`*
+
+10. **`_STREAM_INDEX[PROBE] = 3` (末尾に追加)**。既存3本の index を動かすと 01 の
+    成果物がバイト単位で再現しなくなる。`make_rng` は `make_rng_for` への委譲に
+    したが、`SeedSequence(entropy, spawn_key)` の作り方は一切変えていない
+    (`test_make_rng_for_matches_make_rng` で固定)。
+11. **`make_rng(config, SeedStream.PROBE, ...)` は `ValueError`**。理由: `SeedConfig` に
+    `probe` が無いことを黙って既定値で埋めると D-14 が形骸化する。`_base_seed` の
+    `match` は 4 ケース全部を書き切っており、ストリームを足すと mypy が
+    「Missing return」で落ちる (列挙の網羅性が型で守られる)。
+
+*テストの共有化 (`tests/wiring.py`)*
+
+12. 切り出したのは `WiringCase` / `case` / `apply_case` / `leaf_paths` / `plain` /
+    `assert_yaml_has_all_leaves` とチャネル定数。`_leaf_paths` → `leaf_paths`、
+    `_plain` → `plain` に改名 (モジュール外から呼ぶため)。`case()` に `note` 引数を
+    足したが既定値 `""` なので **01 のケース定義は1文字も変わっていない**
+    (`git diff` 上、ケース定義行の差分は 0 行 / `WIRING_CASES` は 40 件のまま)。
+    **判定そのものは共有していない**。「出力」が何かは実験ごとに違う (01 は結果行、
+    02 は乱数列や設定オブジェクト) ため、判定を共有すると弱い方に引きずられる。
+
+*テストの追加 (仕様に無いもの)*
+
+13. `test_seed_config_fields_map_one_to_one_onto_streams` —— D-06 guard の列挙を
+    `SeedStream` 全体から `SeedConfig` のフィールドへ変えたことで、対応が崩れると
+    検査対象が静かに縮む経路ができた。それを塞ぐ。
+14. `test_make_rng_for_matches_make_rng` —— 01 の乱数列が委譲によって変わっていない
+    ことをバイトで固定する。
+15. `test_esp_config_does_not_leak_into_experiment_config` —— `ExperimentConfig` の
+    フィールド集合を凍結する (D-13 の「1フィールドも足さない」を直接検査)。
+16. `test_streams_differ_from_each_other_under_identical_seeds` は `make_rng_for` を
+    使う形に変え、対象を **4ストリーム全部**に広げた (従来は `SeedConfig` の3本)。
+
+*コード規約 (実装中に判明したもの)*
+
+17. ruff の `RUF001` / `RUF002` により、**ソース中の文字列・docstring にギリシャ文字
+    `ρ` `σ` と `×` を書けない** (ASCII と紛らわしい文字として弾かれる)。`rho` /
+    `sigma` / `x` と書く。`λ` は対応する ASCII が無いため許容される (T1 の
+    テストが実際に使っている)。
+
 ### T3: 実験 2-A / 2-B / 2-C と図3枚・CSV・CLI (想定所要: **L**)
 
 **何をするか**
