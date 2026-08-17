@@ -111,7 +111,8 @@ def test_experiment_registry_covers_the_experiment_directories() -> None:
 
 @pytest.mark.parametrize("number", sorted(main.EXPERIMENTS))
 def test_run_script_default_out_matches_the_registry(number: str) -> None:
-    """``experiments/NN_*/run*.py`` の ``DEFAULT_OUT`` がレジストリの既定出力先と一致する。
+    """``experiments/NN_*/run*.py`` の ``DEFAULT_OUT`` がレジストリの既定出力先と
+    一致する。
 
     既定出力先は ``main.EXPERIMENTS[NN].out_dir`` と各実験の
     ``experiments/NN_*/run*.py:DEFAULT_OUT`` に手で二重定義されている。
@@ -235,10 +236,28 @@ def _without_wall_time(csv_text: str) -> list[list[str]]:
 
 def _load_run_module() -> ModuleType:
     """``experiments/01_what_is_rc/run.py`` を読み込む (パッケージ外のため)。"""
-    path = (
-        Path(__file__).resolve().parents[1] / "experiments" / "01_what_is_rc" / "run.py"
-    )
-    spec = importlib.util.spec_from_file_location("experiment_01_run", path)
+    return _load_run_module_for("01")
+
+
+def _experiment_dir(number: str) -> Path:
+    """実験番号 -> ``experiments/`` 配下のディレクトリ (接頭辞一致)。"""
+    root = Path(__file__).resolve().parents[1] / "experiments"
+    matches = [
+        path
+        for path in root.iterdir()
+        if path.is_dir() and path.name.split("_", maxsplit=1)[0] == number
+    ]
+    assert len(matches) == 1, (number, matches)
+    return matches[0]
+
+
+def _load_run_module_for(number: str) -> ModuleType:
+    """``experiments/NN_*/run*.py`` を読み込む (パッケージ外のため)。"""
+    directory = _experiment_dir(number)
+    candidates = sorted(directory.glob("run*.py"))
+    assert len(candidates) == 1, (number, candidates)
+    path = candidates[0]
+    spec = importlib.util.spec_from_file_location(f"experiment_{number}_run", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"読み込めません: {path}")
     module = importlib.util.module_from_spec(spec)
