@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 threshold-02 pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 threshold-02 washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
+	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
 
@@ -62,6 +63,21 @@ figures-02:
 # 分けてある (docs/design.md §9 の感度表の一次資料)。
 threshold-02:
 	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics --threshold-sweep
+
+# 補償なし (pad_series=False) の washout 感度 CSV を再生成する (docs/design.md
+# §9.6 の対比表の一次資料)。本番 config.yaml は編集しない —— このスクリプト
+# 自体が dataclasses.replace で pad_series=False を上書きするため、D-19 の
+# 既定 (pad_series=True) を config.yaml から動かす必要はない。
+washout-02-unpadded:
+	uv run python -c "\
+	import dataclasses; \
+	from pathlib import Path; \
+	from rc_basics_lab.config import Esp02Config, load_config_as; \
+	from rc_basics_lab.experiment.washout import run_washout_sweep; \
+	from rc_basics_lab.experiment.esp_pipeline import write_washout_csv; \
+	config = load_config_as(Path('experiments/02_esp_and_dynamics/config.yaml'), Esp02Config); \
+	unpadded = dataclasses.replace(config, washout=dataclasses.replace(config.washout, pad_series=False)); \
+	write_washout_csv(run_washout_sweep(unpadded), Path('results/02_esp_and_dynamics/washout_sensitivity_unpadded.csv'))"
 
 pre-commit:
 	uv run pre-commit run --all-files

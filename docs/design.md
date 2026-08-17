@@ -629,8 +629,11 @@ length = base_length + ( t0(washout) - t0(min(grid)) )
 一次資料は `results/02_esp_and_dynamics/washout_sensitivity_unpadded.csv`
 （`config.washout.pad_series` を `False` に変えた本番設定で `run_washout_sweep`
 を実行した生データ。`washout_sensitivity.csv`（補償あり）とは別ファイルに分けて
-コミットしてある）。再生成は、`experiments/02_esp_and_dynamics/config.yaml` の
-`washout.pad_series` を `false` に書き換えたうえで次を実行する:
+コミットしてある）。**再生成は本番設定 (`config.yaml` はそのまま。
+`washout.pad_series=True` の既定 (D-19) は変えない) で次を実行する**
+（スクリプト自体が `dataclasses.replace` で `pad_series=False` を上書きするため
+`config.yaml` の編集は不要かつ無意味。編集して戻し忘れると D-19 の既定が
+本番設定から静かに消える）:
 
 ```
 uv run python -c "
