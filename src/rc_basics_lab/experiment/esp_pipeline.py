@@ -61,6 +61,7 @@ FIG_ESP_DECAY = "fig_esp_decay.png"
 FIG_LEAK_TIMESCALE = "fig_leak_timescale.png"
 FIG_ESP_MAP = "fig_esp_map.png"
 FIG_WASHOUT_SENSITIVITY = "fig_washout_sensitivity.png"
+ESP_THRESHOLD_SENSITIVITY_CSV = "esp_threshold_sensitivity.csv"
 
 ESP_ARTIFACTS: tuple[str, ...] = (
     ESP_DIAGNOSTICS_CSV,
@@ -77,6 +78,11 @@ ESP_ARTIFACTS: tuple[str, ...] = (
 要件書の6成果物 +1)。1枚にまとめると、どちらかの列が空欄だらけになるか、
 ``EspRow`` と ``WashoutRow`` のどちらかの宣言順が CSV 列順の単一の真実で
 なくなる。
+
+``esp_threshold_sensitivity.csv`` (D-16 の閾値感度) は**この並びに入れない**。
+記事に載る成果物ではなく「既定値が結論を作っていないことの根拠」であり、
+2-C の格子をもう一度回すぶん実行時間が倍近くになる。``--threshold-sweep``
+(= ``make threshold-02``) で明示的に再生成する。
 """
 
 
@@ -125,6 +131,43 @@ def write_washout_csv(rows: Sequence[WashoutRow], path: Path) -> Path:
         writer.writeheader()
         for row in rows:
             writer.writerow(dataclasses.asdict(row))
+    return path
+
+
+def write_threshold_csv(
+    rows: Sequence[ThresholdRow], sigma_grid: Sequence[float], path: Path
+) -> Path:
+    """閾値感度の結果を CSV に書く (列順は ``threshold_csv_columns``)。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle, fieldnames=list(threshold_csv_columns(sigma_grid))
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(threshold_row_as_dict(row))
+    return path
+
+
+def run_and_report_threshold_sweep(config: Esp02Config, out_dir: Path) -> Path:
+    """D-16 の閾値感度を測り ``esp_threshold_sensitivity.csv`` に書く。
+
+    本体の7成果物とは独立に走る (``ESP_ARTIFACTS`` に含めない理由は上の
+    docstring)。``docs/design.md`` §9 の感度表はこの CSV と行数が一致する
+    ことを ``tests/test_design_doc.py`` が固定している。
+    """
+    started = time.perf_counter()
+    rows = run_threshold_sweep(config)
+    path = write_threshold_csv(
+        rows, config.esp_map.sigma_grid, out_dir / ESP_THRESHOLD_SENSITIVITY_CSV
+    )
+    logger.info(
+        "閾値感度: %d 行 / 基準からずれた臨界 rho は %d 件 / wall_time=%.2fs / 出力=%s",
+        len(rows),
+        sum(row.n_sigma_shifted for row in rows),
+        time.perf_counter() - started,
+        path,
+    )
     return path
 
 

@@ -22,7 +22,6 @@ from __future__ import annotations
 import dataclasses
 import logging
 import math
-from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 
@@ -170,9 +169,12 @@ def run_threshold_sweep(
         (abs_tol, window) for abs_tol in abs_tol_grid for window in window_grid
     )
 
-    # cases x sigma_u x rho -> 収束したレプリケート数 / 総数
+    # (abs_tol, window) x sigma_u x rho -> レプリケートごとの converged
     hits: dict[tuple[float, int], dict[float, dict[float, list[int]]]] = {
-        case: defaultdict(lambda: defaultdict(list)) for case in cases
+        case: {
+            sigma: {rho: [] for rho in section.rho_grid} for sigma in section.sigma_grid
+        }
+        for case in cases
     }
     for replicate in range(config.reservoir.n_replicates):
         for rho in section.rho_grid:
