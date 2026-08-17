@@ -161,7 +161,9 @@ def test_washout_sweep_holds_training_size_constant() -> None:
     """**D-19 guard**: 補償ありで行数一定・補償なしで ``n_train`` が縮む。
 
     両方向を1つのテストで見るのは、片側だけだと「補償が効いた」のか
-    「そもそも縮まない設定だった」のかを区別できないため。
+    「そもそも縮まない設定だった」のかを区別できないため。判定は**課題ごと**
+    に行う (F-1-003)。washout だけをキーにして課題次元を潰すと、課題間で
+    たまたま行数が一致しているだけの状態を「補償が効いた」と誤読しうる。
 
     補償なし側は**狭義単調減少を要求しない**。``t0 = max(washout, first_valid)``
     なので、washout が遅延線の最大ラグ以下の格子点は同じ ``t0`` になり行数も
@@ -172,34 +174,104 @@ def test_washout_sweep_holds_training_size_constant() -> None:
     padded = run_washout_sweep(tiny_sweep_config(grid=grid, pad_series=True))
     unpadded = run_washout_sweep(tiny_sweep_config(grid=grid, pad_series=False))
 
-    padded_sizes = _sizes_by_washout(padded)
-    assert set(padded_sizes) == set(grid)
-    assert len(set(padded_sizes.values())) == 1, (
-        f"補償ありなのに行数が格子で揺れています: {padded_sizes}"
-    )
+    padded_sizes = _sizes_by_task_washout(padded)
+    padded_t0 = _t0_by_task_washout(padded)
+    unpadded_sizes = _sizes_by_task_washout(unpadded)
+    unpadded_t0 = _t0_by_task_washout(unpadded)
+    tasks = {row.task for row in padded}
+    assert tasks, "行がありません"
 
-    # 補償が「何もしなくても一定だった」わけではないこと (t0 は実際に動く)
-    padded_t0 = _t0_by_washout(padded)
-    assert len(set(padded_t0.values())) > 1, padded_t0
+    for task in tasks:
+        task_padded_sizes = {washout: padded_sizes[task, washout] for washout in grid}
+        assert set(task_padded_sizes) == set(grid)
+        assert len(set(task_padded_sizes.values())) == 1, (
+            f"補償ありなのに行数が格子で揺れています ({task}): {task_padded_sizes}"
+        )
 
-    unpadded_sizes = _sizes_by_washout(unpadded)
-    unpadded_t0 = _t0_by_washout(unpadded)
-    trains = [unpadded_sizes[washout][0] for washout in grid]
-    assert trains == sorted(trains, reverse=True), (
-        f"補償なしで n_train が非増加になっていません: {unpadded_sizes}"
-    )
-    assert trains[0] > trains[-1], (
-        f"補償なしでも n_train が縮んでいません (交絡を再現できていない): {trains}"
-    )
-    for left, right in itertools.pairwise(grid):
-        if unpadded_t0[right] > unpadded_t0[left]:
-            assert unpadded_sizes[right][0] < unpadded_sizes[left][0], (
-                f"t0 が増えたのに n_train が減っていません: {unpadded_sizes}"
-            )
+        # 補償が「何もしなくても一定だった」わけではないこと (t0 は実際に動く)
+        task_padded_t0 = {washout: padded_t0[task, washout] for washout in grid}
+        assert len(set(task_padded_t0.values())) > 1, task_padded_t0
 
-    # 補償ありの行数は、格子最小値での補償なしの行数と一致する
-    # (伸ばす側にだけ働き、01 の本番設定より短い系列では測らない)
-    assert padded_sizes[min(grid)] == unpadded_sizes[min(grid)]
+        task_unpadded_sizes = {
+            washout: unpadded_sizes[task, washout] for washout in grid
+        }
+        task_unpadded_t0 = {washout: unpadded_t0[task, washout] for washout in grid}
+        trains = [task_unpadded_sizes[washout][0] for washout in grid]
+        assert trains == sorted(trains, reverse=True), (
+            f"補償なしで n_train が非増加になっていません ({task}): "
+            f"{task_unpadded_sizes}"
+        )
+        assert trains[0] > trains[-1], (
+            f"補償なしでも n_train が縮んでいません ({task}, 交絡を再現できていない): "
+            f"{trains}"
+        )
+        for left, right in itertools.pairwise(grid):
+            if task_unpadded_t0[right] > task_unpadded_t0[left]:
+                assert task_unpadded_sizes[right][0] < task_unpadded_sizes[left][0], (
+                    f"t0 が増えたのに n_train が減っていません ({task}): "
+                    f"{task_unpadded_sizes}"
+                )
+
+        # 補償ありの行数は、格子最小値での補償なしの行数と一致する
+        # (伸ばす側にだけ働き、01 の本番設定より短い系列では測らない)
+        assert task_padded_sizes[min(grid)] == task_unpadded_sizes[min(grid)]
+
+
+def test_training_size_is_constant_is_false_when_a_task_diverges() -> None:
+    """課題ごとに行数が割れれば ``training_size_is_constant`` は偽になる (F-1-003)。
+
+    旧実装は ``sizes_by_washout`` を ``washout`` だけでキーにしていたため、
+    課題ごとに行数が割れても真になり得た (課題次元が潰れて上書きされるため)。
+    ここでは実際の掃引結果から delay_parity 側の1行だけを人工的にずらし、
+    課題ごとの判定に切り替わったことを直接固定する。
+    """
+    config = tiny_sweep_config(grid=(0, 40))
+    rows = run_washout_sweep(config)
+    max_washout = max(config.washout.grid)
+    mutated = tuple(
+        dataclasses.replace(row, n_train=row.n_train + 1)
+        if row.task == "delay_parity" and row.washout == max_washout
+        else row
+        for row in rows
+    )
+    sensitivity = summarize_washout_sensitivity(config, mutated)
+    assert sensitivity.training_size_is_constant is False
+
+
+def test_variant_for_rejects_a_task_that_is_not_registered_for_compensation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``build_tasks`` の課題が ``config.TASK_LENGTH_FIELDS`` に無ければ
+    ``ValueError`` になる (F-1-003: 3つ目の課題を足しても黙って補償が外れない)。
+    """
+    import rc_basics_lab.experiment.washout as washout_module
+
+    monkeypatch.setattr(
+        washout_module, "TASK_LENGTH_FIELDS", {"mackey_glass": "mackey_glass"}
+    )
+    section = tiny_sweep_config(grid=(0, 40, 120)).washout
+    with pytest.raises(ValueError, match="登録されていない課題"):
+        variant_for(section, 40)
+
+
+def test_variant_for_rejects_a_registered_task_with_no_wiring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """登録はあるが ``variant_for`` 本体に配線が無い課題は ``NotImplementedError``。
+
+    「``TASK_LENGTH_FIELDS`` に登録したのに ``variant_for`` の
+    ``dataclasses.replace`` を足し忘れる」という新しい黙って壊れる経路を防ぐ。
+    """
+    import rc_basics_lab.experiment.washout as washout_module
+
+    monkeypatch.setattr(
+        washout_module,
+        "TASK_LENGTH_FIELDS",
+        {"mackey_glass": "mackey_glass", "delay_parity": "not_a_real_field"},
+    )
+    section = tiny_sweep_config(grid=(0, 40, 120)).washout
+    with pytest.raises(NotImplementedError, match="配線を持たない"):
+        variant_for(section, 40)
 
 
 def test_padding_uses_the_same_t0_as_the_runner() -> None:
@@ -211,8 +283,8 @@ def test_padding_uses_the_same_t0_as_the_runner() -> None:
     """
     config = tiny_sweep_config(grid=(0, 40, 120))
     rows = run_washout_sweep(config)
-    actual = _t0_by_washout(rows)
-    for washout, t0 in actual.items():
+    actual = _t0_by_task_washout(rows)
+    for (_task, washout), t0 in actual.items():
         assert predicted_t0(config.washout.base, washout) == t0
 
 
