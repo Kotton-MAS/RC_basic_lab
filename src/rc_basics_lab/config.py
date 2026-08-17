@@ -218,20 +218,41 @@ class DriveConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ReservoirSweepConfig:
+    """2-A / 2-B / 2-C が共有するリザバー構造パラメータ (F-1-004)。
+
+    ``EspDecayConfig`` / ``TimescaleSweepConfig`` / ``EspMapConfig`` は同一の
+    リザバー族を見る図であり (仕様 §8 Q3: N=200 をサイクル1との連続性のため
+    連載を通して固定する)、``input_scale`` / ``n_units`` / ``density`` /
+    ``n_replicates`` をセクションごとに別々に持たせると、図の間で N が食い
+    違っても何も落ちない。``Esp02Config`` 直下でセクション横断に1本だけ持ち
+    (D-13 の「実験ごとに設定 dataclass を分ける」とは別の軸で、これは
+    「同じ実験内で複数の図が共有する土台」)、各セクションが個別に
+    ``n_units`` 等を名乗ることを構造的に禁じる (YAML の未知キー検査 D-09 が
+    ``decay.n_units`` のような書き方を ``ConfigError`` にする)。
+
+    掃引軸 (``rho_grid`` / ``leak_rate_grid`` / ``sigma_grid``) はセクション
+    固有の性質なので、ここには含めず各セクション側に残す。
+    """
+
+    input_scale: float = 1.0
+    n_units: int = 200
+    density: float = 0.1
+    n_replicates: int = 3
+
+
+@dataclass(frozen=True, slots=True)
 class EspDecayConfig:
     """実験 2-A: rho を振ったときの状態距離の減衰曲線。
 
     無入力 (``sigma_u = 0``) が既定。rho<1 で指数減衰し rho>1 で減衰しないことを
-    見る図であり、入力を入れると主張が変わる (受け入れ条件1)。
+    見る図であり、入力を入れると主張が変わる (受け入れ条件1)。リザバー構造は
+    ``Esp02Config.reservoir`` を参照する (F-1-004)。
     """
 
     rho_grid: tuple[float, ...] = (0.5, 0.8, 0.95, 1.2, 1.5)
     sigma_u: float = 0.0
     leak_rate: float = 1.0
-    input_scale: float = 1.0
-    n_units: int = 200
-    density: float = 0.1
-    n_replicates: int = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,16 +261,13 @@ class TimescaleSweepConfig:
 
     理論線 ``-1 / log(1 - a)`` と重ねるため、``rho`` は 1 未満に固定して
     リーク率だけを動かす (受け入れ条件4)。最大ラグは診断側の
-    ``Esp02Config.timescale.max_lag`` が持つ (二重定義しない)。
+    ``Esp02Config.timescale.max_lag`` が持つ (二重定義しない)。リザバー構造は
+    ``Esp02Config.reservoir`` を参照する (F-1-004)。
     """
 
     leak_rate_grid: tuple[float, ...] = (0.1, 0.2, 0.3, 0.5, 0.7, 1.0)
     rho: float = 0.9
     sigma_u: float = 0.5
-    input_scale: float = 1.0
-    n_units: int = 200
-    density: float = 0.1
-    n_replicates: int = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,16 +276,13 @@ class EspMapConfig:
 
     ``input_scale`` は掃引中固定し、動かすのは信号側の ``sigma_grid`` だけ
     (D-17)。同時に動かすと「信号を強くした」のか「重みを大きくした」のかを
-    分離できなくなる。
+    分離できなくなる。``input_scale`` を含むリザバー構造は
+    ``Esp02Config.reservoir`` を参照する (F-1-004)。
     """
 
     rho_grid: tuple[float, ...] = DEFAULT_ESP_MAP_RHO_GRID
     sigma_grid: tuple[float, ...] = DEFAULT_ESP_MAP_SIGMA_GRID
     leak_rate: float = 1.0
-    input_scale: float = 1.0
-    n_units: int = 200
-    density: float = 0.1
-    n_replicates: int = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,6 +322,7 @@ class Esp02Config:
     name: str = "02_esp_and_dynamics"
     seeds: EspSeedConfig = field(default_factory=EspSeedConfig)
     drive: DriveConfig = field(default_factory=DriveConfig)
+    reservoir: ReservoirSweepConfig = field(default_factory=ReservoirSweepConfig)
     decay: EspDecayConfig = field(default_factory=EspDecayConfig)
     timescale_sweep: TimescaleSweepConfig = field(default_factory=TimescaleSweepConfig)
     esp_map: EspMapConfig = field(default_factory=EspMapConfig)
