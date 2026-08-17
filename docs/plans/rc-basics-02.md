@@ -120,6 +120,50 @@ class StatePropagator(Protocol):
 - [ ] **D-18 guard**: `test_inconsistent_propagator_raises` / `test_unknown_lyapunov_method_raises` / `test_growth_beyond_max_growth_raises`。
 - [ ] **有効性**: `test_esp_config_fields_change_output` —— 3設定クラスの**全フィールド**で出力が変わる。
 
+**実装時に決めたこと (T1 実装者追記。仕様に書かれていなかった選択)**
+
+決定は T5 で `.claude/decisions.yaml` / `docs/design.md` §9 に転記する。ここでは「何を決めたか + 理由」を残す。
+
+*`diagnostics/esp.py` — `esp_convergence`*
+
+1. **複数ペアの最悪値の取り方**: `d_tail = max_i median(d_i[末尾 window])`、`d_initial = min_i d_i[0]`。判定はこの2値と閾値の1本の不等式で行う。理由: ペアごとの判定の AND にすると、報告した `d_initial` / `d_tail` と `converged` が別の組み合わせから来ることになり、CSV の3列を見ても判定を再現できなくなる。この取り方は AND より厳しい側 (安全側) に倒れる。
+2. **`distance` / `distance_all` は washout を切らず全 T を返す**。理由: 2-A の減衰図は過渡そのものを見せる図であり、切ると図が描けない。washout は判定 (末尾窓) と当てはめ開始位置にだけ効く。
+3. **`decay_rate_per_step` の当てはめ範囲**: `t >= washout + fit_skip` かつ `d[t] > floor` の点で `log d` を最小二乗直線当てはめ。2点未満なら `nan` (`n_fit_points` を併記)。理由: 収束後に距離が丸めの床 (または厳密な 0) に張り付いた区間を含めると傾きが 0 側へ引かれる。「測れなかった」を 0 と区別するため `nan` を返す。
+4. **`cfg` の値域検証は診断関数側で行う** (`abs_tol/rel_tol >= 0`, `window >= 1`, `fit_skip >= 0`, `floor > 0`)。理由: 「設定 dataclass は純データ、検証は使う側」という既存の慣習 (`ESNConfig` / `SplitConfig`) に合わせた。
+
+*`diagnostics/esp.py` — `conditional_lyapunov`*
+
+5. **摂動方向は乱数の単位ベクトル**。`ctx.seed` が `None` のときはモジュール定数 `_DIRECTION_SEED = 20240202` を使う。理由: 固定方向 (全成分同符号など) が Jacobian の主方向と直交すると指数を過小評価しうる。既定シードを固定するので `ctx.seed` を渡さなくても再現する。
+6. **`delta` は RMS/ユニットで解釈**する (摂動ベクトルの L2 ノルムは `delta * sqrt(N)`)。理由: D-18 の「delta=1e-8 (RMS/ユニット)」を距離の定義 (D-16) と同じ土俵に載せるため。
+7. **末尾の端数区間も使う** (長さが `renorm_interval` に満たない最後の区間を捨てない)。`lyapunov_per_step = Σ log g / Σ 区間長`。理由: 捨てると `renorm_interval` を変えたときに使うデータ量まで変わり、比較が濁る。
+8. **`growth <= 0` は `ValueError`** (摂動が完全消失し `log` が取れない)。理由: `-inf` を CSV に流すと以降の集計が静かに壊れる。
+9. **伝播器の整合検査は `[washout, T-2]` を5等分した時刻で行い、RMS/ユニット距離を `propagator_tol` と比較**する。理由: 全時刻を検査すると計算量が2倍になる。等間隔にするのは、入力インデックスのずれが特定区間だけで起きることはないため。
+10. **`check_propagator=False` にしても `max_growth` が引っかかる場合がある** (1ステップずれた伝播器は初回区間で `growth ~ 1e8` になる)。テストでは伝播器検査単体の効きを見るため `max_growth` を上げて切り分けている。入力が弱い条件では成長率が `max_growth` に届かず、整合検査だけが唯一の防波堤になる。
+
+*`diagnostics/timescale.py`*
+
+11. **分散 0 のユニットは平均 ACF から除外**し、使ったユニット数を `params["n_units_used"]` に出す。全ユニットが定数なら `ValueError`。理由: 飽和して定数になったユニットで 0 除算する。黙って落とすと「全ユニットが死んでいるのに ACF が返る」が通るので本数を出力に残す。
+12. **`tau_integrated` は初期正値列の和** (`acf` が最初に非正になる直前までの和)。理由: 素直に `max_lag` まで足すと、大ラグ側の推定誤差が積み上がって発散する。
+13. **ラグの単位はステップ。`ctx.dt` では割らない**。理由: 2-B で重ねる理論線 `-1/log(1-a)` がステップ単位の量。
+14. **`max_lag` は `scalars` に出し `params` には入れない**。理由: `DiagnosticResult.to_row` は params と scalars のキー衝突を `ValueError` にするため。
+15. **`n_samples >= max_lag + 2` を要求**する (満たさなければ `ValueError`)。
+
+*既存テストへの変更 (D-01 guard)*
+
+16. `test_all_diagnostics_conform_to_d01_signature_contract` の「契約が許す全呼び出しパターンが呼べる」ブロックで **`ValueError` を許容**するようにした。`esp_convergence` / `conditional_lyapunov` は `ctx` に必須データが無いと `ValueError` を投げる仕様 (§4 T1) であり、これは署名契約ではなく入力要件だから。**代わりに、必須データをそろえた `ctx` での呼び出しが `DiagnosticResult` を返すことを必須の assert として追加**した (`ValueError` を投げ続けるだけの診断が契約テストを通り抜ける穴を塞ぐため)。
+17. `test_diagnostic_enumeration_finds_all_known_diagnostics` を **集合の完全一致 + 件数 5 の固定**に変えた (従来は2本の包含のみ)。
+18. `diagnostics/base.py` のモジュール docstring に、診断固有パラメータの渡し方として **`cfg` (D-15) を第1の形、frozen dataclass の `__call__` (D-01 の F-1-006 追記分) を第2の形**として併記した。docstring が「ctx に足すな、callable にしろ」だけのままだと D-15 と矛盾して読めるため。
+
+*仕様に無いテストの追加*
+
+19. `test_all_config_fields_have_a_case` (`tests/test_diagnostics_esp.py`) —— 3設定クラスのフィールド追加時に `test_esp_config_fields_change_output` のケース登録を強制する。理由: `test_all_config_fields_are_covered` (01) と同じ役割。これが無いと「全フィールドで出力が変わる」を名乗ったまま網羅性が静かに落ちる。
+
+*実測値 (T1 完了時)*
+
+- `lyapunov_per_step` vs `log ρ` (相対誤差): ρ=0.5 → 5.0e-10 / ρ=0.9 → 8.8e-12 / ρ=1.1 → 2.2e-09
+- `tau_1e` vs `-1/log φ` (相対誤差): φ=0.8 → 0.35% / φ=0.9 → 0.46% / φ=0.95 → 0.75%
+- `tau_1e` は φ=0.5 以下だと 1/e 交差が lag 1〜2 に来て**線形補間の誤差**が 6% に達する。テストは φ ∈ {0.8, 0.9, 0.95} を対象にした (実験 2-B のリーク率の範囲はこちらに入る)。
+
 ### T2: 設定層・乱数層 —— 02 用設定クラスと4本目のストリーム (想定所要: **L**)
 
 **何をするか**
