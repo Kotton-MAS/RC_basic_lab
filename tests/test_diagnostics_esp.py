@@ -385,6 +385,23 @@ def test_inconsistent_propagator_raises() -> None:
     )
 
 
+def test_propagator_returning_wrong_shape_raises() -> None:
+    """伝播器が状態と異なる形状の配列を返すと ``ValueError`` (F-1-017, D-18)。
+
+    ``_check_propagator_consistency`` の ``predicted.shape != states[t].shape``
+    分岐が未検査だった。実装ミスとして十分あり得るケース (例: 末尾を落として
+    返す) を、``_rms_distance`` の減算より先に落とせることを確認する。
+    """
+    states, _, propagator = _driven_linear_system(0.9)
+
+    def wrong_shape_propagator(x: FloatArray, t: int) -> FloatArray:
+        return x[:-1]
+
+    ctx = DiagnosticContext(propagator=wrong_shape_propagator)
+    with pytest.raises(ValueError, match="形状"):
+        conditional_lyapunov(states, ctx=ctx)
+
+
 def test_propagator_tolerance_is_rms_per_unit() -> None:
     """整合検査の許容量は RMS/ユニット距離で解釈される。"""
     states, propagator, _ = _driven_tanh_system()
