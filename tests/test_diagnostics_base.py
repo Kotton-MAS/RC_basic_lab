@@ -114,7 +114,7 @@ def _extract_leaked(stdout: str) -> list[str]:
 
 
 def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
-    """diagnostics パッケージ配下の診断関数を機械的に列挙する (D-01 の被検体探索)。
+    """diagnostics パッケージ配下の診断 callable を機械的に列挙する (D-01 の被検体探索)。
 
     列挙条件は「``diagnostics`` の各サブモジュール (``base`` を除く) で定義され
     (= 別モジュールからの re-export ではなく)、戻り値アノテーションが
@@ -124,6 +124,24 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
     と同じであり、02〜05 で新しい診断モジュール (``echo_state`` / ``memory`` /
     ``ipc`` / ``lyapunov`` / ``criticality``) が追加されれば自動的にここへ入る。
     ``base`` は Protocol 定義そのもので診断の実装ではないため対象から除く。
+
+    D-01 が許す2形どちらも拾う (F-02-2-002)。
+
+    1. **関数**そのもの (``cfg`` キーワード引数形式、02 以降の標準)。
+    2. **パラメータ化した callable のインスタンス** (frozen dataclass の
+       ``__call__``、例: ``Ipc(n_surrogates=...)``)。クラス自身 (型) は対象に
+       しない —— 実際に診断として呼べるのはインスタンスであり、型そのものは
+       ``__call__`` の署名を持たない。``inspect.signature(instance)`` は
+       ``__call__`` から ``self`` を除いた署名を返すため、関数の場合と
+       同じ扱いで戻り値アノテーションを検査できる。
+
+    以前は ``inspect.isfunction`` のみで絞り込んでいたため、第2形の診断が
+    構造的に列挙対象から外れ、これに依存する3つの guard
+    (``MINIMAL_VALID_INPUT`` 登録の強制・D-15 guard・D-01 契約テスト) が
+    同時に静かに無効化されていた (オーケストレータが実測で確認: 第2形の
+    被検体は ``inspect.isfunction`` が ``False`` で列挙 0 件)。03 の IPC は
+    D-01 の rationale が第2形の実例として名指しした対象であり、実装者が
+    そのまま ``Ipc(n_surrogates=...)`` と書いた瞬間にこの穴を踏む。
     """
     package_dir = Path(diagnostics_pkg.__file__).parent
     found: list[tuple[str, Diagnostic]] = []
@@ -132,16 +150,25 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
             continue
         module = importlib.import_module(f"rc_basics_lab.diagnostics.{info.name}")
         for attr_name, attr in vars(module).items():
-            if attr_name.startswith("_") or not inspect.isfunction(attr):
+            if attr_name.startswith("_"):
                 continue
-            if attr.__module__ != module.__name__:
+            candidate: object
+            if inspect.isfunction(attr):
+                candidate = attr
+            elif not inspect.isclass(attr) and callable(attr):
+                # 第2形: frozen dataclass の __call__ を持つインスタンス。
+                # クラス自身 (型) は除外する (型は診断として呼べない)。
+                candidate = attr
+            else:
+                continue
+            if candidate.__module__ != module.__name__:
                 continue  # 別モジュールで定義され re-export されただけのものは除く
             try:
-                signature = inspect.signature(attr, eval_str=True)
+                signature = inspect.signature(candidate, eval_str=True)
             except (NameError, TypeError):
                 continue
             if signature.return_annotation is DiagnosticResult:
-                found.append((f"{module.__name__}.{attr_name}", attr))
+                found.append((f"{module.__name__}.{attr_name}", candidate))  # type: ignore[arg-type]
     return found
 
 
