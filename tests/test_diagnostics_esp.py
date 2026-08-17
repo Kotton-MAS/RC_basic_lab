@@ -288,10 +288,13 @@ def test_decay_rate_is_nan_when_no_point_is_above_floor() -> None:
 
 @pytest.mark.parametrize("rho", [0.5, 0.9, 1.1], ids=["rho0.5", "rho0.9", "rho1.1"])
 def test_matches_analytic_exponent_for_linear_map(rho: float) -> None:
-    """``x -> A x + c[t]`` (A の特異値がすべて rho) で λ が ``log rho`` に一致 (D-18 guard)。
+    """``x -> A x + c[t]`` で λ が ``log rho`` に一致する (D-18 guard)。
 
-    摂動法・delta=1e-8・再正規化間隔1 という既定値が、解析解と直接照合できる
-    精度で動いていることを固定する。相対誤差 1e-6 以内。
+    ``A`` の特異値がすべて ``rho`` なので、どの方向の摂動も1ステップで厳密に
+    ``rho`` 倍される。摂動法・delta=1e-8・再正規化間隔1 という既定値が、解析解と
+    直接照合できる精度で動いていることを固定する (相対誤差 1e-6 以内)。
+    ``max_observed_growth`` の許容が緩いのは、これが平均ではなく 499 区間の
+    最悪値であり、``X[t] + delta`` の丸め (相対 1e-8 程度) がそのまま出るため。
     """
     states, _, propagator = _driven_linear_system(rho)
     result = conditional_lyapunov(
@@ -301,7 +304,7 @@ def test_matches_analytic_exponent_for_linear_map(rho: float) -> None:
         math.log(rho), rel=1.0e-6
     )
     assert result.scalars["n_intervals"] == pytest.approx(float(600 - 1 - 100))
-    assert result.scalars["max_observed_growth"] == pytest.approx(rho, rel=1e-9)
+    assert result.scalars["max_observed_growth"] == pytest.approx(rho, rel=1e-6)
 
 
 def test_lyapunov_per_time_divides_by_dt() -> None:
@@ -336,10 +339,12 @@ def test_inconsistent_propagator_raises() -> None:
     with pytest.raises(ValueError, match="propagator"):
         conditional_lyapunov(states, ctx=ctx_bad)
 
-    # 検査を切ると、同じ配線ミスが「それらしい値」として通ってしまう
-    silently_wrong = conditional_lyapunov(
-        states, ctx=ctx_bad, cfg=LyapunovConfig(check_propagator=False)
-    )
+    # 検査を切ると、同じ配線ミスが有限の λ として通ってしまう。
+    # (この系では max_growth もたまたま引っかかるので、伝播器の整合検査だけを
+    #  切り分けるために上限を上げている。入力が弱い条件では成長率が既定の
+    #  max_growth に届かず、整合検査だけが唯一の防波堤になる。)
+    permissive = LyapunovConfig(check_propagator=False, max_growth=1e12)
+    silently_wrong = conditional_lyapunov(states, ctx=ctx_bad, cfg=permissive)
     correct = conditional_lyapunov(states, ctx=ctx_ok)
     assert np.isfinite(silently_wrong.scalars["lyapunov_per_step"])
     assert silently_wrong.scalars["lyapunov_per_step"] != pytest.approx(
@@ -566,8 +571,11 @@ def _build_config_cases() -> tuple[_ConfigCase, ...]:
         _ConfigCase(
             LyapunovConfig,
             "check_propagator",
-            DEFAULT_LYAPUNOV,
-            LyapunovConfig(check_propagator=False),
+            # 伝播器が1ステップずれている条件で、検査の有無だけを振る。
+            # max_growth を上げてあるのは、この系ではそちらでも落ちてしまい
+            # check_propagator 単体の効きが見えなくなるため。
+            LyapunovConfig(max_growth=1e12),
+            LyapunovConfig(max_growth=1e12, check_propagator=False),
             _lyapunov_call(tanh_states, tanh_off_by_one),
         ),
         _ConfigCase(
