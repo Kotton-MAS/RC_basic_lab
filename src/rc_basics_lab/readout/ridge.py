@@ -60,13 +60,15 @@ def _check_pair(phi: FloatArray, y: FloatArray) -> tuple[FloatArray, FloatArray]
     return features, targets
 
 
-def penalty_matrix(n_features: int, bias_column: int | None = 0) -> FloatArray:
+def penalty_matrix(n_features: int, *, bias_column: int | None) -> FloatArray:
     """罰則行列 ``D = diag(0, 1, 1, ...)`` (D-03)。
 
     Args:
         n_features: 特徴数 F。
         bias_column: 正則化しない列の index。``None`` なら全列を正則化する
-            (``bias=False`` の設計行列用)。
+            (``bias=False`` の設計行列用)。既定値を持たない (キーワード必須)。
+            渡し忘れると「先頭列が黙ってバイアス扱い」という誤りが型で
+            落ちる (F-1-002)。``DesignMatrix.bias_column`` を渡すこと。
     """
     diagonal: FloatArray = np.ones(n_features, dtype=np.float64)
     if bias_column is not None:
