@@ -37,7 +37,7 @@ def png_dpi(path: Path) -> float:
             pixels_per_unit_x, _, unit = struct.unpack(">IIB", body)
             if unit != _UNIT_METER:
                 raise ValueError(f"pHYs の単位がメートルではありません: {unit}")
-            return round(pixels_per_unit_x * _METERS_PER_INCH, 2)
+            return round(float(pixels_per_unit_x) * _METERS_PER_INCH, 2)
         offset += 12 + length
     raise ValueError(f"pHYs チャンクがありません: {path}")
 

@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -10,6 +10,7 @@ help:
 	@echo "  fmt-check    - Check formatting without modifying"
 	@echo "  type         - Run mypy"
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
+	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
 
