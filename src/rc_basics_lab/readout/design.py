@@ -107,23 +107,23 @@ def bias_column_index(feature_names: tuple[str, ...]) -> int | None:
     return 0 if feature_names[:1] == (BIAS_NAME,) else None
 
 
-def build_design_matrix(
-    spec: FeatureSpec,
-    u: FloatArray,
-    states: FloatArray | None = None,
-) -> DesignMatrix:
-    """特徴仕様から設計行列を作る (3ベースライン共通の唯一の入口)。
+def _validate_inputs(
+    spec: FeatureSpec, u: FloatArray, states: FloatArray | None
+) -> tuple[FloatArray, FloatArray | None, _Layout, int]:
+    """形状検証だけをまとめる (F-1-015: ブロック組み立てと分岐を分離)。
 
     Args:
-        spec: ``PassthroughSpec`` / ``DelayLineSpec`` / ``ReservoirSpec``。
-        u: 入力系列 ``(T, D_in)``。1次元は受理しない。
-        states: リザバー状態 ``(T, N)``。``ReservoirSpec`` では必須。
+        spec: ``FeatureSpec``。
+        u: 入力系列 ``(T, D_in)``。
+        states: リザバー状態 ``(T, N)`` または ``None``。
 
     Returns:
-        ``DesignMatrix``。列数は順に ``1+D``, ``1+D(k+1)``, ``1+D+N``。
+        ``(inputs, state_array, layout, first_valid)``。
+        ``build_design_matrix`` はこれをそのままブロック組み立てに渡す。
 
     Raises:
-        ValueError: 形状不整合、または ``ReservoirSpec`` に ``states=None``。
+        ValueError: 形状不整合、系列長不足、または ``ReservoirSpec`` に
+            ``states=None``。
     """
     inputs = np.asarray(u, dtype=np.float64)
     if inputs.ndim != 2:
@@ -152,7 +152,14 @@ def build_design_matrix(
             raise ValueError(
                 f"states の行数が u と一致しません: {state_array.shape[0]} != {n_steps}"
             )
+    return inputs, state_array, layout, first_valid
 
+
+def _assemble_blocks(
+    layout: _Layout, inputs: FloatArray, state_array: FloatArray | None
+) -> tuple[list[FloatArray], list[str]]:
+    """検証済みの入力からブロックと列名を組み立てる (分岐なし)。"""
+    n_steps, n_inputs = inputs.shape
     blocks: list[FloatArray] = []
     names: list[str] = []
     if layout.bias:
@@ -168,7 +175,33 @@ def build_design_matrix(
         names.extend(f"x{unit}" for unit in range(state_array.shape[1]))
     if not blocks:
         raise ValueError("特徴が1つもありません (bias=False かつ入力も状態も無し)")
+    return blocks, names
 
+
+def build_design_matrix(
+    spec: FeatureSpec,
+    u: FloatArray,
+    states: FloatArray | None = None,
+) -> DesignMatrix:
+    """特徴仕様から設計行列を作る (3ベースライン共通の唯一の入口)。
+
+    「検証 (``_validate_inputs``) → レイアウト正規化 (``_layout_of``,
+    検証内で実施) → ブロック組み立て (``_assemble_blocks``)」の直線的な流れで、
+    入口はこの関数1本のまま (D-05・受け入れ条件1)。
+
+    Args:
+        spec: ``PassthroughSpec`` / ``DelayLineSpec`` / ``ReservoirSpec``。
+        u: 入力系列 ``(T, D_in)``。1次元は受理しない。
+        states: リザバー状態 ``(T, N)``。``ReservoirSpec`` では必須。
+
+    Returns:
+        ``DesignMatrix``。列数は順に ``1+D``, ``1+D(k+1)``, ``1+D+N``。
+
+    Raises:
+        ValueError: 形状不整合、または ``ReservoirSpec`` に ``states=None``。
+    """
+    inputs, state_array, layout, first_valid = _validate_inputs(spec, u, states)
+    blocks, names = _assemble_blocks(layout, inputs, state_array)
     phi: FloatArray = np.concatenate(blocks, axis=1)
     return DesignMatrix(phi=phi, first_valid=first_valid, feature_names=tuple(names))
 
