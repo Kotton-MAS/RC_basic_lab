@@ -23,7 +23,7 @@ import pytest
 
 from rc_basics_lab.config import MackeyGlassConfig, load_config
 from rc_basics_lab.readout.design import DelayLineSpec, build_design_matrix
-from rc_basics_lab.readout.ridge import select_alpha
+from rc_basics_lab.readout.ridge import fit_ridge, select_alpha
 from rc_basics_lab.tasks.mackey_glass import generate_mackey_glass
 from rc_basics_lab.types import FloatArray
 
@@ -33,8 +33,8 @@ EXPERIMENT_CONFIG_PATH = REPO_ROOT / "experiments" / "01_what_is_rc" / "config.y
 GRID_LOWER_BOUND = 1.0e-10
 """``config.yaml`` の alpha 格子下端 (数値限界。これ以上は下げられない)。"""
 
-ILL_CONDITIONED = 1.0e12
-"""この条件数を超えると倍精度 (eps ~ 2.2e-16) では有効桁が残らない領域に入る。"""
+SINGULAR_CONDITION_NUMBER = 1.0 / float(np.finfo(np.float64).eps)
+"""``cond`` がこれを超えた行列は倍精度では数値的に特異 (約 4.5e15)。"""
 
 SHORT = MackeyGlassConfig(length=1500)
 """縮小設定。本番 (length=8200) と同じ生成器・同じ遅延線特徴で単調性だけを見る。"""
@@ -89,21 +89,23 @@ def test_mackey_glass_validation_nrmse_is_monotone_in_alpha() -> None:
 
 
 def test_alpha_grid_lower_bound_is_a_numerical_limit() -> None:
-    """下端 1e-10 は恣意的な打ち切りではなく、条件数の限界である (D-11 の根拠).
+    """下端 1e-10 は恣意的な打ち切りではなく、実行可能領域の境界である (D-11 の根拠).
 
-    ``alpha <= 1e-11`` で Cholesky が落ちること自体は環境依存なので主張しない。
-    代わりに、正則化なしの Gram 行列が**数値的に特異**であること
-    (最小固有値が丸め誤差の床 ``||G||*eps`` より下) と、格子下端がその床の
-    上にあること (= これ以上下げると正定値性が数値的に保てない) を測る。
+    構図は「下端 alpha が丸め誤差と同じ桁にある」ではない (1e-10 は Gram の
+    対角スケール x eps より3桁大きい)。**無正則化の Gram 行列が既に数値的に特異**
+    (``cond > 1/eps``) で、alpha が正定値性を供給している、というのが正しい読み方。
+    ここでは (1) 無正則化では数値的に特異、(2) 格子下端では実際に解ける、の2点を測る。
+    ``alpha <= 1e-11`` で ``LinAlgError`` になることは実測しているが、失敗の出方が
+    BLAS/LAPACK 実装に依存するため主張しない (docs/design.md §8 に実測として記録)。
     """
     grid = _experiment_alpha_grid()
     assert min(grid) == pytest.approx(GRID_LOWER_BOUND)
 
-    phi_tr, _, _, _ = _train_val_blocks(_experiment_max_n_lags())
+    phi_tr, y_tr, _, _ = _train_val_blocks(_experiment_max_n_lags())
     gram: FloatArray = phi_tr.T @ phi_tr
-    assert float(np.linalg.cond(gram)) > ILL_CONDITIONED
+    assert float(np.linalg.cond(gram)) > SINGULAR_CONDITION_NUMBER
 
-    eigenvalues: FloatArray = np.linalg.eigvalsh(gram)
-    rounding_floor = float(eigenvalues[-1]) * float(np.finfo(np.float64).eps)
-    assert float(eigenvalues[0]) < rounding_floor
-    assert min(grid) > rounding_floor
+    # 下端は「解ける最小の alpha」側の境界 —— そこでは実際に解ける
+    coefficients = fit_ridge(phi_tr, y_tr, min(grid))
+    assert coefficients.shape == (phi_tr.shape[1], 1)
+    assert bool(np.all(np.isfinite(coefficients)))
