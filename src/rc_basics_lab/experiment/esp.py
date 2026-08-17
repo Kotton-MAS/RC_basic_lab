@@ -207,6 +207,96 @@ ESP_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(EspRow))
 """``esp_diagnostics.csv`` の列順 (``EspRow`` の宣言順が単一の真実)。"""
 
 
+def build_esn_config(
+    reservoir: ReservoirSweepConfig, rho: float, leak_rate: float
+) -> ESNConfig:
+    """1条件ぶんの ``ESNConfig`` を組む。掃引軸だけが条件ごとに変わる。
+
+    引数は ``Esp02Config`` 全体ではなく ``ReservoirSweepConfig`` に narrow して
+    ある (F-1-005)。本体が読むのは ``reservoir`` の4フィールドと ``BIAS_SCALE``
+    だけなので、``Esp02Config`` に型で結合すると 03 (MC/IPC) が ESN 構成を
+    再利用するために ``Esp02Config`` を丸ごと写経する羽目になる。
+    """
+    return ESNConfig(
+        n_units=reservoir.n_units,
+        spectral_radius=rho,
+        leak_rate=leak_rate,
+        input_scale=reservoir.input_scale,
+        bias_scale=BIAS_SCALE,
+        density=reservoir.density,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ReferenceTrajectory:
+    """参照軌道1本と、それを作った ESN・駆動入力 (F-1-005)。
+
+    ``simulate_condition`` (ESP) は比較軌道 n_pairs 本も併せて作るが、03
+    (MC/IPC) の読み出し回帰には参照軌道1本があれば足りる。比較軌道を作らない
+    ぶん ``simulate_condition`` の ``n_pairs + 1`` 倍の計算 (本番 n_pairs=10 で
+    11 倍) を避けられる。
+    """
+
+    esn: ESN
+    drive: FloatArray
+    states: FloatArray
+
+
+def simulate_reference_trajectory(
+    reservoir: ReservoirSweepConfig,
+    drive_config: DriveConfig,
+    *,
+    reservoir_seed: int,
+    drive_seed: int,
+    rho: float,
+    leak_rate: float,
+    sigma_u: float,
+    replicate: int,
+    x0: FloatArray | None = None,
+) -> ReferenceTrajectory:
+    """参照軌道1本を作る (``Esp02Config`` を要らない。F-1-005)。
+
+    ``ReservoirSweepConfig`` + ``DriveConfig`` + 基底シード
+    (``reservoir_seed`` / ``drive_seed``) だけで呼べるので、03 (MC/IPC) は
+    ``Esp02Config`` の3ストリーム配線 (``EspSeedConfig`` / D-14) を写経せずに
+    この関数を再利用できる。比較軌道の初期状態対 (``SeedStream.PROBE``) は
+    ESP 判定専用なのでここでは作らない。``x0`` を省略すると ``ESN.run`` の
+    既定 (零ベクトル) になる —— MC/IPC の読み出し回帰は washout で過渡を
+    捨てる前提なので、初期状態をどこから引くかは主要な関心事ではない。
+
+    ``simulate_condition`` はこの関数へ ``config.seeds.reservoir`` /
+    ``config.seeds.drive`` (D-14 の3ストリームのうち2本) と ESP 用の
+    ``x0`` (``SeedStream.PROBE`` から引いた初期状態) をそのまま渡す薄い層に
+    なっており、既存の成果物 (``results/``) はバイト単位で不変である。
+
+    Args:
+        reservoir: リザバー構造 (掃引軸を除く4フィールド)。
+        drive_config: 駆動入力の共通条件。
+        reservoir_seed: リザバー重みストリームの基底シード。
+        drive_seed: 駆動入力ストリームの基底シード。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        sigma_u: 駆動信号の標準偏差 (D-17)。
+        replicate: レプリケート番号 (0 始まり)。
+        x0: 初期状態 ``(N,)``。``None`` なら ``ESN.run`` の既定 (零ベクトル)。
+
+    Returns:
+        ESN・駆動入力・状態系列 ``(T, N)``。
+    """
+    drive_rng = make_rng_for(drive_seed, SeedStream.TASK, replicate)
+    u = make_drive(
+        sigma_u,
+        drive_config.n_steps,
+        drive_rng,
+        distribution=drive_config.distribution,
+    )
+    reservoir_rng = make_rng_for(reservoir_seed, SeedStream.RESERVOIR, replicate)
+    esn = ESN(
+        build_esn_config(reservoir, rho, leak_rate), reservoir_rng, n_inputs=_N_INPUTS
+    )
+    return ReferenceTrajectory(esn=esn, drive=u, states=esn.run(u, x0=x0))
+
+
 @dataclass(frozen=True, slots=True)
 class Trajectories:
     """1条件ぶんの軌道と、伝播器を作るのに要る材料。
@@ -233,38 +323,37 @@ def simulate_condition(
 ) -> Trajectories:
     """1条件 (rho, leak_rate, sigma_u, replicate) の軌道を作る。
 
-    乱数は3ストリームに分ける (D-14)。リザバー重み ``RESERVOIR`` / 駆動信号
-    ``TASK`` / 初期状態対 ``PROBE`` が独立なので、「初期状態だけを振ったときに
-    判定が変わるか」を重みを固定したまま測れる。
+    参照軌道の生成は ``simulate_reference_trajectory`` に委譲する (F-1-005)。
+    ここで足すのは ESP 専用の比較軌道 n_pairs 本と、その初期状態対 (D-14 の
+    ``PROBE`` ストリーム) だけである。乱数は3ストリームに分ける (D-14)。
+    リザバー重み ``RESERVOIR`` / 駆動信号 ``TASK`` / 初期状態対 ``PROBE`` が
+    独立なので、「初期状態だけを振ったときに判定が変わるか」を重みを固定した
+    まま測れる。
     """
-    drive_rng = make_rng_for(
-        esp_stream_seed(config.seeds, SeedStream.TASK), SeedStream.TASK, replicate
-    )
-    u = make_drive(
-        sigma_u,
-        config.drive.n_steps,
-        drive_rng,
-        distribution=config.drive.distribution,
-    )
-    reservoir_rng = make_rng_for(
-        esp_stream_seed(config.seeds, SeedStream.RESERVOIR),
-        SeedStream.RESERVOIR,
-        replicate,
-    )
-    esn = ESN(
-        build_esn_config(config, rho, leak_rate), reservoir_rng, n_inputs=_N_INPUTS
-    )
     probe_rng = make_rng_for(
         esp_stream_seed(config.seeds, SeedStream.PROBE), SeedStream.PROBE, replicate
     )
     initial_states = make_initial_states(
         config.reservoir.n_units, config.drive.n_pairs, probe_rng
     )
+    reference = simulate_reference_trajectory(
+        config.reservoir,
+        config.drive,
+        reservoir_seed=esp_stream_seed(config.seeds, SeedStream.RESERVOIR),
+        drive_seed=esp_stream_seed(config.seeds, SeedStream.TASK),
+        rho=rho,
+        leak_rate=leak_rate,
+        sigma_u=sigma_u,
+        replicate=replicate,
+        x0=initial_states[0],
+    )
     return Trajectories(
-        esn=esn,
-        drive=u,
-        states=esn.run(u, x0=initial_states[0]),
-        companions=tuple(esn.run(u, x0=x0) for x0 in initial_states[1:]),
+        esn=reference.esn,
+        drive=reference.drive,
+        states=reference.states,
+        companions=tuple(
+            reference.esn.run(reference.drive, x0=x0) for x0 in initial_states[1:]
+        ),
     )
 
 
@@ -281,18 +370,6 @@ class ConditionOutcome:
     row: EspRow
     distance: FloatArray
     acf: FloatArray
-
-
-def build_esn_config(config: Esp02Config, rho: float, leak_rate: float) -> ESNConfig:
-    """1条件ぶんの ``ESNConfig`` を組む。掃引軸だけが条件ごとに変わる。"""
-    return ESNConfig(
-        n_units=config.reservoir.n_units,
-        spectral_radius=rho,
-        leak_rate=leak_rate,
-        input_scale=config.reservoir.input_scale,
-        bias_scale=BIAS_SCALE,
-        density=config.reservoir.density,
-    )
 
 
 def evaluate_condition(
