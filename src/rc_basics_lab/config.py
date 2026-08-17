@@ -21,6 +21,7 @@ from typing import Protocol, cast, get_args, get_origin, get_type_hints
 import numpy as np
 import yaml
 
+from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.seeds import SeedConfig
 
 
@@ -83,9 +84,31 @@ class SplitConfig:
     max_start_offset: int = 200
 
 
+def _delay_parity_esn() -> ESNConfig:
+    """遅延パリティ用 ESN の既定値 (仕様 T3 / docs/design.md §6)。
+
+    パリティは瞬時的な非線形結合を要求するため、漏れを入れず (leak=1.0)、
+    入力を強く駆動する (input_scale=1.0)。MG 用 (``ESNConfig`` の既定値) とは
+    別の組であり、**検証分割では調整しない** (D-08)。
+    """
+    return ESNConfig(
+        n_units=200,
+        spectral_radius=0.9,
+        leak_rate=1.0,
+        input_scale=1.0,
+        density=0.1,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ExperimentConfig:
-    """実験1本ぶんの設定。"""
+    """実験1本ぶんの設定。
+
+    ESN の構造ハイパーパラメータは課題ごとに別セクション
+    (``esn_mackey_glass`` / ``esn_delay_parity``) に持つ。MG は漏れ積分
+    (leak=0.3) が効き、パリティは leak=1.0 が要るため、1つの ``esn`` セクションに
+    まとめると片方の課題に不利な値を押し付けることになるため。
+    """
 
     name: str = "01_what_is_rc"
     n_replicates: int = 5
@@ -94,6 +117,8 @@ class ExperimentConfig:
     ridge: RidgeConfig = field(default_factory=RidgeConfig)
     mackey_glass: MackeyGlassConfig = field(default_factory=MackeyGlassConfig)
     delay_parity: DelayParityConfig = field(default_factory=DelayParityConfig)
+    esn_mackey_glass: ESNConfig = field(default_factory=ESNConfig)
+    esn_delay_parity: ESNConfig = field(default_factory=_delay_parity_esn)
 
 
 def _fail(location: str, message: str) -> ConfigError:
@@ -192,6 +217,7 @@ __all__ = [
     "DEFAULT_ALPHA_GRID",
     "ConfigError",
     "DelayParityConfig",
+    "ESNConfig",
     "ExperimentConfig",
     "MackeyGlassConfig",
     "RidgeConfig",
