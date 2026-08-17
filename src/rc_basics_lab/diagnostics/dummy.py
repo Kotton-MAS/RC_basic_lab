@@ -23,7 +23,6 @@ def state_mean_norm(
     X: FloatArray,
     u: FloatArray | None = None,
     y: FloatArray | None = None,
-    *,
     ctx: DiagnosticContext | None = None,
 ) -> DiagnosticResult:
     """状態ベクトルの L2 ノルムの時間平均を返す。
