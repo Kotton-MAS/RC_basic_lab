@@ -11,6 +11,7 @@ import pkgutil
 import subprocess
 import sys
 import textwrap
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,23 +39,60 @@ def _external_states(n_steps: int = 300, n_units: int = 20) -> FloatArray:
     return rng.standard_normal((n_steps, n_units))
 
 
-def _full_context(states: FloatArray, washout: int = 0) -> DiagnosticContext:
-    """全診断が実際に最後まで走れるだけの情報を持つ ``ctx``。
+_MinimalInput = tuple[
+    FloatArray, FloatArray | None, FloatArray | None, DiagnosticContext
+]
+"""契約テストが「最後まで走らせる」ために渡す ``(X, u, y, ctx)`` の1組。"""
 
-    ``esp_convergence`` は ``companion_states`` を、``conditional_lyapunov`` は
-    ``propagator`` を必須にしている (第2軌道や伝播器が渡っていないのに判定や
-    指数だけが返る事故を殺すため)。伝播器は参照軌道と厳密に整合する形
-    (Jacobian が恒等) にしてあるので、既定で有効な整合検査を通る。
-    """
+
+def _minimal_input_no_extras(states: FloatArray) -> _MinimalInput:
+    """``u``/``ctx`` に何も要求しない診断向けの既定の最小入力。"""
+    return states, None, None, DiagnosticContext()
+
+
+def _minimal_input_esp_convergence(states: FloatArray) -> _MinimalInput:
+    """``esp_convergence`` は ``ctx.companion_states`` が1本以上必須。"""
     companion: FloatArray = states + 0.1
+    return states, None, None, DiagnosticContext(companion_states=(companion,))
+
+
+def _minimal_input_conditional_lyapunov(states: FloatArray) -> _MinimalInput:
+    """``conditional_lyapunov`` は ``ctx.propagator`` が必須。
+
+    伝播器は参照軌道と厳密に整合する形 (Jacobian が恒等) にしてあるので、
+    既定で有効な整合検査 (D-18) を通る。
+    """
 
     def propagator(x: FloatArray, t: int) -> FloatArray:
         shifted: FloatArray = states[t + 1] + (x - states[t])
         return shifted
 
-    return DiagnosticContext(
-        washout=washout, companion_states=(companion,), propagator=propagator
-    )
+    return states, None, None, DiagnosticContext(propagator=propagator)
+
+
+MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
+    "rc_basics_lab.diagnostics.dummy.state_mean_norm": _minimal_input_no_extras,
+    "rc_basics_lab.diagnostics.state_space.state_pca": _minimal_input_no_extras,
+    "rc_basics_lab.diagnostics.esp.esp_convergence": _minimal_input_esp_convergence,
+    "rc_basics_lab.diagnostics.esp.conditional_lyapunov": (
+        _minimal_input_conditional_lyapunov
+    ),
+    "rc_basics_lab.diagnostics.timescale.autocorrelation_time": _minimal_input_no_extras,
+}
+"""診断 qualname -> 「その診断が最後まで走れる最小限の入力」を返すファクトリ。
+
+F-1-015: 契約テストの必須 assert (``test_all_diagnostics_conform_to_d01_signature_contract``
+の最終行) は、以前は ``u`` を一切用意しない共通の ``ctx`` を全診断へ使い回していた。
+u が無いと成立しない診断 (03 の IPC/MC 等) が加わると、この共通 ``ctx`` では
+``ValueError`` が上がり、最も安く緑にする手が「その行も ``suppress`` で包む」に
+なってしまう —— それは今周わざわざ塞いだ穴 (``ValueError`` を投げ続けるだけの
+診断が契約テストを通り抜ける) の復活である。診断ごとに最小入力を登録する形へ
+変えることで、03 の実装者が安く緑にする手を「登録を足す」側に倒す。
+
+登録漏れは
+``test_minimal_valid_input_registry_covers_all_diagnostics`` が
+``test_all_config_fields_have_a_case`` と同じパターンで機械的に強制する。
+"""
 
 
 def _extract_leaked(stdout: str) -> list[str]:
@@ -135,6 +173,24 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
         f"余剰={sorted(names - set(KNOWN_DIAGNOSTICS))})"
     )
     assert len(names) == 5
+
+
+def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
+    """``MINIMAL_VALID_INPUT`` が列挙された全診断を過不足なく網羅する (F-1-015)。
+
+    ``test_all_config_fields_have_a_case`` と同じ「登録漏れを構造的に強制する」
+    パターン。新しい診断を追加したとき、この完全性チェックは
+    ``MINIMAL_VALID_INPUT`` への登録を追加するまで独立に赤くなり続ける。
+    契約テスト側の必須 assert を ``suppress`` で包んで穴を隠す最短ルートを
+    取っても、こちらは救われない。
+    """
+    names = {qualname for qualname, _ in _iter_diagnostic_callables()}
+    assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
+    assert set(MINIMAL_VALID_INPUT) == names, (
+        "MINIMAL_VALID_INPUT の登録が実際の診断集合と一致しません "
+        f"(不足={sorted(names - set(MINIMAL_VALID_INPUT))}, "
+        f"余剰={sorted(set(MINIMAL_VALID_INPUT) - names)})"
+    )
 
 
 def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
@@ -227,8 +283,14 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
 
         # 必須データをそろえれば、どの診断も最後まで走って結果を返すこと。
         # (上で ValueError を許容した分の穴をここで塞ぐ。ValueError を投げ続ける
-        #  だけの診断が契約テストを通り抜けないようにする。)
-        result = func(states, None, None, ctx=_full_context(states))
+        #  だけの診断が契約テストを通り抜けないようにする。) 診断ごとの最小入力は
+        # MINIMAL_VALID_INPUT レジストリから取得する (F-1-015)。suppress では
+        # 囲まない: ここで ValueError が上がるのは「診断の入力要件を満たす最小入力を
+        # 登録し忘れている」ことを意味し、そのまま失敗させて登録漏れを可視化する。
+        minimal_x, minimal_u, minimal_y, minimal_ctx = MINIMAL_VALID_INPUT[qualname](
+            states
+        )
+        result = func(minimal_x, minimal_u, minimal_y, ctx=minimal_ctx)
         assert isinstance(result, DiagnosticResult), (
             f"{qualname}: DiagnosticResult を返していません: {type(result)}"
         )
