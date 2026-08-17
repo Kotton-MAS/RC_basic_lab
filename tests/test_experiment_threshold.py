@@ -18,6 +18,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import math
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,7 @@ from rc_basics_lab.config import (
     TimescaleConfig,
     TimescaleSweepConfig,
 )
+from rc_basics_lab.experiment import threshold as threshold_module
 from rc_basics_lab.experiment.esp import UNIFORM
 from rc_basics_lab.experiment.esp_pipeline import (
     ESP_THRESHOLD_SENSITIVITY_CSV,
@@ -178,35 +180,64 @@ def test_reference_case_must_be_in_the_grid() -> None:
         run_threshold_sweep(small_config(), abs_tol_grid=(), window_grid=())
 
 
-def test_reference_follows_config_esp_not_the_module_defaults() -> None:
+def test_reference_follows_config_esp_not_the_module_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """基準行は ``config.esp`` から取る (モジュール定数 ``REFERENCE_*`` は使わない)。
 
-    ``config.esp`` を掃引の既定値からずらして (``abs_tol`` を格子内の別点に)
-    実行しても、実行時に本当に使った判定基準がずれ 0 の行になることを確かめる。
-    基準をモジュール定数に固定したままだと、この行だけが「ずれ 0」にならず、
-    本番実行が実際には使わなかった基準 (``REFERENCE_ABS_TOL``) からの
-    ずれが報告される。
+    縮小格子では ``abs_tol=1e-4`` と ``REFERENCE_ABS_TOL=1e-6`` の間で ESP 収束
+    判定に差が出ないため (実測: この2値のどちらでも収束結果は同一になる)、
+    ``n_sigma_shifted`` / ``max_abs_shift`` が 0 かどうかという**値**だけを見ても
+    「基準として実際にどちらの行が使われたか」を区別できない (修正前の、基準を
+    モジュール定数に固定し続けるバグを忠実に再現しても、この2つの assert は
+    どちらも満たされてしまう)。
+
+    そこで ``_critical_by_sigma`` にスパイを挟み、基準を計算するために実際に
+    渡された辞書オブジェクトの **identity** (値ではなく参照の同一性) を見る。
+    基準の計算 (``run_threshold_sweep`` 内で1回だけ呼ばれる) に渡された辞書が、
+    ``config.esp`` を動かした先の行 ``(1e-4, window)`` を組み立てた呼び出しと
+    同一オブジェクトであり、掃引の既定値のままの行
+    ``(REFERENCE_ABS_TOL, REFERENCE_WINDOW)`` を組み立てた呼び出しとは別物で
+    あることを確認する。あわせて、同じ経路で決まる ``ThresholdRow.is_reference``
+    (CSV に出る基準行フラグ) が ``config.esp`` に追従することも直接確認する。
     """
     config = dataclasses.replace(
         small_config(),
         esp=EspConfig(abs_tol=1.0e-4, window=REFERENCE_WINDOW, fit_skip=10),
     )
+    call_ids: list[int] = []
+    original = threshold_module._critical_by_sigma
+
+    def spy(
+        verdicts: Mapping[float, Mapping[float, Sequence[int]]],
+    ) -> dict[float, float]:
+        call_ids.append(id(verdicts))
+        return original(verdicts)
+
+    monkeypatch.setattr(threshold_module, "_critical_by_sigma", spy)
+
     rows = run_threshold_sweep(
         config, abs_tol_grid=TEST_ABS_TOL_GRID, window_grid=TEST_WINDOW_GRID
     )
-    moved_reference = next(
-        row for row in rows if (row.abs_tol, row.window) == (1.0e-4, REFERENCE_WINDOW)
+    cases = [(row.abs_tol, row.window) for row in rows]
+    moved_index = cases.index((1.0e-4, REFERENCE_WINDOW))
+    old_index = cases.index((REFERENCE_ABS_TOL, REFERENCE_WINDOW))
+
+    # 呼び出し順は「基準の計算 (1回)」-> 「cases の順で _build_row からの呼び出し」。
+    assert len(call_ids) == 1 + len(cases)
+    reference_call_id = call_ids[0]
+    assert reference_call_id == call_ids[1 + moved_index], (
+        "基準の計算に渡された辞書が config.esp の行 (1e-4, window) のものと一致しません"
     )
-    assert moved_reference.n_sigma_shifted == 0
-    assert moved_reference.max_abs_shift == 0.0
-    # 掃引の既定値 (REFERENCE_ABS_TOL) はもう基準ではないので、自己一致を
-    # 要求しない (このテストの前提が空振りしていないことの確認)。
-    old_reference = next(
-        row
-        for row in rows
-        if (row.abs_tol, row.window) == (REFERENCE_ABS_TOL, REFERENCE_WINDOW)
+    assert reference_call_id != call_ids[1 + old_index], (
+        "基準の計算に、もう基準ではないはずの "
+        "(REFERENCE_ABS_TOL, REFERENCE_WINDOW) の行が使われています"
     )
-    assert old_reference is not moved_reference
+
+    moved_reference = rows[moved_index]
+    old_reference = rows[old_index]
+    assert moved_reference.is_reference is True
+    assert old_reference.is_reference is False
 
 
 def test_config_esp_outside_the_grid_raises() -> None:
