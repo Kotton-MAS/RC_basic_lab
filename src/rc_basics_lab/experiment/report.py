@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from rc_basics_lab.config import ExperimentConfig
@@ -32,13 +32,30 @@ def write_comparison_csv(rows: Sequence[ResultRow], path: Path) -> Path:
 
 
 def write_meta(
-    config: ExperimentConfig, wall_time_s: float, n_rows: int, path: Path
+    config: ExperimentConfig,
+    wall_time_s: float,
+    n_rows: int,
+    path: Path,
+    extra: Mapping[str, object] | None = None,
 ) -> Path:
-    """実行メタ情報を JSON に書く (実測 wall time は性能受け入れ基準の根拠)。"""
+    """実行メタ情報を JSON に書く (実測 wall time は性能受け入れ基準の根拠)。
+
+    Args:
+        config: 実験設定。
+        wall_time_s: 実測 wall time。
+        n_rows: ``comparison.csv`` の行数。
+        path: 出力先。
+        extra: 追加で載せる項目 (実験1-B の ``state_space`` など)。既存キーと
+            衝突したら ``ValueError`` (静かな上書きで情報が消えるのを防ぐ)。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     meta: dict[str, object] = collect_meta(config)
     meta["wall_time_s"] = wall_time_s
     meta["n_rows"] = n_rows
+    for key, value in (extra or {}).items():
+        if key in meta:
+            raise ValueError(f"meta のキーが衝突しています: {key}")
+        meta[key] = value
     path.write_text(
         json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

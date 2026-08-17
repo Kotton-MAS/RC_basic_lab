@@ -167,12 +167,12 @@ def plan_replicate(
     全手法がここで作られた ``t0`` と ``split`` をそのまま使う (D-05)。
     """
     data = task_entry.generate(make_rng(config.seeds, SeedStream.TASK, replicate))
-    reservoir = ESN(
-        task_entry.esn,
-        make_rng(config.seeds, SeedStream.RESERVOIR, replicate),
-        n_inputs=data.n_inputs,
-    )
-    states = reservoir.run(data.u)
+    reservoir_rng = make_rng(config.seeds, SeedStream.RESERVOIR, replicate)
+    reservoir = ESN(task_entry.esn, reservoir_rng, n_inputs=data.n_inputs)
+    # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir ストリームの
+    # 続き)。state_noise=0 のときは1個も引かれないため既存の結果は不変で、
+    # state_noise>0 を YAML で設定したときに ValueError で落ちる配線漏れが消える。
+    states = reservoir.run(data.u, rng=reservoir_rng)
     designs = {
         method.name: tuple(
             build_design_matrix(spec, data.u, states) for spec in method.candidates
