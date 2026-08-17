@@ -3,8 +3,10 @@
 - ``split``: 連続分割と全手法共通の基準行 ``t0`` (D-05 / D-06)
 - ``runner``: (課題 x 手法 x レプリケート) の実行 (D-04 / D-08)
 - ``state_space``: 入力空間とリザバー状態空間の PCA 比較 (実験1-B)
-- ``report``: ``comparison.csv`` / ``meta.json`` への書き出し
-- ``pipeline``: 1コマンドで4成果物をそろえる経路 (CLI はここを呼ぶだけ)
+- ``summary``: (課題, 手法) ごとの NRMSE 集計 (F-1-003)
+- ``report``: ``comparison.csv`` / ``comparison_summary.csv`` / ``meta.json``
+  への書き出し
+- ``pipeline``: 1コマンドで5成果物をそろえる経路 (CLI はここを呼ぶだけ)
 """
 
 from rc_basics_lab.experiment.pipeline import (
@@ -12,7 +14,11 @@ from rc_basics_lab.experiment.pipeline import (
     ExperimentOutputs,
     run_and_report,
 )
-from rc_basics_lab.experiment.report import write_comparison_csv, write_meta
+from rc_basics_lab.experiment.report import (
+    write_comparison_csv,
+    write_comparison_summary_csv,
+    write_meta,
+)
 from rc_basics_lab.experiment.runner import (
     CSV_COLUMNS,
     Method,
@@ -30,10 +36,12 @@ from rc_basics_lab.experiment.state_space import (
     StateSpaceReport,
     collect_state_space,
 )
+from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
 
 __all__ = [
     "ARTIFACTS",
     "CSV_COLUMNS",
+    "Aggregate",
     "ExperimentOutputs",
     "Method",
     "ReplicatePlan",
@@ -41,6 +49,7 @@ __all__ = [
     "Split",
     "StateSpaceReport",
     "TaskEntry",
+    "aggregate_nrmse",
     "build_methods",
     "build_tasks",
     "collect_state_space",
@@ -51,5 +60,6 @@ __all__ = [
     "run_experiment",
     "run_task",
     "write_comparison_csv",
+    "write_comparison_summary_csv",
     "write_meta",
 ]

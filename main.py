@@ -35,7 +35,7 @@ EXPERIMENTS: dict[str, Path] = {
 - YAML が ``ExperimentConfig`` に無いキーを持つ場合 D-09 により ``ConfigError``
   で落ちる (01 専用の設定クラスしか無いため)。
 - ``run_and_report`` は ``run_experiment`` / ``collect_state_space`` /
-  ``plot_comparison`` / ``plot_state_space`` という 01 専用の4成果物に
+  ``plot_comparison`` / ``plot_state_space`` という 01 専用の5成果物に
   ハードコードされている。02 の成果物 (``fig_esp_map.png`` /
   ``esp_diagnostics.csv`` 等) はこの経路を通らない。
 

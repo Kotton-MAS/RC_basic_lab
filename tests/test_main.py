@@ -1,10 +1,11 @@
-"""CLI エントリのテスト — 「1コマンドで4成果物」の担保 (受け入れ条件5).
+"""CLI エントリのテスト — 「1コマンドで5成果物」の担保 (受け入れ条件5).
 
 ``main.py --experiment 01`` と ``experiments/01_what_is_rc/run.py --config ...``
 はどちらも ``pipeline.run_and_report`` を呼ぶ薄い層である。ここでは縮小設定を
 一時ディレクトリに書いて**実際に1コマンド相当を走らせ**、
-``comparison.csv`` / ``fig_comparison.png`` / ``fig_state_space.png`` /
-``meta.json`` の4点が出ることと、PNG の実測解像度が retina 相当であることを見る。
+``comparison.csv`` / ``comparison_summary.csv`` / ``fig_comparison.png`` /
+``fig_state_space.png`` / ``meta.json`` の5点が出ることと、PNG の実測解像度が
+retina 相当であることを見る。
 """
 
 from __future__ import annotations
@@ -95,7 +96,7 @@ def test_parse_args_defaults() -> None:
 
 
 def test_main_writes_the_four_artifacts(tiny_experiment: tuple[Path, Path]) -> None:
-    """1コマンドで4成果物が出る (受け入れ条件5)。"""
+    """1コマンドで5成果物が出る (受け入れ条件5)。"""
     _, out_dir = tiny_experiment
     assert main.main(["--experiment", "01", "--out", str(out_dir)]) == 0
     for name in ARTIFACTS:

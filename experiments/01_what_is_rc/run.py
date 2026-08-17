@@ -5,8 +5,9 @@
     uv run python experiments/01_what_is_rc/run.py \
         --config experiments/01_what_is_rc/config.yaml
 
-``--out`` (既定 ``results``) に ``comparison.csv`` / ``fig_comparison.png`` /
-``fig_state_space.png`` / ``meta.json`` の4点を書く (受け入れ条件5)。
+``--out`` (既定 ``results``) に ``comparison.csv`` / ``comparison_summary.csv`` /
+``fig_comparison.png`` / ``fig_state_space.png`` / ``meta.json`` の5点を書く
+(受け入れ条件5)。
 実測 wall time は ``meta.json`` の ``wall_time_s`` に記録する (性能受け入れ基準)。
 進捗は ``print`` ではなく ``logging`` で出す (ruff T20)。
 
@@ -59,7 +60,7 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """実験を実行し、CSV・図2枚・meta.json を書く。"""
+    """実験を実行し、CSV2枚・図2枚・meta.json を書く。"""
     args = parse_args(argv)
     config = load_config(args.config)
     logger.info(
