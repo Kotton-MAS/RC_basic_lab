@@ -89,7 +89,7 @@ def small_config() -> Esp02Config:
         ),
         esp_map=EspMapConfig(
             rho_grid=(0.6, 0.9, 1.2, 1.5, 1.8),
-            sigma_grid=(0.0, 0.1, 0.5) + STRONG_SIGMAS,
+            sigma_grid=(0.0, 0.1, 0.5, *STRONG_SIGMAS),
             leak_rate=1.0,
         ),
         esp=EspConfig(window=100, fit_skip=10),
@@ -288,7 +288,7 @@ def test_decay_fit_starts_before_the_distance_underflows() -> None:
     ]
     assert outcomes
     for outcome in outcomes:
-        below: FloatArray = np.nonzero(outcome.distance <= config.esp.floor)[0]
+        below = np.nonzero(outcome.distance <= config.esp.floor)[0]
         assert below.size, "距離が床まで落ちていません (前提が変わっています)"
         last_measurable = int(below[0])
         assert last_measurable < config.drive.washout, (
@@ -371,12 +371,13 @@ def test_verdict_agreement_summary_records_the_disagreement_breakdown() -> None:
     弱駆動・臨界超えに限局するという観測そのものが記事の材料なので、分布まで
     ``meta.json`` に落とす。
     """
-    summary = summarize_verdict_agreement(results().rows).to_summary()
+    agreement = summarize_verdict_agreement(results().rows)
+    summary = agreement.to_summary()
     assert summary["n_false_esp"] == 0
-    assert summary["n_compared"] > 0
+    assert summary["n_compared"] == agreement.n_compared > 0
     assert isinstance(summary["disagreement_by_sigma"], list)
     assert isinstance(summary["disagreement_by_rho"], list)
-    assert summary["n_near_boundary"] + summary["n_compared"] == summary["n_rows"]
+    assert agreement.n_near_boundary + agreement.n_compared == agreement.n_rows
 
 
 def test_disagreement_is_only_the_local_stable_but_not_global_direction() -> None:
