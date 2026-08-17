@@ -76,7 +76,7 @@ def test_mackey_glass_validation_nrmse_is_monotone_in_alpha() -> None:
     """
     grid = _experiment_alpha_grid()
     phi_tr, y_tr, phi_val, y_val = _train_val_blocks(_experiment_max_n_lags())
-    selection = select_alpha(phi_tr, y_tr, phi_val, y_val, grid)
+    selection = select_alpha(phi_tr, y_tr, phi_val, y_val, grid, bias_column=0)
 
     assert tuple(alpha for alpha, _ in selection.curve) == tuple(sorted(grid))
     scores = [score for _, score in selection.curve]
@@ -107,6 +107,6 @@ def test_alpha_grid_lower_bound_is_a_numerical_limit() -> None:
     assert float(np.linalg.cond(gram)) > SINGULAR_CONDITION_NUMBER
 
     # 下端は「解ける最小の alpha」側の境界 —— そこでは実際に解ける
-    coefficients = fit_ridge(phi_tr, y_tr, min(grid))
+    coefficients = fit_ridge(phi_tr, y_tr, min(grid), bias_column=0)
     assert coefficients.shape == (phi_tr.shape[1], 1)
     assert bool(np.all(np.isfinite(coefficients)))

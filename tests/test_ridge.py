@@ -195,13 +195,18 @@ def test_bias_column_is_keyword_required() -> None:
 
     既定値 0 (= 先頭列は必ずバイアス) を持たせないことで、``bias=False`` の
     設計行列を渡し忘れたときに「静かに少し違う係数」ではなく型エラーになる。
+    呼び出しは静的にも mypy が拾う欠落を意図的に再現しているため
+    ``# type: ignore[call-arg]`` を付けている (mypy を黙らせて実行時の
+    TypeError を実測するのがこのテストの目的そのもの)。
     """
     phi = _design(n_steps=20)
     targets = _linear_target(phi)
     with pytest.raises(TypeError, match="bias_column"):
         fit_ridge(phi, targets, alpha=1.0)  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="bias_column"):
-        select_alpha(phi[:10], targets[:10], phi[10:], targets[10:], (1.0,))  # type: ignore[call-arg]
+        select_alpha(  # type: ignore[call-arg]
+            phi[:10], targets[:10], phi[10:], targets[10:], (1.0,)
+        )
     with pytest.raises(TypeError, match="bias_column"):
         penalty_matrix(phi.shape[1])  # type: ignore[call-arg]
 

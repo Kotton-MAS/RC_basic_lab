@@ -90,7 +90,7 @@ class _SelectAlphaSpy:
         y_val: FloatArray,
         alphas: Sequence[float],
         *,
-        bias_column: int | None = 0,
+        bias_column: int | None,
     ) -> AlphaSelection:
         self.grids.append(tuple(float(alpha) for alpha in alphas))
         self.train_targets.append(y_tr.tobytes())
