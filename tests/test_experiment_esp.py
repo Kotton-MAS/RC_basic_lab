@@ -14,6 +14,7 @@ N=200, T=3000) は 77 秒かかるのでテストには載せられないが、�
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from functools import lru_cache
 
