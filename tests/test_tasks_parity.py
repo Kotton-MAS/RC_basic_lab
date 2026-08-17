@@ -93,6 +93,9 @@ def test_n_bits_and_delay_change_target() -> None:
     assert not np.array_equal(base.y, longer_delay.y)
     assert more_bits.params["n_bits"] == "3"
     assert longer_delay.params["delay"] == "2"
+    # 入力は同一シードなら不変。変わったのは目標だけであることを固定する。
+    assert np.array_equal(base.u, more_bits.u)
+    assert np.array_equal(base.u, longer_delay.u)
 
 
 @pytest.mark.parametrize(
