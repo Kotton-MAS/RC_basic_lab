@@ -18,6 +18,10 @@ _UNIT_METER = 1
 def png_dpi(path: Path) -> float:
     """PNG の ``pHYs`` チャンクから dpi を実測する。
 
+    ``pHYs`` は「1メートルあたりの画素数」を整数で持つため、200 dpi は
+    7874 px/m = 199.9996 dpi として記録される。この量子化はファイル形式側の
+    都合なので、小数第2位で丸めて返す (200.0)。
+
     Raises:
         ValueError: PNG でない / ``pHYs`` が無い / 単位がメートルでない場合。
     """
@@ -33,7 +37,7 @@ def png_dpi(path: Path) -> float:
             pixels_per_unit_x, _, unit = struct.unpack(">IIB", body)
             if unit != _UNIT_METER:
                 raise ValueError(f"pHYs の単位がメートルではありません: {unit}")
-            return pixels_per_unit_x * _METERS_PER_INCH
+            return round(pixels_per_unit_x * _METERS_PER_INCH, 2)
         offset += 12 + length
     raise ValueError(f"pHYs チャンクがありません: {path}")
 
