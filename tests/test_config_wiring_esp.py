@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import dataclasses
+import pkgutil
 from collections.abc import Mapping
 from dataclasses import fields
 from pathlib import Path
@@ -48,6 +49,7 @@ from wiring import (
     plain,
 )
 
+import rc_basics_lab.experiment as experiment_pkg
 from rc_basics_lab.config import (
     ConfigError,
     Esp02Config,
@@ -334,18 +336,30 @@ def test_diagnostic_sections_cover_the_diagnostic_config_classes() -> None:
 def test_pending_cases_disappear_once_the_experiment_layer_exists() -> None:
     """実験層が生えたら ``CHANNEL_PENDING`` は許されない (先送りの時限装置)。
 
-    サイクル 2a には ``experiment/esp.py`` が無いため、格子や系列長のような
-    「実験を回して初めて効く」葉は出力での実測ができない。そこを黙って
-    見逃すと「設定したのに効いていない」が 02 で復活するので、実験層が
-    import 可能になった瞬間にこのテストが赤くなるようにしてある。
+    サイクル 2a には ``experiment/esp.py`` (も ``esp_pipeline.py``) も無いため、
+    格子や系列長のような「実験を回して初めて効く」葉は出力での実測ができない。
+    そこを黙って見逃すと「設定したのに効いていない」が 02 で復活するので、
+    実験層が生えた瞬間にこのテストが赤くなるようにしてある。
     T3 では各 pending ケースを実際の出力チャネルへ書き換えること。
+
+    F-1-005: 信管は特定のモジュール名1個ではなく、``KNOWN_EXPERIMENT_MODULES``
+    (01 時点の公開モジュール集合) を ``pkgutil.iter_modules`` で列挙した実際の
+    集合が超えたかどうかで判定する。これにより T3 がどの名前でモジュールを
+    追加しても (``esp.py`` でも ``esp_pipeline.py`` でも、実装順に関わらず)
+    発火する。
     """
     pending = sorted(
         item.field for item in ESP_WIRING_CASES if item.channel == CHANNEL_PENDING
     )
-    layer_exists = importlib.util.find_spec(EXPERIMENT_LAYER_MODULE) is not None
-    assert not (layer_exists and pending), (
-        f"{EXPERIMENT_LAYER_MODULE} が存在するのに未実測の葉が残っています: {pending}"
+    current_modules = {
+        info.name
+        for info in pkgutil.iter_modules(experiment_pkg.__path__)
+        if not info.name.startswith("_")
+    }
+    new_modules = sorted(current_modules - KNOWN_EXPERIMENT_MODULES)
+    assert not (new_modules and pending), (
+        f"rc_basics_lab.experiment に既知集合を超える新規モジュール "
+        f"{new_modules} が追加されているのに未実測の葉が残っています: {pending}"
     )
     # 実測できるチャネルが pending へ逃げていないこと
     assert {field.split(".")[0] for field in pending} <= PENDING_SECTIONS
