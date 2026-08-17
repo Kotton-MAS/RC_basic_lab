@@ -26,10 +26,15 @@
   「この葉が確かにその設定クラスのフィールドである」ことを assert して委譲を
   機械的に閉じる (T1 の ``test_all_config_fields_have_a_case`` が、その
   設定クラスの全フィールドにケースがあることを別途強制している)。
-- ``CHANNEL_PENDING``: 消費側がまだ存在しない葉。**T4 の ``washout.*`` だけ**が
-  残っている。実験層が生えた瞬間に
-  ``test_pending_cases_disappear_once_the_experiment_layer_exists`` が赤くなる
-  (先送りが黙って居座らないようにするため)。
+- ``CHANNEL_WASHOUT``: 2-D (washout 感度) の葉。値を変えると
+  ``run_washout_sweep`` の行 (= ``washout_sensitivity.csv`` 相当) の指紋が
+  変わり、**2-A / 2-B / 2-C の行はバイト単位で変わらない**。2-D は列の違う
+  別 CSV なので ``CHANNEL_ROWS`` と出力が別物であり、同じチャネルに混ぜると
+  「2-D の設定が 2-C の行を動かしていない」を確かめる場所が消える。
+- ``CHANNEL_PENDING``: 消費側がまだ存在しない葉。**T4 で ``washout.*`` を
+  実チャネルへ書き換えたので、現在は 0 件**である (``PENDING_SECTIONS`` も
+  空集合)。機構は 03 以降のために残してあり、pending を名乗るケースが
+  1件でも現れた時点で ``PENDING_SECTIONS`` への明示的な追加が要る。
 
 **scope**: セクション固有の葉 (``decay.*`` / ``timescale_sweep.*`` /
 ``esp_map.*``) は、担当する実験の行だけを変え、**他の実験の行をバイト単位で
@@ -105,12 +110,15 @@ CHANNEL_SEEDS = "seeds"
 CHANNEL_DIAGNOSTIC = "diagnostic"
 """診断の判定基準。効きは tests/test_diagnostics_esp.py が実測する (D-15)。"""
 
+CHANNEL_WASHOUT = "washout"
+"""2-D の葉。``run_washout_sweep`` の行が変わり、2-A/2-B/2-C の行は変わらない。"""
+
 CHANNEL_PENDING = "pending"
-"""消費側が T4 で生える葉 (``washout.*``)。YAML→設定の経路だけを実測する。
+"""消費側がまだ存在しない葉。**現在は 0 件**。
 
 T3 のぶん (格子・系列長・ユニット数・駆動条件) は実験層 ``experiment/esp.py``
-が生えたので ``CHANNEL_ROWS`` / ``CHANNEL_META`` / ``CHANNEL_ERROR`` へ
-書き換え済み。
+が、T4 のぶん (``washout.*``) は ``experiment/washout.py`` が生えたので、
+すべて実チャネルへ書き換え済み。機構だけ 03 以降のために残す。
 """
 
 DELEGATED_PREFIX = "washout.base."
@@ -159,13 +167,12 @@ DIAGNOSTIC_SECTIONS: tuple[tuple[str, type[DataclassInstance]], ...] = (
 )
 """``Esp02Config`` のセクション名と、対応する診断側の設定クラス (D-15)。"""
 
-PENDING_SECTIONS = frozenset({"washout"})
-"""``CHANNEL_PENDING`` を名乗ってよいセクション。
+PENDING_SECTIONS: frozenset[str] = frozenset()
+"""``CHANNEL_PENDING`` を名乗ってよいセクション。**空集合**。
 
-T3 で実験層 (``experiment/esp.py``) が生えたので、``name`` / ``drive`` /
-``reservoir`` / ``decay`` / ``timescale_sweep`` / ``esp_map`` は**もう
-pending を名乗れない** (実測できる検査を pending へ逃がすのを禁じる)。
-残るのは 2-D (T4) が消費する ``washout.*`` だけである。
+T3 で ``experiment/esp.py`` が、T4 で ``experiment/washout.py`` が生えたので、
+``Esp02Config`` のどのセクションも「消費側がまだ無い」とは言えない。
+実測できる検査を pending へ逃がす経路をここで閉じる。
 """
 
 EXPERIMENT_LABELS: tuple[str, ...] = (
@@ -185,8 +192,29 @@ ESP_SEED_STREAMS: tuple[SeedStream, ...] = (
 """02 の実験 2-A / 2-B / 2-C が使うストリーム (``SPLIT`` は 2-D 側)。"""
 
 
+def washout_base() -> ExperimentConfig:
+    """秒未満で 2-D の掃引を1周できる 01 用の縮小設定。
+
+    ``WashoutSweepConfig.base`` の既定は 01 の本番設定 (系列長 8000 x 5
+    レプリケート) なので、そのまま格子ぶん回すと配線テスト1件で数十秒かかる。
+    構造は同じまま系列長・ユニット数・格子だけを削る。
+    """
+    return ExperimentConfig(
+        name="washout-wiring",
+        n_replicates=1,
+        split=SplitConfig(washout=20, max_start_offset=20),
+        ridge=RidgeConfig(alpha_grid=(1.0e-4, 1.0), n_lags_grid=(1, 4)),
+        mackey_glass=MackeyGlassConfig(length=400),
+        delay_parity=DelayParityConfig(length=400),
+        esn_mackey_glass=ESNConfig(n_units=20, density=0.3),
+        esn_delay_parity=ESNConfig(
+            n_units=20, density=0.3, leak_rate=1.0, input_scale=1.0
+        ),
+    )
+
+
 def base_config() -> Esp02Config:
-    """秒未満で 2-A / 2-B / 2-C を1周できる縮小設定。
+    """秒未満で 2-A / 2-B / 2-C / 2-D を1周できる縮小設定。
 
     構造は本番 (``experiments/02_esp_and_dynamics/config.yaml``) と同じで、
     系列長・ユニット数・格子の点数だけを削ってある。``esp.window`` と
@@ -205,6 +233,7 @@ def base_config() -> Esp02Config:
             leak_rate_grid=(0.3, 1.0), rho=0.9, sigma_u=0.5
         ),
         esp_map=EspMapConfig(rho_grid=(0.8, 1.4), sigma_grid=(0.0, 1.0), leak_rate=1.0),
+        washout=WashoutSweepConfig(grid=(0, 30), pad_series=True, base=washout_base()),
         esp=EspConfig(window=100, fit_skip=5),
         timescale=TimescaleConfig(max_lag=30),
     )
@@ -224,14 +253,9 @@ def _diagnostic_case(field: str, value: object) -> WiringCase:
     )
 
 
-def _pending_case(field: str, value: object, task: str) -> WiringCase:
-    return case(
-        field,
-        value,
-        channel=CHANNEL_PENDING,
-        task=task,
-        note=f"{task}: 消費する実験層がまだ無いため出力での実測は {task} で行う",
-    )
+def _washout_case(field: str, value: object) -> WiringCase:
+    """2-D の葉。``scope`` には 2-D の行だけが動くことを書く。"""
+    return case(field, value, channel=CHANNEL_WASHOUT, task="T4")
 
 
 ESP_WIRING_CASES: tuple[WiringCase, ...] = (
@@ -264,8 +288,8 @@ ESP_WIRING_CASES: tuple[WiringCase, ...] = (
     case("esp_map.sigma_grid", (0.05, 1.5), scope=EXPERIMENT_ESP_MAP),
     case("esp_map.leak_rate", 0.6, scope=EXPERIMENT_ESP_MAP),
     # --- 2-D: washout 感度 (base.* は 01 側へ委譲) ---
-    _pending_case("washout.grid", (0, 100), "T4"),
-    _pending_case("washout.pad_series", False, "T4"),
+    _washout_case("washout.grid", (0, 60)),
+    _washout_case("washout.pad_series", False),
     # --- 診断の判定基準 (D-15) ---
     _diagnostic_case("esp.abs_tol", 1.0e-8),
     _diagnostic_case("esp.rel_tol", 1.0e-5),
