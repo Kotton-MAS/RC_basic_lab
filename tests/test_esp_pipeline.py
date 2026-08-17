@@ -1,10 +1,11 @@
-"""02 の「1コマンドで成果物が出る」経路のテスト (受け入れ条件7 の T3 ぶん).
+"""02 の「1コマンドで成果物が出る」経路のテスト (受け入れ条件7).
 
 ``main.py --experiment 02`` と ``experiments/02_esp_and_dynamics/run_02.py``
 はどちらも ``esp_pipeline.run_and_report_esp`` を呼ぶ薄い層である。ここでは
 縮小設定を一時ディレクトリに書いて**実際に1コマンド相当を走らせ**、
-``esp_diagnostics.csv`` / 図3枚 / ``meta.json`` が出ることと、PNG の実測解像度が
-retina 相当であることを見る (01 の ``tests/test_main.py`` と同じ規律)。
+CSV2枚 (``esp_diagnostics.csv`` / ``washout_sensitivity.csv``) と図4枚と
+``meta.json`` が出ることと、PNG の実測解像度が retina 相当であることを見る
+(01 の ``tests/test_main.py`` と同じ規律)。
 """
 
 from __future__ import annotations
@@ -27,14 +28,21 @@ from rc_basics_lab.experiment.esp import ESP_CSV_COLUMNS, EXPERIMENT_ESP_MAP
 from rc_basics_lab.experiment.esp_pipeline import (
     ESP_ARTIFACTS,
     ESP_DIAGNOSTICS_CSV,
+    WASHOUT_SENSITIVITY_CSV,
     run_and_report_esp,
 )
+from rc_basics_lab.experiment.washout import WASHOUT_CSV_COLUMNS
 from rc_basics_lab.plotting.figures_esp import plot_esp_map
 from rc_basics_lab.plotting.style import setup_style
 
 RETINA_DPI = 200
 EXPECTED_ROWS = 20
 """2課題ぶんの条件数: 2-A 2x2 + 2-B 2x2 + 2-C (2x3)x2。"""
+
+EXPECTED_FIGURES = 4
+EXPECTED_CSV = 2
+EXPECTED_WASHOUT_ROWS = 24
+"""2-D の行数: washout 2点 x 2課題 x 3手法 x 2レプリケート。"""
 
 TINY_CONFIG = """
 name: esp_cli_smoke
@@ -64,6 +72,32 @@ esp_map:
   rho_grid: [0.8, 1.5]
   sigma_grid: [0.0, 0.5, 2.0]
   leak_rate: 1.0
+washout:
+  # 2-D。base は 01 の設定そのものなので、既定 (系列長 8000 x 5 レプリケート)
+  # のままだと格子ぶん回して数十秒かかる。構造は変えずに規模だけ削る。
+  grid: [0, 40]
+  pad_series: true
+  base:
+    name: washout_smoke
+    n_replicates: 2
+    split:
+      washout: 40
+      max_start_offset: 40
+    ridge:
+      alpha_grid: [1.0e-4, 1.0]
+      n_lags_grid: [1, 4]
+    mackey_glass:
+      length: 500
+    delay_parity:
+      length: 500
+    esn_mackey_glass:
+      n_units: 30
+      density: 0.3
+    esn_delay_parity:
+      n_units: 30
+      density: 0.3
+      leak_rate: 1.0
+      input_scale: 1.0
 esp:
   window: 100
   fit_skip: 10
@@ -90,15 +124,56 @@ def tiny_experiment(
 def test_artifacts_are_regenerated_in_one_command(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
-    """1コマンドで CSV1枚・図3枚・meta.json が出る (受け入れ条件7 の T3 ぶん)。"""
+    """1コマンドで宣言済みの成果物がすべて出る (受け入れ条件7)。"""
     _, out_dir = tiny_experiment
     assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
     for name in ESP_ARTIFACTS:
         assert (out_dir / name).is_file(), f"{name} が生成されていません"
     figures = [name for name in ESP_ARTIFACTS if name.endswith(".png")]
-    assert len(figures) == 3
+    assert len(figures) == EXPECTED_FIGURES
     for name in figures:
         assert png_dpi(out_dir / name) >= RETINA_DPI
+
+
+def test_all_four_figures_and_two_csv_in_one_command(
+    tiny_experiment: tuple[Path, Path],
+) -> None:
+    """図4枚 + CSV2枚 + meta.json が1コマンドで出る (受け入れ条件7)。
+
+    ``ESP_ARTIFACTS`` の**中身**を数えるのではなく、出力ディレクトリを実際に
+    走査して数える。宣言と実体が食い違ったとき (図を1枚落としたのに
+    ``ESP_ARTIFACTS`` から消し忘れた / その逆) に、宣言だけを見るテストは
+    黙って通るため。
+    """
+    _, out_dir = tiny_experiment
+    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    produced = sorted(path.name for path in out_dir.iterdir() if path.is_file())
+    figures = [name for name in produced if name.endswith(".png")]
+    csvs = [name for name in produced if name.endswith(".csv")]
+    assert len(figures) == EXPECTED_FIGURES, produced
+    assert len(csvs) == EXPECTED_CSV, produced
+    assert "meta.json" in produced
+    assert set(produced) == set(ESP_ARTIFACTS), (
+        "生成物と ESP_ARTIFACTS の宣言が食い違っています"
+    )
+    for name in figures:
+        assert png_dpi(out_dir / name) >= RETINA_DPI
+
+
+def test_washout_csv_has_the_declared_columns(
+    tiny_experiment: tuple[Path, Path],
+) -> None:
+    """``washout_sensitivity.csv`` の列順が ``WashoutRow`` の宣言順と一致する。"""
+    _, out_dir = tiny_experiment
+    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    with (out_dir / WASHOUT_SENSITIVITY_CSV).open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        reader = csv.reader(handle)
+        header = next(reader)
+        rows = list(reader)
+    assert tuple(header) == WASHOUT_CSV_COLUMNS
+    assert len(rows) == EXPECTED_WASHOUT_ROWS
 
 
 def test_csv_has_the_declared_columns(tiny_experiment: tuple[Path, Path]) -> None:
