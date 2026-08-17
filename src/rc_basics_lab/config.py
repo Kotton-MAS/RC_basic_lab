@@ -138,7 +138,7 @@ class ExperimentConfig:
 DEFAULT_ESP_MAP_RHO_GRID: tuple[float, ...] = tuple(
     round(float(value), 3) for value in np.linspace(0.4, 1.9, 16)
 )
-"""実験 2-C の ρ 格子 (16点、仕様 §8 Q3)。1.0 の両側を等間隔に挟む。"""
+"""実験 2-C の rho 格子 (16点、仕様 §8 Q3)。1.0 の両側を等間隔に挟む。"""
 
 DEFAULT_ESP_MAP_SIGMA_GRID: tuple[float, ...] = (
     0.0,
@@ -149,10 +149,10 @@ DEFAULT_ESP_MAP_SIGMA_GRID: tuple[float, ...] = (
     1.0,
     2.0,
 )
-"""実験 2-C の入力強度 σ_u 格子 (7点、仕様 §8 Q3)。
+"""実験 2-C の入力強度 sigma_u 格子 (7点、仕様 §8 Q3)。
 
-σ=0 は「無入力」で別枠 (図では別パネル)。以降は対数的に広げ、ρ>1 でも ESP が
-成立する側 (σ>=1) まで届かせる。強度は**標準偏差**であって振幅ではない (D-17)。
+sigma=0 は「無入力」で別枠 (図では別パネル)。以降は対数的に広げ、rho>1 でも ESP が
+成立する側 (sigma>=1) まで届かせる。強度は**標準偏差**であって振幅ではない (D-17)。
 """
 
 
@@ -219,9 +219,9 @@ class DriveConfig:
 
 @dataclass(frozen=True, slots=True)
 class EspDecayConfig:
-    """実験 2-A: ρ を振ったときの状態距離の減衰曲線。
+    """実験 2-A: rho を振ったときの状態距離の減衰曲線。
 
-    無入力 (``sigma_u = 0``) が既定。ρ<1 で指数減衰し ρ>1 で減衰しないことを
+    無入力 (``sigma_u = 0``) が既定。rho<1 で指数減衰し rho>1 で減衰しないことを
     見る図であり、入力を入れると主張が変わる (受け入れ条件1)。
     """
 
@@ -254,7 +254,7 @@ class TimescaleSweepConfig:
 
 @dataclass(frozen=True, slots=True)
 class EspMapConfig:
-    """実験 2-C: ρ × 入力強度 の ESP 成立領域 (記事の目玉)。
+    """実験 2-C: rho x 入力強度 の ESP 成立領域 (記事の目玉)。
 
     ``input_scale`` は掃引中固定し、動かすのは信号側の ``sigma_grid`` だけ
     (D-17)。同時に動かすと「信号を強くした」のか「重みを大きくした」のかを
