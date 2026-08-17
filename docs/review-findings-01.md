@@ -1,159 +1,179 @@
-# 次のPR候補 — rc-basics-01 サイクル1 の MEDIUM / INFO findings
+# レビュー findings 記録 — rc-basics-01 サイクル1
 
-*出典: `.claude/tmp/findings/round-1/triage.json`（round 1、全7 reviewer）*
-*このサイクルでは BLOCKER 0件 / HIGH 2件のみを修正した。以下19件は意図的にスコープ外とした。*
+**この文書は削除しないこと。** `src/` と `tests/` の docstring / コメントが、この文書に載っている
+finding ID（`F-1-xxx` / `F-2-xxx`）を「なぜこうなっているか」の根拠として参照している。
+`tests/test_finding_id_references_resolve.py` が、コード中に出現する全 ID がこの文書に実在することを
+機械的に検証している。参照が解決できなくなった時点でテストが赤くなる。
 
-重要度順ではなく、**着手する価値の高い順**に並べてある。02 に着手する前に潰しておきたいものを上に置いた。
+**新しく finding ID を docstring に書いたら、このファイルにも追記すること。** 逆にこの文書からエントリを
+消す前に、`grep -rnE "F-[0-9]+-[0-9]{3}" src/ tests/` でコード中に参照が残っていないか確認すること。
 
----
+## この文書の性格
 
-## A. 02 の着手前に片付けたいもの
-
-### F-1-007 [INFO / architecture] 要件書02 と D-01 が同じ対象に別の署名を規定している
-`docs/要件_rc-basics-02.md:39` — 要件_02 の設計判断1 は ESP 判定を
-`f(state_sequence_a, state_sequence_b) -> ESPResult` の純関数と規定している。
-一方 D-01 は第2軌道を `ctx.companion_states` に逃がす `f(X, u, y, *, ctx)` の1形に固定している。
-
-**両文書が並存したまま 02 に着手すると、実装者が要件書に従って別署名を切り、D-01 が壊れる。**
-重要度は INFO だが、**波及の大きさでは実質最優先**。実装変更は不要で、要件書02 の設計判断1 を
-D-01 の共通署名に合わせて書き換えるだけで済む。
-
-### F-1-004 [MEDIUM / architecture] `main.py` の docstring が拡張方法を誤って宣言している
-`main.py:30` — `EXPERIMENTS` の docstring が「実験番号 → 設定 YAML。サイクル 02〜05 はここに1行足す」
-と書いているが、実際には 02 の YAML は `ExperimentConfig` に無いキーを持つため D-09 で `ConfigError` になり、
-`pipeline.run_and_report` も 01 固有の4成果物にハードコードされている。
-
-**02 の実装者が「1行足すだけ」を信じて着手し、CLI 層の再設計を後から強いられる。**
-最低限 docstring を実態に合わせる。パイプラインの一般化は別タスク。
-
-### F-1-006 [INFO / architecture] D-01 の文言が診断固有パラメータを `DiagnosticContext` に押し込む読み方を誘発する
-`src/rc_basics_lab/diagnostics/base.py:68` — 既に `dt`(04専用) / `seed`(03専用) /
-`companion_states`(02専用) が入っており、05 まで進むと全診断の設定の union になる。
-`Diagnostic` は `__call__` を持つ Protocol なので、パラメータ付き診断は frozen dataclass の
-`__call__` として書けば署名を変えずに固有パラメータを構築時に渡せる。
-
-D-01 の rule に「`DiagnosticContext` が持つのはデータの素性のみ。診断固有パラメータは
-パラメータ化した callable の構築時に渡す」を1文追加する提案。**署名は変わらないので波及なし。**
-
-### F-1-018 [MEDIUM / test] D-01 の guard_test が実行時には空振りしうる
-`tests/test_diagnostics_base.py:37` — `test_dummy_diagnostic_conforms_to_protocol` は
-呼び出しが成功することしか見ておらず、`ctx` のキーワード専用マーカーを外すという
-**実際の D-01 違反を加えても pytest は通る**（実測）。ガードは `mypy strict` に依存しているが、
-Stop フックの絞り込み実行では mypy が走るとは限らない。
-
-**D-01 は後続4サイクル全部が乗る土台の決定なので、ガードが型検査任せなのは弱い。**
+「次の PR 候補」ではなく、rc-basics-01 サイクル1（round 1 の実装レビュー + round 2 の追検証）で
+出た findings の **対応記録**。BLOCKER/HIGH は各 round 内で修正済み、MEDIUM/INFO は個別に
+対応 / 見送り（理由つき） / ユーザー判断待ちを記録している。02 着手前に過去の判断を再確認したいときは
+ここを見る。
 
 ---
 
-## B. 実験結果の信頼性に関わるもの
+## round 1（`.claude/tmp/findings/round-1/triage.json`、reviewer 7名、BLOCKER 0 / HIGH 2 / MEDIUM 9 / INFO 10）
 
-### F-1-005 [MEDIUM / architecture] 集計値が生成物として存在せず README の表が手書き
-`results/comparison.csv:1` — 要件書の出力仕様は「NRMSE と、シード複数本の平均±標準偏差」だが、
-実装の CSV は長形式30行のみで mean/std 列が無く、`meta.json` にも集計値が無い。
-集計値が存在するのは図の中と `README.md` の**手書きの表**だけ。
+### BLOCKER/HIGH（round 1 内で修正済み）
 
-承認済み仕様（`docs/plans/rc-basics-01.md`）が「長形式 + 集計は下流」と決めているので実装は仕様どおりだが、
-**「記事の数値とリポジトリの実測値を機械的に一致させる」という連載の規律がこの1点だけ手作業に依存している。**
-実験を回し直したとき、README の表だけが古い値のまま残っても何も落ちない。
+- **F-1-001** [HIGH / architecture] `diagnostics/` → `reservoir/` の推移的依存を防ぐ guard test が、
+  直接 import しか見ておらず `config.py` 経由の間接依存を検出できなかった。
+  → 別プロセスで `sys.modules` を検査する guard test を追加し、決定 `D-12` として記録
+  （`tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir`）。
+  round 2 でさらに `pkgutil.iter_modules` による全サブモジュール検査へ強化（→ F-2-001）。
+- **F-1-017** [HIGH / test] `_coerce_scalar` の bool→int/float 暗黙変換拒否に対する回帰テストが1件も無かった。
+  → `tests/test_config.py::test_coerce_scalar_rejects_loose_conversions`（14ケースの parametrize）を追加。
 
-修正案: `aggregate_nrmse` を experiment 側へ移し（F-1-003 と同時）、集計結果を
-`meta.json` の summary キーか `results/comparison_summary.csv` として書き出す。
+### MEDIUM/INFO — 対応済み
 
-### F-1-002 [MEDIUM / architecture] `bias_column=0` の既定値がリーキーな抽象化
-`src/rc_basics_lab/readout/ridge.py:98` — `penalty_matrix` / `fit_ridge` / `select_alpha` の
-`bias_column: int | None = 0` が「先頭列は必ずバイアス」を暗黙の前提にしている。
-`build_design_matrix` は `bias=False` の設計行列を作れる（`state_space.py:116` が使用）。
-その行列を既定値のまま `fit_ridge` に渡すと **`u` の lag0 列が黙って無罰則になり、D-03 の意図と逆の縮小**が起きる。
+- **F-1-002** [MEDIUM / architecture] `bias_column` の既定値 `0` が「先頭列は必ずバイアス」を暗黙の前提にし、
+  `bias=False` の設計行列を渡すと無罰則列が静かに変わりうる。
+  → `DesignMatrix.bias_column` プロパティを追加し、`penalty_matrix` / `fit_ridge` / `select_alpha` の
+  `bias_column` をキーワード必須にして既定値を外した（`src/rc_basics_lab/readout/ridge.py`,
+  `src/rc_basics_lab/readout/design.py`）。渡し忘れは `TypeError` になることを
+  `tests/test_ridge.py::test_bias_column_is_keyword_required` で固定。
+- **F-1-003** [MEDIUM / architecture] 集計ロジック (`aggregate_nrmse`) が表示層 (`plotting/figures.py`) に
+  あり、matplotlib を import しないと集計できなかった。
+  → `experiment/summary.py` へ移し、戻り値型を公開 dataclass `Aggregate` にした。
+- **F-1-004** [MEDIUM / architecture] `main.py` の `EXPERIMENTS` docstring が「02〜05 はここに1行足すだけ」
+  と誤った拡張方法を宣言していた。
+  → docstring を実態（設定クラスとパイプラインの組を足す必要があり、YAML 追加だけでは動かない）に更新
+  （`main.py`）。
+- **F-1-005** [MEDIUM / architecture] 集計値（平均±標準偏差）が生成物として存在せず、README の表が手書きで
+  実測値との一致が機械的に保証されていなかった。
+  → `experiment/report.py::write_comparison_summary_csv` で `results/comparison_summary.csv` を書き出し、
+  README の表がこの生成物と一致することを `tests/test_readme_summary.py` で固定。
+- **F-1-007** [INFO / architecture] `docs/要件_rc-basics-02.md` の設計判断1 が D-01 と異なる ESP 判定の署名
+  (`f(state_sequence_a, state_sequence_b) -> ESPResult`) を規定しており、02 着手時に D-01 と衝突する
+  おそれがあった。
+  → 要件_02 の設計判断1 を D-01 の共通署名に合わせて書き換え済み（実装変更なし、ドキュメントのみ）。
+- **F-1-008** [INFO / architecture] `setup_style()` が `matplotlib.rcParams` をプロセス全体へ破壊的に
+  更新し、復元していなかった。
+  → `rc_context` ベースへ変更し、`setup_style()` は `StyleContext` の生成のみに責務を絞った
+  （`src/rc_basics_lab/plotting/style.py`, `figures.py`）。
+- **F-1-009** [INFO / architecture] `collect_state_space` が `plan_replicate` を呼び直し、
+  レプリケート0の計算（タスク生成・ESN 構築・設計行列構築）が2度走っていた。
+  → `run_and_report` がレプリケート0の `ReplicatePlan` を1回だけ作り、`run_experiment` と
+  `collect_state_space` の両方へ明示的に渡す形にした（`experiment/pipeline.py`, `runner.py`,
+  `state_space.py`）。
+- **F-1-010** [MEDIUM / performance] `select_alpha` が alpha 格子の本数だけ Gram 行列
+  (`ΦᵀΦ`, O(T·F²)) を再計算していた（実測 3.47倍の無駄）。
+  → Gram 行列を1回だけ計算して `solve` のみを繰り返す `fit_ridge_from_gram` を追加し、`select_alpha` から
+  使うよう変更（`src/rc_basics_lab/readout/ridge.py`）。数学的に `fit_ridge` と同一であることを
+  `tests/test_ridge.py::test_fit_ridge_from_gram_matches_fit_ridge` で固定。
+- **F-1-014** [MEDIUM / style] `plot_comparison` が87行 / CC=11 で目安を超過し、4責務が同居していた。
+  → `_plot_task_panel` へ切り出し、50行台に収めた（`src/rc_basics_lab/plotting/figures.py`）。
+- **F-1-015** [MEDIUM / style] `build_design_matrix` の CC=15（リポジトリ最高）で、形状検証と特徴ブロック
+  組み立てが同居していた。
+  → 形状検証を `_validate_inputs` に分離した（単一入口は維持、`src/rc_basics_lab/readout/design.py`）。
+- **F-1-018** [MEDIUM / test] D-01 の guard test が `mypy strict` 頼みで、`ctx` の keyword-only 制約違反を
+  pytest 単体では検出できなかった（実測で確認済み）。
+  → `inspect.signature` で契約を実行時に検査する
+  `tests/test_diagnostics_base.py::test_all_diagnostics_conform_to_d01_signature_contract` を追加。
+- **F-1-019** [MEDIUM / test] `test_invalid_config_raises` / `test_shape_errors` が複数のエラーケースを
+  1テストに束ねており、最初の失敗で残りが検証されなかった。
+  → 他ファイルの慣習に合わせ `@pytest.mark.parametrize` へ分解（`tests/test_reservoir.py`）。
 
-現状この経路は無いので実害は未発生。ただし 02〜05 で読み出しを足すたび、
-**渡し忘れが例外ではなく「少しだけ違う係数」として静かに通る。**
+### MEDIUM/INFO — 見送り（理由つき）
 
-修正案: `DesignMatrix` に `bias_column` プロパティを持たせ、`bias_column` の既定値 0 を外して
-キーワード必須にし、渡し忘れを型で落とす。
+- **F-1-011** [INFO / performance] `ESN.run` の逐次ループ（`_update` + `_input_drive`）が実験全体の
+  約36%を占める最大コスト。`step` とのビット一致を保証する意図的な設計であり、再帰依存で本質的に逐次。
+  現状 300秒制約に対し2桁の余裕がある。→ **見送り**。N/T が大きく伸びる場合の材料として記録のみ。
+- **F-1-012** [INFO / performance] Mackey-Glass の RK4 積分（約31%）。5レプリケートは独立でバッチ化余地は
+  あるが、300秒制約に対し無害。→ **見送り**。`n_replicates` が大きく増える場合のみ検討。
+- **F-1-013** [INFO / security] `git` を PATH 経由で解決（CWE-426相当）。`cwd` 固定・`timeout=5`・
+  `check=False`・`shell=True` 不使用で扱いは適切、reviewer-security 自身が現状維持を推奨。
+  → **見送り**（現状維持でよい）。
+- **F-1-016** [INFO / style] `select_alpha` が6引数（目安5個をわずかに超過）。`(phi, y)` ペアを表す型を
+  導入すれば4引数に減るが、「`phi` と `y` を並べて渡す」という既存の呼び出し規約の一貫性を崩す。
+  → **見送り**。優先度低、現状維持で許容範囲。
+- **F-1-020** [INFO / uv] wheel に `py.typed` が含まれること、余分なファイルが入らないことを実測確認済み。
+  → 対応不要（確認事項の記録）。
+- **F-1-021** [INFO / uv] `pythonpath = ["."]` は `tests/test_main.py` がルートの `main.py` / `conftest`
+  を import するため今も必要。
+  → 対応不要（確認事項の記録）。
 
----
+### MEDIUM/INFO — ユーザー判断待ち
 
-## C. 性能（現状は実害なし、将来のため）
-
-### F-1-010 [MEDIUM / performance] `select_alpha` が Gram 行列を alpha 格子の本数だけ再計算
-`src/rc_basics_lab/readout/ridge.py:150` — Gram 行列 `ΦᵀΦ` は alpha に依存しないのに、
-alpha ごとに `fit_ridge` を呼んで毎回再計算している。
-
-**実測**: マイクロベンチマーク（T=3900, F=201）で 13回の `fit_ridge` 0.00777秒 に対し、
-Gram を1回だけ計算して solve のみ13回で 0.00224秒 = **3.47倍**。
-cProfile では `fit_ridge` 1200 calls / tottime 0.098秒（実験全体 0.976秒 の約10%）。
-
-**現状 300秒制約に対して2桁の余裕があるので急がないが、02〜05 で N や格子が拡大すると
-`F²` に比例して無駄が増える。格子拡大前に直す価値がある。**
-
-### F-1-011 [INFO / performance] `ESN.run` の逐次ループが単一関数として最大の寄与
-`src/rc_basics_lab/reservoir/esn.py:258` — `_update`(0.256秒) + `_input_drive`(0.091秒) で
-実験全体の約35.6%。**ただし `step` とのビット一致を保証する意図的な設計**（自走実験のため）であり、
-再帰依存で本質的に逐次。現時点で変更不要。03 で状態行列が拡大する場合の材料として記録。
-
-### F-1-012 [INFO / performance] Mackey-Glass の RK4 積分が2番目のコスト
-`src/rc_basics_lab/tasks/mackey_glass.py:78` — tottime 0.194秒（全体の約31%）。
-5レプリケートは独立なのでレプリケート方向のバッチ化余地はある。`n_replicates` が大きく増える場合のみ検討。
-
----
-
-## D. 可読性・構造
-
-### F-1-014 [MEDIUM / style] `plot_comparison` が87行 / CC=11
-`src/rc_basics_lab/plotting/figures.py:125` — CLAUDE.md の目安50行を超過し、
-radon 実測でリポジトリ内で最も長い。1つの for ループに「誤差棒の計算」「基準線の描画」
-「注記のアノテーション」「軸範囲・ラベル設定」の4責務が同居。
-`_plot_task_panel` への切り出しで `plot_state_space` ともども50行台に収まる。
-
-### F-1-015 [MEDIUM / style] `build_design_matrix` の CC=15（リポジトリ最高）
-`src/rc_basics_lab/readout/design.py:100` — 「3ベースライン共通の唯一の入口」という設計意図は妥当だが、
-形状検証と特徴ブロックの組み立てが同じ関数内で分岐している。
-検証部分を `_validate_inputs` に分離しても**単一入口は保たれる**（D-05・受け入れ条件1 に抵触しない）。
-
-### F-1-003 [MEDIUM / architecture] 集計ロジックが表示層にある
-`src/rc_basics_lab/plotting/figures.py:92` — `aggregate_nrmse` が `plotting/` にあり、
-戻り値型が private な `_Aggregate`。**matplotlib を import しないと集計できない。**
-F-1-005 と同時に experiment 側へ移すのが自然。
-
-### F-1-019 [MEDIUM / test] エラーケースを1テストに束ねている
-`tests/test_reservoir.py:145,159` — `test_invalid_config_raises` / `test_shape_errors` が
-5件・4件の独立したエラーケースを束ねており、同じPR内の他ファイルの `parametrize` 慣習と不整合。
-1件目で失敗すると残りが検証されない。
-
-### F-1-016 [INFO / style] `select_alpha` が6引数
-`src/rc_basics_lab/readout/ridge.py:123` — CLAUDE.md の目安5個をわずかに超える。
-`(phi, y)` のペアを表す小さな型を導入すれば4引数に減る。優先度低。
-
----
-
-## E. その他（対応不要と判断されたもの）
-
-### F-1-009 [INFO / architecture] `plan_replicate` の二重実行
-`src/rc_basics_lab/experiment/state_space.py:112` — `collect_state_space` が `plan_replicate` を
-呼び直すため、レプリケート0のタスク生成・ESN 構築・設計行列構築が2度走る。
-図と CSV が同じ軌道を見ていることは `make_rng` の決定性への暗黙依存（現状は D-06 により決定的）。
-
-### F-1-008 [INFO / architecture] `setup_style()` が rcParams をプロセス全体に破壊的更新
-`src/rc_basics_lab/plotting/style.py:84` — ライブラリ関数がグローバルな第三者設定を書き換え、復元しない。
-`matplotlib.rc_context` の with ブロックで包むのが素直。優先度低。
-*（triage が「数値主張を含むが実測されていない」と指摘した項目）*
-
-### F-1-013 [INFO / security] `git` を PATH 経由で解決
-`src/rc_basics_lab/meta.py:36` — CWE-426 相当だが、攻撃者が既に PATH を書ける前提が必要。
-`cwd` 固定・`timeout=5`・`check=False`・`shell=True` 不使用で扱いは適切。**現状維持でよい。**
-
-### F-1-020 / F-1-021 [INFO / uv] 確認事項の記録（対応不要）
-- wheel に `py.typed` が含まれること、余分なファイルが入らないことを実測確認済み
-- `pythonpath = ["."]` は `tests/test_main.py` がルートの `main.py` と `conftest` を import するため**今も必要**
+- **F-1-006** [INFO / architecture] D-01 の rule 本文に「`DiagnosticContext` が持つのはデータの素性のみ。
+  診断固有パラメータはパラメータ化した callable の構築時に渡す」という1文を追加する提案。
+  **`.claude/decisions.yaml` の記録済み決定の文言変更にあたるため、ユーザーの承認が要る。**
+  → **保留**（未反映）。
+- **受け入れ条件4 の記事での扱い**（F-1-009 issue 内 (4)）: 「リザバー状態 > 遅延埋め込み入力」という
+  当初期待が実測で不成立（数値は `docs/design.md` §7.2・`meta.json` に記録済み）。実装上の対応は不要だが、
+  記事本文でこの結果をどう扱うか（正直に書く / 追加実験で条件を変える 等）は編集判断であり、
+  **ユーザーの判断が要る**。
+  → **保留**。
 
 ---
 
-## 着手順の提案
+## round 2（`.claude/tmp/findings/round-2/triage.json`、reviewer 5名、BLOCKER 0 / HIGH 0 / MEDIUM 9 / INFO 4。
+fixer-input は空 = round 2 に BLOCKER/HIGH は無かった）
 
-1. **F-1-007**（要件書02 と D-01 の矛盾）— 02 着手前に必須。ドキュメント1箇所
-2. **F-1-004**（`main.py` の docstring）— 02 着手前。docstring 1箇所
-3. **F-1-018**（D-01 guard の強化）+ **F-1-006**（D-01 の文言追加）— セットで
-4. **F-1-003 + F-1-005**（集計を experiment 側へ移し生成物にする）— セットで
-5. **F-1-010**（Gram 行列のキャッシュ）— 格子・N を拡大する前に
-6. **F-1-002**（`bias_column` の必須化）
-7. 残り（style / test の構造改善）
+round 2 は round 1 の HIGH 修正（F-1-001, F-1-017 の対応）に対する追検証。
+
+### 対応済み
+
+- **F-2-001** [MEDIUM / architecture] 推移閉包 guard test の probe が `diagnostics` パッケージ本体のみを
+  import しており、`__init__.py` が再エクスポートしていないサブモジュールが検査対象から漏れる偽陰性が
+  実測で確認された。
+  → probe を `pkgutil.iter_modules` で全サブモジュールを個別 import する形に拡張
+  （`tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir`）。
+- **F-2-002** [MEDIUM / architecture] 「`diagnostics/` は `reservoir` に依存しない」という不変条件が
+  `.claude/decisions.yaml` に登録されていなかった。
+  → `D-12` として追加（guard_test は F-2-001 と同じテスト）。
+- **F-2-003** [MEDIUM / architecture] `diagnostics/base.py` の docstring が禁止方向のみ書いており、
+  許可される方向（`config.py` が diagnostics の設定 dataclass を import する向き）が明示されていなかった。
+  → 1文追加（`src/rc_basics_lab/diagnostics/base.py`）。`conventions.md` にも reservoir と同様の例外注記を
+  追加。
+- **F-2-004** [INFO / architecture] probe とテスト本体の契約が stdout 全体のカンマ split で、
+  被検査コードの stdout 汚染に弱かった。
+  → 最終行マーカー付き JSON (`LEAKED=...`) 方式に変更。
+- **F-2-005 / F-2-006** [MEDIUM / docs] README.md / docs/design.md のテスト件数記述が実測と乖離していた
+  （当時 200件 → 実測215件）。
+  → 当時の実測値に更新済み。**注記**: その後さらにテストが追加され、本文書作成時点の実測は 229 件
+  （今回の (2) 追加テストで +1）。件数はテスト追加のたびにドリフトしうる既知の性質であり、都度
+  `uv run pytest -q` で確認するのが確実。件数表記の運用（具体数を書き続けるか、生成に切り替えるか）は
+  別途検討の余地がある。
+- **F-2-007 / F-2-010** [MEDIUM / docs, style] `tests/test_config.py` の docstring が
+  `.claude/decisions.yaml` にも本文書にも存在しない一時的な ID `F-1-017` を引用しており、
+  `.claude/tmp/` の掃除後に参照が宙に浮く構造だった。
+  → `F-1-017` への参照を削除し、docstring 本文だけで理由が読める形に書き換えた
+  （`tests/test_config.py::test_coerce_scalar_rejects_loose_conversions`）。
+  **この finding が今回のタスクの直接の起点**（同じクラスの欠陥が2回目のため、今回はテスト層
+  ((2) の新規テスト) で機械的に塞ぐ）。
+- **F-2-011** [INFO / style] 別プロセスで実行する probe コードが文字列連結で読みにくかった。
+  → `textwrap.dedent` + triple-quote に変更（`tests/test_diagnostics_base.py`）。
+
+### 見送り（理由つき）
+
+- **F-2-008** [INFO / docs] `base.py` の docstring 追記は文体・具体性とも良好という評価。
+  → 対応不要（指摘なし、記録のみ）。
+- **F-2-013** [INFO / test] `_coerce_scalar` の `target is bool` accept分岐は、`ExperimentConfig` に
+  bool 型フィールドが1つも無いため現状到達不能（カバレッジ実測 94%、Missing 131-133）。
+  → 対応不要（現状は正しい判断）。将来 bool フィールドを追加するタイミングで
+  `test_coerce_scalar_rejects_loose_conversions` に「bool→bool は許可される」ケースを足すことを検討。
+
+### 次の PR 候補（今回スコープ外、MEDIUM）
+
+- **F-2-009** [MEDIUM / style] 新規 parametrize が `pytest.param(..., id=...)` 形式で、既存3箇所の
+  `ids=[...]` 別引数形式と異なる（inferred, 実測なし）。既存に揃えるか、新形式を標準として
+  `conventions.md` に明記するかは実装判断。
+- **F-2-012** [MEDIUM / test] `test_diagnostics_package_does_not_import_reservoir`（AST版）が
+  `diagnostics/__init__.py` に未登録のファイルを見逃す可能性がある（`test_diagnostics_package_does_not_import_reservoir`
+  の対象は `package_dir.glob("*.py")` でファイル網羅だが、登録漏れそのものを検出する assert は無い）。
+  02 で新規診断モジュールを追加する際に、`__init__.py` への配線漏れを検出する仕組みを足すことを検討。
+
+---
+
+## 着手順の提案（残っているものだけ）
+
+1. **F-1-006 の decisions.yaml 反映の可否**、**受け入れ条件4 の記事での扱い** — ユーザー判断待ち。
+   02 着手前に決めておくと後戻りがない。
+2. **F-2-012**（`__init__.py` 登録漏れの検出）— 02 で診断モジュールを追加する直前に。
+3. **F-2-009**（parametrize の `ids` 形式統一）— 優先度低。
