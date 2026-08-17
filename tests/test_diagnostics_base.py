@@ -176,6 +176,74 @@ def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
         func(states, ctx=DiagnosticContext())
 
 
+@dataclass(frozen=True, slots=True)
+class _ParameterizedDummyDiagnostic:
+    """パラメータ化した callable (F-1-006・D-01 rule 追記分) の被検体。
+
+    診断固有パラメータ (``threshold``) を ``DiagnosticContext`` に足すのではなく、
+    frozen dataclass の構築時に渡すパターン。``__call__`` の署名は D-01 の契約
+    (``f(X, u=None, y=None, *, ctx)``) を満たしたまま、``Diagnostic`` に代入できる。
+    """
+
+    threshold: float = 0.5
+
+    def __call__(
+        self,
+        X: FloatArray,
+        u: FloatArray | None = None,
+        y: FloatArray | None = None,
+        *,
+        ctx: DiagnosticContext | None = None,
+    ) -> DiagnosticResult:
+        validate_diagnostic_input(X, u, y, ctx)
+        context = resolve_context(ctx)
+        return DiagnosticResult(
+            name="parameterized_dummy",
+            scalars={"threshold": self.threshold},
+            params={"washout": str(context.washout)},
+        )
+
+
+def test_parameterized_callable_conforms_to_d01_signature_contract() -> None:
+    """frozen dataclass の ``__call__`` (構築時パラメータ) も D-01 契約を満たす (F-1-006)。
+
+    D-01 の rule に「診断固有のパラメータは ctx ではなくパラメータ化した callable
+    (frozen dataclass の ``__call__``) の構築時に渡す」を追記した。この guard は
+    その形が実際に ``Diagnostic`` に代入でき、``test_all_diagnostics_conform_to_d01_signature_contract``
+    と同じ実行時契約 (``ctx`` が keyword-only であること等) を満たすことを固定する。
+    ``_ParameterizedDummyDiagnostic`` はインスタンス (関数ではない) なので
+    ``_iter_diagnostic_callables`` の列挙 (``inspect.isfunction`` で絞り込む) には
+    乗らず、上のテストの対象には自動では入らない。そのためこのテストを別に置く。
+    """
+    diagnostic: Diagnostic = _ParameterizedDummyDiagnostic(threshold=0.9)
+
+    signature = inspect.signature(diagnostic)
+    params = signature.parameters
+    assert "X" in params
+    assert "u" in params
+    assert "y" in params
+    assert "ctx" in params
+    ctx_param = params["ctx"]
+    assert ctx_param.kind == inspect.Parameter.KEYWORD_ONLY, (
+        f"ctx が keyword-only ではありません (D-01 違反, kind={ctx_param.kind})"
+    )
+    assert ctx_param.default is None
+
+    states = _external_states()
+
+    # 最も鋭い検査: ctx を位置引数として渡すと実際に TypeError になること
+    # (`*,` keyword-only マーカーが外れた瞬間にこの呼び出しが成功してしまう)。
+    with pytest.raises(TypeError):
+        diagnostic(states, None, None, DiagnosticContext())  # type: ignore[misc]
+
+    # 契約が許す全呼び出しパターンが実際に呼べる。
+    result = diagnostic(states)
+    assert isinstance(result, DiagnosticResult)
+    assert result.scalars["threshold"] == pytest.approx(0.9)
+    result_with_ctx = diagnostic(states, ctx=DiagnosticContext(washout=10))
+    assert result_with_ctx.params["washout"] == "10"
+
+
 def test_dummy_diagnostic_conforms_to_protocol() -> None:
     """ダミー実装が Diagnostic に代入でき、X だけで呼べる。
 
