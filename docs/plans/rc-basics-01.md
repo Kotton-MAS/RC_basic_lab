@@ -399,7 +399,7 @@ E[y[t]] = 0,   E[y[t]·u[t-k]] = E[u[t-1] u[t-2] u[t-k]] = 0
 | 1 | 3ベースラインが同一 API で切り替わり、同一分割・同一 alpha 格子で比較できる | **T3** (API) / T4 (ランナー) | `test_three_specs_share_one_api`, `test_all_methods_share_identical_rows`, `test_alpha_grid_is_shared_across_methods` |
 | 2 | 遅延パリティで線形が解けず ESN が解けることを数値で示せる | **T4** | `test_target_is_orthogonal_to_lagged_inputs`, `test_linear_baselines_fail_and_esn_solves_delay_parity`, `comparison.csv` |
 | 3 | MG 予測で3手法の誤差 + シード5本以上の平均±標準偏差 | **T4** | `comparison.csv` に30行、`n_replicates: 5`、`fig_comparison.png` の誤差棒 |
-| 4 | リザバー状態の PCA が入力空間より高次元に広がる | **T2** (診断) / T5 (図) | `state_pca` の `n_components_95` 比較値 + `fig_state_space.png` |
+| 4 | リザバー状態の PCA が入力空間より高次元に広がる | **T2** (診断) / T5 (図) | `state_pca` の `n_components_95` 比較値 + `fig_state_space.png`。**実測: 生の入力 (1次元) に対しては成立、遅延埋め込み入力 (17次元) に対しては不成立**。T5 の「実装時に決めたこと」と `docs/design.md` §7.2 を参照 |
 | 5 | 図2枚が1コマンドで再生成、retina 解像度 | **T5** | `run.py` 1発で4ファイル、`test_savefig_dpi_is_retina` |
 | 6 | 診断層インターフェース `f(X,u,y)` の定義 + ダミー実装 + テスト | **T2** | `test_dummy_diagnostic_conforms_to_protocol`, `test_diagnostic_accepts_external_state_series`, `test_diagnostics_package_does_not_import_reservoir` |
 | 7 | pytest green + 最小 CI + README (3コマンド再現) | **T1** (基盤) / **T5** (README・仕上げ) | `make ci` 緑、GitHub Actions 緑、README の3コマンドを実行して再現 |
