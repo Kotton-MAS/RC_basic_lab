@@ -44,6 +44,10 @@ class WiringCase:
         channel: 効き方 (``rows`` / ``meta`` / ``error`` / 実験固有のチャネル)。
         scope: 変化してよい課題名。``None`` なら全課題。
         changed_sizes: 変化していることを追加で要求する分割サイズの列名。
+        task: 先送り (pending) がどのタスク段階で解消される予定かを表す
+            構造化フィールド (例 ``"T3"``)。``note`` の自由文に埋めると
+            判定に使えないため (F-02-2-004)、判定が要る場合はここへ書く。
+            01 のケースは使わないため既定値 ``None``。
         note: 単独で動かせない等の理由。
     """
 
@@ -52,6 +56,7 @@ class WiringCase:
     channel: str = CHANNEL_ROWS
     scope: str | None = None
     changed_sizes: tuple[str, ...] = ()
+    task: str | None = None
     note: str = ""
 
 
@@ -61,6 +66,7 @@ def case(
     *,
     channel: str = CHANNEL_ROWS,
     scope: str | None = None,
+    task: str | None = None,
     note: str = "",
 ) -> WiringCase:
     """単独で動かせるパラメータのケース。"""
@@ -69,6 +75,7 @@ def case(
         overrides=((field, value),),
         channel=channel,
         scope=scope,
+        task=task,
         note=note,
     )
 

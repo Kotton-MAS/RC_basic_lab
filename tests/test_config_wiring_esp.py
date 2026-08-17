@@ -141,6 +141,7 @@ def _pending_case(field: str, value: object, task: str) -> WiringCase:
         field,
         value,
         channel=CHANNEL_PENDING,
+        task=task,
         note=f"{task}: 消費する実験層がまだ無いため出力での実測は {task} で行う",
     )
 
