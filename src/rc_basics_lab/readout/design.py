@@ -102,6 +102,30 @@ def _layout_of(spec: FeatureSpec) -> _Layout:
             return _Layout(bias=spec.bias, input_lags=lags, use_states=True)
 
 
+def first_valid_for(spec: FeatureSpec) -> int:
+    """``build_design_matrix`` が返す ``first_valid`` を、系列を作らずに求める。
+
+    ``first_valid`` は**ラグの構造だけ**で決まり、系列の中身にも長さにも
+    依存しない。実験 2-D (washout 感度) は系列を生成する**前に**
+    ``t0 = compute_t0(first_valid の列, washout)`` を知る必要がある (D-19: washout
+    を増やしても訓練行数が変わらないよう系列長で補償するため)。
+
+    その予測を「遅延線なら ``n_lags``」と別の場所へ書き写すと、手法を足した
+    ときに予測と実際の ``t0`` が黙って食い違い、補償が効かなくなる。単一の
+    真実を ``_layout_of`` に置いたまま外から引けるようにするのがこの関数。
+
+    Args:
+        spec: ``PassthroughSpec`` / ``DelayLineSpec`` / ``ReservoirSpec``。
+
+    Returns:
+        全特徴が定義済みになる最初の行 index。
+
+    Raises:
+        ValueError: ``DelayLineSpec.n_lags`` が負の場合。
+    """
+    return max(_layout_of(spec).input_lags, default=0)
+
+
 def bias_column_index(feature_names: tuple[str, ...]) -> int | None:
     """バイアス列の index。無ければ ``None`` (``fit_ridge`` の罰則行列に渡す)。"""
     return 0 if feature_names[:1] == (BIAS_NAME,) else None
@@ -133,7 +157,8 @@ def _validate_inputs(
         raise ValueError(f"u が空です: {inputs.shape}")
 
     layout = _layout_of(spec)
-    first_valid = max(layout.input_lags, default=0)
+    # 予測経路 (``first_valid_for``) と実経路が同じ値を返すことを構造で保証する。
+    first_valid = first_valid_for(spec)
     if first_valid >= n_steps:
         raise ValueError(
             f"系列長がラグに対して短すぎます: T={n_steps}, first_valid={first_valid}"
@@ -215,4 +240,5 @@ __all__ = [
     "ReservoirSpec",
     "bias_column_index",
     "build_design_matrix",
+    "first_valid_for",
 ]
