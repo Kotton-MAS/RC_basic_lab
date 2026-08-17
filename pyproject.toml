@@ -5,7 +5,12 @@ description = "Reservoir computing basics lab: baselines, diagnostics, experimen
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.2",
+    "pyyaml>=6.0.3",
+    "scipy>=1.18.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -21,6 +26,7 @@ dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.4",
+    "types-pyyaml>=6.0.12.20260815",
 ]
 
 [tool.pytest.ini_options]
@@ -50,3 +56,9 @@ strict = true
 # CLAUDE.md の「Any 禁止」を機械的に強制
 disallow_any_explicit = true
 exclude = ["\\.venv"]
+
+# scipy / matplotlib は型スタブを同梱しない。呼び出し側に `# type: ignore` を撒く
+# 代わりに、ここでモジュール単位の未解決 import だけを許容する (仕様 T1)。
+[[tool.mypy.overrides]]
+module = ["scipy.*", "matplotlib.*", "mpl_toolkits.*"]
+ignore_missing_imports = true
