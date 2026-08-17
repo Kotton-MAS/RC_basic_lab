@@ -153,15 +153,15 @@ def test_default_out_dir_does_not_overwrite_other_experiments_meta_json(
     sentinel.write_text('{"owner": "01"}', encoding="utf-8")
 
     recorded: list[Path] = []
+
+    def _fake_run(config_path: Path, out_dir: Path) -> None:
+        del config_path
+        recorded.append(out_dir)
+
     monkeypatch.setitem(
         main.EXPERIMENTS,
         "02",
-        dataclasses.replace(
-            main.EXPERIMENTS["02"],
-            run=recorded.append_out_dir  # type: ignore[arg-type]
-            if False
-            else lambda config_path, out_dir: recorded.append(out_dir),
-        ),
+        dataclasses.replace(main.EXPERIMENTS["02"], run=_fake_run),
     )
     assert main.main(["--experiment", "02"]) == 0
     assert recorded == [main.EXPERIMENTS["02"].out_dir]
