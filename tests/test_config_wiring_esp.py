@@ -350,8 +350,23 @@ def test_diagnostic_sections_cover_the_diagnostic_config_classes() -> None:
         )
 
 
+def _current_experiment_modules() -> frozenset[str]:
+    """``rc_basics_lab.experiment`` 配下の公開モジュール名の実集合。"""
+    return frozenset(
+        info.name
+        for info in pkgutil.iter_modules(experiment_pkg.__path__)
+        if not info.name.startswith("_")
+    )
+
+
+def _new_experiment_modules() -> frozenset[str]:
+    """``KNOWN_EXPERIMENT_MODULES`` (01 時点の凍結スナップショット) を超えた分。"""
+    return _current_experiment_modules() - KNOWN_EXPERIMENT_MODULES
+
+
 def test_pending_cases_disappear_once_the_experiment_layer_exists() -> None:
-    """実験層が生えたら ``CHANNEL_PENDING`` は許されない (先送りの時限装置)。
+    """実験層が生えたら、**その段階の** ``CHANNEL_PENDING`` は許されない
+    (段階を区別する先送りの時限装置)。
 
     サイクル 2a には ``experiment/esp.py`` も ``esp_pipeline.py`` も無いため、
     格子や系列長のような「実験を回して初めて効く」葉は出力での実測ができない。
@@ -364,22 +379,58 @@ def test_pending_cases_disappear_once_the_experiment_layer_exists() -> None:
     集合が超えたかどうかで判定する。これにより T3 がどの名前でモジュールを
     追加しても (``esp.py`` でも ``esp_pipeline.py`` でも、実装順に関わらず)
     発火する。
+
+    F-02-2-004: 「新規モジュールが1本でも増えた」だけを条件にすると、T3 が
+    生えた時点で T4 (``washout``) 担当の pending まで巻き添えで赤くなり、
+    T3 完了〜T4 着手の間テストが緑にならなかった。``TASK_STAGE_MODULES`` で
+    段階とモジュールの対応を固定し、各 ``WiringCase.task`` と突き合わせて
+    段階ごとに判定することで、T3 の消費側が生えても T4 の pending は
+    巻き込まれないようにする。
     """
-    pending = sorted(
-        item.field for item in ESP_WIRING_CASES if item.channel == CHANNEL_PENDING
-    )
-    current_modules = {
-        info.name
-        for info in pkgutil.iter_modules(experiment_pkg.__path__)
-        if not info.name.startswith("_")
-    }
-    new_modules = sorted(current_modules - KNOWN_EXPERIMENT_MODULES)
-    assert not (new_modules and pending), (
-        f"rc_basics_lab.experiment に既知集合を超える新規モジュール "
-        f"{new_modules} が追加されているのに未実測の葉が残っています: {pending}"
-    )
+    new_modules = _new_experiment_modules()
+    for task, stage_modules in TASK_STAGE_MODULES.items():
+        if not (new_modules & stage_modules):
+            continue
+        stage_pending = sorted(
+            item.field
+            for item in ESP_WIRING_CASES
+            if item.channel == CHANNEL_PENDING and item.task == task
+        )
+        assert not stage_pending, (
+            f"{task} の消費側モジュール {sorted(new_modules & stage_modules)} が"
+            f"rc_basics_lab.experiment に追加されているのに、{task} の"
+            f"未実測の葉が残っています: {stage_pending}"
+        )
+
     # 実測できるチャネルが pending へ逃げていないこと
+    pending = [
+        item.field for item in ESP_WIRING_CASES if item.channel == CHANNEL_PENDING
+    ]
     assert {field.split(".")[0] for field in pending} <= PENDING_SECTIONS
+
+
+def test_known_experiment_modules_cannot_be_widened_while_pending_remains() -> None:
+    """``KNOWN_EXPERIMENT_MODULES`` へ1語足すだけの解除経路を塞ぐ (F-02-2-004)。
+
+    ``KNOWN_EXPERIMENT_MODULES`` は 01 時点のスナップショットとして凍結して
+    いるが、それだけでは「発火を黙らせるために ``esp`` を足す」という改変を
+    コードとして防げない。この検査は逆方向から締める: ``TASK_STAGE_MODULES``
+    のある段階のモジュール名が ``KNOWN_EXPERIMENT_MODULES`` に **既に**
+    含まれているなら、その段階の pending は空でなければならない。
+    ``KNOWN_EXPERIMENT_MODULES`` を書き換えて信管を黙らせても、対応する
+    pending を実際に解消していなければこのテストが落ちる。
+    """
+    pending_tasks = {
+        item.task for item in ESP_WIRING_CASES if item.channel == CHANNEL_PENDING
+    }
+    for task, stage_modules in TASK_STAGE_MODULES.items():
+        if stage_modules <= KNOWN_EXPERIMENT_MODULES:
+            assert task not in pending_tasks, (
+                f"KNOWN_EXPERIMENT_MODULES が {task} のモジュール "
+                f"{sorted(stage_modules)} を含んでいますが、{task} の pending が"
+                "まだ残っています。モジュール集合を広げる変更は、対応する段階の"
+                "pending 解消と同時に行ってください。"
+            )
 
 
 def test_every_esp_field_round_trips_yaml(tmp_path: Path) -> None:
