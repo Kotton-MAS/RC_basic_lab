@@ -11,8 +11,8 @@
 # サイクル1 (T1〜T5) の10件がそろった。
 
 - id: D-01
-  rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う"
-  rationale: "要件_01 設計判断1。02 の ESP は2軌道、03 の IPC はサロゲート用シード、04 は dt を要するが、これらを位置引数にすると診断ごとに署名が割れて memristor-rc-lab への移植性が失われる。ctx.companion_states / ctx.dt / ctx.seed に逃がせば 02〜05 の全診断が署名変更なしで乗る"
+  rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う。DiagnosticContext が持つのはデータの素性 (washout / dt / seed / companion_states) のみとし、診断固有のパラメータはパラメータ化した callable (frozen dataclass の __call__) の構築時に渡す"
+  rationale: "要件_01 設計判断1。02 の ESP は2軌道、03 の IPC はサロゲート用シード、04 は dt を要するが、これらを位置引数にすると診断ごとに署名が割れて memristor-rc-lab への移植性が失われる。ctx.companion_states / ctx.dt / ctx.seed に逃がせば 02〜05 の全診断が署名変更なしで乗る。F-1-006: 『拡張は DiagnosticContext への既定値つきフィールド追加のみ』という文言だけだと、診断固有のパラメータまで ctx に押し込む読み方を誘発する。DiagnosticContext は既に dt (04専用) / seed (03専用) / companion_states (02専用) を持ち、05 まで進むと全診断の設定の union になって『どの診断がどのフィールドを読むか』が型から分からなくなる。実例として要件_02 設計判断3 (ESP判定の閾値と窓は設定可能にする) や要件_03 (IPC のサロゲート本数・最大遅延/次数) のパラメータをどこに置くかが、このルールのままでは決まらない。Diagnostic は __call__ を持つ Protocol なので、frozen dataclass の __call__ として書けば署名を変えずに固有パラメータを構築時に渡せる (例: StatePca(cumulative_threshold=0.9))"
   guard_test: "tests/test_diagnostics_base.py::test_all_diagnostics_conform_to_d01_signature_contract"
 
 - id: D-02
