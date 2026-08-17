@@ -179,21 +179,39 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
-    """``MINIMAL_VALID_INPUT`` が列挙された全診断を過不足なく網羅する (F-1-015)。
+    """``MINIMAL_VALID_INPUT`` が列挙された全診断を過不足なく網羅し、かつ動く (F-1-015)。
 
     ``test_all_config_fields_have_a_case`` と同じ「登録漏れを構造的に強制する」
     パターン。新しい診断を追加したとき、この完全性チェックは
     ``MINIMAL_VALID_INPUT`` への登録を追加するまで独立に赤くなり続ける。
     契約テスト側の必須 assert を ``suppress`` で包んで穴を隠す最短ルートを
     取っても、こちらは救われない。
+
+    キー集合の一致だけでは「診断を登録はするが不十分なファクトリを割り当てる」
+    (例: ``u`` 依存の診断に ``_minimal_input_no_extras`` を誤って割り当てる)
+    という抜け道を検出できない。そのため各ファクトリを実際に呼び出し、対応する
+    診断関数が ``DiagnosticResult`` を返すところまで確認する。
     """
-    names = {qualname for qualname, _ in _iter_diagnostic_callables()}
+    diagnostics = _iter_diagnostic_callables()
+    names = {qualname for qualname, _ in diagnostics}
     assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
     assert set(MINIMAL_VALID_INPUT) == names, (
         "MINIMAL_VALID_INPUT の登録が実際の診断集合と一致しません "
         f"(不足={sorted(names - set(MINIMAL_VALID_INPUT))}, "
         f"余剰={sorted(set(MINIMAL_VALID_INPUT) - names)})"
     )
+
+    states = _external_states()
+    for qualname, func in diagnostics:
+        minimal_x, minimal_u, minimal_y, minimal_ctx = MINIMAL_VALID_INPUT[qualname](
+            states
+        )
+        result = func(minimal_x, minimal_u, minimal_y, ctx=minimal_ctx)
+        assert isinstance(result, DiagnosticResult), (
+            f"{qualname}: 登録されたファクトリを実際に呼び出しても "
+            f"DiagnosticResult を返しません (不十分なファクトリの疑い): "
+            f"{type(result)}"
+        )
 
 
 def test_all_diagnostics_conform_to_d01_signature_contract() -> None:
