@@ -90,15 +90,26 @@ def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
     配下の *.py の AST を直接 import 検査するだけなので、
     ``diagnostics/x.py`` が ``config.py`` 経由で間接的に ``reservoir`` を
     引き込んでも検出できない (config.py は ``ESNConfig`` を import している)。
-    このテストは実際に別プロセスで ``rc_basics_lab.diagnostics`` だけを import し、
+    このテストは実際に別プロセスで ``rc_basics_lab.diagnostics`` パッケージ本体に
+    加えて ``pkgutil.iter_modules`` で列挙した**全サブモジュール**を個別に import し、
     その後の ``sys.modules`` に ``rc_basics_lab.reservoir`` で始まるモジュールが
     1つも無いことを assert することで、直接 import ではなく import の**結果**を
-    検証する。tasks/ 側の前例 (自分の設定 dataclass を config.py から import する)
-    を diagnostics/ が真似た瞬間にここが赤くなる。
+    検証する。パッケージ本体だけの import では ``diagnostics/__init__.py`` が
+    再エクスポートしていないサブモジュール (``__all__`` に載せ忘れたもの) が
+    検査対象から漏れるため、サブモジュールを個別に import する形にしている。
+    tasks/ 側の前例 (自分の設定 dataclass を config.py から import する) を
+    diagnostics/ が真似た瞬間にここが赤くなる。
+
+    このガードが守るのは「モジュール import 時点の推移閉包」であり、関数
+    ローカルの遅延 import (関数本体の中に書かれ、呼び出されるまで実行されない
+    import 文) は import 時点の ``sys.modules`` に出ないため、この guard では
+    検出できない。
     """
     probe = (
-        "import importlib, sys\n"
-        "importlib.import_module('rc_basics_lab.diagnostics')\n"
+        "import importlib, pkgutil, sys\n"
+        "pkg = importlib.import_module('rc_basics_lab.diagnostics')\n"
+        "for info in pkgutil.iter_modules(pkg.__path__):\n"
+        "    importlib.import_module(f'rc_basics_lab.diagnostics.{info.name}')\n"
         "leaked = sorted(\n"
         "    k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')\n"
         ")\n"
