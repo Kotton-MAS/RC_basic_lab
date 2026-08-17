@@ -49,8 +49,29 @@ def _git_commit() -> str:
     return commit or UNKNOWN
 
 
-def collect_meta(config: ExperimentConfig) -> dict[str, object]:
-    """実行メタ情報を JSON 化可能な dict で返す。"""
+def _as_dict(value: object, label: str) -> dict[str, object]:
+    """dataclass インスタンスをプレーンな dict にする (``Any`` を書かずに)。"""
+    if not dataclasses.is_dataclass(value) or isinstance(value, type):
+        raise TypeError(f"{label} は dataclass のインスタンスが必要です: {value!r}")
+    return dataclasses.asdict(value)
+
+
+def collect_meta_for(config: object, seeds: object) -> dict[str, object]:
+    """任意の実験設定 dataclass から実行メタ情報を組み立てる。
+
+    実験ごとに設定クラスは分かれる (D-13) が、「いつ・どのコミットで・どの
+    ライブラリ版で・どの設定で」の集め方は1か所に置く。実験ごとに写経すると、
+    片方だけ項目が欠けても何も落ちない。
+
+    Args:
+        config: 実験設定 dataclass (``ExperimentConfig`` / ``Esp02Config`` など)。
+        seeds: シード設定 dataclass。``config`` の中にあるが、フィールド名が
+            実験ごとに違う (01 は ``seeds``、02 も ``seeds`` だが型が別) ため
+            明示的に受け取る。
+
+    Raises:
+        TypeError: ``config`` / ``seeds`` が dataclass インスタンスでない場合。
+    """
     return {
         "commit": _git_commit(),
         "timestamp_utc": dt.datetime.now(dt.UTC).isoformat(),
@@ -60,9 +81,18 @@ def collect_meta(config: ExperimentConfig) -> dict[str, object]:
         "numpy_version": np.__version__,
         "scipy_version": scipy.__version__,
         "matplotlib_version": matplotlib.__version__,
-        "seeds": dataclasses.asdict(config.seeds),
-        "config": dataclasses.asdict(config),
+        "seeds": _as_dict(seeds, "seeds"),
+        "config": _as_dict(config, "config"),
     }
 
 
-__all__ = ["UNKNOWN", "collect_meta"]
+def collect_meta(config: ExperimentConfig) -> dict[str, object]:
+    """実行メタ情報を JSON 化可能な dict で返す (01 の ``ExperimentConfig`` 用)。
+
+    ``collect_meta_for(config, config.seeds)`` への委譲。既存の呼び出しを
+    壊さないため署名はそのまま残す。
+    """
+    return collect_meta_for(config, config.seeds)
+
+
+__all__ = ["UNKNOWN", "collect_meta", "collect_meta_for"]

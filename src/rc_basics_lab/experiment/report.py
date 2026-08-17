@@ -19,7 +19,7 @@ from pathlib import Path
 from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.experiment.runner import CSV_COLUMNS, ResultRow
 from rc_basics_lab.experiment.summary import Aggregate
-from rc_basics_lab.meta import collect_meta
+from rc_basics_lab.meta import collect_meta_for
 
 COMPARISON_CSV = "comparison.csv"
 COMPARISON_SUMMARY_CSV = "comparison_summary.csv"
@@ -73,25 +73,32 @@ def write_comparison_summary_csv(
     return path
 
 
-def write_meta(
-    config: ExperimentConfig,
+def write_meta_for(
+    config: object,
+    seeds: object,
     wall_time_s: float,
     n_rows: int,
     path: Path,
     extra: Mapping[str, object] | None = None,
 ) -> Path:
-    """実行メタ情報を JSON に書く (実測 wall time は性能受け入れ基準の根拠)。
+    """任意の実験設定について実行メタ情報を JSON に書く。
+
+    実験ごとに設定クラスは分かれる (D-13) が、``meta.json`` の書き出し規律
+    (実測 wall time と行数を必ず載せる / ``extra`` のキー衝突は ``ValueError``)
+    はここ1か所に置く。
 
     Args:
-        config: 実験設定。
+        config: 実験設定 dataclass。
+        seeds: シード設定 dataclass。
         wall_time_s: 実測 wall time。
-        n_rows: ``comparison.csv`` の行数。
+        n_rows: 出力した CSV の行数。
         path: 出力先。
-        extra: 追加で載せる項目 (実験1-B の ``state_space`` など)。既存キーと
-            衝突したら ``ValueError`` (静かな上書きで情報が消えるのを防ぐ)。
+        extra: 追加で載せる項目 (01 の ``state_space``、02 の
+            ``verdict_lyapunov_agreement`` など)。既存キーと衝突したら
+            ``ValueError`` (静かな上書きで情報が消えるのを防ぐ)。
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, object] = collect_meta(config)
+    meta: dict[str, object] = collect_meta_for(config, seeds)
     meta["wall_time_s"] = wall_time_s
     meta["n_rows"] = n_rows
     for key, value in (extra or {}).items():
@@ -105,6 +112,21 @@ def write_meta(
     return path
 
 
+def write_meta(
+    config: ExperimentConfig,
+    wall_time_s: float,
+    n_rows: int,
+    path: Path,
+    extra: Mapping[str, object] | None = None,
+) -> Path:
+    """実行メタ情報を JSON に書く (実測 wall time は性能受け入れ基準の根拠)。
+
+    ``write_meta_for(config, config.seeds, ...)`` への委譲。既存の呼び出しを
+    壊さないため署名はそのまま残す。
+    """
+    return write_meta_for(config, config.seeds, wall_time_s, n_rows, path, extra)
+
+
 __all__ = [
     "COMPARISON_CSV",
     "COMPARISON_SUMMARY_CSV",
@@ -113,4 +135,5 @@ __all__ = [
     "write_comparison_csv",
     "write_comparison_summary_csv",
     "write_meta",
+    "write_meta_for",
 ]
