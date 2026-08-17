@@ -44,7 +44,7 @@ def _public_submodule_names(package_dir: Path) -> set[str]:
 
 @pytest.mark.parametrize("package_name", PACKAGE_NAMES)
 def test_package_init_reexports_all_public_submodules(package_name: str) -> None:
-    """各パッケージの非 private サブモジュールが ``__init__.py`` から再エクスポートされている。
+    """各パッケージの非 private サブモジュールが ``__init__.py`` から再エクスポートされる.
 
     ``from rc_basics_lab.<pkg>.<submodule> import ...`` が実行されると、
     Python の import 機構が ``<submodule>`` を親パッケージオブジェクトの
