@@ -116,6 +116,11 @@ class MethodSensitivity:
         washout_at_max: ``nrmse_max`` を与えた washout。
         ratio: ``nrmse_max / nrmse_min`` (受け入れ条件5 の「変動」)。
         nrmse_at_reference: 01 の本番値 (``base.split.washout``) での平均 NRMSE。
+        replicate_std_max: 格子上で最大の**レプリケート間**標準偏差。
+        exceeds_replicate_noise: 変動幅 (``nrmse_max - nrmse_min``) が
+            ``replicate_std_max`` を超えるか。**超えないなら「washout に
+            性能が反応した」とは言えない**。この判断材料を要約に載せないと、
+            比が 1.0 でないことだけを見て効果があったと読める。
     """
 
     task: str
@@ -126,6 +131,17 @@ class MethodSensitivity:
     washout_at_max: int
     ratio: float
     nrmse_at_reference: float
+    replicate_std_max: float
+
+    @property
+    def spread(self) -> float:
+        """格子上の変動幅 ``nrmse_max - nrmse_min``。"""
+        return self.nrmse_max - self.nrmse_min
+
+    @property
+    def exceeds_replicate_noise(self) -> bool:
+        """変動幅がレプリケート間のばらつきを超えるか。"""
+        return self.spread > self.replicate_std_max
 
     def to_summary(self) -> dict[str, object]:
         """``meta.json`` に載せるプレーンな dict。"""
@@ -137,7 +153,10 @@ class MethodSensitivity:
             "washout_at_min": self.washout_at_min,
             "washout_at_max": self.washout_at_max,
             "ratio": self.ratio,
+            "spread": self.spread,
             "nrmse_at_reference": self.nrmse_at_reference,
+            "replicate_std_max": self.replicate_std_max,
+            "exceeds_replicate_noise": self.exceeds_replicate_noise,
         }
 
 
@@ -384,6 +403,14 @@ def _sensitivity_for(
         # 「変動が無かった」と読めてしまう)。
         ratio=largest / smallest if smallest > 0.0 else math.nan,
         nrmse_at_reference=means.get(reference_washout, math.nan),
+        replicate_std_max=max(
+            (
+                row.nrmse_std
+                for row in rows
+                if row.task == task and row.method == method
+            ),
+            default=0.0,
+        ),
     )
 
 

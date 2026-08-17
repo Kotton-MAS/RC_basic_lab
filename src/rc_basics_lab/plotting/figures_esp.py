@@ -1,10 +1,12 @@
-"""記事02の図3枚 (実験 2-A / 2-B / 2-C).
+"""記事02の図4枚 (実験 2-A / 2-B / 2-C / 2-D).
 
 - ``plot_esp_decay``: rho 別の状態距離の減衰曲線 (受け入れ条件1)。
 - ``plot_leak_timescale``: リーク率と実効時定数。理論線 ``-1/log(1-a)`` を重ねる
   (受け入れ条件4)。
 - ``plot_esp_map``: rho x 入力強度 の ESP 成立領域 (**記事の目玉**、受け入れ条件2)。
   無入力 (sigma_u=0) は別枠のパネルに出し、駆動下の領域と混ぜない。
+- ``plot_washout_sensitivity``: washout 長への性能感度 (受け入れ条件5、D-19)。
+  01 の本番値に垂直線を引き、変動幅を数値で注記する。
 
 ``figures.py`` と同じ規律に従う: pyplot を使わず ``Figure`` +
 ``FigureCanvasAgg`` を直接組み、描画設定は ``matplotlib.rc_context`` で描画中
