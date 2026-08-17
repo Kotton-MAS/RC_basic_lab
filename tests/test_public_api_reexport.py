@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib
 import pkgutil
-from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -34,17 +34,17 @@ PACKAGE_NAMES = (
 """
 
 
-def _public_submodule_names(package_dir: Path) -> set[str]:
+def _public_submodule_names(package: ModuleType) -> set[str]:
     return {
         info.name
-        for info in pkgutil.iter_modules([str(package_dir)])
+        for info in pkgutil.iter_modules(package.__path__)
         if not info.name.startswith("_")
     }
 
 
 @pytest.mark.parametrize("package_name", PACKAGE_NAMES)
 def test_package_init_reexports_all_public_submodules(package_name: str) -> None:
-    """各パッケージの非 private サブモジュールが ``__init__.py`` から再エクスポートされる.
+    """非 private サブモジュールが ``__init__.py`` から再エクスポートされる.
 
     ``from rc_basics_lab.<pkg>.<submodule> import ...`` が実行されると、
     Python の import 機構が ``<submodule>`` を親パッケージオブジェクトの
