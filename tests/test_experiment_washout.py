@@ -136,14 +136,17 @@ def production_rows() -> tuple[WashoutRow, ...]:
     return run_washout_sweep(production_config())
 
 
-def _sizes_by_washout(
+def _sizes_by_task_washout(
     rows: Sequence[WashoutRow],
-) -> dict[int, tuple[int, int, int]]:
-    return {row.washout: (row.n_train, row.n_val, row.n_test) for row in rows}
+) -> dict[tuple[str, int], tuple[int, int, int]]:
+    """(課題, washout) ごとの行数 (F-1-003: washout だけで課題次元を潰さない)。"""
+    return {
+        (row.task, row.washout): (row.n_train, row.n_val, row.n_test) for row in rows
+    }
 
 
-def _t0_by_washout(rows: Sequence[WashoutRow]) -> dict[int, int]:
-    return {row.washout: row.t0 for row in rows}
+def _t0_by_task_washout(rows: Sequence[WashoutRow]) -> dict[tuple[str, int], int]:
+    return {(row.task, row.washout): row.t0 for row in rows}
 
 
 def _headline_entry(config: ExperimentConfig) -> TaskEntry:
