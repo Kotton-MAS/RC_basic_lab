@@ -1,0 +1,31 @@
+# 意図的な設計判断 (rc-basics-lab)
+#
+# 正本は散文ではなくこのファイル。各決定には、壊れた瞬間に落ちるテスト
+# (guard_test) を必ず紐づける。背景説明は docs/design.md を参照。
+#
+# 検証: python3 ~/.claude/scripts/check_decisions.py .claude/decisions.yaml
+#
+# 由来: docs/plans/rc-basics-01.md §6 (D-01〜D-10)。
+# guard_test は実在するテストしか書けないため、T3〜T5 で実装されるテストに
+# 紐づく D-03 / D-04 / D-05 / D-07 / D-08 / D-10 は、該当タスクの担当者が
+# 実装と同時にここへ追記する。
+
+- id: D-01
+  rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う"
+  rationale: "要件_01 設計判断1。02 の ESP は2軌道、03 の IPC はサロゲート用シード、04 は dt を要するが、これらを位置引数にすると診断ごとに署名が割れて memristor-rc-lab への移植性が失われる。ctx.companion_states / ctx.dt / ctx.seed に逃がせば 02〜05 の全診断が署名変更なしで乗る"
+  guard_test: "tests/test_diagnostics_base.py::test_dummy_diagnostic_conforms_to_protocol"
+
+- id: D-02
+  rule: "誤差指標は NRMSE = RMSE / std(y_true) (ddof=0) に統一する。範囲正規化 (max-min) は使わない"
+  rationale: "要件_01 未確定3。NRMSE=1 が『平均予測と同等』を意味するため、遅延パリティで線形手法が失敗したことを解釈可能な形で示せる (範囲正規化では 1 に意味が無い)。CSV には nmse を併記し 03 の先行研究比較に備える"
+  guard_test: "tests/test_metrics.py::test_nrmse_of_mean_predictor_is_one"
+
+- id: D-06
+  rule: "乱数はリザバー生成 / タスク生成 / 分割の3ストリームに SeedSequence の spawn_key で分離し、1ストリームの変更が他ストリームの乱数列に影響しない"
+  rationale: "要件_01 設計判断4。単一 Generator を共有すると『リザバーだけ変えたときの分散』が測れず、受け入れ条件3 の平均±標準偏差の意味が曖昧になる。split ストリームは系列内の開始オフセット選択に実配線し、未使用パラメータを作らない"
+  guard_test: "tests/test_seeds.py::test_streams_are_independent"
+
+- id: D-09
+  rule: "実験設定 YAML の未知キーは ConfigError で即座に失敗させる (寛容な読み飛ばしをしない)"
+  rationale: "本サイクルで十数個のパラメータを新設するため、キーのタイプミスが黙って無視されると『設定したのに効いていない』が発生し、実験結果が丸ごと無意味になる。この失敗は LLM レビューでは確率的にしか見つからない"
+  guard_test: "tests/test_config.py::test_unknown_key_raises"
