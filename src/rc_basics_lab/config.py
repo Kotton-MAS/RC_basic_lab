@@ -207,14 +207,22 @@ class DriveConfig:
         distribution: 駆動信号の分布。``"uniform"`` (i.i.d. 一様) 以外は未対応で、
             実験層が ``ValueError`` にする (黙って一様として扱わない)。
         n_steps: 生成する系列長 [ステップ]。
-        washout: 判定・当てはめから外す先頭ステップ数。
+        washout: λ と自己相関から外す先頭ステップ数。ESP の距離当てはめには
+            使わない (``experiment.esp.ESP_DISTANCE_WASHOUT`` を参照)。
         n_pairs: 参照軌道と比べる第2軌道の本数 (最悪値で判定する, D-16)。
+            **既定を 10 にしてある** (T3 の実測で 3 から引き上げ)。無入力で
+            rho>1 の ESN は ``+x*`` / ``-x*`` の対をなす吸引子を持つことがあり
+            (tanh が奇関数のため)、比較軌道が k 本すべて参照軌道と同じ側へ
+            落ちる確率は約 ``2^-k`` ある。実測: ``n_pairs=3`` では特定の
+            リザバー draw で rho=1.2 / 1.5・無入力が「収束」と誤判定され、
+            受け入れ条件1 が成立しなかった。10 本にすると全レプリケートで
+            正しく非収束になり、rho<1 側の判定は変わらない (偽陰性なし)。
     """
 
     distribution: str = "uniform"
     n_steps: int = 3000
     washout: int = 200
-    n_pairs: int = 3
+    n_pairs: int = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,6 +315,21 @@ class WashoutSweepConfig:
     base: ExperimentConfig = field(default_factory=ExperimentConfig)
 
 
+def _esp_criteria_for_02() -> EspConfig:
+    """02 の実験が使う ESP 判定基準 (``fit_skip`` だけ D-16 の既定から下げる)。
+
+    D-16 の既定 ``fit_skip=50`` は「washout の直後からさらに捨てる」量として
+    決めたものだが、02 の実験層は ESP の距離当てはめに washout を掛けない
+    (``experiment.esp.ESP_DISTANCE_WASHOUT`` = 0。2-A は過渡そのものを見せる
+    図であるため)。当てはめ開始は ``0 + fit_skip`` になるので、無入力
+    rho=0.5 の距離が丸めの床に届く t≈46 より十分手前で始める必要がある。
+    実測: ``fit_skip=10`` で減衰率と ``log rho`` の相対誤差は
+    rho=0.5 → 5.1〜7.7% / rho=0.8 → 2.6〜5.3% / rho=0.95 → 0.2〜0.4%
+    (受け入れ条件1 の許容 20% に対して十分な余裕がある)。
+    """
+    return EspConfig(fit_skip=10)
+
+
 @dataclass(frozen=True, slots=True)
 class Esp02Config:
     """実験02 (ESP・スペクトル半径・リーク率) 1本ぶんの設定 (D-13)。
@@ -331,7 +354,7 @@ class Esp02Config:
     timescale_sweep: TimescaleSweepConfig = field(default_factory=TimescaleSweepConfig)
     esp_map: EspMapConfig = field(default_factory=EspMapConfig)
     washout: WashoutSweepConfig = field(default_factory=WashoutSweepConfig)
-    esp: EspConfig = field(default_factory=EspConfig)
+    esp: EspConfig = field(default_factory=_esp_criteria_for_02)
     lyapunov: LyapunovConfig = field(default_factory=LyapunovConfig)
     timescale: TimescaleConfig = field(default_factory=TimescaleConfig)
 
