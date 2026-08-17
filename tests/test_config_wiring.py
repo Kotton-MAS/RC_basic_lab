@@ -52,8 +52,10 @@ from wiring import (
     CHANNEL_META,
     WiringCase,
     apply_case,
+    assert_yaml_has_all_leaves,
     case,
     leaf_paths,
+    plain,
 )
 
 from rc_basics_lab.config import (
@@ -280,15 +282,6 @@ def test_all_config_fields_are_covered() -> None:
             assert path in expected, f"未知のパスです: {path}"
 
 
-def _plain(value: object) -> object:
-    """YAML に安全に書ける値へ落とす (tuple -> list)。"""
-    if isinstance(value, tuple | list):
-        return [_plain(element) for element in value]
-    if isinstance(value, Mapping):
-        return {str(key): _plain(item) for key, item in value.items()}
-    return value
-
-
 def test_every_field_round_trips_yaml(tmp_path: Path) -> None:
     """全フィールドが YAML のキーとして実在し、読み書きで往復する.
 
@@ -297,23 +290,19 @@ def test_every_field_round_trips_yaml(tmp_path: Path) -> None:
     """
     config = base_config()
     path = tmp_path / "roundtrip.yaml"
-    dumped = cast("Mapping[str, object]", _plain(dataclasses.asdict(config)))
+    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     assert load_config(path) == config
     # 葉フィールドがすべて YAML に書き出されていること
-    written = yaml.safe_load(path.read_text(encoding="utf-8"))
-    for leaf in _leaf_paths(ExperimentConfig):
-        node: object = written
-        for part in leaf.split("."):
-            assert isinstance(node, Mapping), leaf
-            assert part in node, f"YAML に現れないフィールドです: {leaf}"
-            node = node[part]
+    assert_yaml_has_all_leaves(
+        yaml.safe_load(path.read_text(encoding="utf-8")), ExperimentConfig
+    )
 
 
 def _meta_fingerprint(config: ExperimentConfig) -> str:
     """``meta.json`` に載る設定ダンプの指紋。"""
     meta = collect_meta(config)
-    return json.dumps(_plain(meta["config"]), sort_keys=True, default=str)
+    return json.dumps(plain(meta["config"]), sort_keys=True, default=str)
 
 
 def test_experiment_config_yaml_matches_the_real_experiment() -> None:
