@@ -462,7 +462,8 @@ class StatePropagator(Protocol):
 **何をするか**
 
 - `run_washout_sweep(config)`: 実体は **`dataclasses.replace` で `washout` を差し替えて既存 `run_experiment` を呼ぶループ**。公平性 (D-04/05/08) は既存経路が担保。
-- **交絡の除去 (D-19)**: washout を増やすと `t0` が上がり `n_usable` が縮むため、`pad_series=True` のとき `length = base_length + (max(grid) - washout)` として**行数を格子全体で一定に保つ**。`pad_series=False` は交絡ありの設計を再現するモード。
+- **交絡の除去 (D-19)**: washout を増やすと `t0` が上がり `n_usable` が縮むため、`pad_series=True` のとき ~~`length = base_length + (max(grid) - washout)`~~ として**行数を格子全体で一定に保つ**。`pad_series=False` は交絡ありの設計を再現するモード。
+  → **この式は実装時に修正した。正しくは `length = base_length + (t0(washout) - t0(min(grid)))`** (下記「実装時に決めたこと」1。仕様の式は符号が逆で、かつ `t0 = max(washout, first_valid)` の飽和を無視している。**この式のまま実装すると行数は一致しない**)。
 - 対象は MG と遅延パリティの両方 (図の主役は MG、パリティは「washout に反応しない対照」)。
 - `WashoutRow`: `task`, `method`, `washout`, `replicate`, `alpha`, `n_lags`, `nrmse`, `nrmse_std`, `n_train`, `n_val`, `n_test`, `t0`, `pad_series`, `wall_time_s`。
 - `plot_washout_sensitivity`: 01 の本番値 (washout=200) に垂直線を引き、変動幅を数値注記。
@@ -473,6 +474,125 @@ class StatePropagator(Protocol):
 - [ ] **D-19 guard**: `test_washout_sweep_holds_training_size_constant` —— `pad_series=True` で行数一致、`False` で `n_train` 単調減少。
 - [ ] `test_washout_zero_is_worst_or_equal_for_mackey_glass` (**破れたら記事の主張が変わるので止まって相談**)。
 - [ ] **受け入れ条件7**: `test_all_four_figures_and_two_csv_in_one_command` + `make ci` 緑。
+
+**実装時に決めたこと (T4 実装者追記。仕様に書かれていなかった / 仕様と違えた選択)**
+
+決定は T5 で `.claude/decisions.yaml` / `docs/design.md` §9 に転記する。
+
+*仕様の式を変えた1件 (最重要。D-19 の本体)*
+
+1. **補償の式を `length = base_length + (max(grid) - washout)` から
+   `length = base_length + (t0(washout) - t0(min(grid)))` に変えた**
+   (`experiment/washout.py::variant_for`)。理由は2つあり、どちらも実測で確認した。
+   - **仕様の式は符号が逆**である。`n_usable = length - max_start_offset - t0` で
+     `t0` は washout について増加するので、行数をそろえるには washout が大きい側の
+     系列を**伸ばす**必要がある。仕様の式は逆に短くするため、補償なしより差が広がる
+     (実測: 変異注入すると行数が 348/310/230/110 と激しく割れる)。
+   - **`t0 = max(washout, first_valid)` の飽和がある**ため、washout の差分で補償しても
+     そろわない。本番格子では遅延線の最大ラグ 64 のせいで washout=0 と 50 が
+     どちらも `t0 = 64` になり、`washout - min(grid)` で補償すると washout=0 だけ
+     行数がずれる (実測: 228 対 230)。**`t0` の差分で補償すれば両方の問題が消える**。
+   基準を格子の最小値に取ったので補償は常に「伸ばす」側に働き、01 の本番設定より
+   短い系列で測ることはない (本番では length 8200 → 8200〜8936)。
+   `test_washout_sweep_holds_training_size_constant` は上記2つの誤った式を
+   **どちらも実測で落とすことを変異注入で確認済み**。
+2. **`t0` を系列生成前に知るため `readout/design.py` に `first_valid_for(spec)` を
+   追加**した (公開関数の**追加のみ**。`_validate_inputs` もこれを呼ぶ形にしたので
+   予測経路と実経路が同じ値を返すことが構造で保証される)。理由: 補償量を決めるには
+   系列を作る前に `t0` が要るが、「遅延線なら `n_lags`」を `experiment/` 側へ書き写すと
+   手法を足したときに予測と実際の `t0` が黙って食い違う。
+   guard は `test_padding_uses_the_same_t0_as_the_runner`。
+
+*`experiment/washout.py`*
+
+3. **`WashoutRow` は長形式 (1行 = 1 (課題, 手法, washout, レプリケート))** とし、
+   `nrmse_std` だけ1段粗い粒度 (**同じ (課題, 手法, washout) のレプリケート間標準偏差**)
+   を各行に載せた。理由: 仕様の宣言順は `replicate` と `nrmse_std` を両方持つ。
+   `alpha` / `n_lags` / `n_train` は明らかにレプリケート単位なので長形式が唯一の
+   読み方であり、`nrmse_std` を群の値として重複させれば全フィールドが意味を持つ。
+   図の誤差棒と「変動幅がレプリケート間のばらつきより大きいか」の判断が CSV1枚で
+   完結する副次効果もある。
+4. **`meta.json` の `n_rows` は `esp_diagnostics.csv` の行数のまま**にし、2-D の行数は
+   `washout_sensitivity.n_rows` に分けた。理由: 足し込むと「どちらの CSV の行数か」が
+   `meta.json` から読めなくなる。列の違う2枚を1つの数で代表させない。
+5. **`MethodSensitivity` に `replicate_std_max` / `spread` /
+   `exceeds_replicate_noise` を足した**。理由: 受け入れ条件5 は「比が 1.0 でない」
+   としか要求しないが、比が 1.0 でないことは「変動が測れた」以上を意味しない。
+   実測では**全 (課題, 手法) で変動幅がレプリケート間のばらつきより小さい**ので、
+   この列が無いと成果物だけを見た読者が「washout に性能が反応した」と読む。
+6. **主役は MG x ESN に固定** (`HEADLINE_TASK` / `HEADLINE_METHOD`)。掃引に主役の組が
+   無ければ `summarize_washout_sensitivity` は `ValueError`。理由: 黙って別の組で
+   代用すると `meta.json` の数値が何の変動幅なのか読めなくなる。
+7. **`nrmse_min == 0` のとき比は `nan`** (1.0 で埋めない)。理由: 1.0 は「変動が無かった」
+   と読めてしまい、「比が定義できなかった」と区別できない。
+
+*図 (`plotting/figures_esp.py::plot_washout_sensitivity`)*
+
+8. **2パネルにし、右を「01 の本番値で正規化した比」にした**。理由: 絶対値だけだと
+   MG の 7e-4 と パリティの 1.0 という**水準差**が支配的で、この図の主張である
+   1% 未満の変動が読めない。垂直線 (washout=200) と数値注記は両パネルに置く。
+9. **注記には比だけでなくレプリケート間 s.d. と判定文を書く** (決定5と同じ理由)。
+
+*テスト*
+
+10. `test_all_four_figures_and_two_csv_in_one_command` は **`ESP_ARTIFACTS` の中身を
+    数えず、出力ディレクトリを実際に走査**して数え、`set(produced) == set(ESP_ARTIFACTS)`
+    まで assert する。理由: 宣言だけを見るテストは、宣言と実体が食い違ったとき
+    (図を落として宣言を消し忘れた / その逆) に黙って通る。
+11. `test_washout_sweep_holds_training_size_constant` の**補償なし側は狭義単調減少を
+    要求しない** (決定1の `t0` 飽和のため、本番格子では washout=0 と 50 の行数が等しい)。
+    要求は「非増加」+「両端で実際に減る」+「`t0` が増えた区間では必ず減る」の3本。
+12. `test_padding_does_not_disturb_the_rows_that_are_actually_used` を追加。系列を
+    伸ばしても既存の行が1つも書き換わらないこと (補償は末尾に足すだけ) を実測する。
+    ここが崩れると「行数は同じだが中身が別物」になり、格子点間の比較が washout の
+    効果でなくなる。
+13. **配線テストの `washout.*` を `CHANNEL_PENDING` から新設の `CHANNEL_WASHOUT` へ
+    書き換え、`PENDING_SECTIONS` を空集合にした**。`CHANNEL_WASHOUT` は
+    「2-D の行の指紋が変わる」だけでなく「**2-A/2-B/2-C の行がバイト単位で変わらない**」
+    まで要求する。時限装置が pending ゼロで正しく緑になること、および1件を pending へ
+    戻すと発火することを変異注入で確認済み。
+    `WashoutSweepConfig.base` の既定は 01 の本番設定なので、配線テストとパイプライン
+    テストの縮小設定には**専用の縮小 `base` を書いた** (既定のままだと1ケースで数十秒)。
+
+*実測値 (T4 完了時。本番設定 `experiments/02_esp_and_dynamics/config.yaml`)*
+
+- **wall_time_s = 87.69 秒** (T3 の 83.26 秒 + 2-D の 4.4 秒)。予算 900 秒に対して 9.7%。
+  成果物は CSV2枚 + 図4枚 + `meta.json`、2-D は 180 行 (6 washout x 2課題 x 3手法 x 5rep)。
+- **D-19 の補償 (`pad_series=True`)**: 全格子点で
+  `(n_train, n_val, n_test) = (3968, 1190, 2778)` で一致。`t0` は
+  washout 0/50/100/200/400/800 に対し 64/64/100/200/400/800 (0 と 50 が同じなのは
+  遅延線の最大ラグ 64 による飽和)。系列長は 8200〜8936 に伸びる。
+- **受け入れ条件5 (MG x ESN、補償あり)**: NRMSE の (最大/最小) 比 = **1.00763**
+  (7.0730e-4 @ washout=400 .. 7.1269e-4 @ washout=800)。
+  変動幅 5.40e-6 に対し**レプリケート間 s.d. の最大は 9.22e-5** (17倍)。
+  → `exceeds_replicate_noise = false`。**washout に性能が反応したとは言えない**。
+- **全 (課題, 手法) の比 (補償あり)**: MG 線形 1.00012 / MG 遅延線 1.00413 /
+  MG ESN 1.00763 / パリティ 線形 1.00031 / パリティ 遅延線 1.00094 /
+  パリティ ESN 1.00452。**6組すべてで `exceeds_replicate_noise = false`**。
+- **`test_washout_zero_is_worst_or_equal_for_mackey_glass` は成立する**が余裕は薄い:
+  washout=0 → 7.0936e-4、washout=200 → 7.0772e-4 (差 **0.23%**)。同じ格子点の
+  レプリケート間 s.d. が 8.5e-5 (平均の 12%) なので、**順序は成り立つが有意ではない**。
+  記事で「washout を短くすると悪化する」と書けるだけの効果は無い。
+- **交絡ありモード (`pad_series=False`) との対比 (D-19 の証拠)**: `n_train` は
+  3968/3968/3950/3900/3800/3600 と縮み、MG x ESN の NRMSE は
+  7.0936e-4 / 7.0936e-4 / 7.0996e-4 / 7.1063e-4 / 7.1209e-4 / 7.1752e-4 と
+  **完全に単調増加**する (比 1.01151)。**補償を入れるとこの単調性は消える**
+  (最小が washout=400、最大が 800 の非単調なノイズになる)。
+  「washout を長く取りすぎると悪化する」と読めてしまう滑らかな曲線は、
+  **訓練データ量の効果だった**ことがデータで示された。
+- **予測「遅延パリティは washout に反応しない対照」の検証結果 (否定的結果)**:
+  パリティ x ESN の比 1.00452 は MG x ESN の 1.00763 より小さく**方向としては
+  予測どおり**だが、**両者とも変動幅がレプリケート間のばらつきの内側**であり、
+  「MG は反応するがパリティは反応しない」という対比は**データで支持されない**。
+  補償を入れた後は**どちらも反応しない**というのが実測である。
+  閾値や設定を動かして予測に合わせることはしていない。
+- **図**: 4枚とも 200 dpi (`conftest.png_dpi` で実測)。
+- **01 の成果物は 1 バイトも変わっていない**: `comparison.csv` (`wall_time_s` 除く) と
+  `comparison_summary.csv` が再生成前後で完全一致。
+- テスト: 365 → 383 件 (+18)、全体 17.83 秒 (増分 8.0 秒。予算 90 秒に対して 9%)。
+  うち 4.4 秒は `test_washout_zero_is_worst_or_equal_for_mackey_glass` /
+  `test_production_grid_quantifies_the_variation` が共有する本番格子の掃引
+  (記事の数値は本番格子で語るので縮小設定で代用しない)。
 
 ### T5: 記録 —— design.md / decisions.yaml / README と閾値感度 (想定所要: **M**)
 
