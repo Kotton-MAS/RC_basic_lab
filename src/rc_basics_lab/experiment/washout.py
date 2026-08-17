@@ -35,11 +35,17 @@ import time
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 
-from rc_basics_lab.config import Esp02Config, ExperimentConfig, WashoutSweepConfig
+from rc_basics_lab.config import (
+    TASK_LENGTH_FIELDS,
+    Esp02Config,
+    ExperimentConfig,
+    WashoutSweepConfig,
+)
 from rc_basics_lab.experiment.runner import (
     ESN_METHOD,
     ResultRow,
     build_methods,
+    build_tasks,
     run_experiment,
 )
 from rc_basics_lab.experiment.split import compute_t0
@@ -252,12 +258,36 @@ def predicted_t0(base: ExperimentConfig, washout: int) -> int:
     return compute_t0(_first_valids(base), washout)
 
 
+def _task_names(base: ExperimentConfig) -> tuple[str, ...]:
+    """課題の列挙点は ``build_tasks`` が唯一の真実 (``conventions.md``)。
+
+    ここで名指しの課題リストを持たないのは、``build_tasks`` に課題が増えても
+    ``variant_for`` が黙って追従しなくなる経路を作らないため (F-1-003)。
+
+    Raises:
+        ValueError: ``build_tasks`` が返す課題が
+            ``config.TASK_LENGTH_FIELDS`` に登録されていない場合。系列長の
+            補償先が無いまま実行すると D-19 の交絡除去が黙って効かなくなる。
+    """
+    names = tuple(entry.name for entry in build_tasks(base))
+    unregistered = tuple(name for name in names if name not in TASK_LENGTH_FIELDS)
+    if unregistered:
+        raise ValueError(
+            "washout 補償の対象フィールドが config.TASK_LENGTH_FIELDS に"
+            f" 登録されていない課題です: {unregistered}. build_tasks に課題を"
+            "追加したときは TASK_LENGTH_FIELDS にも登録してください"
+        )
+    return names
+
+
 def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
     """1格子点ぶんの 01 用設定を作る (**差し替えるのは washout と系列長だけ**)。
 
-    ``pad_series`` が真なら、``t0`` が増えたぶんだけ両課題の ``length`` を
-    伸ばして ``n_usable = n_steps - max_start_offset - t0`` を一定に保つ
-    (D-19)。基準は**格子の最小値**での ``t0`` なので、補償は常に「伸ばす」側に
+    ``pad_series`` が真なら、``t0`` が増えたぶんだけ全課題 (``build_tasks`` が
+    列挙するもの。D-19 の対象は ``config.TASK_LENGTH_FIELDS`` に登録された
+    フィールドの ``length``) を伸ばして
+    ``n_usable = n_steps - max_start_offset - t0`` を一定に保つ (D-19)。
+    基準は**格子の最小値**での ``t0`` なので、補償は常に「伸ばす」側に
     働き、01 の本番設定より短い系列で測ることはない。
 
     仕様 §4 T4 の式は ``length = base_length + (max(grid) - washout)`` と
@@ -271,8 +301,11 @@ def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
 
     Raises:
         ValueError: ``washout`` が格子の最小値より小さい場合 (補償が負になる)。
+        ValueError: ``build_tasks`` が返す課題が
+            ``config.TASK_LENGTH_FIELDS`` に登録されていない場合。
     """
     base = section.base
+    task_names = _task_names(base)
     baseline_t0 = predicted_t0(base, min(section.grid))
     t0 = predicted_t0(base, washout)
     if t0 < baseline_t0:
@@ -281,16 +314,16 @@ def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
             f"{t0} < {baseline_t0}"
         )
     padding = t0 - baseline_t0 if section.pad_series else 0
-    return dataclasses.replace(
-        base,
-        split=dataclasses.replace(base.split, washout=washout),
-        mackey_glass=dataclasses.replace(
-            base.mackey_glass, length=base.mackey_glass.length + padding
-        ),
-        delay_parity=dataclasses.replace(
-            base.delay_parity, length=base.delay_parity.length + padding
-        ),
-    )
+    changes: dict[str, object] = {
+        "split": dataclasses.replace(base.split, washout=washout)
+    }
+    for name in task_names:
+        field_name = TASK_LENGTH_FIELDS[name]
+        task_config = getattr(base, field_name)
+        changes[field_name] = dataclasses.replace(
+            task_config, length=task_config.length + padding
+        )
+    return dataclasses.replace(base, **changes)
 
 
 def _validate_grid(grid: Sequence[int]) -> None:
