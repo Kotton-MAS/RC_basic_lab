@@ -54,3 +54,8 @@
   rule: "実験設定 YAML の未知キーは ConfigError で即座に失敗させる (寛容な読み飛ばしをしない)"
   rationale: "本サイクルで十数個のパラメータを新設するため、キーのタイプミスが黙って無視されると『設定したのに効いていない』が発生し、実験結果が丸ごと無意味になる。この失敗は LLM レビューでは確率的にしか見つからない"
   guard_test: "tests/test_config.py::test_unknown_key_raises"
+
+- id: D-10
+  rule: "日本語フォント対応に新規依存 (japanize-matplotlib 等) を追加せず、実行時に CJK フォント (Hiragino Sans / Noto Sans CJK JP / IPAexGothic / Yu Gothic) を matplotlib.font_manager から探索し、見つからない場合はフォント設定ではなく**ラベル文字列ごと**英語にフォールバックする"
+  rationale: "要件_01 制約『依存は最小構成を維持』と『図は日本語フォント対応』の両立。フォント設定だけをフォールバックすると CI 上で豆腐文字の図が『正常に』生成され、生成の成否では検出できない壊れ方をする。記事用の図はローカル (CJK あり) で生成し、CI は生成の成否のみ検証する"
+  guard_test: "tests/test_plotting_style.py::test_labels_fall_back_to_english_without_cjk_font"

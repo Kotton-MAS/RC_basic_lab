@@ -1,5 +1,6 @@
 {
-  "commit": "ef6c88ff5228c9318ac52fc622f06e5d0f817297",
+  "cjk_font": "Hiragino Sans",
+  "commit": "6ad61e20cfd8e7c2f897713171ebd0af999beb23",
   "config": {
     "delay_parity": {
       "delay": 1,
@@ -86,6 +87,60 @@
     "split": 2,
     "task": 1
   },
-  "timestamp_utc": "2026-08-17T02:02:54.153700+00:00",
-  "wall_time_s": 0.7438555000117049
+  "state_space": [
+    {
+      "n_lags": 16,
+      "n_rows": 7800,
+      "replicate": 0,
+      "spaces": [
+        {
+          "n_components_95": 1,
+          "n_features": 1,
+          "participation_ratio": 1.0,
+          "space": "raw_input"
+        },
+        {
+          "n_components_95": 2,
+          "n_features": 17,
+          "participation_ratio": 1.867744561411968,
+          "space": "delay_embedded_input"
+        },
+        {
+          "n_components_95": 2,
+          "n_features": 200,
+          "participation_ratio": 1.3873087060755067,
+          "space": "reservoir_state"
+        }
+      ],
+      "task": "mackey_glass"
+    },
+    {
+      "n_lags": 16,
+      "n_rows": 7800,
+      "replicate": 0,
+      "spaces": [
+        {
+          "n_components_95": 1,
+          "n_features": 1,
+          "participation_ratio": 1.0,
+          "space": "raw_input"
+        },
+        {
+          "n_components_95": 17,
+          "n_features": 17,
+          "participation_ratio": 16.95368495407245,
+          "space": "delay_embedded_input"
+        },
+        {
+          "n_components_95": 4,
+          "n_features": 200,
+          "participation_ratio": 2.106514862497272,
+          "space": "reservoir_state"
+        }
+      ],
+      "task": "delay_parity"
+    }
+  ],
+  "timestamp_utc": "2026-08-17T02:22:49.311843+00:00",
+  "wall_time_s": 0.948629708000226
 }
