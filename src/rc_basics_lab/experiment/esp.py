@@ -73,9 +73,9 @@ BOUNDARY_LAMBDA = 0.01
 STRONG_DRIVE_SIGMA = 0.5
 """この強度以上の駆動では λ の符号と ESP 判定が完全に一致する (D-20 予定)。
 
-実測 (本番格子 336 条件): ``sigma_u >= 0.5`` の 140 条件で不一致 0 件。
-不一致 25 件はすべて ``sigma_u <= 0.2`` かつ ``rho in [1.1, 1.6]`` に限局し、
-向きも「λ<0 なのに非収束」の一方向だけである。
+実測 (本番格子 369 行のうち境界近傍を除く 332 件): ``sigma_u >= 0.5`` の
+158 条件で不一致 0 件。不一致 27 件はすべて ``sigma_u <= 0.2`` かつ
+``rho in [1.1, 1.6]`` に限局し、向きも「λ<0 なのに非収束」の一方向だけである。
 """
 
 _N_INPUTS = 1
@@ -322,39 +322,20 @@ def evaluate_condition(
     drive_config = config.drive
     reservoir_config = config.reservoir
 
-    drive_rng = make_rng_for(
-        esp_stream_seed(config.seeds, SeedStream.TASK), SeedStream.TASK, replicate
+    trajectories = simulate_condition(
+        config, rho=rho, leak_rate=leak_rate, sigma_u=sigma_u, replicate=replicate
     )
-    u = make_drive(
-        sigma_u,
-        drive_config.n_steps,
-        drive_rng,
-        distribution=drive_config.distribution,
-    )
-    reservoir_rng = make_rng_for(
-        esp_stream_seed(config.seeds, SeedStream.RESERVOIR),
-        SeedStream.RESERVOIR,
-        replicate,
-    )
-    esn = ESN(
-        build_esn_config(config, rho, leak_rate), reservoir_rng, n_inputs=_N_INPUTS
-    )
-    probe_rng = make_rng_for(
-        esp_stream_seed(config.seeds, SeedStream.PROBE), SeedStream.PROBE, replicate
-    )
-    initial_states = make_initial_states(
-        reservoir_config.n_units, drive_config.n_pairs, probe_rng
-    )
-    states = esn.run(u, x0=initial_states[0])
-    companions = tuple(esn.run(u, x0=x0) for x0 in initial_states[1:])
+    u = trajectories.drive
+    states = trajectories.states
 
     # ESP の距離当てはめは過渡そのものが測定対象なので washout を 0 にする。
     # λ と自己相関は過渡を捨てたいので drive.washout を使う (両者は別の要求)。
     distance_ctx = DiagnosticContext(
-        washout=ESP_DISTANCE_WASHOUT, companion_states=companions
+        washout=ESP_DISTANCE_WASHOUT, companion_states=trajectories.companions
     )
     dynamics_ctx = DiagnosticContext(
-        washout=drive_config.washout, propagator=esn_propagator(esn, u)
+        washout=drive_config.washout,
+        propagator=esn_propagator(trajectories.esn, u),
     )
     esp = esp_convergence(states, ctx=distance_ctx, cfg=config.esp)
     lyapunov = conditional_lyapunov(states, ctx=dynamics_ctx, cfg=config.lyapunov)
@@ -518,7 +499,7 @@ class VerdictAgreement:
     (= ESP 不成立)。したがって
 
     - ``λ > 0`` なのに収束 (**偽の ESP**) は起きてはならない (実測 0 件)
-    - ``λ < 0`` なのに非収束は起きうる (実測 25 件。すべて弱駆動・臨界超え)
+    - ``λ < 0`` なのに非収束は起きうる (実測 27 件。すべて弱駆動・臨界超え)
 
     どこで起きたかを追えるように sigma_u と rho の分布まで残す。
     """
@@ -647,6 +628,7 @@ __all__ = [
     "ConditionOutcome",
     "EspResults",
     "EspRow",
+    "Trajectories",
     "VerdictAgreement",
     "build_esn_config",
     "esn_propagator",
@@ -658,5 +640,6 @@ __all__ = [
     "run_esp_experiment",
     "run_esp_map",
     "run_timescale_sweep",
+    "simulate_condition",
     "summarize_verdict_agreement",
 ]
