@@ -150,10 +150,12 @@ def test_mc_profile_lengthens_with_spectral_radius() -> None:
 # --------------------------------------------------------------------------
 
 
-def _basis_gram(values: FloatArray, distribution: str, basis: str) -> FloatArray:
+def _basis_gram(
+    values: FloatArray, distribution: str, basis: str, max_degree: int
+) -> FloatArray:
     columns = [
         orthonormal_basis(values, degree, distribution, basis=basis)
-        for degree in range(5)
+        for degree in range(max_degree + 1)
     ]
     matrix: FloatArray = np.column_stack(columns)
     gram: FloatArray = matrix.T @ matrix / float(matrix.shape[0])
@@ -166,20 +168,55 @@ def test_basis_is_orthonormal_under_declared_input_distribution() -> None:
     直交していない基底で目標を作ると容量が目標間で二重計上され、保存則が
     「N をわずかに超える」という穏やかな形で破れる —— 図では正常に見えるので
     ここで数値として固定する。
+
+    次数の上限を分布で変えているのは、基底の性質ではなく**推定のばらつき**の
+    問題である。IPC が実際に使う組 (uniform x legendre) は次数4まで T=200000 で
+    許容差 0.02 に収まる (実測: 3 シードで 0.005 / 0.005 / 0.013)。一方
+    normal x hermite は ``He_n`` の2乗が重い裾を持つため ``E[psi_n^2]`` の標本
+    誤差そのものが大きく、次数4では T=200000 で 0.03〜0.18、T=2000000 でも
+    0.012〜0.021 と、T とともに縮みはするが 0.02 には収まらない。基底の定義
+    そのもの (バイアス) は
+    ``test_polynomial_family_is_exactly_orthonormal_under_quadrature`` が
+    求積法で次数4まで誤差 1e-10 以下で固定しており、そちらには標本誤差が無い。
     """
     n_steps = 200_000
     rng = np.random.default_rng(4649)
     tolerance = 0.02
-    identity: FloatArray = np.eye(5)
 
     half_width = np.sqrt(3.0) * 1.7  # sigma_u = 1.7 の一様分布 (D-17)
     uniform_input: FloatArray = rng.uniform(-half_width, half_width, size=n_steps)
-    uniform_gram = _basis_gram(uniform_input, UNIFORM, LEGENDRE)
-    assert np.max(np.abs(uniform_gram - identity)) < tolerance, uniform_gram
+    uniform_gram = _basis_gram(uniform_input, UNIFORM, LEGENDRE, 4)
+    assert np.max(np.abs(uniform_gram - np.eye(5))) < tolerance, uniform_gram
 
     normal_input: FloatArray = rng.normal(0.0, 0.4, size=n_steps)
-    normal_gram = _basis_gram(normal_input, NORMAL, HERMITE)
-    assert np.max(np.abs(normal_gram - identity)) < tolerance, normal_gram
+    normal_gram = _basis_gram(normal_input, NORMAL, HERMITE, 2)
+    assert np.max(np.abs(normal_gram - np.eye(3))) < tolerance, normal_gram
+
+
+def test_polynomial_family_is_exactly_orthonormal_under_quadrature() -> None:
+    """基底の定義そのものを求積法で厳密に固定する (D-28、標本誤差ゼロ)。
+
+    上のモンテカルロ検査は「実測の平均・標準偏差で正規化する経路」まで含めて
+    見る代わりに標本誤差を抱える。ここでは Gauss-Legendre / Gauss-Hermite
+    求積で内積を厳密に評価し、次数4まで ``<psi_i, psi_j> = delta_ij`` を
+    1e-10 で固定する。係数 (``sqrt(2n+1)`` / ``1/sqrt(n!)``) を1つ落とすと
+    ここが落ちる。
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(24)
+    legendre_matrix: FloatArray = np.column_stack(
+        [capacity_module._legendre_normalized(nodes, degree) for degree in range(5)]
+    )
+    legendre_gram = (legendre_matrix * weights[:, None]).T @ legendre_matrix / 2.0
+    np.testing.assert_allclose(legendre_gram, np.eye(5), rtol=0.0, atol=1.0e-10)
+
+    nodes, weights = np.polynomial.hermite_e.hermegauss(24)
+    hermite_matrix: FloatArray = np.column_stack(
+        [capacity_module._hermite_normalized(nodes, degree) for degree in range(5)]
+    )
+    hermite_gram = (hermite_matrix * weights[:, None]).T @ hermite_matrix / np.sqrt(
+        2.0 * np.pi
+    )
+    np.testing.assert_allclose(hermite_gram, np.eye(5), rtol=0.0, atol=1.0e-10)
 
 
 def test_mismatched_distribution_and_basis_raises() -> None:
