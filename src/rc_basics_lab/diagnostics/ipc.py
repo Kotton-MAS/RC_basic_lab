@@ -45,6 +45,7 @@ from rc_basics_lab.diagnostics._capacity import (
     SUPPORTED_BASIS_PAIRS,
     UNIFORM,
     CapacityProblem,
+    bounded_chunk_size,
     capacity_of_chunks,
     chi2_threshold,
     input_series,
@@ -374,6 +375,9 @@ def _degree_thresholds(
         raise ValueError("threshold_mode='surrogate' には ctx.seed が必要です (D-27)")
     rng = np.random.default_rng(seed)
     n_samples = problem.n_samples
+    # F-03-1-012 の BLOCKER 完了条件 (T=1e6 で peak RSS < 4GB) のため、実際に
+    # 使うチャンク列数を T_eff に応じて下げる (結果は変わらない、D-26)。
+    chunk_size = bounded_chunk_size(cfg.chunk_size, n_samples)
     thresholds: list[float] = []
     for start, end in bounds:
         if end <= start:
@@ -389,7 +393,7 @@ def _degree_thresholds(
             cfg.alpha,
             n_surrogates=cfg.n_surrogates,
             quantile=cfg.surrogate_quantile,
-            chunk_size=cfg.chunk_size,
+            chunk_size=chunk_size,
             rng=rng,
         )
         thresholds.append(threshold)
@@ -556,9 +560,12 @@ def ipc(
         problem, psi_table, specs, bounds, cfg, seed=context.seed
     )
 
+    # F-03-1-012/013 の BLOCKER 完了条件 (T=1e6 で peak RSS < 4GB) のため、
+    # 実際に使うチャンク列数を T_eff に応じて下げる (結果は変わらない、D-26)。
+    chunk_size = bounded_chunk_size(cfg.chunk_size, n_samples)
     capacities = capacity_of_chunks(
         problem,
-        _iter_target_chunks(problem, psi_table, specs, chunk_size=cfg.chunk_size),
+        _iter_target_chunks(problem, psi_table, specs, chunk_size=chunk_size),
         cfg.alpha,
     )
     threshold_per_target: FloatArray = np.asarray(
