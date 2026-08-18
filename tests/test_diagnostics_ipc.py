@@ -661,6 +661,35 @@ def test_target_enumeration_raises_instead_of_truncating() -> None:
     assert len(enumerate_targets(exact)) == 601
 
 
+def test_max_targets_also_bounds_the_heatmap_cell_count() -> None:
+    """``max_targets`` は目標数だけでなく ``ipc_heatmap`` の確保サイズも縛る (F-03-1-016)。
+
+    目標数と heatmap 面積 (``n_degrees x max(max_delay_by_degree)``) は独立に
+    増やせる: 次数を大量に・遅延を浅く取ると目標数は少ないまま heatmap セル数
+    だけが大きくなる (CWE-789)。目標数の検査だけを通過してから巨大な
+    ``np.zeros`` を確保する経路が残っていないことを確認する。
+    """
+    # count_targets はここでは少ないが (max_variables=1 なので次数ごとに
+    # max_delay 本)、heatmap は 1000 x 500 = 500,000 セルになる。
+    cfg = IpcConfig(
+        max_delay_by_degree=(500,) + (1,) * 999,
+        max_variables=1,
+        max_targets=200_000,
+    )
+    assert count_targets(cfg) < cfg.max_targets
+    heatmap_cells = len(cfg.max_delay_by_degree) * max(cfg.max_delay_by_degree)
+    assert heatmap_cells > cfg.max_targets
+
+    states, inputs = _cached_states(0.9, 5, 600, 5)
+    with pytest.raises(ValueError, match="max_targets"):
+        ipc(
+            states,
+            inputs,
+            ctx=DiagnosticContext(washout=10, seed=CTX_SEED),
+            cfg=cfg,
+        )
+
+
 def test_heatmap_aggregates_targets_at_their_deepest_delay() -> None:
     """各目標は ``(次数 d, max(k_i))`` のセルに集約される (仕様 §4 T2-3)。
 
