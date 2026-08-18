@@ -590,3 +590,77 @@ def test_exact_limit_condition_runs_to_completion(
             base_config(),
             dataclasses.replace(exact, n_steps=exact.n_steps + 1),
         )
+
+
+def tiny_01_config() -> ExperimentConfig:
+    """01 側の最小構成 (3-C が使う ``run_task`` / ``plan_replicate`` の入口)。
+
+    ``mackey_glass`` を使うのは入力が1系列 (``u.shape == (T, 1)``) で、
+    3b-2 の T4 が足す NARMA10 と同じ形だからである。
+    """
+    return ExperimentConfig(
+        n_replicates=1,
+        seeds=SeedConfig(reservoir=0, task=1, split=2),
+        split=SplitConfig(washout=50, max_start_offset=10),
+        ridge=RidgeConfig(alpha_grid=(1e-2,), n_lags_grid=(1,)),
+        mackey_glass=MackeyGlassConfig(length=1200),
+        esn_mackey_glass=ESNConfig(n_units=20, leak_rate=1.0, input_scale=1.0),
+    )
+
+
+def test_externally_built_states_can_produce_a_capacity_row() -> None:
+    """**外部で作った ``X``** から ``CapacityRow`` が作れる (F-3b1-1-004)。
+
+    3b-2 の T4 (実験 3-C) の予行演習である。3-C の状態は 01 の
+    ``plan_replicate`` が作るので ``CapacityCondition``
+    (rho / leak_rate / sigma_u / n_steps を持つ) では表現できず、
+    ``evaluate_capacity_condition`` には載せられない。それでも
+    ``measure_capacity`` → ``capacity_row_from`` の2段を直接呼べば、
+    ``CapacityRow`` の約35フィールドを1つも複製せずに同じ行が作れる ——
+    それをここで実測する。壊れると T4 が行の組み立てを複製するしかなくなり、
+    「CSV の列順の単一の真実 = 行 dataclass の宣言順」が実質的に破れる。
+    """
+    config_01 = tiny_01_config()
+    entry = next(e for e in build_tasks(config_01) if e.name == "mackey_glass")
+    plan = plan_replicate(config_01, entry, replicate=0)
+    states = plan.states
+    u = plan.task.u[:, 0]
+    assert states.flags.writeable is True, "01 側の X は書き込み可能なまま届く"
+
+    config = base_config()
+    ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
+    measurement = measure_capacity(
+        states, u, ctx=ctx, cfg_holder := None or config.mc, ipc_cfg=config.ipc
+    )
+    row = capacity_row_from(
+        measurement,
+        experiment="3C_narma10",
+        replicate=0,
+        seed_reservoir=config_01.seeds.reservoir,
+        seed_drive=config_01.seeds.task,
+        seed_surrogate=config.seeds.surrogate,
+        rho=float("nan"),
+        leak_rate=entry.esn.leak_rate,
+        input_scale=entry.esn.input_scale,
+        sigma_u=float("nan"),
+        n_units=entry.esn.n_units,
+        density=entry.esn.density,
+        state_noise=entry.esn.state_noise,
+        n_steps=int(states.shape[0]),
+        washout=config.drive.washout,
+        wall_time_state_s=0.0,
+        wall_time_s=0.0,
+    )
+
+    assert row.experiment == "3C_narma10"
+    assert row.n_units == entry.esn.n_units
+    assert row.n_steps == states.shape[0]
+    assert row.n_degrees == len(config.ipc.max_delay_by_degree)
+    assert row.mc_total > 0.0
+    assert row.input_drive_std == pytest.approx(float(np.std(u)))
+    # 列の集合は掃引経路の行と完全に一致する (行を複製していない証拠)
+    assert dataclasses.asdict(row).keys() == dataclasses.asdict(
+        evaluate_capacity_condition(config, condition()).row
+    ).keys()
+    # D-35 は外部生成の X にも効く (measure_capacity が塞ぐ)
+    assert states.flags.writeable is False
