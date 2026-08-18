@@ -262,11 +262,19 @@ class ReferenceTrajectory:
     (MC/IPC) の読み出し回帰には参照軌道1本があれば足りる。比較軌道を作らない
     ぶん ``simulate_condition`` の ``n_pairs + 1`` 倍の計算 (本番 n_pairs=10 で
     11 倍) を避けられる。
+
+    ``rng`` は重み生成に使った ``Generator`` そのもの (状態ノイズと同じ
+    ストリームの続き)。D-36 の『``ESN.run`` には常に ``rng`` を渡す』を
+    ``simulate_condition`` の比較軌道ループでも満たすために外へ出す
+    (F-3b1-1-001)。``ReferenceTrajectory`` がこれを持たないと、比較軌道側は
+    続きのストリームを受け取る手段が無く『常に』が2箇所のうち1箇所でしか
+    成立しないリーキーな抽象化になる。
     """
 
     esn: ESN
     drive: FloatArray
     states: FloatArray
+    rng: np.random.Generator
 
 
 def simulate_reference_trajectory(
@@ -331,9 +339,11 @@ def simulate_reference_trajectory(
     # ストリームの続き。01 の ``runner.plan_replicate`` と同じ形)。**常に**
     # 渡すのは、rng を省く分岐が残っていると state_noise > 0 を設定した瞬間に
     # ``ESN.run`` が ValueError になる配線漏れが復活するため (D-36)。
-    # state_noise=0 では1個も引かれないので既存の結果は変わらない。
+    # state_noise=0 では1個も引かれないので既存の結果は変わらない。``rng`` を
+    # ``ReferenceTrajectory`` にも載せて返すのは、``simulate_condition`` の
+    # 比較軌道ループが同じ規律に従えるようにするため (F-3b1-1-001)。
     return ReferenceTrajectory(
-        esn=esn, drive=u, states=esn.run(u, x0=x0, rng=reservoir_rng)
+        esn=esn, drive=u, states=esn.run(u, x0=x0, rng=reservoir_rng), rng=reservoir_rng
     )
 
 
@@ -392,7 +402,8 @@ def simulate_condition(
         drive=reference.drive,
         states=reference.states,
         companions=tuple(
-            reference.esn.run(reference.drive, x0=x0) for x0 in initial_states[1:]
+            reference.esn.run(reference.drive, x0=x0, rng=reference.rng)
+            for x0 in initial_states[1:]
         ),
     )
 
