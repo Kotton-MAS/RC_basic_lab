@@ -283,9 +283,7 @@ def _texts(figure: Figure) -> list[str]:
 
 
 def _has_cjk(value: str) -> bool:
-    return any(
-        low <= ord(char) <= high for char in value for low, high in _CJK_RANGES
-    )
+    return any(low <= ord(char) <= high for char in value for low, high in _CJK_RANGES)
 
 
 def _no_fonts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -328,7 +326,7 @@ def test_conservation_figure_draws_the_bound_line(
     ]
     assert len(matched) == 1, (
         "y=N の参照線が見つかりません: "
-        f"{[list(line.get_xdata()) for line in axis.get_lines()]}"
+        f"{[np.asarray(line.get_xdata()).tolist() for line in axis.get_lines()]}"
     )
     # 傾き1 (対角線) であること。水平線に退化していたら受け入れ条件2 を示せない。
     assert expected_y[1] - expected_y[0] == pytest.approx(expected_x[1] - expected_x[0])
@@ -521,9 +519,7 @@ def test_profile_grids_fill_missing_cells_with_zero_and_average_over_replicates(
     半分になることで分母を固定する。
     """
     rows = mc_sweep_rows(rhos=(0.9,), leaks=(1.0,), replicates=(0, 1))
-    only_first = tuple(
-        row for row in mc_sweep_profile(rows) if row.replicate == 0
-    )
+    only_first = tuple(row for row in mc_sweep_profile(rows) if row.replicate == 0)
     means = mc_profile_means(rows, only_first, 1.0)
     assert set(means) == {0.9}
     profile = means[0.9]
@@ -549,9 +545,7 @@ def test_profile_rows_of_other_experiments_are_ignored() -> None:
     rows = mc_sweep_rows(rhos=(0.9,), leaks=(1.0,), replicates=(0,))
     intruder = ipc_sweep_rows(rhos=(0.9,), leaks=(1.0,), replicates=(0,))
     mixed = mc_sweep_profile(rows) + tuple(
-        _profile(
-            row, diagnostic=DIAGNOSTIC_MC, degree=1, delay=1, capacity=100.0
-        )
+        _profile(row, diagnostic=DIAGNOSTIC_MC, degree=1, delay=1, capacity=100.0)
         for row in intruder
     )
     profile = mc_profile_means(rows, mixed, 1.0)[0.9]

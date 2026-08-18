@@ -237,7 +237,11 @@ def _plot_mc_total_panel(
     for index, leak in enumerate(leaks):
         stats = [
             _mean_std(
-                [row.mc_total for row in rows if row.rho == rho and row.leak_rate == leak]
+                [
+                    row.mc_total
+                    for row in rows
+                    if row.rho == rho and row.leak_rate == leak
+                ]
             )
             for rho in rhos
         ]
@@ -268,9 +272,7 @@ def _plot_mc_total_panel(
         )
     )
     axis.set_title(
-        style.label(
-            "線形メモリ容量と上限 N", "Linear memory capacity and the bound N"
-        ),
+        style.label("線形メモリ容量と上限 N", "Linear memory capacity and the bound N"),
         fontsize=10,
     )
     axis.legend(loc="lower right", fontsize=8, ncols=2)
@@ -547,9 +549,7 @@ def plot_memory_nonlinearity(
         figure = _new_figure(4.0 * len(leaks) + 1.0, 4.4)
         axes = figure.subplots(1, len(leaks), squeeze=False, sharey=True)
         for index, leak in enumerate(leaks):
-            _plot_stack_panel(
-                axes[0][index], rows, leak, style, show_ylabel=index == 0
-            )
+            _plot_stack_panel(axes[0][index], rows, leak, style, show_ylabel=index == 0)
         first = rows[0]
         figure.suptitle(
             style.label(

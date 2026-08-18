@@ -37,6 +37,13 @@ from rc_basics_lab.experiment.capacity import (
     run_length_sweep,
 )
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.plotting.figures_capacity import (
+    plot_ipc_conservation,
+    plot_ipc_profile,
+    plot_mc_sweep,
+    plot_memory_nonlinearity,
+)
+from rc_basics_lab.plotting.style import setup_style
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +68,8 @@ CAPACITY_ARTIFACTS: tuple[str, ...] = (
 
 並びは 02 の ``ESP_ARTIFACTS`` と同じく「CSV -> 図 -> meta.json」で、
 ``run_and_report_capacity`` が返す ``paths`` の順序と一致する。宣言と実体が
-食い違ったら落ちるテスト (``test_artifacts_are_regenerated_in_one_command_within_the_budget``)
+食い違ったら落ちるテスト
+(``test_artifacts_are_regenerated_in_one_command_within_the_budget``)
 がこの並びを見る。
 
 ``capacity_length.csv`` (系列長 T の掃引) は**この並びに入れない**。記事に
