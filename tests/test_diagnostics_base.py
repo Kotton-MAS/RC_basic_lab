@@ -628,13 +628,20 @@ def test_diagnostics_package_does_not_transitively_import_reservoir_or_config() 
     禁止する。``readout`` は ``metrics`` / ``types`` しか import しないので
     移植性の前提は保たれる。
     """
+    # F-03-1-017 (INFO, security): 実行するソース文字列に値を織り込むのを
+    # やめ、子プロセスの引数 (sys.argv) 経由で渡す。現状 (禁止対象がモジュール
+    # 定数のみ・shell=True 無し) では文字列置換でも注入は成立しなかったが、
+    # 将来この値を環境変数 / CLI 引数 / conftest フィクスチャから受け取る
+    # 変更が入った瞬間に任意コード実行へ変わりうる経路だった。sys.argv 経由
+    # にすればプローブのソースは完全な定数になり、値の出どころに関わらず
+    # 注入経路にならない。
     probe = textwrap.dedent("""
         import importlib
         import json
         import pkgutil
         import sys
 
-        FORBIDDEN = __FORBIDDEN__
+        FORBIDDEN = json.loads(sys.argv[1])
 
         pkg = importlib.import_module("rc_basics_lab.diagnostics")
         for info in pkgutil.iter_modules(pkg.__path__):
@@ -646,9 +653,9 @@ def test_diagnostics_package_does_not_transitively_import_reservoir_or_config() 
             if any(name == f or name.startswith(f + ".") for f in FORBIDDEN)
         )
         print("LEAKED=" + json.dumps(leaked))
-        """).replace("__FORBIDDEN__", json.dumps(list(FORBIDDEN_TRANSITIVE_MODULES)))
+        """)
     completed = subprocess.run(
-        [sys.executable, "-c", probe],
+        [sys.executable, "-c", probe, json.dumps(list(FORBIDDEN_TRANSITIVE_MODULES))],
         capture_output=True,
         text=True,
         check=True,
