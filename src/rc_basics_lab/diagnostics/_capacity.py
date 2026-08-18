@@ -44,6 +44,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.stats import chi2
 
 from rc_basics_lab.readout.ridge import fit_ridge_from_gram
 from rc_basics_lab.types import FloatArray
@@ -355,6 +356,36 @@ def orthonormal_basis(
     return _hermite_normalized(standardized, degree)
 
 
+def input_series(u: FloatArray | None, *, diagnostic: str) -> FloatArray:
+    """``u`` を1次元の入力系列にして返す。無い / 多変数なら ``ValueError``。
+
+    MC と IPC はどちらも「単一変数の駆動信号から遅延目標を作る」という同じ
+    入力検証をほぼ同一に複製していた (F-03-1-020: docstring・分岐構造が
+    完全一致で、差分は診断名のみ)。共有カーネルが謳う「他は寄せる」方針
+    そのものに反していたため、ここへ1本にまとめる。
+
+    Args:
+        u: 入力系列 ``(T, 1)``、または ``None``。
+        diagnostic: エラーメッセージに出す診断名 (``"memory_capacity"`` /
+            ``"ipc"``)。
+
+    Raises:
+        ValueError: ``u`` が無い / 1変数でない / 非有限値を含む場合。
+    """
+    if u is None:
+        raise ValueError(
+            f"{diagnostic} は入力系列 u が必須です (遅延・多項式目標を作れません)"
+        )
+    series = np.asarray(u, dtype=np.float64)
+    if series.ndim != 2 or series.shape[1] != 1:
+        raise ValueError(
+            f"{diagnostic} は1変数入力のみ対応です: u.shape={series.shape}"
+        )
+    if not np.all(np.isfinite(series)):
+        raise ValueError("u に有限でない値があります")
+    return series[:, 0]
+
+
 def _iter_surrogate_chunks(
     base: FloatArray,
     n_surrogates: int,
@@ -484,6 +515,7 @@ __all__ = [
     "capacity_of_chunks",
     "capacity_of_targets",
     "chi2_threshold",
+    "input_series",
     "orthonormal_basis",
     "surrogate_threshold",
 ]
