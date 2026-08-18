@@ -100,6 +100,28 @@ def _minimal_input_memory_capacity(states: FloatArray) -> _MinimalInput:
     return long_states, inputs, None, DiagnosticContext(seed=20240303)
 
 
+def _minimal_input_ipc(states: FloatArray) -> _MinimalInput:
+    """``ipc`` は ``u`` と (既定の閾値法のため) ``ctx.seed`` が必須。
+
+    ``_minimal_input_memory_capacity`` と同じ理由でここも状態を作り直す。
+    IPC の既定 ``max_delay_by_degree`` の最大は 60 で、D-24 により
+    ``t0 = max(washout, 60)`` が基準点になるため ``_external_states()``
+    (T=300) でも動きはするが、既定設定の目標数 601 に対して標本が 240 行
+    しかなく、容量が有限標本のかさ上げで N を超える状態で「完走した」ことに
+    なる。契約テストの被験体としては通るが、後から読んだ人が
+    「IPC は保存則を破る」と誤読しうるので、素直に長い系列を渡す。
+    ``cfg`` を小さくして逃げないのは MC と同じ理由 (契約テストは
+    ``func(X, u, y, ctx=ctx)`` としか呼ばないので、既定値で完走できることを
+    確かめる方が guard として強い)。状態は ESN を通さない外部生成のまま
+    (受け入れ条件6)。
+    """
+    rng = np.random.default_rng(20240304)
+    n_steps = 2000
+    long_states: FloatArray = rng.standard_normal((n_steps, states.shape[1]))
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, size=(n_steps, 1))
+    return long_states, inputs, None, DiagnosticContext(seed=20240304)
+
+
 MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.dummy.state_mean_norm": _minimal_input_no_extras,
     "rc_basics_lab.diagnostics.state_space.state_pca": _minimal_input_no_extras,
@@ -113,6 +135,7 @@ MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.memory_capacity.memory_capacity": (
         _minimal_input_memory_capacity
     ),
+    "rc_basics_lab.diagnostics.ipc.ipc": _minimal_input_ipc,
 }
 """診断 qualname -> 「その診断が最後まで走れる最小限の入力」を返すファクトリ。
 
@@ -214,8 +237,9 @@ KNOWN_DIAGNOSTICS = (
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov",
     "rc_basics_lab.diagnostics.timescale.autocorrelation_time",
     "rc_basics_lab.diagnostics.memory_capacity.memory_capacity",
+    "rc_basics_lab.diagnostics.ipc.ipc",
 )
-"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の1本)。
+"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の2本)。
 
 件数まで固定するのは、列挙条件を壊して件数が減っても
 ``test_all_diagnostics_conform_to_d01_signature_contract`` が緑のまま通る
@@ -229,7 +253,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
     列挙条件 (戻り値アノテーションが DiagnosticResult の public callable) を
     間違えて0件になると、下の契約テストは何も検査せずに緑になってしまう。
     サイクル2 で ``esp`` / ``timescale`` の3本が加わって 2 から 5 に、
-    サイクル3a で ``memory_capacity`` が加わって 6 になった。
+    サイクル3a で ``memory_capacity`` と ``ipc`` が加わって 7 になった。
     """
     names = {qualname for qualname, _ in _iter_diagnostic_callables()}
     assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
@@ -238,7 +262,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
         f"(不足={sorted(set(KNOWN_DIAGNOSTICS) - names)}, "
         f"余剰={sorted(names - set(KNOWN_DIAGNOSTICS))})"
     )
-    assert len(names) == 6
+    assert len(names) == 7
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
