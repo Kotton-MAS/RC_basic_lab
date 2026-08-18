@@ -604,7 +604,8 @@ def tiny_01_config() -> ExperimentConfig:
     """01 側の最小構成 (3-C が使う ``run_task`` / ``plan_replicate`` の入口)。
 
     ``mackey_glass`` を使うのは入力が1系列 (``u.shape == (T, 1)``) で、
-    3b-2 の T4 が足す NARMA10 と同じ形だからである。
+    3b-2 の T4 が足す NARMA10 と同じ形だからである (診断層は ``u`` を
+    ``(T, D)`` の2次元で受け取る)。
     """
     return ExperimentConfig(
         n_replicates=1,
@@ -632,7 +633,7 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     entry = next(e for e in build_tasks(config_01) if e.name == "mackey_glass")
     plan = plan_replicate(config_01, entry, replicate=0)
     states = plan.states
-    u = plan.task.u[:, 0]
+    u = plan.task.u
     assert states.flags.writeable is True, "01 側の X は書き込み可能なまま届く"
 
     config = base_config()
