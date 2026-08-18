@@ -19,7 +19,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+import warnings
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -376,7 +377,12 @@ def test_figures_use_the_style_context_labels(
     _with_cjk_font(monkeypatch)
     japanese = setup_style()
     assert japanese.cjk_available is True
-    _draw_all(tmp_path / "ja", japanese)
+    with warnings.catch_warnings():
+        # 差し替えたフォント名は実在しないので、日本語の字形が見つからない
+        # という警告が savefig のたびに出る。ここで測るのは**ラベル文字列**
+        # であって字形ではない (字形が在る環境で描くのは記事用の生成時)。
+        warnings.simplefilter("ignore", UserWarning)
+        _draw_all(tmp_path / "ja", japanese)
     assert len(captured) == 4
     for figure in captured:
         assert any(_has_cjk(value) for value in _texts(figure))
@@ -569,7 +575,3 @@ def test_representative_leak_rate_picks_the_largest_total() -> None:
     assert figures_capacity.representative_leak_rate(tied, "mc_total") == 0.3
     with pytest.raises(ValueError, match="rows"):
         figures_capacity.representative_leak_rate((), "mc_total")
-
-
-def _unused() -> Iterator[None]:  # pragma: no cover - 型 import の保持用
-    yield None
