@@ -113,7 +113,7 @@ def narma10_series(u: FloatArray) -> FloatArray:
 
 
 def generate_narma10(cfg: Narma10Config, rng: np.random.Generator) -> TaskData:
-    """``u ~ U[0, 0.5]`` を引いて NARMA10 の入出力系列を作る。返す行数は ``cfg.length``。
+    """``u ~ U[0, 0.5]`` を引いて入出力系列を作る。返す行数は ``cfg.length``。
 
     Args:
         cfg: 系列長 (係数と入力分布は設定にしない、D-29)。

@@ -98,7 +98,7 @@ _REFERENCE_LABELS: dict[str, tuple[str, str]] = {
         "reference NMSE = {value:g} (ceiling without nonlinearity)",
     ),
     "nonlinear_rc": (
-        "参照 NMSE = {value:g} (非線形 RC・50ノード級)",
+        "参照 NMSE = {value:g} (非線形 RC・N = 50 規模)",
         "reference NMSE = {value:g} (nonlinear RC, ~50 nodes)",
     ),
 }

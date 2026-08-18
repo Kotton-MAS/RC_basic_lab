@@ -14,8 +14,8 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from rc_basics_lab.config import Narma10Config, SeedConfig
-from rc_basics_lab.seeds import SeedStream, make_rng
+from rc_basics_lab.config import Narma10Config
+from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng
 from rc_basics_lab.tasks.narma import (
     DIVERGENCE_LIMIT,
     NARMA10_INPUT_HIGH,
@@ -26,6 +26,7 @@ from rc_basics_lab.tasks.narma import (
     generate_narma10,
     narma10_series,
 )
+from rc_basics_lab.types import FloatArray
 
 REFERENCE_INPUT: tuple[Fraction, ...] = (
     Fraction(1, 10),
@@ -217,7 +218,7 @@ def test_invalid_length_raises(length: int, message: str) -> None:
         pytest.param(np.array([0.1, np.nan, 0.2]), id="nan"),
     ],
 )
-def test_series_rejects_malformed_input(u: np.ndarray) -> None:
+def test_series_rejects_malformed_input(u: FloatArray) -> None:
     """``narma10_series`` は形の壊れた入力を黙って受理しない。"""
     with pytest.raises(ValueError):
         narma10_series(u.astype(np.float64))
