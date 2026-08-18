@@ -194,8 +194,18 @@ class IpcConfig:
 DEFAULT_IPC = IpcConfig()
 
 
-def _validate_config(cfg: IpcConfig) -> None:
-    """設定の値域を検証する (D-09: 検証は使う側)。"""
+def _validate_combinatorial_bounds(cfg: IpcConfig) -> None:
+    """``count_targets`` の組合せ計算量そのものを縛る検査 (F-03-3-018)。
+
+    ``max_targets`` / ``heatmap_cells`` (F-03-1-016) など、他の確保軸の検査は
+    ここに含めない。それらは ``count_targets`` の閉形式計算そのものとは無関係
+    で、ここに混ぜると ``count_targets`` を直接呼ぶ (``enumerate_targets`` が
+    ``max_targets`` を超えたことを報告する前段としても使う) 既存の利用側の
+    意味が変わってしまう —— 例えば ``max_targets`` を意図的に小さくして
+    『目標数が上限を超えた』を再現したいだけの呼び出しが、無関係な
+    ``heatmap_cells`` 検査で先に落ちてしまう。``_validate_config`` はこの
+    関数に加えて他の全フィールドも検査する (D-09: 検証は使う側)。
+    """
     if len(cfg.max_delay_by_degree) < 1:
         raise ValueError("max_delay_by_degree が空です (評価する次数がありません)")
     for degree, max_delay in enumerate(cfg.max_delay_by_degree, start=1):
@@ -238,6 +248,11 @@ def _validate_config(cfg: IpcConfig) -> None:
             "max_variables が組合せ計算の安全上限を超えます (CWE-400 対策、"
             f"F-03-2-014): {cfg.max_variables} > {_MAX_VARIABLES_FOR_COUNT}"
         )
+
+
+def _validate_config(cfg: IpcConfig) -> None:
+    """設定の値域を検証する (D-09: 検証は使う側)。"""
+    _validate_combinatorial_bounds(cfg)
     if (cfg.input_distribution, cfg.basis) not in SUPPORTED_BASIS_PAIRS:
         raise ValueError(
             "(input_distribution, basis) の組が未対応です (D-28): "
@@ -313,13 +328,17 @@ def count_targets(cfg: IpcConfig) -> int:
     ``__all__`` の公開関数だが ``ipc()`` の外から直接呼ぶと ``_validate_config``
     を経由しないため、``max_degrees`` / ``max_variables`` の上限が一切かから
     ない (実測: ``max_delay_by_degree=(10**6,)*1600``, ``max_variables=1600``
-    を ``count_targets`` に直接渡すと 107.89s)。先頭で ``_validate_config``
-    を呼び、``enumerate_targets`` は ``count_targets`` 経由で自動的に保護
-    される。下記の早期打ち切り自体は comb と数学的に等価な純粋な最適化で、
-    **検証を通った cfg にのみ有効な防御ではなく、検証前の呼び出しからも
-    保護する** ようになった (この関数自身が検証するため)。
+    を ``count_targets`` に直接渡すと 107.89s)。先頭で
+    ``_validate_combinatorial_bounds`` を呼び、``enumerate_targets`` は
+    ``count_targets`` 経由で自動的に保護される。組合せ計算量に無関係な
+    ``max_targets`` / ``heatmap_cells`` の検査 (F-03-1-016) は含めない
+    (``count_targets`` を目標数の下見に使う既存の呼び出し側の意味を変えない
+    ため。それらは ``ipc()`` の ``_validate_config`` 経由で別途効く)。下記の
+    早期打ち切り自体は comb と数学的に等価な純粋な最適化で、**検証を通った
+    cfg にのみ有効な防御ではなく、検証前の呼び出しからも保護する** ように
+    なった (この関数自身が検証するため)。
     """
-    _validate_config(cfg)
+    _validate_combinatorial_bounds(cfg)
     total = 0
     for degree, max_delay in enumerate(cfg.max_delay_by_degree, start=1):
         for n_vars in range(1, min(cfg.max_variables, degree) + 1):
