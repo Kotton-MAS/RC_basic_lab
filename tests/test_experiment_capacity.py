@@ -196,6 +196,8 @@ def test_diagnostics_ipc_module_and_function_are_both_reachable() -> None:
     assert callable(diagnostics_package.ipc)
     assert not isinstance(diagnostics_package.ipc, ModuleType)
     assert diagnostics_package.ipc is ipc
+    # module は ModuleType 型なので mypy が module.ipc を解決できず、
+    # getattr が要る (module.ipc だと attr-defined で型検査が落ちる)。
     assert getattr(module, "ipc") is ipc  # noqa: B009
 
 
