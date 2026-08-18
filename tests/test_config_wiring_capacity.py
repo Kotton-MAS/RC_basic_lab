@@ -70,12 +70,11 @@ from rc_basics_lab.config import (
     load_config_as,
 )
 from rc_basics_lab.experiment.capacity import (
+    CAPACITY_EXPERIMENTS,
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_MC_SWEEP,
-    CapacityCondition,
     CapacityRow,
-    evaluate_capacity_condition,
 )
 from rc_basics_lab.meta import collect_meta_for
 from rc_basics_lab.seeds import SeedStream, make_rng_for
@@ -107,15 +106,13 @@ DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
 ``WashoutSweepConfig.base`` (02) と同じ形。被覆は 01 側へ委譲する。
 """
 
-PENDING_SECTIONS: frozenset[str] = frozenset(
-    {"mc_sweep", "ipc_sweep", "conservation", "length_sweep", "reservoir", "narma"}
-)
+PENDING_SECTIONS: frozenset[str] = frozenset({"narma"})
 """``CHANNEL_PENDING`` を名乗ってよいセクション。
 
-T1 が実装するのは「1条件の配線」(``evaluate_capacity_condition``) までなので、
-**どの条件を回すか**を決める葉 (格子・レプリケート数) は出力で実測できない。
-``conservation.max_delay_by_degree`` だけは1条件の配線が消費する
-(3-B' の IPC 打ち切り上書き) ので pending ではなく ``CHANNEL_ROWS`` である。
+T2 で掃引 (``run_mc_sweep`` / ``run_ipc_sweep`` / ``run_conservation_sweep``
+/ ``run_length_sweep``) が生えたので、**どの条件を回すか**を決める葉
+(格子・レプリケート数・系列長) はすべて出力で実測できるようになった。
+残る pending は 3-C (NARMA10、3b-2 の T4) の ``narma.length`` だけである。
 """
 
 TASK_STAGE_CONSUMERS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -134,12 +131,13 @@ TASK_STAGE_CONSUMERS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 (どちらの実装順でも信管が沈黙しない、というのが F-02-1-005 の教訓)。
 """
 
-EXPERIMENT_LABELS: tuple[str, ...] = (
-    EXPERIMENT_MC_SWEEP,
-    EXPERIMENT_IPC_SWEEP,
-    EXPERIMENT_CONSERVATION,
-)
-"""``scope`` に書ける実験名 (``CapacityRow.experiment`` の値)。"""
+EXPERIMENT_LABELS: tuple[str, ...] = CAPACITY_EXPERIMENTS
+"""``scope`` に書ける実験名 (``CapacityRow.experiment`` の値)。
+
+``3L_length_sweep`` (``make saturation-03``) も含む。本番の成果物には出ない
+実験だが、``length_sweep.*`` を変えても 3-A / 3-B / 3-B' の行が1バイトも
+動かないことは同じ scope 検査で測る必要がある。
+"""
 
 CAPACITY_SEED_STREAMS: tuple[SeedStream, ...] = (
     SeedStream.RESERVOIR,
