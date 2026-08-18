@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "7085d003d4b31eb8904a40def3c38f40243ca5d2",
+  "commit": "1a458751c3f010b4d6d6ca776997ad12b260896c",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -126,7 +126,7 @@
           "density": 0.1,
           "input_scale": 0.5,
           "leak_rate": 0.3,
-          "n_units": 200,
+          "n_units": 50,
           "spectral_radius": 0.9,
           "state_noise": 0.0
         },
@@ -145,6 +145,8 @@
         "name": "03_narma10",
         "ridge": {
           "alpha_grid": [
+            1e-10,
+            1e-09,
             1e-08,
             1e-07,
             1e-06,
@@ -158,11 +160,11 @@
             100.0
           ],
           "n_lags_grid": [
-            1,
-            2,
-            4,
-            8,
-            16
+            10,
+            15,
+            20,
+            25,
+            30
           ]
         },
         "seeds": {
@@ -192,8 +194,27 @@
     }
   },
   "matplotlib_version": "3.11.1",
-  "n_profile_rows": 21636,
-  "n_rows": 117,
+  "n_narma10_rows": 15,
+  "n_profile_rows": 21812,
+  "n_rows": 118,
+  "narma10_verdict": {
+    "best_method": "delay_line",
+    "delay_line_beats_esn": true,
+    "nmse_mean": {
+      "delay_line": 0.15375010031359504,
+      "esn": 0.267298647253092,
+      "linear": 1.0181377822749034
+    },
+    "reference_nmse": {
+      "linear_ceiling": 0.16,
+      "nonlinear_rc": 0.107
+    },
+    "reference_note": "注: 参照値 NMSE = 0.16 (非線形性なしの天井) / 0.107 (良好な非線形 RC、N = 50 規模) は複数の物理 RC 論文が引用する値で、原典は未特定である (要件_rc-basics-03 未確定1)。",
+    "selected_n_lags": [
+      25,
+      30
+    ]
+  },
   "numpy_version": "2.5.2",
   "package_version": "0.1.0",
   "platform": "macOS-26.3-arm64-arm-64bit",
@@ -204,32 +225,40 @@
     "reservoir": 0,
     "surrogate": 4
   },
-  "timestamp_utc": "2026-08-18T15:55:15.706811+00:00",
+  "timestamp_utc": "2026-08-18T23:37:46.761303+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 21.936188585066702,
-      "wall_time_mc_s": 2.962121504941024,
-      "wall_time_s": 30.434120082936715,
-      "wall_time_state_s": 5.533562619937584
+      "wall_time_ipc_s": 21.248686087114038,
+      "wall_time_mc_s": 2.9523340037558228,
+      "wall_time_s": 29.488508542010095,
+      "wall_time_state_s": 5.285123126086546
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 61.43631012606784,
-      "wall_time_mc_s": 6.665138415031834,
-      "wall_time_s": 80.19742591309478,
-      "wall_time_state_s": 12.092908371065278
+      "wall_time_ipc_s": 58.67415766895283,
+      "wall_time_mc_s": 6.8105962529662065,
+      "wall_time_s": 76.82261429389473,
+      "wall_time_state_s": 11.33491199897253
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 219.8239582539827,
-      "wall_time_mc_s": 18.20714153989684,
-      "wall_time_s": 259.77887179193203,
-      "wall_time_state_s": 21.744237040024018
+      "wall_time_ipc_s": 207.77584337693406,
+      "wall_time_mc_s": 17.930903499014676,
+      "wall_time_s": 245.10854662401835,
+      "wall_time_state_s": 19.39791266503744
+    },
+    {
+      "experiment": "3C_narma10",
+      "n_conditions": 1,
+      "wall_time_ipc_s": 0.13402416699682362,
+      "wall_time_mc_s": 0.016504375002114102,
+      "wall_time_s": 0.33280183299211785,
+      "wall_time_state_s": 0.033065499999793246
     }
   ],
-  "wall_time_s": 370.41592433297774
+  "wall_time_s": 351.7564001670107
 }
