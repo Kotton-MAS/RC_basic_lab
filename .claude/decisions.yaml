@@ -162,3 +162,12 @@
   rule: "IPC のしきい値処理はシャッフルサロゲート法を既定とし、閾値は次数ごとに推定する。サロゲートは通常の目標と同一経路で計算する。乱数は ctx.seed のみから引き、surrogate かつ ctx.seed is None なら ValueError"
   rationale: "要件書 設計判断1 / サーベイ Q3 (Kubota 2021 系)。有限標本では容量が系統的に過大評価され、その量は目標の周辺分布に依存するため次数ごとに閾値を分ける。サロゲートを別経路で計算すると閾値と容量が別実装からずれるので同じ関数 (capacity_of_targets) に流す。ctx.seed を必須にするのは、閾値が黙って非再現になると受け入れ条件3 の記録が意味を失うため。代表目標は次数内の列挙順から等間隔で決定的に選ぶ (乱数で選ぶと閾値が非再現になり、先頭から詰めると変数1本の目標に偏る)。実測: 入力と独立な状態 (N=15, T=3000, 目標 601 本) でしきい値後の総容量は生の 0.66〜3.52% (8 シード、平均 2.0%) まで落ちる"
   guard_test: "tests/test_diagnostics_ipc.py::test_surrogate_threshold_requires_ctx_seed_and_is_reproducible"
+
+# サイクル 3a T2 round1 の BLOCKER 修正 (F-03-1-012/013、T=1e6 で peak RSS を
+# 4GB 未満に収める) の副産物として round2 で発見された D-29。fixer が自分で
+# 追加した bounded_chunk_size (指示に無い安全機構) の設計判断を正本化する。
+
+- id: D-29
+  rule: "MC / IPC の chunk_size は結果を変えない性能パラメータであり、1チャンクの目標行列 (T_eff x chunk_size) が _MAX_CHUNK_BYTES (128 MiB) を超える場合に限り、実装が configured より小さい実効値へ黙って下げてよい (configured より大きくはしない)。呼び出し側は cfg.chunk_size を直接使わず CapacityProblem.effective_chunk_size(cfg.chunk_size) を経由し、成果物の params には設定値 (chunk_size) と実効値 (chunk_size_effective) の両方を記録する"
+  rationale: "round1 の BLOCKER 修正 (F-03-1-012/013) は指示 (仕様書・plan doc) に無い bounded_chunk_size を fixer が自分で追加したもので、この判断とその根拠 (_MAX_CHUNK_BYTES=128MiB、4GB 予算) が decisions.yaml にも design.md にも plan doc にも記録されていなかった (F-03-2-002)。round2 の4つの reviewer が独立にこの関数を突いた: (1) no-op に差し替えても既存58テストが1件も落ちない空虚な安全機構だった (F-03-2-018 BLOCKER。テスト規模の budget_columns がテスト規模の chunk_size を一度も下回らないため切り詰め分岐が一度も真にならない)。(2) 実効値が params にも guard の閉形式 (D-26) にも反映されず、T=200000/chunk_size=256 で D-26 の期待 solve 回数=2 に対し実際4回になる本番規模の乖離が生じていた (F-03-2-001 HIGH)。(3) 適用が ipc.py 2箇所・memory_capacity.py 1箇所に手書きで複製され、F-03-1-001 で潰した『同じ規律を呼び出し側で複製する』形が別の軸で復活していた。今回 CapacityProblem.effective_chunk_size に一本化し、params に chunk_size_effective を追加し、D-26 の guard (test_gram_solve_count_does_not_scale_with_target_count) にキャップが実際に発動する規模のケースを足して閉形式を ceil(K/effective_chunk_size) に更新した。docs/design.md §11 の既定値表にも _MAX_CHUNK_BYTES の行を足した"
+  guard_test: "tests/test_diagnostics_memory_capacity.py::test_bounded_chunk_size_truncates_when_over_budget"
