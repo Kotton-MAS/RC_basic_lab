@@ -422,6 +422,18 @@ def test_gram_solve_count_does_not_scale_with_target_count(
         f"目標 {target_ratio:.1f} 倍に対し solve {solve_ratio:.1f} 倍"
     )
 
+    # configs[2] は configs[1] と目標構成が同一で chunk_size だけが違う。
+    # キャップが実際に発動していること (実効値 < 設定値) を明示し、その状態
+    # でも solve 回数の閉形式 (ceil(K / effective_chunk_size)) が一致する
+    # ことを上の assert がすでに固定している (D-26: HIGH の修正)。
+    capped_n_samples = int(
+        ipc(states, inputs, ctx=ctx, cfg=configs[2]).params["n_samples"]
+    )
+    assert (
+        bounded_chunk_size(configs[2].chunk_size, capped_n_samples)
+        < configs[2].chunk_size
+    ), "この設定ではキャップが発動しません (テストの前提が崩れています)"
+
 
 def test_params_record_configured_and_effective_chunk_size_when_capped() -> None:
     """``params`` は設定値と実効値の両方を記録する (D-33 の rule (iii))。
@@ -446,18 +458,6 @@ def test_params_record_configured_and_effective_chunk_size_when_capped() -> None
     )
     assert result.params["chunk_size"] == str(cfg.chunk_size)
     assert result.params["chunk_size_effective"] == str(expected_effective)
-
-    # configs[2] は configs[1] と目標構成が同一で chunk_size だけが違う。
-    # キャップが実際に発動していること (実効値 < 設定値) を明示し、その状態
-    # でも solve 回数の閉形式 (ceil(K / effective_chunk_size)) が一致する
-    # ことを上の assert がすでに固定している (D-26: HIGH の修正)。
-    capped_n_samples = int(
-        ipc(states, inputs, ctx=ctx, cfg=configs[2]).params["n_samples"]
-    )
-    assert (
-        bounded_chunk_size(configs[2].chunk_size, capped_n_samples)
-        < configs[2].chunk_size
-    ), "この設定ではキャップが発動しません (テストの前提が崩れています)"
 
 
 def test_chunk_size_does_not_change_results() -> None:
