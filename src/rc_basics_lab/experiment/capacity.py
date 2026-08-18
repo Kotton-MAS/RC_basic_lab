@@ -98,20 +98,26 @@ CAPACITY_EXPERIMENTS: tuple[str, ...] = (
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_CONSERVATION,
+    EXPERIMENT_NARMA10,
     EXPERIMENT_LENGTH_SWEEP,
 )
-"""``CapacityRow.experiment`` が取りうる値 (3-C は 3b-2 の T4 が足す)。
+"""``CapacityRow.experiment`` が取りうる値。
 
-``capacity.csv`` に出るのは先頭3つで、``3L_length_sweep`` だけは
-``capacity_length.csv`` (``make saturation-03``) 側にしか現れない。
+``capacity.csv`` に出るのは先頭4つ (掃引3本 + 3-C) で、``3L_length_sweep``
+だけは ``capacity_length.csv`` (``make saturation-03``) 側にしか現れない。
 """
 
 FIGURE_EXPERIMENTS: tuple[str, ...] = (
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_CONSERVATION,
+    EXPERIMENT_NARMA10,
 )
-"""``make figures-03`` (``capacity.csv``) が回す実験。予算 900 秒の対象。"""
+"""``make figures-03`` (``capacity.csv``) が回す実験。予算 900 秒の対象。
+
+3-C は掃引ではなく1条件だが、``capacity.csv`` に行が出る以上ここに入れる
+(``meta.json`` の ``wall_time_breakdown`` の並びもこの定数が単一の真実)。
+"""
 
 DIAGNOSTIC_MC = "mc"
 """``CapacityProfileRow.diagnostic``: 線形メモリ容量 (次数は常に1)。"""
@@ -1012,6 +1018,7 @@ __all__ = [
     "EXPERIMENT_IPC_SWEEP",
     "EXPERIMENT_LENGTH_SWEEP",
     "EXPERIMENT_MC_SWEEP",
+    "EXPERIMENT_NARMA10",
     "FIGURE_EXPERIMENTS",
     "CapacityCondition",
     "CapacityOutcome",
