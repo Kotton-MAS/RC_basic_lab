@@ -319,15 +319,6 @@ def _surrogate_indices(start: int, end: int, n_selected: int) -> tuple[int, ...]
     return tuple(sorted({start + round(index * step) for index in range(count)}))
 
 
-def _chi2_threshold(*, n_units: int, n_samples: int, quantile: float) -> float:
-    """カイ二乗近似のしきい値 ``chi2_N(q) / T_eff`` (Dambre 2012 SupMat 3.2)。
-
-    状態と無相関な目標に対する決定係数は、自由度 ``N`` (バイアス列を除く回帰
-    変数の本数) のカイ二乗を標本数で割った分布に漸近する。
-    """
-    return float(chi2.ppf(quantile, n_units)) / float(n_samples)
-
-
 def _degree_thresholds(
     problem: CapacityProblem,
     psi_table: Sequence[FloatArray],
@@ -335,7 +326,6 @@ def _degree_thresholds(
     bounds: Sequence[tuple[int, int]],
     cfg: IpcConfig,
     *,
-    t0: int,
     seed: int | None,
 ) -> tuple[float, ...]:
     """次数ごとのしきい値を返す (D-27)。
@@ -343,7 +333,10 @@ def _degree_thresholds(
     サロゲートは代表目標を時間シャッフルして**通常の目標とまったく同じ経路**
     (``capacity_of_targets``) に流す。別経路で計算すると、閾値と容量が別実装から
     ずれても誰も気づけない。乱数は ``seed`` から作った1本の Generator だけで、
-    次数の順に消費する (次数をまたいで再現するのはこの順序があるから)。
+    次数の順に消費する (次数をまたいで再現するのはこの順序があるから)。カイ二乗
+    近似のしきい値 (``chi2_threshold``) は共有カーネル側にある (F-03-1-003:
+    仕様書は当初から「chi2 は T2 で共有カーネルに足す」としており、以前は
+    ``ipc.py`` の private 関数として食い違っていた)。
 
     Raises:
         ValueError: ``surrogate`` なのに ``seed`` が ``None`` の場合 (D-27)。
@@ -352,7 +345,7 @@ def _degree_thresholds(
     if cfg.threshold_mode == THRESHOLD_NONE:
         return (0.0,) * n_degrees
     if cfg.threshold_mode == THRESHOLD_CHI2:
-        threshold = _chi2_threshold(
+        threshold = chi2_threshold(
             n_units=problem.n_units,
             n_samples=problem.n_samples,
             quantile=cfg.surrogate_quantile,
@@ -370,9 +363,7 @@ def _degree_thresholds(
         picked = _surrogate_indices(start, end, cfg.n_surrogate_targets)
         base: FloatArray = np.empty((n_samples, len(picked)), dtype=np.float64)
         for column, index in enumerate(picked):
-            base[:, column] = _target_column(
-                psi_table, specs[index], t0=t0, n_samples=n_samples
-            )
+            base[:, column] = _target_column(problem, psi_table, specs[index])
         threshold, _ = surrogate_threshold(
             problem,
             base,
