@@ -58,6 +58,8 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_LENGTH_SWEEP,
     EXPERIMENT_MC_SWEEP,
+    EXPERIMENT_NARMA10,
+    FIGURE_EXPERIMENTS,
     CapacityCondition,
     n_replicates_for,
     reservoir_config_for,
@@ -74,6 +76,7 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     write_capacity_csv,
     write_capacity_profile_csv,
 )
+from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.experiment.report import META_JSON
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -385,17 +388,28 @@ def test_meta_json_records_the_wall_time_breakdown(
     assert main.main(["--experiment", "03", "--out", str(out_dir)]) == 0
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
     breakdown = meta["wall_time_breakdown"]
-    assert [item["experiment"] for item in breakdown] == [
-        EXPERIMENT_MC_SWEEP,
-        EXPERIMENT_IPC_SWEEP,
-        EXPERIMENT_CONSERVATION,
-    ]
+    assert [item["experiment"] for item in breakdown] == list(FIGURE_EXPERIMENTS)
+    expected_conditions = {
+        EXPERIMENT_MC_SWEEP: 4,
+        EXPERIMENT_IPC_SWEEP: 4,
+        EXPERIMENT_CONSERVATION: 4,
+        # 3-C は掃引ではなく1条件 (レプリケート0 の状態行列)
+        EXPERIMENT_NARMA10: EXPECTED_NARMA_ROWS,
+    }
     for item in breakdown:
-        assert item["n_conditions"] == 4
+        assert item["n_conditions"] == expected_conditions[item["experiment"]]
         for key in ("wall_time_state_s", "wall_time_mc_s", "wall_time_ipc_s"):
             assert item[key] > 0.0, (item["experiment"], key)
     assert meta["n_rows"] == EXPECTED_ROWS
     assert meta["n_profile_rows"] > 0
+    assert meta["n_narma10_rows"] == 3 * 2  # 3手法 x 2レプリケート
+    # 3-C は向きを問わないが、どちらに転んでも同じ形で残る (仕様 §4 T4)
+    verdict = meta["narma10_verdict"]
+    assert set(verdict["nmse_mean"]) == {"linear", "delay_line", "esn"}
+    assert verdict["best_method"] in verdict["nmse_mean"]
+    assert isinstance(verdict["delay_line_beats_esn"], bool)
+    assert verdict["reference_nmse"] == {"linear_ceiling": 0.16, "nonlinear_rc": 0.107}
+    assert "未特定" in verdict["reference_note"]
 
 
 # --- CSV の形 (D-38) ---------------------------------------------------------
@@ -499,10 +513,20 @@ def test_capacity_csv_has_no_missing_values(tmp_path: Path) -> None:
     長形式はそれを避けるための設計なので、「1行 = 1条件で全列が埋まる」が
     崩れていないことをここで固定する。
     """
-    results = run_capacity_experiment(tiny_config())
-    path = write_capacity_csv(results.rows, tmp_path / CAPACITY_CSV)
+    config = tiny_config()
+    results = run_capacity_experiment(config)
+    # 3-C の行も同じ CSV に合流するので、ここで一緒に検査する (合流させた
+    # 行だけ空欄が入っても掃引側のテストでは気づけない)。
+    all_rows = (*results.rows, run_narma10(config).capacity.row)
+    path = write_capacity_csv(all_rows, tmp_path / CAPACITY_CSV)
     rows = _read_csv(path)
     assert len(rows) == EXPECTED_ROWS
+    assert {row["experiment"] for row in rows} == {
+        EXPERIMENT_MC_SWEEP,
+        EXPERIMENT_IPC_SWEEP,
+        EXPERIMENT_CONSERVATION,
+        EXPERIMENT_NARMA10,
+    }
     with path.open(encoding="utf-8", newline="") as handle:
         header = next(csv.reader(handle))
     assert tuple(header) == CAPACITY_CSV_COLUMNS
@@ -661,6 +685,8 @@ def test_production_config_matches_the_committed_results() -> None:
         EXPERIMENT_CONSERVATION: len(config.conservation.n_units_grid)
         * len(config.conservation.state_noise_grid)
         * n_replicates_for(config, EXPERIMENT_CONSERVATION),
+        # 3-C は掃引ではないので常に1行 (レプリケート0 の状態行列)
+        EXPERIMENT_NARMA10: 1,
     }
     counts: dict[str, int] = defaultdict(int)
     for row in _production_rows():
