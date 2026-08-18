@@ -393,6 +393,43 @@ def test_all_delays_share_identical_rows() -> None:
     assert deeper.params["t0"] == "300", "washout が max_delay を超えたら t0 は washout"
 
 
+def test_capacity_problem_lagged_matches_expected_offset() -> None:
+    """``CapacityProblem.lagged`` の値レベルの guard (F-03-1-001)。
+
+    D-24 の窓計算 ``series[t0 - delay : t0 - delay + n_samples]`` は、かつて
+    MC (2箇所) と IPC (1箇所) が共有カーネルの外でそれぞれ書いており、
+    行数が一致してさえいれば任意のオフセットを通す弱いチェックしか無かった
+    (実測: MC の窓を1ステップずらしても ``test_all_delays_share_identical_
+    rows`` を含む22テストが全て緑のまま通った)。窓計算を
+    ``CapacityProblem.lagged`` 1本に集約したので、ここを直接固定すれば
+    MC・IPC のどちらの複製ぶんの穴も同時に閉じる。
+
+    ``u[t] = t`` の単調系列にすると、返された窓の値から入力の index を
+    逆算できる。
+    """
+    n_steps = 500
+    ramp: FloatArray = np.arange(n_steps, dtype=np.float64)
+    t0 = 42
+    n_samples = n_steps - t0
+    problem = CapacityProblem.from_states(np.zeros((n_steps, 3)), t0=t0)
+    for delay in (0, 1, 5, 20, t0):
+        window = problem.lagged(ramp, delay)
+        assert window.shape == (n_samples,)
+        expected: FloatArray = np.arange(
+            t0 - delay, t0 - delay + n_samples, dtype=np.float64
+        )
+        np.testing.assert_array_equal(window, expected)
+
+    # 1ステップずらした変異は D-24 の guard で確実に落ちる (完了条件4)。
+    mutated = problem.lagged(ramp, 5 - 1)
+    assert not np.array_equal(mutated, problem.lagged(ramp, 5))
+
+    with pytest.raises(ValueError, match="D-24"):
+        problem.lagged(ramp, t0 + 1)  # 範囲外 (窓の先頭が負になる)。
+    with pytest.raises(ValueError, match="0 以上"):
+        problem.lagged(ramp, -1)
+
+
 def test_memory_capacity_requires_single_channel_input() -> None:
     """``u`` が無い / 多変数だと ValueError (安く緑にする逃げ道を塞ぐ)。"""
     states, inputs = _cached_states(0.9, 15, 2000, 5)
@@ -501,10 +538,10 @@ def test_diagnostic_accepts_arbitrary_external_state_series() -> None:
 
 @dataclasses.dataclass
 class _CountingMatrix:
-    """``@`` の回数を数えるために ``CapacityProblem.phi`` へ差し込むプロキシ。
+    """``@`` の回数を数えるために ``CapacityProblem.x`` へ差し込むプロキシ。
 
-    ``capacity_of_targets`` が使う ``phi`` の機能 (``shape`` / ``.T`` / ``@``)
-    だけを持つ。``Phi`` を2回走査する実装 (例: 予測 ``Phi @ W`` を実体化して
+    ``capacity_of_targets`` が使う配列の機能 (``shape`` / ``.T`` / ``@``)
+    だけを持つ。``X`` を2回走査する実装 (例: 予測 ``Phi @ W`` を実体化して
     残差を取る) に変えると呼び出し回数が増える。
     """
 
@@ -525,15 +562,23 @@ class _CountingMatrix:
         return product
 
 
-def test_capacity_of_targets_touches_phi_exactly_once(
+def test_capacity_of_targets_touches_x_exactly_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """容量は Gram 量だけで閉じ、``Phi`` を1回しか走査しない (D-26)。
+    """容量は Gram 量だけで閉じ、``X`` を1回しか走査しない (D-26 / F-03-1-013)。
 
-    ``rhs = Phi.T @ Z`` の1回だけが許される。予測 ``Phi @ W`` を作って
-    ``Z - Phi W`` から残差を取る素直な実装だと2回になり、目標数 K に比例する
-    ``O(T F K)`` の走査がもう1本増える (IPC の 20 万目標で効く)。
-    ``fit_ridge_from_gram`` の呼び出しもチャンクあたり1回に固定する。
+    ``rhs = [sum(Z,0); X.T @ Z]`` のうち ``X`` に触れるのは ``X.T @ Z`` の
+    **1回だけ** (バイアス行は ``Z`` の縮約だけで作るので ``X`` には触れない)。
+    予測 ``Phi @ W`` を作って ``Z - Phi W`` から残差を取る素直な実装だと2回に
+    なり、目標数 K に比例する ``O(T F K)`` の走査がもう1本増える (IPC の
+    20万目標で効く)。``fit_ridge_from_gram`` の呼び出しもチャンクあたり1回に
+    固定する。
+
+    ``CapacityProblem`` は F-03-1-013 で ``Phi`` を実体化しなくなり、状態
+    ``X`` のビューだけを持つようになった。旧テストは ``problem.phi`` を
+    プロキシに差し替えていたが、``phi`` が無くなったのでこの guard の意図
+    (「触れるのは1回だけ」) を保ったまま ``problem.x`` を差し替える形に
+    書き換えてある。
     """
     rng = np.random.default_rng(99)
     states: FloatArray = rng.standard_normal((400, 6))
@@ -553,11 +598,11 @@ def test_capacity_of_targets_touches_phi_exactly_once(
 
     calls: list[str] = []
     proxied = dataclasses.replace(
-        problem, phi=cast(FloatArray, _CountingMatrix(problem.phi, calls))
+        problem, x=cast(FloatArray, _CountingMatrix(problem.x, calls))
     )
     capacities = capacity_of_targets(proxied, targets, 1.0e-9)
 
-    assert calls == ["matmul"], f"Phi の走査回数が1回ではありません: {len(calls)}"
+    assert calls == ["matmul"], f"X の走査回数が1回ではありません: {len(calls)}"
     assert solves == ["solve"], f"solve の回数が1回ではありません: {len(solves)}"
     np.testing.assert_allclose(
         capacities, capacity_of_targets(problem, targets, 1.0e-9)
@@ -569,7 +614,9 @@ def test_capacity_matches_direct_least_squares_residual() -> None:
 
     ``C = 1 - ||z - Phi w||^2 / ||z||^2`` を実際に予測を作って計算した値と
     突き合わせる。Gram 展開の符号ミス (``-2 w.T rhs`` を ``+2`` にする等) は
-    値が「それらしく」出るためレビューでは気づけない。
+    値が「それらしく」出るためレビューでは気づけない。``Phi`` は本体では
+    F-03-1-013 により実体化しなくなったため、ここでは検証専用に
+    ``problem.x`` からその場で組み立てる (本体の経路には影響しない)。
     """
     rng = np.random.default_rng(1234)
     states: FloatArray = rng.standard_normal((600, 8))
@@ -578,10 +625,13 @@ def test_capacity_matches_direct_least_squares_residual() -> None:
     alpha = 1.0e-8
 
     capacities = capacity_of_targets(problem, targets, alpha)
-    weights = fit_ridge_from_gram(
-        problem.gram, problem.phi.T @ targets, alpha, bias_column=problem.bias_column
+    phi: FloatArray = np.concatenate(
+        (np.ones((problem.n_samples, 1), dtype=np.float64), problem.x), axis=1
     )
-    residual: FloatArray = targets - problem.phi @ weights
+    weights = fit_ridge_from_gram(
+        problem.gram, phi.T @ targets, alpha, bias_column=problem.bias_column
+    )
+    residual: FloatArray = targets - phi @ weights
     direct: FloatArray = 1.0 - np.sum(residual**2, axis=0) / np.sum(targets**2, axis=0)
     np.testing.assert_allclose(capacities, direct, rtol=1.0e-8, atol=1.0e-10)
 
