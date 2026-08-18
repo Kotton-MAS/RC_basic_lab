@@ -373,9 +373,7 @@ def _degree_thresholds(
             n_samples=problem.n_samples,
             quantile=cfg.surrogate_quantile,
         )
-        return tuple(
-            threshold if end > start else 0.0 for start, end in bounds
-        )
+        return tuple(threshold if end > start else 0.0 for start, end in bounds)
     if seed is None:
         raise ValueError("threshold_mode='surrogate' には ctx.seed が必要です (D-27)")
     rng = np.random.default_rng(seed)
@@ -462,6 +460,19 @@ def ipc(
         for degree in range(1, n_degrees + 1)
     ]
 
+    degree_of: tuple[int, ...] = tuple(
+        sum(order for _, order in spec) for spec in specs
+    )
+    cell_of: tuple[int, ...] = tuple(max(delay for delay, _ in spec) for spec in specs)
+    bounds = _degree_bounds(degree_of, n_degrees)
+
+    # しきい値を先に出すのは fail fast のため (ctx.seed 忘れを、K 本ぶんの
+    # 回帰を回し切ってから告げるのではなく着手前に落とす)。乱数は
+    # ここでしか使わないので、順序を変えても再現性には影響しない。
+    thresholds = _degree_thresholds(
+        problem, psi_table, specs, bounds, cfg, t0=t0, seed=context.seed
+    )
+
     capacities = capacity_of_chunks(
         problem,
         _iter_target_chunks(
@@ -469,64 +480,19 @@ def ipc(
         ),
         cfg.alpha,
     )
-
-    degrees: FloatArray = np.asarray(
-        [sum(order for _, order in spec) for spec in specs], dtype=np.int64
+    threshold_per_target: FloatArray = np.asarray(
+        [thresholds[degree - 1] for degree in degree_of], dtype=np.float64
     )
-    cell_delays: FloatArray = np.asarray(
-        [max(delay for delay, _ in spec) for spec in specs], dtype=np.int64
-    )
-
-    rng: np.random.Generator | None = None
-    if cfg.threshold_mode == THRESHOLD_SURROGATE:
-        if context.seed is None:
-            raise ValueError("threshold_mode='surrogate' には ctx.seed が必要です (D-27)")
-        rng = np.random.default_rng(context.seed)
-
-    thresholds: list[float] = []
-    for degree in range(1, n_degrees + 1):
-        member = np.flatnonzero(degrees == degree)
-        if cfg.threshold_mode == THRESHOLD_NONE or member.size == 0:
-            thresholds.append(0.0)
-            continue
-        if cfg.threshold_mode == THRESHOLD_CHI2:
-            thresholds.append(
-                _chi2_threshold(
-                    n_units=problem.n_units,
-                    n_samples=n_samples,
-                    quantile=cfg.surrogate_quantile,
-                )
-            )
-            continue
-        assert rng is not None
-        picked = member[_surrogate_indices(member.size, cfg.n_surrogate_targets)]
-        base: FloatArray = np.empty((n_samples, picked.size), dtype=np.float64)
-        for column, index in enumerate(picked):
-            base[:, column] = _target_column(
-                psi_table, specs[int(index)], t0=t0, n_samples=n_samples
-            )
-        threshold, _ = surrogate_threshold(
-            problem,
-            base,
-            cfg.alpha,
-            n_surrogates=cfg.n_surrogates,
-            quantile=cfg.surrogate_quantile,
-            chunk_size=cfg.chunk_size,
-            rng=rng,
-        )
-        thresholds.append(threshold)
-
-    threshold_per_target: FloatArray = np.asarray(thresholds, dtype=np.float64)[
-        degrees - 1
-    ]
     kept: FloatArray = np.where(capacities > threshold_per_target, capacities, 0.0)
 
+    # 集約規則 (仕様 §4 T2-3): 目標を (次数 d, max(k_i)) のセルへ足し込む。
     heatmap: FloatArray = np.zeros((n_degrees, max_delay), dtype=np.float64)
-    np.add.at(heatmap, (degrees - 1, cell_delays - 1), kept)
     by_degree: FloatArray = np.zeros(n_degrees, dtype=np.float64)
-    np.add.at(by_degree, degrees - 1, kept)
     by_degree_raw: FloatArray = np.zeros(n_degrees, dtype=np.float64)
-    np.add.at(by_degree_raw, degrees - 1, capacities)
+    for index, (degree, cell) in enumerate(zip(degree_of, cell_of, strict=True)):
+        heatmap[degree - 1, cell - 1] += kept[index]
+        by_degree[degree - 1] += kept[index]
+        by_degree_raw[degree - 1] += capacities[index]
 
     total = float(np.sum(kept))
     linear = float(by_degree[0])
