@@ -65,6 +65,7 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     write_capacity_csv,
     write_capacity_profile_csv,
 )
+from rc_basics_lab.experiment.report import META_JSON
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results" / "03_capacity"
@@ -556,6 +557,47 @@ def test_production_config_matches_the_committed_results() -> None:
     for row in _production_rows():
         counts[row["experiment"]] += 1
     assert dict(counts) == expected
+
+
+def _normalize_for_json_comparison(value: object) -> object:
+    """タプルをリストへ揃える (``dataclasses.asdict`` と JSON の型差を吸収)。
+
+    ``dataclasses.asdict`` は掃引軸などのタプルフィールドをそのまま ``tuple``
+    で返すが、``meta.json`` は JSON 化されているのでリストになる。値そのものの
+    比較には無関係な差なので、比較前に両者をリストへ正規化する。
+    """
+    if isinstance(value, tuple | list):
+        return [_normalize_for_json_comparison(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize_for_json_comparison(val) for key, val in value.items()}
+    return value
+
+
+def test_production_config_matches_the_committed_meta_json() -> None:
+    """本番 YAML の**値**が ``meta.json`` にダンプされた設定と一致する (F-3b1-1-025)。
+
+    ``test_production_config_matches_the_committed_results`` は実験ごとの
+    **行数**しか見ておらず、格子の**値**が変わっても検出しない (``rho_grid``
+    の1点を差し替えても行数は変わらないため通過してしまう)。この場合、値を
+    そのまま真実として使う ``test_mc_effective_delay_increases_with_rho`` /
+    ``test_conservation_respects_the_bound`` は設定と成果物が食い違ったまま
+    受け入れ条件1・2 の「通過」を続けてしまう。``meta.json['config']`` は
+    ``run_and_report_capacity`` が書き出し時点の設定を丸ごとダンプしたもの
+    (``dataclasses.asdict``) なので、現在の ``load_config_as(...)`` と突き合わ
+    せれば値ドリフトを丸ごと閉じられる。
+    """
+    config = load_config_as(
+        ROOT / "experiments" / "03_capacity" / "config.yaml", Capacity03Config
+    )
+    current = _normalize_for_json_comparison(dataclasses.asdict(config))
+    meta_path = RESULTS / META_JSON
+    assert meta_path.is_file(), "make figures-03 を実行してください"
+    committed = json.loads(meta_path.read_text(encoding="utf-8"))["config"]
+    assert current == committed, (
+        "experiments/03_capacity/config.yaml の値が"
+        " results/03_capacity/meta.json に記録された設定と食い違っています"
+        " (make figures-03 で成果物を再生成してください)"
+    )
 
 
 def test_mc_effective_delay_increases_with_rho() -> None:
