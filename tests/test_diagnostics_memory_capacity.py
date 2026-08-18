@@ -22,6 +22,7 @@ from rc_basics_lab.diagnostics._capacity import (
     NORMAL,
     UNIFORM,
     CapacityProblem,
+    bounded_chunk_size,
     capacity_of_targets,
     orthonormal_basis,
 )
@@ -757,3 +758,68 @@ def test_solve_count_is_driven_by_chunks_not_by_target_count(
         memory_capacity(states, inputs, ctx=ctx, cfg=cfg)
         # 遅延 max_delay 本 + サロゲート 20 本を chunk_size=16 で切った枚数。
         assert len(solves) == _chunk_counts((max_delay, 20), 16)
+
+
+# --------------------------------------------------------------------------
+# bounded_chunk_size 単体 (F-03-2-018: BLOCKER の実体的な安全機構)
+# --------------------------------------------------------------------------
+
+
+def test_bounded_chunk_size_keeps_configured_when_under_budget() -> None:
+    """configured が予算内なら変更しない (小さい chunk_size を明示指定した
+    呼び出し側の意図を尊重する)。"""
+    assert bounded_chunk_size(100, 4_000) == 100
+    assert bounded_chunk_size(1, 999_600) == 1
+
+
+def test_bounded_chunk_size_truncates_when_over_budget() -> None:
+    """configured が予算を超えていれば切り詰める (BLOCKER の実体)。
+
+    T=1e6 級の本番規模で configured=256 のまま (無条件) だと1チャンクが
+    2.05GB に達する (_MAX_CHUNK_BYTES のモジュール docstring 参照)。
+    """
+    assert bounded_chunk_size(100_000, 2_000_000) == 8
+    assert bounded_chunk_size(256, 999_600) == 16
+
+
+def test_bounded_chunk_size_defends_against_non_positive_n_samples() -> None:
+    """``n_samples <= 0`` はバイト数を計算できないため configured をそのまま
+    返す (防御的分岐、coverage で Missing だった行)。"""
+    assert bounded_chunk_size(256, 0) == 256
+    assert bounded_chunk_size(256, -5) == 256
+
+
+def test_bounded_chunk_size_never_returns_less_than_one() -> None:
+    """``n_samples`` がどれだけ大きくても下限は 1 (0 列のチャンクは作らない)。"""
+    assert bounded_chunk_size(500, 1_000_000_000) == 1
+    assert bounded_chunk_size(1, 1_000_000_000) == 1
+
+
+def test_capacity_problem_effective_chunk_size_delegates_to_bounded_chunk_size() -> (
+    None
+):
+    """``CapacityProblem.effective_chunk_size`` は自身の ``n_samples`` で
+    ``bounded_chunk_size`` を呼ぶだけ (F-03-2-001)。
+
+    呼び出し側 (``ipc.py`` / ``memory_capacity.py``) が ``n_samples`` を
+    取り出して個別に ``bounded_chunk_size`` を呼ぶ形の複製をこのメソッドが
+    肩代わりすることを、直接の委譲として固定する。
+    """
+    rng = np.random.default_rng(42)
+    states: FloatArray = rng.standard_normal((5_000, 4))
+    problem = CapacityProblem.from_states(states, t0=10)
+    for configured in (1, 256, 100_000):
+        assert problem.effective_chunk_size(configured) == bounded_chunk_size(
+            configured, problem.n_samples
+        )
+
+
+def test_capacity_problem_lagged_rejects_multi_dimensional_series() -> None:
+    """``series`` が1次元でなければ ``ValueError`` (F-03-2-020、coverage で
+    Missing だった分岐)。"""
+    rng = np.random.default_rng(7)
+    states: FloatArray = rng.standard_normal((300, 5))
+    problem = CapacityProblem.from_states(states, t0=10)
+    series_2d: FloatArray = rng.standard_normal((300, 2))
+    with pytest.raises(ValueError, match="1次元"):
+        problem.lagged(series_2d, 1)
