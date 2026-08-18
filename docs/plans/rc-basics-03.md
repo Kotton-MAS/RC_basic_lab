@@ -389,10 +389,17 @@
 9. **共有カーネルのチャンク API は「チャンクの iterable」を受ける**
    (`capacity_of_chunks(problem, chunks, alpha)`)。IPC が `(T, K)` 全体を実体化せずに
    `chunk_size` 列ずつ作って捨てられるようにするため (D-26 のメモリ制約 19 GB)。
-   実体化済みの小さな目標 (サロゲート) 用に `iter_column_chunks` を添える。
-10. **`CapacityProblem` は `phi` / `gram` / `bias_column` / `t0` を持つ frozen dataclass
-    (`eq=False`)** で、Gram は `CapacityProblem.from_states(X, t0=...)` が構築時に1回だけ作る。
-    `eq=False` は numpy 配列を持つ dataclass の `__eq__` が配列比較で `ValueError` になるため。
+   ~~実体化済みの小さな目標 (サロゲート) 用に `iter_column_chunks` を添える。~~
+   **round 1 レビューで撤回 (F-03-1-012)**: サロゲートも一括確保せず `chunk_size`
+   列ずつ生成する `_iter_surrogate_chunks` に変更したため、`iter_column_chunks`
+   (利用者ゼロだった公開関数) は削除した。
+10. ~~**`CapacityProblem` は `phi` / `gram` / `bias_column` / `t0` を持つ frozen dataclass
+    (`eq=False`)** で、Gram は `CapacityProblem.from_states(X, t0=...)` が構築時に1回だけ作る。~~
+    **round 1 レビューで撤回 (F-03-1-013)**: `phi` (設計行列 `[1, X]` の実体化コピー) は
+    T=1e6 級で peak RSS を予算超過させる BLOCKER だった。`CapacityProblem` は `phi` を
+    持たず、`x` (`X` のビュー、コピーなし) / `gram` (ブロック分解した `Phi.T @ Phi`) /
+    `bias_column` / `t0` を持つ形に変更した。`eq=False` は numpy 配列を持つ dataclass の
+    `__eq__` が配列比較で `ValueError` になるため (この理由は変わらない)。
 11. **D-12 の `guard_test` をテスト改名に追随させた** (`..._reservoir` →
     `..._reservoir_or_config`)。決定そのものは変えていない (D-23 が禁止対象に `config` を
     足して guard を強化した結果の改名)。
@@ -422,7 +429,7 @@
 ## T2 実装時に決めたこと (仕様外の判断)
 
 仕様 §4 T2 に書かれていなかったため実装者が決めた事項。次周の reviewer / fixer は
-コードではなくここを読む。実測値は `make ci` 時点のもの (500 tests 緑)。
+コードではなくここを読む。実測値は `make ci` 時点のもの。
 
 1. **遅延は 1 から始める** (`k_i >= 1`)。`k=0` (現在の入力) を目標に含めない。
    こうすると**次数1の IPC は MC と同じ量になる** (同じ遅延集合・同じ基底・同じ
