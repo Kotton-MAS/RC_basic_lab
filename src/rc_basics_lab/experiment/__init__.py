@@ -9,7 +9,8 @@
 - ``pipeline``: 1コマンドで5成果物をそろえる経路 (CLI はここを呼ぶだけ)
 - ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ場所)
 - ``capacity``: 実験 3-A / 3-B / 3-B' の配線 (MC / IPC を同じ X で測る)
-- ``capacity_pipeline``: 03 の成果物 (CSV2枚 + meta.json) をそろえる経路
+- ``capacity_pipeline``: 03 の成果物 (CSV3枚 + 図5枚 + meta.json) をそろえる経路
+- ``narma``: 実験 3-C (NARMA10) の配線 (01 の ``run_task`` を再利用、D-31)
 - ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
 """
@@ -60,6 +61,13 @@ from rc_basics_lab.experiment.esp_pipeline import (
     run_and_report_esp,
     write_esp_csv,
     write_washout_csv,
+)
+from rc_basics_lab.experiment.narma import (
+    Narma10Results,
+    Narma10Verdict,
+    narma_task_entry,
+    run_narma10,
+    summarize_narma10,
 )
 from rc_basics_lab.experiment.pipeline import (
     ARTIFACTS,
@@ -126,6 +134,8 @@ __all__ = [
     "ExperimentOutputs",
     "Method",
     "MethodSensitivity",
+    "Narma10Results",
+    "Narma10Verdict",
     "ReplicatePlan",
     "ResultRow",
     "Split",
@@ -148,6 +158,7 @@ __all__ = [
     "make_split",
     "mean_nrmse_by_washout",
     "n_replicates_for",
+    "narma_task_entry",
     "plan_replicate",
     "predicted_t0",
     "profile_rows",
@@ -162,8 +173,10 @@ __all__ = [
     "run_ipc_sweep",
     "run_length_sweep",
     "run_mc_sweep",
+    "run_narma10",
     "run_task",
     "run_washout_sweep",
+    "summarize_narma10",
     "summarize_verdict_agreement",
     "summarize_washout_sensitivity",
     "variant_for",
