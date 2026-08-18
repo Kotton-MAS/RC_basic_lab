@@ -317,12 +317,19 @@ def _validate_config(cfg: IpcConfig) -> None:
     # heatmap 1.59GB を確保しようとする。
     heatmap_cells = len(cfg.max_delay_by_degree) * max(cfg.max_delay_by_degree)
     if heatmap_cells > cfg.max_targets:
+        # F-03-4-008 (CWE-209): heatmap_cells / max(max_delay_by_degree) は
+        # cfg 由来の多倍長整数になりうるため、_format_target_count 経由で
+        # 文字列化する。生の f-string (str 化) は enumerate_targets 側で
+        # 塞いだのと同じ理由 (int→str の桁数上限、既定4300桁) で別の
+        # ValueError に化けうる。この検査は _validate_combinatorial_bounds
+        # (D-34 の桁数上限、F-03-4-007) より後に走るため通常は到達しないが、
+        # 二重に閉じておく。
         raise ValueError(
             "ipc_heatmap のセル数が max_targets を超えます (CWE-789 対策、"
             "F-03-1-016): "
             f"n_degrees={len(cfg.max_delay_by_degree)} x"
-            f" max(max_delay_by_degree)={max(cfg.max_delay_by_degree)} ="
-            f" {heatmap_cells} > max_targets={cfg.max_targets}。"
+            f" max(max_delay_by_degree)={_format_target_count(max(cfg.max_delay_by_degree))} ="
+            f" {_format_target_count(heatmap_cells)} > max_targets={cfg.max_targets}。"
             " max_delay_by_degree を下げるか max_targets を上げてください"
         )
     if cfg.threshold_mode == THRESHOLD_SURROGATE:
