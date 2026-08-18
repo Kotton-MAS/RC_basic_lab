@@ -39,7 +39,6 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.stats import chi2
 
 from rc_basics_lab.diagnostics._capacity import (
     LEGENDRE,
@@ -88,7 +87,7 @@ SUPPORTED_THRESHOLD_MODES: tuple[str, ...] = (
 状態で通ってしまう。
 """
 
-TargetSpec = tuple[tuple[int, int], ...]
+type TargetSpec = tuple[tuple[int, int], ...]
 """目標1本の仕様 ``((k_1, n_1), ..., (k_m, n_m))``。
 
 ``k_i`` は遅延 (1 以上、昇順・相異なる)、``n_i`` はその遅延に掛ける多項式の
@@ -181,18 +180,6 @@ def _validate_config(cfg: IpcConfig) -> None:
         )
 
 
-def _input_series(u: FloatArray | None) -> FloatArray:
-    """``u`` を1次元の入力系列にして返す。無い / 多変数なら ``ValueError``。"""
-    if u is None:
-        raise ValueError("ipc は入力系列 u が必須です (多項式目標を作れません)")
-    series = np.asarray(u, dtype=np.float64)
-    if series.shape[1] != 1:
-        raise ValueError(f"ipc は1変数入力のみ対応です: u.shape={series.shape}")
-    if not np.all(np.isfinite(series)):
-        raise ValueError("u に有限でない値があります")
-    return series[:, 0]
-
-
 def _ordered_compositions(total: int, parts: int) -> Iterator[tuple[int, ...]]:
     """``total`` を ``parts`` 個の 1 以上の整数へ分ける**順序つき**の分割。
 
@@ -258,46 +245,43 @@ def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
 
 
 def _target_column(
+    problem: CapacityProblem,
     psi_table: Sequence[FloatArray],
     spec: TargetSpec,
-    *,
-    t0: int,
-    n_samples: int,
 ) -> FloatArray:
     """目標1本 ``Π_i psi_{n_i}(u[t - k_i])`` を作る。
 
     ``psi_table[n - 1]`` は次数 ``n`` の正規直交多項式を**系列全体で1回だけ**
-    評価したもの。遅延 ``k`` はその窓を ``t0 - k`` からずらして取るだけなので、
-    どの目標も ``t0`` から始まる同一の行集合に対応する (D-24)。
+    評価したもの。遅延 ``k`` の窓は共有カーネルの ``CapacityProblem.lagged``
+    に委譲する (F-03-1-001)。以前はここで ``t0 - delay`` を直接組み立てて
+    おり、MC 側の同種の複製 (memory_capacity.py) には値レベルの guard が
+    無かった。どの目標も ``problem.t0`` から始まる同一の行集合に対応する (D-24)。
     """
     column: FloatArray | None = None
     for delay, order in spec:
-        offset = t0 - delay
-        factor: FloatArray = psi_table[order - 1][offset : offset + n_samples]
+        factor: FloatArray = problem.lagged(psi_table[order - 1], delay)
         column = factor.copy() if column is None else column * factor
     assert column is not None
     return column
 
 
 def _iter_target_chunks(
+    problem: CapacityProblem,
     psi_table: Sequence[FloatArray],
     specs: Sequence[TargetSpec],
     *,
-    t0: int,
-    n_samples: int,
     chunk_size: int,
 ) -> Iterator[FloatArray]:
     """目標を ``chunk_size`` 列ずつ作って渡し、畳んだら捨てる (D-26)。
 
     ``(T_eff, K)`` を一度も実体化しないのがこの関数の存在理由。
     """
+    n_samples = problem.n_samples
     for start in range(0, len(specs), chunk_size):
         block = specs[start : start + chunk_size]
         chunk: FloatArray = np.empty((n_samples, len(block)), dtype=np.float64)
         for column, spec in enumerate(block):
-            chunk[:, column] = _target_column(
-                psi_table, spec, t0=t0, n_samples=n_samples
-            )
+            chunk[:, column] = _target_column(problem, psi_table, spec)
         yield chunk
 
 
