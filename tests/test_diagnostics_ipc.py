@@ -929,7 +929,13 @@ def test_ipc_config_fields_change_output() -> None:
     [
         (IpcConfig(max_delay_by_degree=()), "max_delay_by_degree"),
         (IpcConfig(max_delay_by_degree=(10, 0)), "max_delay_by_degree"),
+        (IpcConfig(max_degrees=0), "max_degrees"),
+        (
+            IpcConfig(max_delay_by_degree=(1,) * 21, max_degrees=20),
+            "max_degrees",
+        ),
         (IpcConfig(max_variables=0), "max_variables"),
+        (IpcConfig(max_variables=21), "max_variables"),
         (IpcConfig(alpha=-1.0), "alpha"),
         (IpcConfig(threshold_mode="bonferroni"), "threshold_mode"),
         (IpcConfig(chunk_size=0), "chunk_size"),
