@@ -353,3 +353,85 @@ Capacity03Config
    これは正常で、「1個にまとめる」最適化をすると D-24 の単一基準点が壊れる
 3. **参照軌道の生成を 03 側で書き直さない**。`simulate_reference_trajectory` をそのまま呼び、
    `state_noise` は既定値つきキーワードで足す (D-36)。バイト一致テストが分岐を防ぐ
+
+---
+
+## T1 実装時に決めたこと (3b-1 T1 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+
+### 1. `CapacityRow` は T1 で定義した (§4 の T1 / T2 の境界の調整)
+
+§4 は行 dataclass 2本を T2 に置いているが、T1 の受け入れ基準
+`test_each_capacity_parameter_changes_output` (「縮小設定の**行**の指紋が変わる」) は
+行 dataclass が無いと成立しない。**列の並びは §4 T2-2 の指定をそのまま採用**し
+(`seed_*` ×3 は `seed_reservoir` / `seed_drive` / `seed_surrogate`)、T2 は CSV への
+書き出しだけを担当する。`CapacityProfileRow` (長形式、D-38) は指定どおり T2 のまま。
+
+### 2. `CapacityOutcome` は配列3本だけを持つ (しきい値は持たない)
+
+§4 T1-2 の指定どおり `mc_profile` / `ipc_heatmap` / `ipc_by_degree` のみ。
+**T2 への申し送り**: `CapacityProfileRow.threshold` 列に次数ごとのしきい値
+(`ipc_threshold_degree{d}`、cfg 依存で本数が変わる) が要るなら、
+`CapacityOutcome` にフィールドを1本足すこと。**全条件を再計算してはいけない**。
+
+### 3. セクション固有の葉は `CHANNEL_PENDING` (task=T2 / T4) + 信管
+
+T1 が実装するのは「1条件の配線」までで、掃引 (条件の列挙) は T2 なので、
+`mc_sweep.*` / `ipc_sweep.*` / `conservation.*` (打ち切りを除く) / `length_sweep.*` /
+`reservoir.n_replicates` / `narma.length` の 23 葉は出力で実測できない。
+02 の pending 機構をそのまま使い、消費側が生えた瞬間に落ちる信管
+(`tests/test_config_wiring_capacity.py::test_pending_cases_disappear_once_the_sweeps_exist`)
+を張った。**信管はモジュール名だけでなく関数名でも発火する** —— 03 の掃引は T1 で既に
+存在する `experiment/capacity.py` の**中に**生える計画なので、02 の
+`KNOWN_EXPERIMENT_MODULES` (モジュール新設で発火) だけでは沈黙するため。
+in-process で `capacity.run_mc_sweep` を生やすと実際に発火することを実測済み。
+
+§5 有効性観点の「セクション固有の葉は scope 検査つき (4セクション)」は、
+この pending の解消 (T2) と同時に満たされる。
+
+### 4. 3-B' の打ち切り上書きは `ipc_config_for(config, experiment)` に置いた
+
+実験ラベルで分岐する純関数にしたので、掃引が無い T1 でも
+`conservation.max_delay_by_degree` を `CHANNEL_ROWS` (scope=3-B') として実測できる。
+`dataclasses.replace` は `max_delay_by_degree` 以外のフィールドを触らないことも assert 済み。
+
+### 5. `conservation` に `n_replicates` フィールドは無い (**T2 で要判断**)
+
+§4 T1-1 の構造どおり、レプリケート数は `reservoir.n_replicates` (セクション横断) 1本にした。
+一方 §7 リスク1 と §8 は「予算超過時に許可される調整は `conservation.n_replicates` を
+3 → 1 だけ」と書いており、**そのフィールドは現状存在しない**。
+T2 は (a) `ConservationConfig` に `n_replicates` を足す (横断共有との二重定義になるので
+「セクション側があればそちらを優先」の規則が要る) か、(b) 縮退規則を
+`reservoir.n_replicates` (= 3実験すべてに効く) へ読み替えるかを、**planner に確認してから**
+決めること。実装者判断で (a) を先取りすると D-32 の「横断共有は3つだけ」が崩れる。
+
+### 6. 既定値の出どころ
+
+- 格子の点数は §5 の条件数と一致させた: 3-A 6×3×3rep=54 / 3-B 4×3×3rep=36 /
+  3-B' 3×3×3rep=27。
+- `sigma_u` の既定 (3-A 0.1 / 3-B・3-B'・length_sweep 0.2) は**暫定値**であり、
+  T2-5 の較正 (`sigma_u ∈ {0.05, 0.1, 0.2, 0.5}`) で確定する。
+- `seeds.surrogate = 4`。**`SeedStream` ではない** (`ctx.seed` へ直接渡る整数) ので
+  `seeds.py` の既存 4 ストリームの `spawn_key` は1つも動いていない。
+- 実験ラベルは `3A_mc_sweep` / `3B_ipc_sweep` / `3Bp_conservation`
+  (T4 が足す 3-C は §4 T4 の指定どおり `3C_narma10`)。
+- `length_sweep` の「...」は `rho` / `leak_rate` / `sigma_u` / `n_units` と解釈した。
+
+### 7. `Narma10Config` は `config.py` に置いた
+
+01 の `MackeyGlassConfig` / `DelayParityConfig` と同じ場所・同じ向き
+(`tasks/` が `config.py` から自分の設定 dataclass を import する既存慣習)。
+フィールドは `length` + `base: ExperimentConfig` の2つで、係数と入力分布は
+T4 が `tasks/narma.py` のモジュール定数として持つ (D-29) —— 設定にはしない。
+
+### 8. `drive_config_for` は 02 の `DriveConfig.n_pairs` を既定のまま使う
+
+`n_pairs` は ESP 判定 (比較軌道の本数) 専用で `simulate_reference_trajectory` は読まない。
+03 の `CapacityDriveConfig` に `n_pairs` を持たせないのは「設定したのに効いていない」
+フィールドを作らないため (§2.2-2 / D-09 と同じ規律)。
+
+### 9. 指紋から外す列
+
+`wall_time_s` に加えて `wall_time_state_s` / `wall_time_mc_s` / `wall_time_ipc_s` の
+計4本 (実行ごとに変わる実測時間)。T2 が CSV に書く列としては残る。
