@@ -201,20 +201,28 @@ class CapacityOutcome:
         mc_profile: しきい値後の遅延プロファイル ``(mc.max_delay,)``
             (``fig_mc_sweep.png`` の右パネル)。
         ipc_heatmap: (次数, 遅延) のしきい値後の容量 (``fig_ipc_profile.png``)。
-        ipc_by_degree: 次数ごとのしきい値後の容量
-            (``fig_memory_nonlinearity.png``)。
         ipc_thresholds: 次数ごとのしきい値 (``ipc_threshold_degree{d}`` を
             次数の昇順に並べたもの)。**cfg 依存で本数が変わる**ため
             ``CapacityRow`` の列にはできず (D-38)、長形式の
             ``CapacityProfileRow.threshold`` に落とす。ここに持たせるのは、
             同じ条件で ``ipc`` をもう一度走らせて取り直すことを禁じるため
             (1条件あたり数秒〜7秒の再計算になる)。
+
+    ``ipc_result.arrays["ipc_by_degree"]`` (次数ごとのしきい値後の容量) は
+    フィールドとして運ばない (F-3b1-1-002)。T3 で図を長形式へ切り替えた際
+    (D-38) に取り残された前設計の残骸で、``plot_memory_nonlinearity`` は
+    ``CapacityRow.ipc_linear`` / ``ipc_nonlinear`` しか読まず、
+    ``profile_rows`` も ``mc_profile`` / ``ipc_heatmap`` しか使わない
+    (全 outcome を ``-999`` で埋めて成果物を再生成しても capacity.csv /
+    capacity_profile.csv / 図4枚は wall_time_* を除きバイト一致することを
+    実測済み)。``n_degrees`` の算出には配列そのものではなく形状だけが要るので、
+    ``evaluate_capacity_condition`` 内のローカル変数として使い、outcome へは
+    運ばない。
     """
 
     row: CapacityRow
     mc_profile: FloatArray
     ipc_heatmap: FloatArray
-    ipc_by_degree: FloatArray
     ipc_thresholds: tuple[float, ...]
 
 
@@ -446,7 +454,6 @@ def evaluate_capacity_condition(
         row=row,
         mc_profile=mc.arrays["mc_profile"],
         ipc_heatmap=ipc_result.arrays["ipc_heatmap"],
-        ipc_by_degree=ipc_by_degree,
         ipc_thresholds=tuple(
             ipc_result.scalars[f"ipc_threshold_degree{degree}"]
             for degree in range(1, int(ipc_by_degree.shape[0]) + 1)

@@ -443,6 +443,5 @@ def test_capacity_outcome_carries_the_arrays_the_figures_need() -> None:
         len(config.ipc.max_delay_by_degree),
         max(config.ipc.max_delay_by_degree),
     )
-    assert outcome.ipc_by_degree.shape == (len(config.ipc.max_delay_by_degree),)
     assert outcome.row.n_degrees == len(config.ipc.max_delay_by_degree)
     assert outcome.row.n_samples_mc == condition().n_steps - outcome.row.t0_mc
