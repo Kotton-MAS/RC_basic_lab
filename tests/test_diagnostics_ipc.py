@@ -376,6 +376,18 @@ def test_gram_solve_count_does_not_scale_with_target_count(
             n_surrogates=20,
             chunk_size=256,
         ),
+        # F-03-2-001: n_samples=3900 (washout=100, T=4000) での 128MiB 予算
+        # は約4302列。chunk_size=8192 (> 4302) は実際にキャップされ、実効値
+        # は configured (8192) ではなく budget (約4302) になる。閉形式
+        # (_expected_solve_count) が configured ではなく実効値を使うことを
+        # この config で検証する (HIGH: 従来の閉形式はキャップが発動しない
+        # 規模でしか検証していなかった)。
+        IpcConfig(
+            max_delay_by_degree=(60, 20),
+            max_variables=2,
+            n_surrogates=20,
+            chunk_size=8192,
+        ),
     )
     observed: list[int] = []
     for cfg in configs:
@@ -394,10 +406,11 @@ def test_gram_solve_count_does_not_scale_with_target_count(
 
         monkeypatch.setattr(capacity_module, "fit_ridge_from_gram", counting_solve)
         result = ipc(states, inputs, ctx=ctx, cfg=cfg)
+        n_samples = int(result.params["n_samples"])
         assert result.scalars["n_targets"] == float(count_targets(cfg))
-        assert len(solves) == _expected_solve_count(cfg), (
-            f"solve の回数が想定と違います: {len(solves)}"
-            f" != {_expected_solve_count(cfg)} (cfg={cfg})"
+        expected = _expected_solve_count(cfg, n_samples)
+        assert len(solves) == expected, (
+            f"solve の回数が想定と違います: {len(solves)} != {expected} (cfg={cfg})"
         )
         observed.append(len(solves))
 
@@ -408,6 +421,18 @@ def test_gram_solve_count_does_not_scale_with_target_count(
         "solve の回数が目標数に比例しています: "
         f"目標 {target_ratio:.1f} 倍に対し solve {solve_ratio:.1f} 倍"
     )
+
+    # configs[2] は configs[1] と目標構成が同一で chunk_size だけが違う。
+    # キャップが実際に発動していること (実効値 < 設定値) を明示し、その状態
+    # でも solve 回数の閉形式 (ceil(K / effective_chunk_size)) が一致する
+    # ことを上の assert がすでに固定している (D-26: HIGH の修正)。
+    capped_n_samples = int(
+        ipc(states, inputs, ctx=ctx, cfg=configs[2]).params["n_samples"]
+    )
+    assert (
+        bounded_chunk_size(configs[2].chunk_size, capped_n_samples)
+        < configs[2].chunk_size
+    ), "この設定ではキャップが発動しません (テストの前提が崩れています)"
 
 
 def test_chunk_size_does_not_change_results() -> None:
