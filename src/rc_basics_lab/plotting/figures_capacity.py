@@ -36,7 +36,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import QuadMesh
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, PowerNorm
 from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.capacity import (
@@ -61,6 +61,15 @@ _MIN_COLOR_MAX = 1.0e-12
 
 全セルが 0 の縮退ケースで ``Normalize(0, 0)`` を作るとゼロ除算になるため、
 上限が正でないときだけ 1.0 に読み替える (下駄そのものは描画に出ない)。
+"""
+
+_HEATMAP_GAMMA = 0.5
+"""ヒートマップの配色スケール (平方根)。
+
+セルの値域が次数ごとに2桁近く違う (本番の 3-B では次数3 が最大 6.0、次数1 は
+1.0 が上限)。線形の配色にすると次数1 の行が真っ暗になり、「rho を上げると
+線形 (次数1) の取り分が増え非線形 (次数3) が減る」という受け入れ条件4 の主張の
+片側が図から消える。スケールを変えたことは colorbar のラベルに明記する。
 """
 
 _HEATMAP_CMAP = "viridis"
@@ -424,7 +433,7 @@ def plot_ipc_profile(
     means = ipc_heatmap_means(rows, profile, leak_rate)
     rhos = tuple(means)
     ceiling = max((float(cells.max()) for cells in means.values()), default=0.0)
-    norm = Normalize(vmin=0.0, vmax=max(ceiling, _MIN_COLOR_MAX))
+    norm = PowerNorm(gamma=_HEATMAP_GAMMA, vmin=0.0, vmax=max(ceiling, _MIN_COLOR_MAX))
 
     with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(3.4 * len(rhos) + 1.2, 3.6)
@@ -439,8 +448,8 @@ def plot_ipc_profile(
             meshes[-1],
             ax=list(axes[0]),
             label=style.label(
-                "容量 (しきい値後・レプリケート平均)",
-                "capacity (after thresholding, mean over reps)",
+                "容量 (しきい値後・レプリケート平均、色は平方根スケール)",
+                "capacity (after thresholding, mean over reps; sqrt colour scale)",
             ),
         )
         first = rows[0]
