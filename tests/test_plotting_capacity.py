@@ -555,7 +555,9 @@ def test_profile_rows_of_other_experiments_are_ignored() -> None:
 def test_representative_leak_rate_picks_the_largest_total() -> None:
     """代表リーク率は総容量の平均が最大のもの (同点なら小さい方)。"""
     rows = mc_sweep_rows(rhos=(0.5, 0.9), leaks=(0.3, 1.0), replicates=(0, 1))
-    assert figures_capacity.representative_leak_rate(rows, "mc_total") == 1.0
+    assert (
+        figures_capacity.representative_leak_rate(rows, lambda row: row.mc_total) == 1.0
+    )
     tied = tuple(
         _row(
             experiment=EXPERIMENT_MC_SWEEP,
@@ -566,6 +568,24 @@ def test_representative_leak_rate_picks_the_largest_total() -> None:
         )
         for leak in (0.3, 1.0)
     )
-    assert figures_capacity.representative_leak_rate(tied, "mc_total") == 0.3
+    assert (
+        figures_capacity.representative_leak_rate(tied, lambda row: row.mc_total) == 0.3
+    )
     with pytest.raises(ValueError, match="rows"):
-        figures_capacity.representative_leak_rate((), "mc_total")
+        figures_capacity.representative_leak_rate((), lambda row: row.mc_total)
+
+
+def test_representative_leak_rate_type_error_surfaces_at_call_time() -> None:
+    """列名の誤りは実行時 (呼び出し側) で検出される (F-3b1-1-007)。
+
+    以前は ``key: str`` + ``getattr`` で列名を文字列指定していたため、mypy が
+    ``getattr`` の戻り値を ``Any`` とみなし、列名のタイプミスが型検査を素通り
+    して図の生成時まで検出できなかった。``Callable[[CapacityRow], float]`` に
+    変えたことで、存在しない属性へのアクセスは呼び出し側の式
+    (``lambda row: row.nonexistent_column``) で ``AttributeError`` になる。
+    """
+    rows = mc_sweep_rows(rhos=(0.9,), leaks=(1.0,), replicates=(0,))
+    with pytest.raises(AttributeError):
+        figures_capacity.representative_leak_rate(
+            rows, lambda row: row.nonexistent_column
+        )
