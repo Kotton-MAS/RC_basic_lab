@@ -28,7 +28,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import matplotlib
@@ -132,17 +132,26 @@ def _for_rows(
     return tuple(row for row in profile if row.experiment in experiments)
 
 
-def representative_leak_rate(rows: Sequence[CapacityRow], key: str) -> float:
-    """パネルに出す代表リーク率を選ぶ (``key`` の平均が最大のもの)。
+def representative_leak_rate(
+    rows: Sequence[CapacityRow], value_of: Callable[[CapacityRow], float]
+) -> float:
+    """パネルに出す代表リーク率を選ぶ (``value_of`` の平均が最大のもの)。
 
     3-A の右パネルと 3-B のヒートマップは1つのリーク率しか描けない。**総容量が
     最も大きい動作点**を代表にするのは、その図が見せたい構造 (プロファイルの
     伸び / 次数の配分) が最も読み取れる点だからである。同点のときは小さい方を
     採り、選択が行の並び順に依存しないようにする。
 
+    ``key: str`` + ``getattr`` (列名を文字列指定) ではなく
+    ``Callable[[CapacityRow], float]`` にしてあるのは (F-3b1-1-007)、
+    ``getattr`` の戻り値は mypy が ``Any`` とみなすため列名のタイプミスや
+    ``CapacityRow`` のリネームが図の生成時 (``AttributeError``) まで検出
+    されなかったため。呼び出し側は ``lambda row: row.mc_total`` のように渡す。
+
     Args:
         rows: 1実験ぶんの行。
-        key: 比較に使う列名 (``"mc_total"`` / ``"ipc_total"``)。
+        value_of: 比較に使う値を1行から取り出す関数
+            (``lambda row: row.mc_total`` / ``lambda row: row.ipc_total``)。
 
     Raises:
         ValueError: ``rows`` が空の場合。
@@ -151,7 +160,7 @@ def representative_leak_rate(rows: Sequence[CapacityRow], key: str) -> float:
         raise ValueError("rows が空です")
     totals: dict[float, list[float]] = {}
     for row in rows:
-        totals.setdefault(row.leak_rate, []).append(float(getattr(row, key)))
+        totals.setdefault(row.leak_rate, []).append(float(value_of(row)))
     return min(totals, key=lambda leak: (-float(np.mean(totals[leak])), leak))
 
 
@@ -359,7 +368,7 @@ def plot_mc_sweep(
     """
     if not rows:
         raise ValueError("rows が空です")
-    leak_rate = representative_leak_rate(rows, "mc_total")
+    leak_rate = representative_leak_rate(rows, lambda row: row.mc_total)
     with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(12.0, 4.8)
         axes = figure.subplots(1, 2, squeeze=False)
@@ -429,7 +438,7 @@ def plot_ipc_profile(
     """
     if not rows:
         raise ValueError("rows が空です")
-    leak_rate = representative_leak_rate(rows, "ipc_total")
+    leak_rate = representative_leak_rate(rows, lambda row: row.ipc_total)
     means = ipc_heatmap_means(rows, profile, leak_rate)
     rhos = tuple(means)
     ceiling = max((float(cells.max()) for cells in means.values()), default=0.0)
