@@ -96,6 +96,23 @@ ESP_BOUNDARY_RHO = 1.0
 ``test_mc_effective_delay_increases_with_rho`` の docstring。
 """
 
+MC_RATIO_LOWER_BOUND = 0.10
+"""ピーク rho (=1.0) でのリーク率別平均 ``mc_ratio`` に要求する最低ライン (F-3b1-1-024)。
+
+図には ``y=N`` の参照線が描かれているが、それを裏付ける定量的な下限が
+実験レベルには存在しなかった (IPC 側の同種の欠落 F-03-1-023 と同型)。本番実測
+(rho=1.0 のリーク率別平均) は 0.139 で、約30%のマージンを取った 0.10 が
+既存の同種 guard (IPC の ``saturation_ratio >= 0.5`` が約27%マージン、
+MC 診断単体の ``_MC_RATIO_LOWER_BOUND`` が 33〜39%マージン) と同水準になる。
+"""
+
+MC_TOTAL_UPPER_TOLERANCE = 1.02
+"""``mc_total <= n_units * MC_TOTAL_UPPER_TOLERANCE`` (trivial 上限。F-3b1-1-024)。
+
+``CONSERVATION_TOLERANCE`` と同じ値だが、3-B' (IPC の保存則) とは別の主張
+(3-A: MC の保存則) を固定しているため独立した定数にする。
+"""
+
 TINY_CONFIG = """
 name: capacity_cli_smoke
 seeds:
