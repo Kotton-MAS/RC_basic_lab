@@ -32,7 +32,6 @@ from rc_basics_lab.experiment.capacity import (
     CapacityProfileRow,
     CapacityResults,
     CapacityRow,
-    profile_rows,
     run_capacity_experiment,
     run_length_sweep,
 )
@@ -255,13 +254,6 @@ def run_and_report_length_sweep(config: Capacity03Config, out_dir: Path) -> Path
     return path
 
 
-def profile_rows_for(
-    outcomes: Sequence[CapacityOutcome],
-) -> tuple[CapacityProfileRow, ...]:
-    """条件の並びを長形式の行に落とす (``capacity.profile_rows`` への委譲)。"""
-    return tuple(row for outcome in outcomes for row in profile_rows(outcome))
-
-
 __all__ = [
     "CAPACITY_ARTIFACTS",
     "CAPACITY_CSV",
@@ -269,7 +261,6 @@ __all__ = [
     "CAPACITY_PROFILE_CSV",
     "CapacityOutputs",
     "SectionTiming",
-    "profile_rows_for",
     "run_and_report_capacity",
     "run_and_report_length_sweep",
     "summarize_timing",

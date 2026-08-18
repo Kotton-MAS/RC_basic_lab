@@ -9,6 +9,7 @@
 - ``pipeline``: 1コマンドで5成果物をそろえる経路 (CLI はここを呼ぶだけ)
 - ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ場所)
 - ``capacity``: 実験 3-A / 3-B / 3-B' の配線 (MC / IPC を同じ X で測る)
+- ``capacity_pipeline``: 03 の成果物 (CSV2枚 + meta.json) をそろえる経路
 - ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
 """
@@ -16,11 +17,29 @@
 from rc_basics_lab.experiment.capacity import (
     CAPACITY_CSV_COLUMNS,
     CAPACITY_EXPERIMENTS,
+    CAPACITY_PROFILE_CSV_COLUMNS,
     CapacityCondition,
     CapacityOutcome,
+    CapacityProfileRow,
+    CapacityResults,
     CapacityRow,
     evaluate_capacity_condition,
     ipc_config_for,
+    n_replicates_for,
+    profile_rows,
+    run_capacity_experiment,
+    run_conservation_sweep,
+    run_ipc_sweep,
+    run_length_sweep,
+    run_mc_sweep,
+)
+from rc_basics_lab.experiment.capacity_pipeline import (
+    CAPACITY_ARTIFACTS,
+    CapacityOutputs,
+    run_and_report_capacity,
+    run_and_report_length_sweep,
+    write_capacity_csv,
+    write_capacity_profile_csv,
 )
 from rc_basics_lab.experiment.esp import (
     ESP_CSV_COLUMNS,
@@ -85,8 +104,10 @@ from rc_basics_lab.experiment.washout import (
 
 __all__ = [
     "ARTIFACTS",
+    "CAPACITY_ARTIFACTS",
     "CAPACITY_CSV_COLUMNS",
     "CAPACITY_EXPERIMENTS",
+    "CAPACITY_PROFILE_CSV_COLUMNS",
     "CSV_COLUMNS",
     "ESP_ARTIFACTS",
     "ESP_CSV_COLUMNS",
@@ -94,6 +115,9 @@ __all__ = [
     "Aggregate",
     "CapacityCondition",
     "CapacityOutcome",
+    "CapacityOutputs",
+    "CapacityProfileRow",
+    "CapacityResults",
     "CapacityRow",
     "ConditionOutcome",
     "EspOutputs",
@@ -123,17 +147,28 @@ __all__ = [
     "make_initial_states",
     "make_split",
     "mean_nrmse_by_washout",
+    "n_replicates_for",
     "plan_replicate",
     "predicted_t0",
+    "profile_rows",
     "run_and_report",
+    "run_and_report_capacity",
     "run_and_report_esp",
+    "run_and_report_length_sweep",
+    "run_capacity_experiment",
+    "run_conservation_sweep",
     "run_esp_experiment",
     "run_experiment",
+    "run_ipc_sweep",
+    "run_length_sweep",
+    "run_mc_sweep",
     "run_task",
     "run_washout_sweep",
     "summarize_verdict_agreement",
     "summarize_washout_sensitivity",
     "variant_for",
+    "write_capacity_csv",
+    "write_capacity_profile_csv",
     "write_comparison_csv",
     "write_comparison_summary_csv",
     "write_esp_csv",
