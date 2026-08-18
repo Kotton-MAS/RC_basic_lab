@@ -575,17 +575,21 @@ def test_representative_leak_rate_picks_the_largest_total() -> None:
         figures_capacity.representative_leak_rate((), lambda row: row.mc_total)
 
 
-def test_representative_leak_rate_type_error_surfaces_at_call_time() -> None:
-    """列名の誤りは実行時 (呼び出し側) で検出される (F-3b1-1-007)。
+def test_representative_leak_rate_rejects_a_nonexistent_column_via_getattr() -> None:
+    """``getattr`` 経由の列名の誤りは実行時に ``AttributeError`` になる (F-3b1-1-007)。
 
     以前は ``key: str`` + ``getattr`` で列名を文字列指定していたため、mypy が
     ``getattr`` の戻り値を ``Any`` とみなし、列名のタイプミスが型検査を素通り
-    して図の生成時まで検出できなかった。``Callable[[CapacityRow], float]`` に
-    変えたことで、存在しない属性へのアクセスは呼び出し側の式
-    (``lambda row: row.nonexistent_column``) で ``AttributeError`` になる。
+    していた。``Callable[[CapacityRow], float]`` に変えた現在は、呼び出し側が
+    ``lambda row: row.mc_total`` のように**直接**属性へアクセスすれば mypy が
+    存在しない列名をコンパイル時に検出する (``lambda row: row.typo`` は
+    ``mypy`` が ``attr-defined`` で落とす)。それでも文字列経由でアクセスする
+    呼び出し側が残ればここで検出できるよう、実行時の ``AttributeError`` も
+    引き続き固定しておく。
     """
     rows = mc_sweep_rows(rhos=(0.9,), leaks=(1.0,), replicates=(0,))
+    bad_column_name = "nonexistent_column"
     with pytest.raises(AttributeError):
         figures_capacity.representative_leak_rate(
-            rows, lambda row: row.nonexistent_column
+            rows, lambda row: float(getattr(row, bad_column_name))
         )
