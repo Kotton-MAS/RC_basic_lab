@@ -474,8 +474,13 @@ def _plot_stack_panel(
     style: StyleContext,
     *,
     show_ylabel: bool,
-) -> None:
-    """1つのリーク率ぶんの積み上げ棒 (線形 + 非線形)。"""
+) -> float:
+    """1つのリーク率ぶんの積み上げ棒 (線形 + 非線形)。
+
+    Returns:
+        このパネルで一番高い点 (総容量 + s.d.)。縦軸の余白を全パネル共通で
+        決めるために使う。
+    """
     rhos = _unique_sorted([row.rho for row in rows])
     positions = np.arange(len(rhos), dtype=np.float64)
     selected = [
@@ -510,15 +515,18 @@ def _plot_stack_panel(
         ecolor="black",
         capsize=4,
     )
-    for position, low, high in zip(positions, linear, nonlinear, strict=True):
+    for position, low, high, std in zip(
+        positions, linear, nonlinear, total_std, strict=True
+    ):
         total = low + high
         if total <= 0.0:
             continue
+        # 注記は誤差棒の**上**に置く (棒の高さに置くと s.d. と重なって読めない)
         axis.annotate(
             f"{high / total:.0%}",
-            (position, total),
+            (position, total + std),
             textcoords="offset points",
-            xytext=(0, 4),
+            xytext=(0, 5),
             ha="center",
             fontsize=8,
         )
@@ -536,7 +544,13 @@ def _plot_stack_panel(
         style.label(f"a = {leak_rate:g}", f"a = {leak_rate:g}"),
         fontsize=10,
     )
-    axis.legend(loc="upper right", fontsize=8)
+    if show_ylabel:
+        # 凡例は左端の1枚だけに出す。全パネルに出すと積み上げと注記に重なる。
+        axis.legend(loc="upper left", fontsize=8)
+    return max(
+        (a + b + c for a, b, c in zip(linear, nonlinear, total_std, strict=True)),
+        default=0.0,
+    )
 
 
 def plot_memory_nonlinearity(
@@ -557,8 +571,12 @@ def plot_memory_nonlinearity(
     with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(4.0 * len(leaks) + 1.0, 4.4)
         axes = figure.subplots(1, len(leaks), squeeze=False, sharey=True)
-        for index, leak in enumerate(leaks):
+        ceiling = max(
             _plot_stack_panel(axes[0][index], rows, leak, style, show_ylabel=index == 0)
+            for index, leak in enumerate(leaks)
+        )
+        # 凡例と注記のぶんの余白 (縦軸は sharey なので1枚に設定すれば足りる)
+        axes[0][0].set_ylim(0.0, ceiling * 1.35 if ceiling > 0.0 else 1.0)
         first = rows[0]
         figure.suptitle(
             style.label(
