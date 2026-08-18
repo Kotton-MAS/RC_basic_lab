@@ -1,0 +1,234 @@
+{
+  "commit": "e57cbf23188c681917f9fbf6b4ab4ed3c82f5c1e",
+  "config": {
+    "conservation": {
+      "leak_rate": 1.0,
+      "max_delay_by_degree": [
+        200,
+        60,
+        20,
+        10
+      ],
+      "n_replicates": null,
+      "n_steps": 200000,
+      "n_units_grid": [
+        25,
+        50,
+        100
+      ],
+      "rho": 0.95,
+      "sigma_u": 0.2,
+      "state_noise_grid": [
+        0.0,
+        0.01,
+        0.1
+      ]
+    },
+    "drive": {
+      "distribution": "uniform",
+      "washout": 200
+    },
+    "ipc": {
+      "alpha": 1e-09,
+      "basis": "legendre",
+      "chunk_size": 256,
+      "input_distribution": "uniform",
+      "max_degrees": 20,
+      "max_delay_by_degree": [
+        60,
+        20,
+        10,
+        6
+      ],
+      "max_targets": 200000,
+      "max_variables": 3,
+      "n_surrogate_targets": 4,
+      "n_surrogates": 100,
+      "surrogate_quantile": 0.99,
+      "threshold_mode": "surrogate"
+    },
+    "ipc_sweep": {
+      "leak_rate_grid": [
+        0.3,
+        0.6,
+        1.0
+      ],
+      "n_steps": 100000,
+      "n_units": 50,
+      "rho_grid": [
+        0.5,
+        0.8,
+        0.95,
+        1.1
+      ],
+      "sigma_u": 0.2
+    },
+    "length_sweep": {
+      "leak_rate": 1.0,
+      "n_steps_grid": [
+        100000,
+        200000,
+        500000,
+        1000000
+      ],
+      "n_units": 50,
+      "rho": 0.95,
+      "sigma_u": 0.2
+    },
+    "mc": {
+      "alpha": 1e-09,
+      "chunk_size": 256,
+      "max_delay": 400,
+      "n_surrogates": 100,
+      "surrogate_quantile": 0.99,
+      "threshold_mode": "surrogate"
+    },
+    "mc_sweep": {
+      "leak_rate_grid": [
+        0.3,
+        0.6,
+        1.0
+      ],
+      "n_steps": 20000,
+      "n_units": 200,
+      "rho_grid": [
+        0.5,
+        0.7,
+        0.9,
+        0.95,
+        1.0,
+        1.1
+      ],
+      "sigma_u": 0.1
+    },
+    "name": "03_capacity",
+    "narma": {
+      "base": {
+        "delay_parity": {
+          "delay": 1,
+          "length": 8000,
+          "n_bits": 2
+        },
+        "esn_delay_parity": {
+          "activation": "tanh",
+          "bias_scale": 0.1,
+          "density": 0.1,
+          "input_scale": 1.0,
+          "leak_rate": 1.0,
+          "n_units": 200,
+          "spectral_radius": 0.9,
+          "state_noise": 0.0
+        },
+        "esn_mackey_glass": {
+          "activation": "tanh",
+          "bias_scale": 0.1,
+          "density": 0.1,
+          "input_scale": 0.5,
+          "leak_rate": 0.3,
+          "n_units": 200,
+          "spectral_radius": 0.9,
+          "state_noise": 0.0
+        },
+        "mackey_glass": {
+          "beta": 0.2,
+          "exponent": 10,
+          "gamma": 0.1,
+          "horizon": 1,
+          "integration_burn_in": 1000,
+          "length": 8000,
+          "rk4_step": 0.1,
+          "sample_interval": 10,
+          "tau": 17.0
+        },
+        "n_replicates": 5,
+        "name": "03_narma10",
+        "ridge": {
+          "alpha_grid": [
+            1e-08,
+            1e-07,
+            1e-06,
+            1e-05,
+            0.0001,
+            0.001,
+            0.01,
+            0.1,
+            1.0,
+            10.0,
+            100.0
+          ],
+          "n_lags_grid": [
+            1,
+            2,
+            4,
+            8,
+            16
+          ]
+        },
+        "seeds": {
+          "reservoir": 0,
+          "split": 2,
+          "task": 1
+        },
+        "split": {
+          "max_start_offset": 200,
+          "test_ratio": 0.35,
+          "train_ratio": 0.5,
+          "val_ratio": 0.15,
+          "washout": 200
+        }
+      },
+      "length": 8000
+    },
+    "reservoir": {
+      "density": 0.1,
+      "input_scale": 1.0,
+      "n_replicates": 3
+    },
+    "seeds": {
+      "drive": 1,
+      "reservoir": 0,
+      "surrogate": 4
+    }
+  },
+  "matplotlib_version": "3.11.1",
+  "n_profile_rows": 21636,
+  "n_rows": 117,
+  "numpy_version": "2.5.2",
+  "package_version": "0.1.0",
+  "platform": "macOS-26.3-arm64-arm-64bit",
+  "python_version": "3.12.5",
+  "scipy_version": "1.18.0",
+  "seeds": {
+    "drive": 1,
+    "reservoir": 0,
+    "surrogate": 4
+  },
+  "timestamp_utc": "2026-08-18T15:13:55.578716+00:00",
+  "wall_time_breakdown": [
+    {
+      "experiment": "3A_mc_sweep",
+      "n_conditions": 54,
+      "wall_time_ipc_s": 20.739010917866835,
+      "wall_time_mc_s": 2.8863207069807686,
+      "wall_time_s": 28.836956455983454,
+      "wall_time_state_s": 5.209423707041424
+    },
+    {
+      "experiment": "3B_ipc_sweep",
+      "n_conditions": 36,
+      "wall_time_ipc_s": 55.973877832031576,
+      "wall_time_mc_s": 6.389040754031157,
+      "wall_time_s": 73.45644854102284,
+      "wall_time_state_s": 11.090703376044985
+    },
+    {
+      "experiment": "3Bp_conservation",
+      "n_conditions": 27,
+      "wall_time_ipc_s": 187.85118199890712,
+      "wall_time_mc_s": 15.52801537202322,
+      "wall_time_s": 222.27710708189989,
+      "wall_time_state_s": 18.894447083002888
+    }
+  ],
+  "wall_time_s": 324.57369750001817
+}
