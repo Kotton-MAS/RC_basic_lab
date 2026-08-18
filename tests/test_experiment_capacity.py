@@ -508,3 +508,85 @@ def test_oversized_state_matrix_is_rejected_before_any_allocation(
     with pytest.raises(ValueError, match="n_units \\* n_steps"):
         evaluate_capacity_condition(config, huge_steps)
     assert not called, "上限検査より前に状態行列の確保が始まっています"
+
+
+class _PastTheGuard(Exception):
+    """上限検査を通り抜けて軌道生成に到達したことを示す番兵 (境界値テスト用)。
+
+    「``ValueError`` にならない」を ``evaluate_capacity_condition`` の完走で
+    確かめようとすると、上限値ちょうど (N=5,000 / N*T=2e8) の確保が実際に
+    走ってしまう (重み行列 200MB + 5000x5000 の固有値計算、状態行列 1.6GB)。
+    軌道生成の入口でこの例外を投げて止めれば、確保を1バイトもせずに
+    「検査を通過した」ことだけを固定できる。
+    """
+
+
+def _stop_at_trajectory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """軌道生成を ``_PastTheGuard`` に差し替える (確保させずに通過を測る)。"""
+
+    def stop(*args: object, **kwargs: object) -> object:
+        raise _PastTheGuard
+
+    monkeypatch.setattr(f"{CAPACITY_MODULE}.simulate_reference_trajectory", stop)
+
+
+def test_bounds_accept_the_exact_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """上限値**ちょうど**は通る —— 検査は ``>`` であって ``>=`` ではない。
+
+    F-3b1-2-005: 上限ガードの既存テストは「上限 + 1 が落ちる」しか測って
+    いなかったため、``>`` が ``>=`` に書き換えられても (= 本番設定の
+    ``n_units`` が上限に等しい場合に実験が丸ごと落ちるようになっても)
+    検出できなかった。境界のどちら側が許容側かを固定するのはここだけである。
+
+    ``n_units = _MAX_UNITS`` かつ ``n_steps = _MAX_STATE_ELEMENTS //
+    _MAX_UNITS`` を選ぶと、**2つの上限を同時にちょうどで踏む**
+    (5,000 * 40,000 = 200,000,000)。到達を ``_PastTheGuard`` で観測するので
+    確保は起きない (このサイズを実際に確保すると 1.6GB になる)。
+    """
+    module = importlib.import_module(CAPACITY_MODULE)
+    max_units = module._MAX_UNITS
+    max_elements = module._MAX_STATE_ELEMENTS
+    exact_steps = max_elements // max_units
+    assert max_units * exact_steps == max_elements, (
+        "上限がちょうどで割り切れる前提が崩れています (テスト側の作り直しが必要)"
+    )
+
+    _stop_at_trajectory(monkeypatch)
+    boundary = dataclasses.replace(condition(n_units=max_units), n_steps=exact_steps)
+    # ValueError が出れば pytest.raises がそれを素通しして落ちる (= 変異検出)。
+    with pytest.raises(_PastTheGuard):
+        evaluate_capacity_condition(base_config(), boundary)
+
+
+def test_exact_limit_condition_runs_to_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """上限値ちょうどの条件が**実経路で最後まで回る** (F-3b1-2-005)。
+
+    上のテストは軌道生成の入口で止めるので「検査を通った」までしか測らない。
+    ここでは上限そのものを条件に合わせて小さく差し替え (``n_units=12`` /
+    ``n_units * n_steps = 14,400``)、確保も診断も実際に走らせて行が出ることを
+    固定する。実サイズ (5,000 / 2e8) を回すのは非現実的なので、**測る対象は
+    上限の値ではなく比較演算子の向き**である。
+
+    ``>`` を ``>=`` に変えると、ここは行を返さず ``ValueError`` になる。
+    """
+    module = importlib.import_module(CAPACITY_MODULE)
+    exact = condition(n_units=12)
+    assert exact.n_units * exact.n_steps == 12 * 1200
+    monkeypatch.setattr(module, "_MAX_UNITS", exact.n_units)
+    monkeypatch.setattr(module, "_MAX_STATE_ELEMENTS", exact.n_units * exact.n_steps)
+
+    row = evaluate_capacity_condition(base_config(), exact).row
+    assert row.n_units == exact.n_units
+    assert row.n_steps == exact.n_steps
+
+    # 反対側 (上限 + 1) は両軸とも落ちる —— 境界の両側を1つのテストで押さえる。
+    with pytest.raises(ValueError, match="n_units"):
+        evaluate_capacity_condition(base_config(), condition(n_units=exact.n_units + 1))
+    monkeypatch.setattr(module, "_MAX_UNITS", exact.n_units + 1)
+    with pytest.raises(ValueError, match="n_units \\* n_steps"):
+        evaluate_capacity_condition(
+            base_config(),
+            dataclasses.replace(exact, n_steps=exact.n_steps + 1),
+        )
