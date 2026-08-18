@@ -37,11 +37,16 @@ from rc_basics_lab.config import (
     CapacityDriveConfig,
     CapacityReservoirConfig,
     ConservationConfig,
+    ESNConfig,
+    ExperimentConfig,
     IpcConfig,
     IpcSweepConfig,
     LengthSweepConfig,
     McSweepConfig,
     MemoryCapacityConfig,
+    Narma10Config,
+    RidgeConfig,
+    SplitConfig,
     load_config_as,
 )
 from rc_basics_lab.experiment.capacity import (
@@ -167,11 +172,33 @@ ipc:
   max_delay_by_degree: [8, 4]
   n_surrogates: 5
   n_surrogate_targets: 2
+narma:
+  length: 900
+  base:
+    name: cli_smoke_narma
+    n_replicates: 2
+    split:
+      washout: 50
+      max_start_offset: 20
+    ridge:
+      alpha_grid: [1.0e-2]
+      n_lags_grid: [2, 4]
+    esn_mackey_glass:
+      n_units: 7
+      leak_rate: 1.0
+      input_scale: 1.0
+      density: 0.5
 """
 """縮小設定 (構造は本番と同じ)。本番は 330 秒かかるため CLI テストでは使わない。"""
 
-EXPECTED_ROWS = 12
+EXPECTED_SWEEP_ROWS = 12
 """3-A (2x1) + 3-B (1x2) + 3-B' (1x2) = 6 条件 x 2 レプリケート。"""
+
+EXPECTED_NARMA_ROWS = 1
+"""3-C は1条件 (レプリケート0 の状態行列に対する MC / IPC)。"""
+
+EXPECTED_ROWS = EXPECTED_SWEEP_ROWS + EXPECTED_NARMA_ROWS
+"""``capacity.csv`` の行数 (掃引3本 + 3-C)。"""
 
 
 def tiny_config() -> Capacity03Config:
@@ -213,6 +240,18 @@ def tiny_config() -> Capacity03Config:
         mc=MemoryCapacityConfig(max_delay=20, n_surrogates=5),
         ipc=IpcConfig(
             max_delay_by_degree=(8, 4), n_surrogates=5, n_surrogate_targets=2
+        ),
+        narma=Narma10Config(
+            length=900,
+            base=ExperimentConfig(
+                name="cli_smoke_narma",
+                n_replicates=2,
+                split=SplitConfig(washout=50, max_start_offset=20),
+                ridge=RidgeConfig(alpha_grid=(1e-2,), n_lags_grid=(2, 4)),
+                esn_mackey_glass=ESNConfig(
+                    n_units=7, leak_rate=1.0, input_scale=1.0, density=0.5
+                ),
+            ),
         ),
     )
 
