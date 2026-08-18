@@ -171,9 +171,23 @@ def esn_propagator(esn: ESN, u: FloatArray) -> StatePropagator:
     1ステップ進めるのに使う入力は ``u[t + 1]`` である。``u[t]`` を渡すと λ が
     "それらしい値" で出てレビューでは気づけないため、``conditional_lyapunov``
     は既定でこの一致を実行時に検査する (``check_propagator``)。
+
+    **``esn.step`` に ``rng`` を意図的に渡さない** (F-3b1-2-006)。D-36 は
+    ``ESN.run`` に「常に rng を渡す」と決めたが、それは**軌道**を作る呼び出しの
+    規律であり、伝播器はそこに含めない —— ``conditional_lyapunov`` は同じ写像を
+    2本の近接した状態に当てて摂動の成長率を測るので、**伝播器は決定的でなければ
+    ならない**。ノイズを入れると測っているのは「摂動の成長率」ではなく
+    「摂動 + ノイズ実現値の差の成長率」という別の量になる。
+    したがって 04 で 02 経路に ``state_noise>0`` を効かせるときは、単にここへ
+    ``rng`` を渡して D-36 の ``ValueError`` (``state_noise > 0`` のときは rng が
+    必要) を黙らせてはいけない。**「伝播器はノイズ無しで回す」ことを別の決定
+    として明文化し、guard_test を付ける**こと (``state_noise=0`` の ESN を
+    伝播器専用に作る、``ESN.step`` にノイズ無しの経路を明示的に持たせる、
+    などの選択肢がある)。
     """
 
     def propagate(x: FloatArray, t: int) -> FloatArray:
+        # rng を渡さないのは意図的 (上記 docstring / F-3b1-2-006)。
         return esn.step(x, u[t + 1])
 
     return propagate
@@ -401,6 +415,14 @@ def simulate_condition(
         esn=reference.esn,
         drive=reference.drive,
         states=reference.states,
+        # F-3b1-2-007: state_noise=0 の現状では比較軌道は乱数を1個も引かないので
+        # D-14 の3ストリーム分離 (RESERVOIR / TASK / PROBE) は保たれるが、04 で
+        # state_noise>0 を入れると (a) 比較軌道は「初期状態もノイズ実現値も違う」
+        # 軌道になり、ESP 判定が測っているはずの「初期状態だけを振った差」に
+        # 4本目の未制御な変動が混ざる、(b) 各軌道が引く乱数は参照軌道が消費した
+        # 個数に依存するため、結果が**評価順**に依存する。ノイズを入れる担当は
+        # ここで止まって、ノイズ実現値のストリームを分離する (4本目のストリームを
+        # 立てて軌道ごとに独立な rng を渡す) かどうかを先に決めること。
         companions=tuple(
             reference.esn.run(reference.drive, x0=x0, rng=reference.rng)
             for x0 in initial_states[1:]
