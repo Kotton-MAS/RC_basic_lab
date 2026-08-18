@@ -142,7 +142,7 @@
 
 - id: D-28
   rule: "多項式基底は宣言された入力分布に対して正規直交化する。(input_distribution, basis) の未対応な組は ValueError にし、黙って Legendre として扱わない"
-  rationale: "要件書 設計判断2。基底が入力測度に対して直交していないと容量が目標間で二重計上され保存則が破れる。破れ方は『N をわずかに超える』という穏やかな形で出るため図では正常に見える。正規化を振幅に追従させることで sigma_u を自由に振れる (D-17 と両立)。対応する組は (uniform, legendre) と (normal, hermite) の2つで、正規化は入力の実測の平均・標準偏差で行う (一様は a = sqrt(3) sigma_u で割ってから Legendre に入れる)。guard_test は T1 では MC 側 (基底1本ずつの直交性) を指していたが、T2 で仕様 §6 の本来の指定 (IPC 側) へ差し替えた。IPC 側が正本なのは、二重計上が起きるのは基底1本ずつではなく IPC が実際に足し合わせる積の目標 Pi_i psi_{n_i}(u[t-k_i]) の間だからで、そこを直接測る必要があるため (実測: T=200000・(uniform, legendre)・次数3 までの 14 目標で max|G/T - I| = 0.0067 < 0.02)。MC 側の同等テスト (tests/test_diagnostics_memory_capacity.py::test_mismatched_distribution_and_basis_raises と test_basis_is_orthonormal_under_declared_input_distribution) は削除せず残してある"
+  rationale: "要件書 設計判断2。基底が入力測度に対して直交していないと容量が目標間で二重計上され保存則が破れる。破れ方は『N をわずかに超える』という穏やかな形で出るため図では正常に見える。正規化を振幅に追従させることで sigma_u を自由に振れる (D-17 と両立)。対応する組は (uniform, legendre) と (normal, hermite) の2つで、正規化は入力の実測の平均・標準偏差で行う (一様は a = sqrt(3) sigma_u で割ってから Legendre に入れる)。guard_test は T1 では MC 側 (基底1本ずつの直交性) を指していたが、T2 で仕様 §6 の本来の指定 (IPC 側) へ差し替えた。IPC 側が正本なのは、二重計上が起きるのは基底1本ずつではなく IPC が実際に足し合わせる積の目標 Pi_i psi_{n_i}(u[t-k_i]) の間だからで、そこを直接測る必要があるため (実測: T=200000・(uniform, legendre)・次数3 までの 14 目標で max|G/T - I| = 0.00722 < 0.02)。MC 側の同等テスト (tests/test_diagnostics_memory_capacity.py::test_mismatched_distribution_and_basis_raises と test_basis_is_orthonormal_under_declared_input_distribution) は削除せず残してある"
   guard_test: "tests/test_diagnostics_ipc.py::test_basis_is_orthonormal_and_mismatched_pair_raises"
 
 # サイクル 3a T2 (IPC) 分。仕様 docs/plans/rc-basics-03.md §6 の D-25 / D-26 / D-27。
@@ -150,12 +150,12 @@
 
 - id: D-25
   rule: "容量測定の回帰は固定の微小 alpha (既定 1e-9) を使い、検証分割による alpha 選択を行わない。D-04 の alpha 格子は 3-C にのみ適用する"
-  rationale: "容量は『線形読み出しで到達可能な最大の説明率』という定義そのものであり正則化は系統的に過小評価する。一方 alpha=0 は N=200 の Gram (cond ~ 1e18, D-11 の実測) で solve が落ちうるため数値安定の下駄として 1e-9 を置く。D-04 を容量測定へ機械的に広げると Dambre 2012 の保存則と比較できなくなる。実測 (N=15, T=4000, rho=0.9, 目標 72 本, threshold_mode=none): alpha=1e-9 から 100 へ振ると ipc_total_raw は 10.012 -> 9.998 -> 9.860 -> 8.588 -> 4.647 と単調に減る。guard_test は単調非増加と『alpha=100 で実際に減る』の両方を要求する (向きだけだと、alpha が一切効いていない実装でも通ってしまう)"
+  rationale: "容量は『線形読み出しで到達可能な最大の説明率』という定義そのものであり正則化は系統的に過小評価する。一方 alpha=0 は N=200 の Gram (cond ~ 1e18, D-11 の実測) で solve が落ちうるため数値安定の下駄として 1e-9 を置く。D-04 を容量測定へ機械的に広げると Dambre 2012 の保存則と比較できなくなる。実測 (N=15, T=4000, rho=0.9, 目標 72 本, threshold_mode=none): alpha=(1e-9, 1e-6, 1e-3, 1, 100) に対し ipc_total_raw = (10.012, 10.012, 10.012, 9.119, 4.831) と単調に減る (小さい alpha では 3 桁目まで同じで、下駄としての 1e-9 が容量を歪めていないことも同時に見える)。guard_test は単調非増加と『alpha=100 で実際に減る』の両方を要求する (向きだけだと、alpha が一切効いていない実装でも通ってしまう)"
   guard_test: "tests/test_diagnostics_ipc.py::test_capacity_is_monotone_decreasing_in_alpha"
 
 - id: D-26
   rule: "IPC は X を条件ごとに1回だけ計算し、Gram も条件ごとに1回だけ作る。目標は chunk_size 列ずつ生成して rhs に畳み、fit_ridge_from_gram の呼び出し回数は ceil(K/chunk_size) に比例させる"
-  rationale: "(delay, degree) ごとに ESN を再実行する素直な設計は実測 4.7us/step x T=1e6 x 2395 通り = 約3.1時間になり実験そのものが回らない。容量は Gram 量だけで閉じるので Phi も Z も再走査は不要。Z 全体を実体化しないのはメモリ制約でもある (19 GB)。実測: 目標を 25 本から 270 本 (10.8 倍) に増やしても solve は 3 回から 4 回にしか増えない (chunk_size=256)。guard_test は solve 回数を『目標チャンク数 + 次数ごとのサロゲートチャンク数』の閉形式と厳密一致で固定するので、チャンク化を外して1本ずつ回帰する実装に戻すと即座に落ちる。既定設定 (打ち切り (60,20,10,6), max_variables=3) の目標数は 601 本で、N=25 / T=50000 の1条件が 0.9 秒"
+  rationale: "(delay, degree) ごとに ESN を再実行する素直な設計は実測 4.7us/step x T=1e6 x 2395 通り = 約3.1時間になり実験そのものが回らない。容量は Gram 量だけで閉じるので Phi も Z も再走査は不要。Z 全体を実体化しないのはメモリ制約でもある (19 GB)。実測: 目標を 25 本から 270 本 (10.8 倍) に増やしても solve は 3 回から 4 回にしか増えない (chunk_size=256)。guard_test は solve 回数を『目標チャンク数 + 次数ごとのサロゲートチャンク数』の閉形式と厳密一致で固定するので、チャンク化を外して1本ずつ回帰する実装に戻すと即座に落ちる。既定設定 (打ち切り (60,20,10,6), max_variables=3) の目標数は 601 本で、N=25 / T=50000 の1条件が 0.83 秒 (サロゲート 1600 列込み)"
   guard_test: "tests/test_diagnostics_ipc.py::test_gram_solve_count_does_not_scale_with_target_count"
 
 - id: D-27
