@@ -841,10 +841,10 @@ def plot_narma10_control(
         axis.legend(loc="best", fontsize=8)
         figure.suptitle(
             style.label(
-                "実験 3-C: NARMA10 (同一分割・同一 alpha 格子・"
-                f"N = {(rows[0].n_lags and '') or ''}探索予算は遅延線が大きい)",
+                "実験 3-C: NARMA10 (同一分割・同一 alpha 格子。"
+                "探索予算は遅延線の方が大きい)",
                 "Experiment 3-C: NARMA10 (identical splits and alpha grid;"
-                " the delay line searches a larger budget)",
+                " the delay line searches the larger budget)",
             )
         )
         figure.supxlabel(
