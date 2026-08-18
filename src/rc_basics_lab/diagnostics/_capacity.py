@@ -386,6 +386,37 @@ def input_series(u: FloatArray | None, *, diagnostic: str) -> FloatArray:
     return series[:, 0]
 
 
+_MAX_CHUNK_BYTES = 128 * 1024 * 1024
+"""1チャンク分の目標行列に許すおおよその上限バイト数 (128 MiB)。
+
+チャンク生成 (``_iter_surrogate_chunks`` / MC・IPC の ``_iter_*_chunks``) は
+「直前のチャンクへの参照がまだ残っているうちに次のチャンクを組み立てる」
+という generator + 呼び出し側ループの構造上、**一時的に2チャンク分が同時に
+生きる**瞬間がある (呼び出し側のループ変数が古いチャンクを指したまま、
+generator 内部で新しいチャンクを ``np.empty`` してから yield するため)。
+``chunk_size`` の既定値 256 は T_eff が小さい規模を前提に選ばれており、
+T=1e6 級の本番設定では1チャンクが ``1e6 * 256 * 8 byte = 2.05 GB`` に達し、
+上記の一時的な2重生存と合わさって peak RSS が単独で 4GB 予算を超える
+(F-03-1-012 / F-03-1-013 の BLOCKER 修正後に実測: IPC 既定で 5.0〜6.5GB)。
+128 MiB は「2チャンク同時生存 (256 MiB) + 状態行列 X (MC 本番 N=200 で
+1.6GB) + 諸々の一時配列」を足しても 4GB に収まるよう安全側に選んだ値。
+"""
+
+
+def bounded_chunk_size(configured: int, n_samples: int) -> int:
+    """``configured`` を、1チャンクが ``_MAX_CHUNK_BYTES`` を超えないよう下げる。
+
+    ``chunk_size`` は結果を変えない純粋な性能パラメータ (呼び出し側の
+    ``test_chunk_size_does_not_change_results`` が固定) なので、ここで値を
+    下げても数値は1ビットも変わらない。``configured`` より大きくはしない
+    (小さい chunk_size を明示的に指定した呼び出し側の意図を尊重する)。
+    """
+    if n_samples <= 0:
+        return configured
+    budget_columns = max(1, _MAX_CHUNK_BYTES // (n_samples * 8))
+    return min(configured, budget_columns)
+
+
 def _iter_surrogate_chunks(
     base: FloatArray,
     n_surrogates: int,
@@ -512,6 +543,7 @@ __all__ = [
     "SUPPORTED_BASIS_PAIRS",
     "UNIFORM",
     "CapacityProblem",
+    "bounded_chunk_size",
     "capacity_of_chunks",
     "capacity_of_targets",
     "chi2_threshold",
