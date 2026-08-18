@@ -586,24 +586,14 @@ def ipc(
             "ipc_by_degree": by_degree,
             "ipc_by_degree_raw": by_degree_raw,
         },
-        params={
-            "washout": str(context.washout),
-            "t0": str(t0),
-            "n_samples": str(n_samples),
-            "n_units": str(problem.n_units),
-            "max_delay_by_degree": repr(cfg.max_delay_by_degree),
-            "max_variables": str(cfg.max_variables),
-            "basis": cfg.basis,
-            "input_distribution": cfg.input_distribution,
-            "alpha": repr(cfg.alpha),
-            "threshold_mode": cfg.threshold_mode,
-            "n_surrogates": str(cfg.n_surrogates),
-            "n_surrogate_targets": str(cfg.n_surrogate_targets),
-            "surrogate_quantile": repr(cfg.surrogate_quantile),
-            "chunk_size": str(cfg.chunk_size),
-            "max_targets": str(cfg.max_targets),
-            "seed": str(context.seed),
-        },
+        params=_build_params(
+            cfg,
+            washout=context.washout,
+            t0=t0,
+            n_samples=n_samples,
+            n_units=problem.n_units,
+            seed=context.seed,
+        ),
     )
 
 
