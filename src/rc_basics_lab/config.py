@@ -499,9 +499,17 @@ class ConservationConfig:
         n_steps: 系列長 [ステップ]。
         n_replicates: このセクションだけのレプリケート数。``None`` なら
             ``Capacity03Config.reservoir.n_replicates`` (横断共有) を継承する。
-            ``max_delay_by_degree`` と**同じ片方向の上書き**であり、逆向き
-            (3-B' の値が 3-A / 3-B にも効く) にはならない。3-B' は予算
-            400 秒と3実験で最も重いので、仕様 §7 リスク1 の縮退規則
+            **``max_delay_by_degree`` とは継承規則が異なる** (F-3b1-1-005)。
+            『3-B' 以外へは効かない片方向』という点は同じだが、
+            ``max_delay_by_degree`` は非 ``Optional`` で**常に**
+            ``config.ipc`` を上書きする (継承の選択肢が無い) のに対し、
+            ``n_replicates`` は ``int | None`` で **``None`` のときだけ**
+            横断共有値を継承する opt-in の上書きである。この差は意図的:
+            打ち切り (``max_delay_by_degree``) は保存則を測るための 3-B' の
+            **定義そのもの**なので既定値を持たせて常に効かせる必要があるが、
+            レプリケート数は予算超過時にだけ引く**縮退のノブ**であり、既定
+            (``None``) では 3-A / 3-B と同じ統計的信頼度を保ちたい。3-B' は
+            予算 400 秒と3実験で最も重いので、仕様 §7 リスク1 の縮退規則
             (「予算超過時に許可される調整は ``conservation.n_replicates``
             を 3 → 1 に落とすことだけ」) のノブがここだけに効く必要がある。
             横断共有 (``reservoir.n_replicates``) を 1 に落とすと 3-A / 3-B の
