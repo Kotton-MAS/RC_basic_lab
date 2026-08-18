@@ -32,7 +32,6 @@ import numpy as np
 from rc_basics_lab.diagnostics._capacity import (
     UNIFORM,
     CapacityProblem,
-    bounded_chunk_size,
     capacity_of_chunks,
     input_series,
     orthonormal_basis,

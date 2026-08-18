@@ -672,6 +672,7 @@ def ipc(
             t0=t0,
             n_samples=n_samples,
             n_units=problem.n_units,
+            chunk_size_effective=chunk_size,
             seed=context.seed,
         ),
     )
@@ -679,11 +680,16 @@ def ipc(
 
 __all__ = [
     "DEFAULT_IPC",
+    "HERMITE",
+    "LEGENDRE",
     "NAME",
+    "NORMAL",
+    "SUPPORTED_BASIS_PAIRS",
     "SUPPORTED_THRESHOLD_MODES",
     "THRESHOLD_CHI2",
     "THRESHOLD_NONE",
     "THRESHOLD_SURROGATE",
+    "UNIFORM",
     "IpcConfig",
     "TargetSpec",
     "count_targets",
