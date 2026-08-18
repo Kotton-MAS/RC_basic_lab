@@ -95,3 +95,37 @@ round 1 の BLOCKER 修正 (F-03-1-012/013) の副産物として fixer が指�
 | F-03-2-018 | BLOCKER | `bounded_chunk_size` を no-op に差し替えても既存58テストが1件も落ちない空虚な安全機構だった (テスト規模では切り詰め分岐が一度も真にならないため)。直接の単体テスト (configured<budget で無変更 / configured>budget で切り詰め / n_samples<=0 の防御分岐 / 下限 max(1,...)) を追加し、`test_chunk_size_does_not_change_results` にキャップが実際に発動するケースを1件追加した。in-process で `bounded_chunk_size` を no-op 化すると5テストが失敗することを確認済み。 |
 | F-03-2-019 | HIGH | `mc_ratio >= 0.2` は rho=0.5 では約48〜50%喪失で検出できるが rho=0.9/0.99 では約65〜70%喪失まで通過し、IPC の `saturation_ratio >= 0.5` (約30%喪失で検出) より明確に緩かった。rho ごとの個別下限 (`_MC_RATIO_LOWER_BOUND = {0.5: 0.25, 0.9: 0.4, 0.99: 0.4}`) に変更し、実測で破断点が33%/36%/39%喪失になることを確認した (IPC と同水準の30〜45%レンジ)。 |
 | F-03-2-020 | MEDIUM | `CapacityProblem.lagged` の `values.ndim != 1` 分岐がテストで一度も実行されず coverage で Missing だった。`test_capacity_problem_lagged_rejects_multi_dimensional_series` を追加した。 |
+
+## サイクル 3a round 3 (`F-03-3-xxx`)
+
+round 2 の修正 (D-29 の追加、`picked` のブロック化、`max_degrees` /
+`_MAX_VARIABLES_FOR_COUNT` の新設) 自体が新たな問題を生んだ回
+(BLOCKER 1 / HIGH 3 / MEDIUM 8 / INFO 12)。BLOCKER はオーケストレータ
+(fixer を起動した側) の指示ミスによる ID 衝突で、fixer の実装ミスではない。
+
+| ID | severity | 概要 |
+|---|---|---|
+| F-03-3-001 | BLOCKER | 新設 D-29 (chunk_size のキャップ) の ID が、ユーザー承認済みの `docs/plans/rc-basics-03.md` line 9 が 3b 用に予約した D-29〜D-32 (line 271 に D-29 = NARMA10 が既に記録済み) と衝突していた。オーケストレータが予約を確認せず番号を指定した指示ミス。この決定を **D-33** に改番し、`design.md` / `ipc.py` / `_capacity.py` のコメント / `review-findings-03.md` の D-29 参照を D-33 へ置換した。3b 用の D-29〜D-32 は plan doc のまま動かしていない。`check_decisions.py` が OK になることを確認した。 |
+| F-03-3-002 | HIGH | F-03-2-015 (`picked` のブロック化) の副作用で、IPC が `surrogate_threshold` の第1戻り値を `_` で捨て `float(np.quantile(...))` を自前に計算しており、D-27 の「サロゲートは同じ関数に流す」前提が壊れていた (実測: カーネル側の閾値を NaN にしても IPC の出力は不変、MC は nan に伝播)。`_capacity.py` に `surrogate_capacities(problem, base_blocks, alpha, ...)` を切り出し、`surrogate_threshold` をその上に定義し直した。`base_blocks` は Iterable of block になり、`ipc.py` は `picked` のブロックを生成する `_picked_target_blocks` を渡すだけになった (`np.quantile` は `ipc.py` から消えた)。MC は `[base]` の1要素 Iterable を渡すだけで既存の呼び方を維持した。修正後、カーネル側の閾値を汚染すると IPC も MC も影響を受けることを実測で確認した。 |
+| F-03-3-003 | HIGH | `max_degrees=20` と `_MAX_VARIABLES_FOR_COUNT=20` の根拠が decisions.yaml にも plan doc にも無く、`design.md:761` は存在しない決定 (D-29 の rule は chunk_size のキャップのみ) を参照していた。`_MAX_VARIABLES_FOR_COUNT` の docstring/テストが根拠にした実測ケース (`max_delay_by_degree=(1,)*4000`) は、次数の本数 (4000) が既定 `max_degrees=20` の検査に先に捕まり到達不能だった。判断を **D-34** として guard_test 付きで記録し、`design.md` の ID を D-34 に正した。`_MAX_VARIABLES_FOR_COUNT` の docstring を、`_MAX_DEGREES=32` (F-03-3-019 で追加) の下では `count_targets` が `max_variables` の値によらず実測上つねに 1ms 未満に収まること (最悪ケース: 次数32・遅延10^300・`max_variables=32` でも 0.3ms) を明記し、到達不能な D=4000 のケースを根拠から外した。維持理由は (a) 目標1本の変数本数として意味のある値域の明示、(b) `_MAX_DEGREES` が将来引き上げられた場合の多重防御、の2点とした。 |
+| F-03-3-004 | MEDIUM | D-29 (→D-33) の rule (iii)「params に設定値と実効値の両方を記録する」を守るテストが0件で、`chunk_size_effective` を params から削除しても落ちるテストが無かった (実測: 削除しても 522 passed で変化なし)。`test_params_record_configured_and_effective_chunk_size_when_capped` を追加し、D-33 の guard_test をこちらへ差し替えた。 |
+| F-03-3-005 | MEDIUM | 確保・列挙を縛る上限が `max_targets` (設定フィールド、単位の違う2量を同じ値で縛る) / `max_degrees` (設定フィールド、絶対上限あり) / `_MAX_VARIABLES_FOR_COUNT` (モジュール定数) の3形に割れており、線引きが正本に無かった。`design.md` §11 に「引き上げ可能な実験パラメータ」と「引き上げ不可の安全装置」の線引きを1文追加し、`max_degrees` の docstring に `_MAX_DEGREES` への相互参照を足した。`max_targets` の単位の食い違いの解消は3bに送った。 |
+| F-03-3-006 | MEDIUM | `problem.x` が書き込み可能なビューのままで、`problem.x[...] = ...` と書いても素通りし `gram` と無言で desync する経路が残っていた (src 内に代入は0件で安全に閉じられる)。`CapacityProblem.from_states` で保持するビューを `writeable=False` にし、`test_capacity_problem_x_is_read_only` を追加した。元の `X` 自身への書き込みを塞ぐのは3bの受け入れ条件に送った。 |
+| F-03-3-009 | MEDIUM | `.claude/decisions.yaml` の D-26 の rule が `ceil(K/chunk_size)` のまま (effective_chunk_size 導入前) で、直後の D-33 (旧D-29) の rationale が「D-26 の閉形式を `ceil(K/effective_chunk_size)` に更新した」と書いており正本内で自己矛盾していた。D-26 の rule を `ceil(K/chunk_size_effective)` に更新した。 |
+| F-03-3-010 | MEDIUM | `docs/plans/rc-basics-03.md` に `bounded_chunk_size` / `effective_chunk_size` / `chunk_size_effective` / `max_degrees` / `picked` のブロック分割への言及が0件で、line 136 も旧閉形式のままだった。「T2 実装時に決めたこと」に項目17・18を追加し (D-33/D-34 の経緯を記録)、line 136 の閉形式を `ceil(K/chunk_size_effective)` に更新した。 |
+| F-03-3-018 | MEDIUM | CWE-400。`count_targets` / `enumerate_targets` は `ipc.__all__` の公開関数だが `_validate_config` を呼ばないため、`max_delay` を大きくすると D=1600 で 107.89s ハングする (round2 の PoC 形は消えたが形状特化の修正だった)。`_validate_config` から組合せ計算量の検査だけを `_validate_combinatorial_bounds` として切り出し、`count_targets` の先頭で呼ぶようにした (`max_targets`/heatmap の検査は含めず、`count_targets` を目標数の下見に使う既存の呼び出し側の意味を変えないようにした)。修正後、病的な cfg を `count_targets` に直接渡しても1秒未満で `ValueError` になることを実測した。 |
+| F-03-3-019 | MEDIUM | CWE-789。`max_degrees` が上限なしの設定フィールドで、`max_degrees=400` の1行変更だけで psi_table 膨張が再現した (実測 peak RSS 0.095GB→0.721GB)。同一クラスの脆弱性で `max_variables` (上書き不能なモジュール定数) と防御強度が非対称だった。`_MAX_DEGREES=32` のモジュール定数を追加し `_validate_config` で検査するようにした。修正後、`max_degrees` を大きくしても psi_table が膨らまないことを実測で確認した。 |
+| F-03-3-023 | MEDIUM | D-26 のソルブ回数テスト (`_expected_solve_count`) が本番の `bounded_chunk_size` を直接呼んで期待値を計算しており、`bounded_chunk_size` 自体にバグがあると両辺が同時に動いて素通りする (実測: バイト予算計算を4倍過剰に厳しくする変異を注入してもこのテスト単体では1 passed)。docstring に「capping の正しさはこのテストの担保範囲外で `bounded_chunk_size` の直接単体テストが担う」旨を明記した。 |
+| F-03-3-022 | HIGH | `max_variables` の新設上限 (`_MAX_VARIABLES_FOR_COUNT=20`) の invalid_configs は下限違反 (0) と上限違反 (21) しかカバーせず、成功すべき境界値 20 のテストが無かった (実測: off-by-one 変異で40テスト全通過)。`test_max_variables_boundary_value_20_is_accepted` を追加した。 |
+| F-03-3-007 | INFO | `picked` のブロック幅が `chunk_size` (実効値) を流用しており、代表目標行列の確保幅と1回の solve に畳む列数という別の軸が隠れて結合している。対応不要 (3b で `surrogate_capacities` 切り出しと同時にやると追加コストがほぼ無いため、3bへ送る)。 |
+| F-03-3-008 | INFO | `__all__` への5シンボル追加で3bの config層がbasis語彙を公開モジュール経由で取れるようになったことの確認結果 (悪化なし)。対応不要。 |
+| F-03-3-011 | INFO | D-29 (→D-33) rationale の「no-op 化で58テストが1件も落ちない」が round2 開始時点のスイートに対する主張で、read-only agent の権限では裏取りできなかった件。対応不要 (次に検証する reviewer が git worktree の使える権限で確認するとよい、との reviewer 自身の結論)。 |
+| F-03-3-012 | INFO | `docs/review-findings-03.md` の丸め誤差の数値 (4.18e-12 / 7.37e-11) にシードと N の指定が無く再現できなかった (実測: seed=0・N=200 では 5.12e-12 / 1.01e-10)。本文にシード・N の明記と「目安値であり再実行では厳密には再現しない」旨を追記した。 |
+| F-03-3-013 | INFO | `picked` ブロック分割は既定 `n_surrogate_targets=4` が実効 chunk_size を常に下回るため実運用では1ブロックしか実行されず、round2 で懸念したサロゲート経路の悪化は測定上発生していないことの確認結果。対応不要。 |
+| F-03-3-014 | INFO | round2 の BLOCKER 修正由来の4GB予算が round3 のリファクタで崩れていないことの確認結果 (IPC 0.906GB / MC 2.09GB)。対応不要。 |
+| F-03-3-015 | INFO | 3b (T3) の代表条件 (3-A/3-B/3-B') を個別実測し、性能予算に収まることを確認した結果 (合計約161秒)。対応不要。 |
+| F-03-3-016 | INFO | `effective_chunk_size` の呼び出し回数がホットパスに比例しないことの確認結果。対応不要。 |
+| F-03-3-017 | INFO | `count_targets` の早期打ち切りが既定設定の計算コストを変えないことの確認結果 (601、変化なし)。対応不要。 |
+| F-03-3-020 | INFO | `n_surrogates` × `n_surrogate_targets` が他のどの上限とも突き合わされていないが、増え方が厳密に線形で OOM 経路にはならないことの確認結果。急ぎの対応は不要 (3b で閉形式の検査を1本足すと確保・計算軸の規律が揃う、との reviewer の提案は3bへ送る)。 |
+| F-03-3-021 | INFO | `enumerate_targets` の `max_targets` 超過メッセージが多倍長整数 (`total`) を f-string で直接文字列化しており、Python 3.11+ の int→str 変換桁数制限 (既定4300桁) を超えると別の `ValueError` に化けて運用者に意図したメッセージが届かない (実測: D=1600 で 'Exceeds the limit (4300 digits)...')。安価な修正のため対応: `_format_target_count` を追加し、`bit_length` から桁数を見積もって上限に近ければ概算の指数表記 (`~1eN`) に落とすようにした (`float(total)` も `OverflowError` を起こしうるため使わない)。 |
+| F-03-3-024 | INFO | `_MC_RATIO_LOWER_BOUND` が固定シード (seed=7) のベースラインでのみ調整されており、他シードではマージンが約25%まで縮む (フレーキーではない) ことの確認結果。対応不要 (reviewer 自身が「将来シードを変える場合は破断点を再測定するコメントを残すとよい」と結論、コメント追加は3bへ送ってよい低優先度)。 |
