@@ -996,7 +996,7 @@ def test_max_variables_boundary_value_20_is_accepted() -> None:
     tests/test_diagnostics_ipc.py の既存テストは1件も落ちない)。
     """
     states, inputs = _cached_states(0.9, 15, 4000, 5)
-    cfg = IpcConfig(max_delay_by_degree=(30,) * 20, max_variables=20, max_degrees=20)
+    cfg = dataclasses.replace(SMALL_CFG, max_variables=20)
     result = ipc(states, inputs, ctx=DiagnosticContext(seed=CTX_SEED), cfg=cfg)
     assert np.isfinite(result.scalars["ipc_total"])
 

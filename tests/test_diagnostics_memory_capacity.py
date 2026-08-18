@@ -722,6 +722,23 @@ def test_capacity_problem_rejects_short_series() -> None:
         CapacityProblem.from_states(states, t0=0)
 
 
+def test_capacity_problem_x_is_read_only() -> None:
+    """``problem.x`` への書き込みは ``ValueError`` (F-03-3-006)。
+
+    ``x`` は元の ``X`` のビューで、``gram`` は構築時点の ``X`` から作った
+    スナップショット。``x`` が書き込み可能なままだと、診断内部や呼び出し側の
+    コードが ``problem.x[...] = ...`` と書いても素通りし、``gram`` と無言で
+    desync する (F-03-2-003 の契約)。``from_states`` が保持するビュー自身を
+    読み取り専用にすることで、この経路の半分 (呼び出し側が渡す前の ``X`` 自身
+    への書き込みは 3b の受け入れ条件) を閉じる。
+    """
+    rng = np.random.default_rng(9)
+    states: FloatArray = rng.standard_normal((300, 5))
+    problem = CapacityProblem.from_states(states, t0=10)
+    with pytest.raises(ValueError, match="read-only"):
+        problem.x[0, 0] = 1.0
+
+
 def test_capacity_of_targets_rejects_mismatched_rows() -> None:
     """目標の行数が設計行列と違えば ValueError (D-24 の行合わせ)。"""
     rng = np.random.default_rng(6)
