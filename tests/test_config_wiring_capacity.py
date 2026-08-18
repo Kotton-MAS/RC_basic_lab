@@ -118,37 +118,20 @@ T1 が実装するのは「1条件の配線」(``evaluate_capacity_condition``) 
 (3-B' の IPC 打ち切り上書き) ので pending ではなく ``CHANNEL_ROWS`` である。
 """
 
-TASK_STAGE_CONSUMERS: Mapping[str, tuple[str, ...]] = {
-    "T2": ("run_mc_sweep", "run_ipc_sweep", "run_conservation_sweep"),
-    "T4": ("run_narma10",),
+TASK_STAGE_CONSUMERS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "T2": (
+        ("run_mc_sweep", "run_ipc_sweep", "run_conservation_sweep"),
+        ("capacity_pipeline",),
+    ),
+    "T4": (("run_narma10",), ("narma",)),
 }
-"""段階ごとに「その段階の消費側が実装された」と判定する
-``rc_basics_lab.experiment.capacity`` (および ``experiment/`` 配下の新規
-モジュール) 上の関数名。
+"""段階ごとに「その段階の消費側が実装された」と判定する (関数名, モジュール名)。
 
-02 の信管 (``KNOWN_EXPERIMENT_MODULES``) はモジュールの新設を見ていたが、03 の
-掃引は ``experiment/capacity.py`` (T1 で既に存在する) の中に生える計画なので、
-モジュール名だけでは発火しない。関数名の出現で判定する。
-``experiment/`` 配下に新しい公開モジュール (``capacity_pipeline`` など) が
-増えた場合も T2 の消費側とみなす (``_new_experiment_modules``)。
-"""
-
-KNOWN_EXPERIMENT_MODULES = frozenset(
-    {
-        "capacity",
-        "esp",
-        "esp_pipeline",
-        "pipeline",
-        "report",
-        "runner",
-        "split",
-        "state_space",
-        "summary",
-        "washout",
-    }
-)
-"""**3b-1 T1 完了時点のスナップショットとして凍結**した ``experiment/`` 配下の
-公開モジュール集合。以後この値そのものを更新しない (02 の同名定数と同じ規律)。
+02 の信管 (``KNOWN_EXPERIMENT_MODULES``) はモジュールの新設だけを見ていたが、03 の
+掃引は T1 で既に存在する ``experiment/capacity.py`` の**中に**生える計画なので、
+モジュール名だけでは発火しない。関数名でも判定する。逆に、実装者が掃引を
+``experiment/capacity_pipeline.py`` 側に置いた場合はモジュール名の側で発火する
+(どちらの実装順でも信管が沈黙しない、というのが F-02-1-005 の教訓)。
 """
 
 EXPERIMENT_LABELS: tuple[str, ...] = (
@@ -506,14 +489,18 @@ def _current_experiment_modules() -> frozenset[str]:
 
 
 def _implemented_consumers(task: str) -> tuple[str, ...]:
-    """その段階の消費側で、既に実装されている関数名。"""
+    """その段階の消費側で、既に実装されている関数名・モジュール名。"""
     import rc_basics_lab.experiment.capacity as capacity_module
 
-    return tuple(
+    function_names, module_names = TASK_STAGE_CONSUMERS[task]
+    modules = _current_experiment_modules()
+    found = [
         name
-        for name in TASK_STAGE_CONSUMERS[task]
+        for name in function_names
         if hasattr(capacity_module, name) or hasattr(experiment_pkg, name)
-    )
+    ]
+    found.extend(name for name in module_names if name in modules)
+    return tuple(found)
 
 
 def test_pending_cases_disappear_once_the_sweeps_exist() -> None:
@@ -525,17 +512,14 @@ def test_pending_cases_disappear_once_the_sweeps_exist() -> None:
     このテストが赤くなるようにしてある。T2 では各 pending ケースを実際の
     出力チャネル (``CHANNEL_ROWS`` + ``scope``) へ書き換えること。
 
-    02 の信管 (``KNOWN_EXPERIMENT_MODULES``) はモジュールの新設だけを見ていたが、
-    03 の掃引は T1 で既に存在する ``experiment/capacity.py`` の中に生える計画
-    なので、それだけでは発火しない。**関数名の出現**でも判定する。
+    段階を分けるのは F-02-2-004 と同じ理由である。「消費側が1つでも増えたら
+    段階を問わず全 pending を禁じる」形にすると、T2 が掃引を作った瞬間に
+    3b-2 (T4) 担当の ``narma.length`` まで巻き添えで赤くなり、T2 完了〜T4
+    着手の間テストが緑にならない。
     """
-    new_modules = _current_experiment_modules() - KNOWN_EXPERIMENT_MODULES
     for task in TASK_STAGE_CONSUMERS:
         implemented = _implemented_consumers(task)
-        if not implemented and not new_modules:
-            continue
-        if not implemented and task != "T2":
-            # 新規モジュールは T2 (capacity_pipeline) の信管としてのみ扱う
+        if not implemented:
             continue
         stage_pending = sorted(
             item.field
@@ -543,8 +527,8 @@ def test_pending_cases_disappear_once_the_sweeps_exist() -> None:
             if item.channel == CHANNEL_PENDING and item.task == task
         )
         assert not stage_pending, (
-            f"{task} の消費側 ({implemented or sorted(new_modules)}) が実装されて"
-            f"いるのに、{task} の未実測の葉が残っています: {stage_pending}"
+            f"{task} の消費側 {list(implemented)} が実装されているのに、"
+            f"{task} の未実測の葉が残っています: {stage_pending}"
         )
 
     pending = [
@@ -553,20 +537,20 @@ def test_pending_cases_disappear_once_the_sweeps_exist() -> None:
     assert {field.split(".")[0] for field in pending} <= PENDING_SECTIONS
 
 
-def test_known_experiment_modules_matches_the_frozen_snapshot() -> None:
-    """凍結スナップショットに1語足して信管を黙らせる経路を塞ぐ。
+def test_pending_cases_declare_a_known_task_stage() -> None:
+    """pending は必ず既知の段階を名乗る (段階不明の先送りを作らない)。
 
-    ``KNOWN_EXPERIMENT_MODULES`` は 3b-1 T1 完了時点の集合であり、T2 が
-    ``capacity_pipeline`` を足したときにここへ追記して信管を黙らせても、
-    ``test_pending_cases_disappear_once_the_sweeps_exist`` が要求する
-    「T2 の pending が空」は関数名の側から独立に測られる。この検査は
-    スナップショットが**現在より広くない**こと (未来のモジュール名を
-    先回りして登録していないこと) を固定する。
+    ``task`` が段階表に無い pending は、どの信管でも解除されない永久の
+    先送りになる。``note`` (自由文) だけで先送りの理由を書く形は
+    F-02-2-004 で潰した経路なので、判定に使えるのは ``task`` だけである。
     """
-    assert _current_experiment_modules() >= KNOWN_EXPERIMENT_MODULES, (
-        "存在しないモジュール名が凍結スナップショットに入っています: "
-        f"{sorted(KNOWN_EXPERIMENT_MODULES - _current_experiment_modules())}"
-    )
+    for item in CAPACITY_WIRING_CASES:
+        if item.channel != CHANNEL_PENDING:
+            continue
+        assert item.task in TASK_STAGE_CONSUMERS, (
+            f"{item.field} の task が段階表にありません: {item.task!r}"
+        )
+        assert item.note, f"{item.field} に pending の理由が書かれていません"
 
 
 def test_ipc_reservoir_is_smaller_than_mc_reservoir() -> None:
