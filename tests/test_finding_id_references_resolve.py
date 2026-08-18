@@ -56,13 +56,32 @@ SCAN_ROOTS = (REPO_ROOT / "src", REPO_ROOT / "tests")
 # "F-" の直後が丸ごと <round> であることを要求するため、"02-1" という
 # round 部分は \d+ 単体にマッチせず、この順序でなくても事故は起きないが、
 # 意図を明示するため長い (より具体的な) 形式を先に置く)。
+#
+# サイクル番号セグメントは元々 [0-9]+ (数字のみ) だったが、サイクル 3b-1 の
+# 一時集約フォルダ (``.claude/tmp/findings/3b1-round-1/``) が振った ID
+# ``F-3b1-1-NNN`` の "3b1" は数字だけでは表せない (F-3b1-1-001 の
+# fixer/round1 で発見)。英数字混在のサイクルラベルを許すよう [0-9A-Za-z]+
+# に広げた (数字のみだった既存サイクル ("01" 等) の解決には影響しない)。
 _QUALIFIED_ID_PATTERN = re.compile(
-    "F-" + r"[0-9]+" + "-" + r"[0-9]+" + "-" + r"[0-9]{3}"
+    "F-" + r"[0-9A-Za-z]+" + "-" + r"[0-9]+" + "-" + r"[0-9]{3}"
 )
 _LEGACY_ID_PATTERN = re.compile("F-" + r"[0-9]+" + "-" + r"[0-9]{3}")
 _ID_PATTERN = re.compile(
     f"{_QUALIFIED_ID_PATTERN.pattern}|{_LEGACY_ID_PATTERN.pattern}"
 )
+
+_CYCLE_LABEL_TO_DOC_SUFFIX = {
+    # サイクル 3b-1 の一時集約フォルダ (``.claude/tmp/findings/3b1-round-1/``)
+    # は ID のサイクルセグメントに "3b1" を使ったが、記録文書の命名規則は
+    # 01/02/03 に続けて "03b" (docs/plans/rc-basics-03b.md と同じ) を使う。
+    # 一時フォルダの命名 (レビュー実行時に機械的に決まる) と永続的な文書
+    # 命名規則 (01/02/03 の続き) が異なる、という食い違いを吸収するための
+    # 別名テーブル。両方を "3b1" に揃える (記録文書を review-findings-3b1.md
+    # にリネームする) 選択肢もあったが、既存の 01/02/03 の連番規則から外れる
+    # ため、ID 側はそのまま (fixer-input.json / triage.json との対応を保つ)
+    # にし、文書名だけをここで正規化する方を選んだ。
+    "3b1": "03b",
+}
 
 THIS_FILE = Path(__file__).resolve()
 
