@@ -7,11 +7,21 @@
 - ``report``: ``comparison.csv`` / ``comparison_summary.csv`` / ``meta.json``
   への書き出し
 - ``pipeline``: 1コマンドで5成果物をそろえる経路 (CLI はここを呼ぶだけ)
-- ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ唯一の場所)
+- ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ場所)
+- ``capacity``: 実験 3-A / 3-B / 3-B' の配線 (MC / IPC を同じ X で測る)
 - ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
 """
 
+from rc_basics_lab.experiment.capacity import (
+    CAPACITY_CSV_COLUMNS,
+    CAPACITY_EXPERIMENTS,
+    CapacityCondition,
+    CapacityOutcome,
+    CapacityRow,
+    evaluate_capacity_condition,
+    ipc_config_for,
+)
 from rc_basics_lab.experiment.esp import (
     ESP_CSV_COLUMNS,
     ConditionOutcome,
@@ -75,11 +85,16 @@ from rc_basics_lab.experiment.washout import (
 
 __all__ = [
     "ARTIFACTS",
+    "CAPACITY_CSV_COLUMNS",
+    "CAPACITY_EXPERIMENTS",
     "CSV_COLUMNS",
     "ESP_ARTIFACTS",
     "ESP_CSV_COLUMNS",
     "WASHOUT_CSV_COLUMNS",
     "Aggregate",
+    "CapacityCondition",
+    "CapacityOutcome",
+    "CapacityRow",
     "ConditionOutcome",
     "EspOutputs",
     "EspResults",
@@ -101,7 +116,9 @@ __all__ = [
     "collect_state_space",
     "compute_t0",
     "esn_propagator",
+    "evaluate_capacity_condition",
     "evaluate_condition",
+    "ipc_config_for",
     "make_drive",
     "make_initial_states",
     "make_split",
