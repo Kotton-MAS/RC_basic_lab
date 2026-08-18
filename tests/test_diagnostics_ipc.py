@@ -422,6 +422,31 @@ def test_gram_solve_count_does_not_scale_with_target_count(
         f"目標 {target_ratio:.1f} 倍に対し solve {solve_ratio:.1f} 倍"
     )
 
+
+def test_params_record_configured_and_effective_chunk_size_when_capped() -> None:
+    """``params`` は設定値と実効値の両方を記録する (D-33 の rule (iii))。
+
+    F-03-3-004: D-33 の guard_test は round2 まで rule (i) (``bounded_chunk_size``
+    の純関数としての正しさ) しか固定しておらず、``params['chunk_size_effective']``
+    を削除しても落ちるテストが0件だった (実測: 削除する変異を注入しても
+    522 passed で変化なし。``grep -rn 'chunk_size_effective' tests/`` も
+    0ヒットだった)。キャップが実際に発動する規模で ``ipc()`` を実行し、
+    ``params`` に設定値と実効値の両方が正しく残ることを固定する。
+    """
+    states, inputs = _cached_states(0.9, 15, 4000, 5)
+    ctx = DiagnosticContext(washout=100, seed=CTX_SEED)
+    cfg = IpcConfig(
+        max_delay_by_degree=(10, 5), max_variables=2, n_surrogates=5, chunk_size=8192
+    )
+    result = ipc(states, inputs, ctx=ctx, cfg=cfg)
+    n_samples = int(result.params["n_samples"])
+    expected_effective = bounded_chunk_size(cfg.chunk_size, n_samples)
+    assert expected_effective < cfg.chunk_size, (
+        "この規模ではキャップが発動していません (テストの前提が崩れています)"
+    )
+    assert result.params["chunk_size"] == str(cfg.chunk_size)
+    assert result.params["chunk_size_effective"] == str(expected_effective)
+
     # configs[2] は configs[1] と目標構成が同一で chunk_size だけが違う。
     # キャップが実際に発動していること (実効値 < 設定値) を明示し、その状態
     # でも solve 回数の閉形式 (ceil(K / effective_chunk_size)) が一致する
