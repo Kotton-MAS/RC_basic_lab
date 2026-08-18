@@ -757,9 +757,21 @@ Gram は `[[T_eff, sum(X,0)], [sum(X,0).T, X.T @ X]]` にブロック分解で�
 | IPC のリッジ正則化係数 `alpha`（D-25） | `1e-09` | `diagnostics.ipc.IpcConfig.alpha` |
 | IPC の目標数上限 `max_targets` | `200000` | `diagnostics.ipc.IpcConfig.max_targets` |
 | IPC の chunk_size（性能パラメータ、D-26） | `256` | `diagnostics.ipc.IpcConfig.chunk_size` |
+| chunk_size の実効上限バイト数 `_MAX_CHUNK_BYTES`（D-29） | `134217728` | `diagnostics._capacity._MAX_CHUNK_BYTES` |
+| IPC の次数の本数上限 `max_degrees`（D-29） | `20` | `diagnostics.ipc.IpcConfig.max_degrees` |
 | 対応する `(input_distribution, basis)` の組（D-28） | `(('uniform', 'legendre'), ('normal', 'hermite'))` | `diagnostics._capacity.SUPPORTED_BASIS_PAIRS` |
 
 3-B（本番の飽和実測）向けのメモリ予算（4GB 未満、`/usr/bin/time -l` 実測）は
 round 1 レビューで発見された2件の BLOCKER（サロゲートの一括確保 F-03-1-012、
 `Phi` の実体化 F-03-1-013）を修正して満たしている。数値（保存則・しきい値・
 遅延プロファイル）そのものは3b の `capacity.csv` 生成時に一次資料と機械照合する。
+
+**chunk_size は設定値を黙って下げうる（D-29、round 2 で追加）。** `chunk_size`
+は結果を変えない性能パラメータだが、1チャンクの目標行列（`T_eff x
+chunk_size`）が `_MAX_CHUNK_BYTES`（128 MiB）を超える場合に限り、実装が
+`CapacityProblem.effective_chunk_size` 経由で `configured` より小さい実効値へ
+下げる（`configured` より大きくはしない）。この判断と根拠は round 1 の
+BLOCKER 修正（F-03-1-012/013）の副産物として `bounded_chunk_size` に実装
+されていたが、round 1 では正本（decisions.yaml / design.md / plan doc）の
+どこにも記録されていなかった（F-03-2-002）。成果物の `params` には設定値
+（`chunk_size`）と実効値（`chunk_size_effective`）の両方を記録する。
