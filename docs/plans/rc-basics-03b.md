@@ -850,3 +850,194 @@ read-only 化を「軌道を生成した側」ではなく「診断へ渡す側�
 なお本作業で取った5標本目は 330.06s (`make` 全体) で **fast 側の山**に入り、
 2山仮説と矛盾しない (ただし4標本 + 1では区別できないので、断定は引き続きしない)。
 
+
+---
+
+## T4 実装時に決めたこと (3b-2 T4 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+T5 (記録) は別タスクなので docs/design.md と README には触れていない。
+
+### 1. 3-C の行の `sigma_u` は**宣言した入力分布の標準偏差の閉形式** (0.14434)
+
+3b-2 準備が T4 の判断として残した未決事項 (NaN / 0.0 / 実測値) への回答。
+採ったのは**4つ目の選択肢**で、`tasks/narma.py` の
+`NARMA10_INPUT_STD = (0.5 - 0.0) / sqrt(12) = 0.144338...` を書く。
+
+- **NaN は選べない**: `test_capacity_csv_has_no_missing_values` が「空欄・nan が1件も無い」を固定している。
+- **0.0 は誤り**: 掃引の `sigma_u` は「駆動信号の標準偏差の**設定値**」(D-17) であり、
+  0.0 は「無入力」を意味する実在の値である。3-C は実際に駆動されているので、
+  後から `capacity.csv` だけを読む人に対して嘘になる。
+- **実測値 (`np.std(u)`) も選ばない**: それは `input_drive_std` 列がすでに持っている値で、
+  同じ数字を2列に書くと「設定値 vs 実測値」という列の分け方 (02 から続く規律) が 3-C の行でだけ消える。
+- **閉形式が掃引の `sigma_u` と同じ意味**: 一様分布の駆動では `a = sqrt(3) * sigma_u` (D-17) なので、
+  掃引の `sigma_u` は「宣言した分布の標準偏差」そのものである。3-C は分布が
+  `U[0, 0.5]` と D-29 で**宣言されている**ので、同じ意味の値が閉形式で書ける。
+
+実測: 本番の 3-C 行は `sigma_u = 0.14433756729740646` / `input_drive_std = 0.14608100370341995` で、
+2列は一致しない (サンプル揺らぎ)。`test_narma10_capacity_uses_the_same_states_as_the_esn_run` が
+両方を突き合わせ、**一致しないこと**まで assert している (同じ値を2列に書く実装に戻ると落ちる)。
+
+### 2. `n_lags_grid` / `alpha_grid` は**本番 YAML 側**に置いた (モジュール定数にしない)
+
+仕様 §4 T4-2 は「`n_lags_grid = (10,15,20,25,30)`、`alpha_grid` は 01 と同一」と書いているが、
+これを `experiment/narma.py` にハードコードすると `narma.base.ridge.*` が
+「設定したのに効いていない」フィールドになる (§2.2-2 / D-09 の規律違反)。
+本番 YAML の `narma.base.ridge` をその値に直し、コードは設定を読むだけにした。
+D-29 が「設定にしない」と言っているのは**課題の係数と入力分布**であって探索格子ではない
+(格子は D-04 が「YAML の単一キー」と決めている軸)。
+
+「`alpha_grid` は 01 と同一」は**01 の本番 YAML と同じ13点** (1e-10〜100) と読んだ。
+`Narma10Config` の既定 (`DEFAULT_ALPHA_GRID`、11点) のままだと 01 と違う格子になり、
+3-C の「探索予算をそろえた比較」を 01 の結果と並べて読めなくなる。
+一致は `test_narma10_alpha_grid_is_shared_across_methods` が**本番 YAML どうし**で突き合わせる
+(片方だけ延ばしたら赤くなる)。
+
+### 3. 3-C が読む ESN セクションは `esn_mackey_glass` (D-39 の適用先)
+
+`narma.base` は 01 の `ExperimentConfig` をまるごと内包しているので ESN セクションが2本ある。
+**Mackey-Glass 側**を選んだ理由は、NARMA10 が連続値入力 (`U[0, 0.5]`) の回帰課題で、
+漏れ積分 (`leak_rate=0.3`) が効く点で MG と同型だからである
+(`esn_delay_parity` は ±1 の2値入力・`leak_rate=1.0` を前提とした動作点)。
+D-08 により N は検証分割で選ばれないので、宣言した1点をそのまま報告する。
+
+- 解決は `experiment/narma.py` の `narma_esn_config` 1か所に閉じ、宣言は
+  `NARMA10_ESN_SECTION` 定数に置いた。`test_narma10_esn_size_matches_the_declared_choice` が
+  「宣言」と「実際に `TaskEntry` へ載る設定」が同一オブジェクトであることまで見る ——
+  宣言だけを見ると「50 に直したセクションを誰も読んでいない」を通す。
+- **読まない側 (`esn_delay_parity`) は 200 のまま**にし、不活性である旨を YAML のコメントに書いた。
+  50 に揃えると「どちらも読まれている」ように見えるうえ、内包した 01 の設定を
+  3-C の都合で書き換えることになる (被覆は 01 側へ委譲している部分である)。
+
+### 4. 実験ラベル `3C_narma10` は `CAPACITY_EXPERIMENTS` と `FIGURE_EXPERIMENTS` の両方に入れた
+
+`capacity.csv` に行が出る以上、scope 検査 (「他セクションを変えたら 3-C の行まで動いた」を落とす)
+と `meta.json` の `wall_time_breakdown` の並びの両方に必要である。
+`FIGURE_EXPERIMENTS` は `capacity_pipeline` が内訳を組む順序の単一の真実になっているので、
+並びが定数と食い違ったら `run_and_report_capacity` が `ValueError` で落ちるようにした
+(実験を1本足したときに内訳から静かに落ちるのを防ぐ)。
+
+**3-C の `SectionTiming` だけ `wall_time_s` の意味が違う**: `wall_time_state_s` /
+`wall_time_mc_s` / `wall_time_ipc_s` は掃引と同じ (状態行列1本と2診断) だが、
+`wall_time_s` は `run_task` (3手法 x 5レプリケート) を含む **3-C 全体**である。
+仕様 §5 の予算 (3-C < 120 秒) は成績の計算まで含めた区間に対する数字なので、
+容量測定ぶんだけを載せると予算判断に使えない内訳になる (`_narma_timing` の docstring に明記)。
+
+### 5. `narma10.csv` は 01 の `write_comparison_csv` をそのまま使う
+
+行型が 01 の `ResultRow` である以上、書き出しも 01 の関数を通す。3-C 専用の writer を作ると
+「CSV の列順の単一の真実 = 行 dataclass の宣言順」(§2.2-1) の実装が2つになる。
+ファイル名だけが `comparison.csv` と違う。
+
+### 6. 手順は `plan_replicate` → `measure_capacity` → `run_task` の順
+
+容量測定を先に置くのは、`measure_capacity` が状態行列を read-only にする (D-35) ので、
+**後段 (`run_task`) が状態を書き換えようとすれば例外になる**ため。逆順だと同じ守りが効かない。
+`run_task` は `plan0.designs` を読むだけなので read-only 化の影響を受けない (実測で確認)。
+
+### 7. 容量行の識別子の埋め方
+
+- `replicate=0` —— 容量はレプリケート0 の状態行列に対する1条件のみ (成績は5レプリケート)。
+- `seed_drive = narma.base.seeds.task` —— 3-C のリザバーを駆動するのは**課題の入力そのもの**なので、
+  駆動側の基底シードは task ストリーム (D-06) である。
+- `rho` / `leak_rate` / `input_scale` / `density` / `state_noise` は `TaskEntry.esn` から取る
+  (掃引の `CapacityCondition` に相当するものが 3-C には無いため)。
+- `washout` は 03 の `drive.washout` (200)。`ctx` も掃引と同じ作り方で、
+  `seeds.surrogate` を共有する (D-37 の対象に 3-C も含める)。
+
+### 8. `narma10_verdict` は勝敗を**両方向とも同じ形**で残す
+
+仕様 §4 T4 は「結果の向きは問わない。遅延線が上回った場合は `meta.json` に記録」と書いているが、
+「上回った回だけ書く」形にすると負けた回に成果物から主張が消える。`Narma10Verdict`
+(best_method / nmse_mean / delay_line_beats_esn / selected_n_lags + 参照値と原典未特定の注) を
+常に書き、`test_verdict_records_either_direction` が人工の行で両方向を通す。
+
+### 9. `CHANNEL_PENDING` は空になったが**機構は残す**
+
+`narma.length` を `CHANNEL_ROWS` + `scope=3C_narma10` へ移し、`PENDING_SECTIONS` を空集合にした。
+配線テストの `SWEEPS` に 3-C (`run_narma10_capacity`) を足したので、
+`narma.length` は「3-C の行の `n_steps` が動く」ことで実測される。
+pending の機構そのもの (`CHANNEL_PENDING` / `TASK_STAGE_CONSUMERS` / 信管) は 04 のために残した。
+これにより `test_production_config_matches_the_committed_meta_json` の除外
+(`PENDING_SECTIONS` から引いている) が自動的に外れ、**`narma` セクションも本番 `meta.json` との
+突合対象に戻った** (仕様の指示どおり1か所の変更で戻る)。
+
+### 10. 図の参照線はラベル対応表を持ち、欠けたら描く前に落とす
+
+参照値は `experiment/narma.py` の `NARMA10_REFERENCE_NMSE` が単一の真実 (`meta.json` も同じ定数を書く)。
+図の側 (`_REFERENCE_LABELS`) に無いキーが在れば `ValueError` にする ——
+参照点を足したのに図には出ない、を黙って通さないため。注 (原典未特定) は日本語と英語の2本を
+`style.label` に通す (D-10。CJK フォントが無い環境で豆腐文字にしない)。
+
+### 11. 実測 (Darwin 25.3.0 / Python 3.12)
+
+| 区間 | 実測 | 予算 |
+|---|---|---|
+| **3-C 単体** (T=8000、3手法 x 5レプリケート + 容量測定1回) | **0.33s** (状態生成 0.03s / MC 0.02s / IPC 0.13s) | < 120s |
+| `make figures-03` 全体 | **352.98s** (計算 351.76s。3-A 29.49s / 3-B 76.82s / 3-B' 245.11s / 3-C 0.33s) | < 900s |
+| 状態生成の合計 | **36.05s** | < 60s |
+| ピーク RSS | **0.94 GB** | < 4 GB |
+| `results/03_capacity/*.csv` | **1.76 MB** (1,846,209 B。`capacity.csv` 46,510 B / `capacity_profile.csv` 1,792,346 B / `narma10.csv` 2,174 B / `capacity_length.csv` 5,179 B) | < 5 MB |
+| 03 が追加する pytest | 全体 655 件で 31.5s (3b-1 は 634 件) | < 60s |
+
+`make figures-03` の 352.98s は §9 の「2山」でいう **fast 側** (~325〜330s) と slow 側 (~370s) の間だが、
+3-C を足した増分は 0.33s なので、差は機械側の変動 (§9 の +14% 系統変動) の範囲である。
+
+### 12. 3-C の結果 (**遅延線が ESN を上回った**。§7 リスク3 に該当)
+
+本番 (N=50、T=8000、5レプリケート) のテスト NMSE のレプリケート平均:
+
+| 手法 | NMSE | NRMSE | 選ばれた探索点 |
+|---|---|---|---|
+| 線形 | **1.0181** | 1.0090 | alpha=100 (5/5) |
+| **遅延線** | **0.1538** | 0.3920 | k=30 (4/5) / k=25 (1/5)、alpha は 1e-10〜10 に散る |
+| ESN | **0.2673** | 0.5170 | alpha=1e-10 (3/5) / 1e-7 / 1e-9 |
+
+- **遅延線 (0.1538) が ESN (0.2673) を上回った**。遅延線は参照値の「非線形性なしの天井」
+  0.16 をわずかに下回っており、ESN (N=50) は「良好な非線形 RC」0.107 に届いていない。
+- 探索予算の非対称性 (D-08) は**遅延線に有利**な側に倒れている (遅延線 alpha x k = 13x5 = 65 点、
+  ESN は alpha のみ 13 点)。仕様 §7 リスク3 の指示どおり、**追加条件は回していない**
+  (rho / leak / N を振って ESN 側を良くする探索は、その非対称性を逆向きに作ることになる)。
+- 遅延線は 5 回中 4 回で格子の**上端 k=30** を選んでいる (張り付き)。要件書が
+  「タップ数を妥当な範囲 (k=10〜30) に抑え」と指定した範囲なので格子は動かしていないが、
+  01 の `n_lags_grid` 上端拡張 (docs/design.md §8.2) と同じ論点が 3-C にも在る。
+  **T5 / 記事側での解釈が要る**。
+- 3-C の同じリザバーの容量は `capacity.csv` の `3C_narma10` 行にある:
+  `mc_total = 11.15` (N=50 の 22%)、`ipc_total = 30.25`、`ipc_linear = 22.46` / `ipc_nonlinear = 7.79`、
+  `mc_effective_delay = 22.46`。NARMA10 が要求する 10 ステップの記憶は届いているが、
+  ESN の非線形容量が対照を上回るほどには効いていない、という読み方ができる
+  (2枚の CSV は `experiment` と ESN の条件キーで join できる)。
+
+### 13. D-30 が本番を止めないことの確認 (と将来の落とし穴)
+
+`U[0, 0.5]` の内側でも NARMA10 は発散する (`np.random.default_rng(s)` の s=0..199 のうち 6 本、
+定数入力 0.5 は 33 ステップで発散)。本番の task ストリーム (seeds.task=1) では
+**レプリケート0〜6 は発散せず、7 で発散する**。したがって `narma.base.n_replicates` を
+7 以上に増やすと D-30 で落ちる。`test_production_replicates_do_not_diverge` が両方を実測しており、
+増やす判断をするときはここが根拠になる (クリップも再抽選もしないので、
+発散したシードを黙って飛ばす経路は無い)。
+
+### 14. 変異試験 (guard が空虚でないことの実測)
+
+| 変異 | 落ちたテスト |
+|---|---|
+| `1.5 u[t-9] u[t]` → `1.5 u[t-1] u[t-10]` (添字ずらし) | `test_matches_reference_recurrence` のみ (1 failed / 10 passed) |
+| 発散時の `raise` を上限クリップに置換 | `test_divergence_raises_instead_of_clipping` + `test_production_replicates_do_not_diverge` (2 failed / 9 passed) |
+| `run_task(base, entry, plan0=plan0)` から `plan0=` を外す | `test_narma10_reuses_run_task_and_shares_rows_across_methods` + `test_narma10_capacity_uses_the_same_states_as_the_esn_run` (2 failed / 5 passed) |
+| 容量測定用に `plan_replicate` を呼び直す | `test_narma10_capacity_uses_the_same_states_as_the_esn_run` のみ (1 failed / 6 passed) |
+| `narma_esn_config` を `esn_delay_parity` に変更 | `test_narma10_esn_size_matches_the_declared_choice` のみ (1 failed / 6 passed) |
+| 参照線の `axhline` を描かない | `test_narma10_figure_draws_the_reference_lines_with_the_note` のみ (1 failed / 16 passed) |
+| 原典未特定の注 (`supxlabel`) を消す | 同上 (1 failed / 16 passed) |
+
+いずれも確認後に元へ戻し、SHA-256 が一致することを確認済み。
+
+### 15. 触っていないもの
+
+- `diagnostics/` は**差分 0 行** (`git diff <base-ref> -- src/rc_basics_lab/diagnostics/` が空)。
+- `build_tasks` / `ExperimentConfig` / `seeds.py` は無変更 (D-31 / D-13)。
+- 01・02 の成果物は SHA-256 で一致 (`results/comparison.csv` / `results/meta.json` /
+  `results/02_esp_and_dynamics/*.csv`)。`capacity.csv` の掃引3本の行も
+  実測時間の4列を除いて**再生成前と完全一致**、`capacity_profile.csv` は
+  前回の 21,636 行が**そのまま先頭にあり** 3-C の 176 行が末尾に増えただけ。
+- `docs/design.md` / `README.md` は **T5 の担当**なので触っていない
+  (§11.4 の「NARMA10 の採用式と先行との差分」に上記 12 の実測表がそのまま使える)。
