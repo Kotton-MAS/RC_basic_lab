@@ -40,15 +40,19 @@ from rc_basics_lab.experiment.capacity import (
     run_capacity_experiment,
     run_length_sweep,
 )
+from rc_basics_lab.experiment.narma import Narma10Results, run_narma10
 from rc_basics_lab.experiment.report import (
     META_JSON,
+    write_comparison_csv,
     write_meta_for,
 )
+from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
     plot_ipc_profile,
     plot_mc_sweep,
     plot_memory_nonlinearity,
+    plot_narma10_control,
 )
 from rc_basics_lab.plotting.style import setup_style
 
