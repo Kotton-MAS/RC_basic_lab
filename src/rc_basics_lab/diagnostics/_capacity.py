@@ -355,6 +355,33 @@ def orthonormal_basis(
     return _hermite_normalized(standardized, degree)
 
 
+def _iter_surrogate_chunks(
+    base: FloatArray,
+    n_surrogates: int,
+    chunk_size: int,
+    rng: np.random.Generator,
+) -> Iterator[FloatArray]:
+    """時間シャッフル列を ``chunk_size`` 列ずつ生成しては渡し捨てる (F-03-1-012)。
+
+    生成順序は ``index = 0, 1, ..., n_base * n_surrogates - 1`` の単調増加
+    (先頭の代表から順に ``n_surrogates`` 本ずつ) で固定し、``chunk_size`` が
+    どこで区切っても ``rng`` の消費順序が変わらないようにする。これにより
+    ``chunk_size`` を変えても生成される列そのものは1本残らず同一になり
+    (``test_chunk_size_does_not_change_results``)、`` (n_samples, n_base *
+    n_surrogates)`` を一括確保していた旧実装 (IPC 既定で peak RSS +3.5GB)
+    を、一度に ``(n_samples, chunk_size)`` しか保持しない生成器に置き換える。
+    """
+    n_samples, n_base = base.shape
+    total = n_base * n_surrogates
+    for start in range(0, total, chunk_size):
+        stop = min(start + chunk_size, total)
+        chunk: FloatArray = np.empty((n_samples, stop - start), dtype=np.float64)
+        for column, index in enumerate(range(start, stop)):
+            source = base[:, index // n_surrogates]
+            chunk[:, column] = source[rng.permutation(n_samples)]
+        yield chunk
+
+
 def surrogate_threshold(
     problem: CapacityProblem,
     base_targets: FloatArray,
@@ -370,7 +397,9 @@ def surrogate_threshold(
     ``base_targets`` の各列を時間方向にシャッフルした系列を ``n_surrogates``
     本ずつ作り、**通常の目標とまったく同じ経路** (``capacity_of_targets``) に
     流して容量を測る。閾値はその分位点。別経路で閾値を計算すると、閾値と容量が
-    別実装からずれても誰も気づけない。
+    別実装からずれても誰も気づけない。シャッフル列は ``chunk_size`` 列ずつ
+    その場で生成しては畳んで捨てる (F-03-1-012)。``(n_samples, M *
+    n_surrogates)`` を一括確保しない。
 
     Args:
         problem: 容量問題 (通常の目標と同じもの)。
@@ -397,36 +426,24 @@ def surrogate_threshold(
     base = np.asarray(base_targets, dtype=np.float64)
     if base.ndim != 2:
         raise ValueError(f"base_targets は (T, M) が必要です: {base.shape}")
-    n_samples, n_base = base.shape
-    surrogates: FloatArray = np.empty(
-        (n_samples, n_base * n_surrogates), dtype=np.float64
-    )
-    for index in range(n_base * n_surrogates):
-        source = base[:, index // n_surrogates]
-        surrogates[:, index] = source[rng.permutation(n_samples)]
     capacities = capacity_of_chunks(
-        problem, iter_column_chunks(surrogates, chunk_size), alpha
+        problem, _iter_surrogate_chunks(base, n_surrogates, chunk_size, rng), alpha
     )
     return float(np.quantile(capacities, quantile)), capacities
 
 
-def iter_column_chunks(targets: FloatArray, chunk_size: int) -> Iterator[FloatArray]:
-    """実体化済みの ``(T, K)`` を ``chunk_size`` 列ずつのビューに切って返す。
+def chi2_threshold(*, n_units: int, n_samples: int, quantile: float) -> float:
+    """カイ二乗近似のしきい値 ``chi2_N(q) / T_eff`` (Dambre 2012 SupMat 3.2)。
 
-    サロゲートのように総数が小さく既に実体化されている目標のための補助。
-    IPC の本番の目標 (最大 20 万本) はこの関数を通さず、生成器が chunk を
-    その場で作って ``capacity_of_chunks`` に渡し、畳んだら捨てる (D-26)。
-
-    Raises:
-        ValueError: ``chunk_size`` が 1 未満の場合。
+    状態と無相関な目標に対する決定係数は、自由度 ``N`` (バイアス列を除く回帰
+    変数の本数) のカイ二乗を標本数で割った分布に漸近する。IPC のしきい値法の
+    1つ (``THRESHOLD_CHI2``) が使う。仕様書 (T1 実装時に決めたこと 5) は
+    「chi2 は T2 で共有カーネルに足す」と宣言しており、以前は ``ipc.py`` に
+    private 関数として置かれ食い違っていた (F-03-1-003)。MC は次数1しか
+    評価せず周辺分布が1種類 (サロゲートで足りる) なので現状は呼ばないが、
+    将来 MC 側にもカイ二乗近似のしきい値を足す場合はここを import すればよい。
     """
-    if chunk_size < 1:
-        raise ValueError(f"chunk_size は 1 以上が必要です: {chunk_size}")
-    matrix = np.asarray(targets, dtype=np.float64)
-    if matrix.ndim != 2:
-        raise ValueError(f"targets は (T, K) が必要です: {matrix.shape}")
-    for start in range(0, matrix.shape[1], chunk_size):
-        yield matrix[:, start : start + chunk_size]
+    return float(chi2.ppf(quantile, n_units)) / float(n_samples)
 
 
 def capacity_of_chunks(
@@ -466,7 +483,7 @@ __all__ = [
     "CapacityProblem",
     "capacity_of_chunks",
     "capacity_of_targets",
-    "iter_column_chunks",
+    "chi2_threshold",
     "orthonormal_basis",
     "surrogate_threshold",
 ]
