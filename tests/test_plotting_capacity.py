@@ -1,9 +1,11 @@
-"""記事03の図4枚のテスト (仕様 §4 T3).
+"""記事03の図5枚のテスト (仕様 §4 T3 / T4).
 
-図は「生成できた」だけでは検証にならない。この4枚が主張しているのは
-受け入れ条件1・2・4 そのものなので、
+図は「生成できた」だけでは検証にならない。この5枚が主張しているのは
+受け入れ条件1・2・4・5 そのものなので、
 
 - **上限線 y=N が実際に描かれている** (``fig_ipc_conservation``、受け入れ条件2)
+- **参照線 NMSE = 0.16 / 0.107 が原典未特定の注つきで描かれている**
+  (``fig_narma10_control``、要件書 未確定1)
 - ラベルが ``StyleContext`` を通っている (CJK フォントが無い環境で英語に
   落ち、ある環境では日本語になる。D-10)
 - 縮小データ (2条件) と**縮退ケース** (条件が1つだけ / 全容量が 0) でも
@@ -38,6 +40,7 @@ from rc_basics_lab.experiment.capacity import (
     CapacityProfileRow,
     CapacityRow,
 )
+from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.plotting import figures_capacity, style
 from rc_basics_lab.plotting.figures_capacity import (
     conservation_bound,
@@ -47,6 +50,7 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_profile,
     plot_mc_sweep,
     plot_memory_nonlinearity,
+    plot_narma10_control,
 )
 from rc_basics_lab.plotting.style import StyleContext, setup_style
 
@@ -237,6 +241,37 @@ def conservation_rows(
     )
 
 
+def narma10_rows(
+    methods: Sequence[str] = (LINEAR, DELAY_LINE, ESN_METHOD),
+    replicates: Sequence[int] = (0, 1),
+) -> tuple[ResultRow, ...]:
+    """3-C 相当の行 (01 の ``ResultRow``。遅延線は k を選ぶ)。"""
+    nmse = {LINEAR: 1.0, DELAY_LINE: 0.15, ESN_METHOD: 0.27}
+    return tuple(
+        ResultRow(
+            task="narma10",
+            method=method,
+            replicate=replicate,
+            seed_reservoir=0,
+            seed_task=1,
+            seed_split=2,
+            alpha=1.0e-6,
+            n_lags=30 if method == DELAY_LINE else 0,
+            rmse=nmse[method] * 0.5,
+            nrmse=nmse[method] ** 0.5,
+            nmse=nmse[method] + 0.01 * replicate,
+            sign_accuracy=0.9,
+            n_train=100,
+            n_val=30,
+            n_test=70,
+            t0=30,
+            wall_time_s=0.0,
+        )
+        for replicate in replicates
+        for method in methods
+    )
+
+
 @pytest.fixture
 def captured(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
     """``_save`` を包んで描き上がった ``Figure`` を捕まえる。
@@ -256,7 +291,7 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
 
 
 def _draw_all(tmp_path: Path, context: StyleContext) -> tuple[Path, ...]:
-    """縮小データ (2条件相当) で図4枚を描く。"""
+    """縮小データ (2条件相当) で図5枚を描く。"""
     mc_rows = mc_sweep_rows()
     ipc_rows = ipc_sweep_rows()
     return (
@@ -270,6 +305,7 @@ def _draw_all(tmp_path: Path, context: StyleContext) -> tuple[Path, ...]:
         plot_ipc_conservation(
             conservation_rows(), tmp_path / "bound.png", style=context
         ),
+        plot_narma10_control(narma10_rows(), tmp_path / "narma.png", style=context),
     )
 
 
@@ -365,7 +401,7 @@ def test_figures_use_the_style_context_labels(
     context = setup_style()
     assert context.cjk_available is False
     _draw_all(tmp_path / "en", context)
-    assert len(captured) == 4
+    assert len(captured) == 5
     for figure in captured:
         texts = _texts(figure)
         assert texts
@@ -381,7 +417,7 @@ def test_figures_use_the_style_context_labels(
         # であって字形ではない (字形が在る環境で描くのは記事用の生成時)。
         warnings.simplefilter("ignore", UserWarning)
         _draw_all(tmp_path / "ja", japanese)
-    assert len(captured) == 4
+    assert len(captured) == 5
     for figure in captured:
         assert any(_has_cjk(value) for value in _texts(figure))
 
@@ -389,10 +425,10 @@ def test_figures_use_the_style_context_labels(
 # --- 縮小データ・縮退ケースで描ける -------------------------------------------
 
 
-def test_all_four_figures_are_written_at_retina_resolution(tmp_path: Path) -> None:
-    """縮小データ (2条件) で図4枚が 200 dpi で書き出される。"""
+def test_all_five_figures_are_written_at_retina_resolution(tmp_path: Path) -> None:
+    """縮小データ (2条件) で図5枚が 200 dpi で書き出される。"""
     paths = _draw_all(tmp_path, setup_style())
-    assert len(paths) == 4
+    assert len(paths) == 5
     for path in paths:
         assert path.is_file()
         assert path.stat().st_size > 0
@@ -419,6 +455,9 @@ def test_figures_render_with_a_single_condition(tmp_path: Path) -> None:
         ),
         plot_memory_nonlinearity(ipc_rows, tmp_path / "split.png", style=context),
         plot_ipc_conservation(conservation, tmp_path / "bound.png", style=context),
+        plot_narma10_control(
+            narma10_rows(replicates=(0,)), tmp_path / "narma.png", style=context
+        ),
     )
     for path in paths:
         assert png_dpi(path) >= RETINA_DPI
@@ -472,6 +511,9 @@ def test_figures_render_when_every_capacity_is_zero(tmp_path: Path) -> None:
         plot_ipc_profile(ipc_rows, (), tmp_path / "ipc.png", style=context),
         plot_memory_nonlinearity(ipc_rows, tmp_path / "split.png", style=context),
         plot_ipc_conservation(conservation, tmp_path / "bound.png", style=context),
+        plot_narma10_control(
+            narma10_rows(replicates=(0,)), tmp_path / "narma.png", style=context
+        ),
     )
     for path in paths:
         assert png_dpi(path) >= RETINA_DPI
@@ -494,6 +536,10 @@ def test_figures_render_when_every_capacity_is_zero(tmp_path: Path) -> None:
         pytest.param(
             lambda path, context: plot_ipc_conservation((), path, style=context),
             id="bound",
+        ),
+        pytest.param(
+            lambda path, context: plot_narma10_control((), path, style=context),
+            id="narma",
         ),
     ],
 )
