@@ -219,7 +219,7 @@ def capacity_of_targets(
 
     Args:
         problem: ``CapacityProblem`` (Gram は構築済み)。
-        Z_chunk: 目標 ``(T_eff, K)``。行は ``problem.phi`` と同じ行集合 (D-24)。
+        Z_chunk: 目標 ``(T_eff, K)``。行は ``problem.x`` と同じ行集合 (D-24)。
         alpha: 正則化係数 (D-25 により容量測定では微小固定値を使う)。
 
     Returns:
@@ -244,8 +244,13 @@ def capacity_of_targets(
     if not np.all(np.isfinite(targets)):
         raise ValueError("Z_chunk に有限でない値があります")
 
-    # Phi と Z に触るのはこの1行だけ (D-26)。
-    rhs: FloatArray = problem.phi.T @ targets
+    # X に触れるのはこの1行 (X.T @ targets) だけ (D-26 / F-03-1-013)。
+    # バイアス行 (rhs[0]) は targets の縮約 (sum) だけで閉じるので、X には
+    # 触れない。Phi = [1, X] を実体化した上で phi.T @ targets を1回で計算
+    # する経路と比べて、X 自体のコピーを一切作らずに済む。
+    bias_rhs: FloatArray = np.sum(targets, axis=0, keepdims=True)
+    x_rhs: FloatArray = problem.x.T @ targets
+    rhs: FloatArray = np.concatenate((bias_rhs, x_rhs), axis=0)
     weights: FloatArray = fit_ridge_from_gram(
         problem.gram, rhs, alpha, bias_column=problem.bias_column
     )
