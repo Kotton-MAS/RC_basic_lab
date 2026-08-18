@@ -333,6 +333,23 @@ def count_targets(cfg: IpcConfig) -> int:
     return total
 
 
+def _format_target_count(total: int) -> str:
+    """``total`` (組合せ数、巨大な多倍長整数になりうる) を表示用に文字列化する。
+
+    F-03-3-021: Python 3.11+ の int -> str 変換には桁数上限 (既定4300桁) が
+    あり、意図した『目標数が max_targets を超えました』というメッセージの
+    代わりに、桁数上限自体の別の ``ValueError`` (`Exceeds the limit ... for
+    integer string conversion`) に化けて運用者に届かない設定がありうる
+    (実測: ``max_delay_by_degree=(10**6,)*1600``, ``max_variables=1600`` で
+    106.99s 後に発生)。``str(total)`` を直接呼ぶとこの変換自体が上限に
+    触れるため、桁数を ``bit_length`` から見積り、上限に近ければ指数表記へ
+    落とす (``float`` への変換は桁数上限の対象外)。
+    """
+    if total.bit_length() * 0.30103 < 4000:
+        return str(total)
+    return f"{float(total):.6e} (桁数が大きいため指数表記)"
+
+
 def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
     """全目標の仕様を次数昇順で列挙する。
 
@@ -348,7 +365,7 @@ def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
     if total > cfg.max_targets:
         raise ValueError(
             "目標数が max_targets を超えました "
-            f"({total} > {cfg.max_targets})。"
+            f"({_format_target_count(total)} > {cfg.max_targets})。"
             " 黙って切り詰めないので、max_delay_by_degree / max_variables を"
             " 下げるか max_targets を上げてください"
         )
