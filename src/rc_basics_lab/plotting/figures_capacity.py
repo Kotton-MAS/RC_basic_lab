@@ -1,4 +1,4 @@
-"""記事03の図4枚 (実験 3-A / 3-B / 3-B').
+"""記事03の図5枚 (実験 3-A / 3-B / 3-B' / 3-C).
 
 - ``plot_mc_sweep``: rho x リーク率 に対する線形メモリ容量と、遅延プロファイル
   の伸び (受け入れ条件1)。左は上限線 y=N つきの ``mc_total``、右は代表リーク率
@@ -10,6 +10,9 @@
 - ``plot_ipc_conservation``: x=N, y=``ipc_total`` に**傾き1の対角線 y=N** を
   重ねる (受け入れ条件2)。この対角線は図の主張そのものなので、線が実際に
   描かれていることを ``test_conservation_figure_draws_the_bound_line`` が固定する。
+- ``plot_narma10_control``: 実験 3-C。x=手法 (線形 / 遅延線 / ESN)、y=NMSE。
+  参照線 NMSE = 0.16 / 0.107 を**原典未特定と明記した注つき**で引く
+  (要件書 未確定1。数字だけを孤立して引かない)。
 
 ``figures.py`` / ``figures_esp.py`` と同じ規律に従う: pyplot を使わず ``Figure``
 + ``FigureCanvasAgg`` を直接組み、描画設定は ``matplotlib.rc_context`` で描画中
@@ -75,6 +78,35 @@ _HEATMAP_GAMMA = 0.5
 _HEATMAP_CMAP = "viridis"
 _STACK_COLORS = ("tab:blue", "tab:orange")
 """積み上げ棒 (線形, 非線形) の色。"""
+
+_METHOD_LABELS: dict[str, tuple[str, str]] = {
+    "linear": ("線形", "linear"),
+    "delay_line": ("遅延線", "delay line"),
+    "esn": ("ESN", "ESN"),
+}
+"""3-C の横軸の手法名 (01 の ``figures.py`` と同じ対応表)。"""
+
+_REFERENCE_LABELS: dict[str, tuple[str, str]] = {
+    "linear_ceiling": (
+        "参照 NMSE = {value:g} (非線形性なしの天井)",
+        "reference NMSE = {value:g} (ceiling without nonlinearity)",
+    ),
+    "nonlinear_rc": (
+        "参照 NMSE = {value:g} (非線形 RC・50ノード級)",
+        "reference NMSE = {value:g} (nonlinear RC, ~50 nodes)",
+    ),
+}
+"""参照線の凡例 (``NARMA10_REFERENCE_NMSE`` のキーに対応)。
+
+**キーが増減したら図を描く前に落とす** (下記 ``_reference_lines``)。値だけを
+実験層に置いて凡例を図の側に持つと、参照点を1本足したときに図から静かに
+消える。
+"""
+
+_REFERENCE_COLORS: dict[str, str] = {
+    "linear_ceiling": "tab:red",
+    "nonlinear_rc": "tab:green",
+}
 
 
 def _new_figure(width: float, height: float) -> Figure:
