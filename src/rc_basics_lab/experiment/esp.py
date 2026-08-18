@@ -223,7 +223,11 @@ ESP_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(EspRow))
 
 
 def build_esn_config(
-    reservoir: ReservoirSweepConfig, rho: float, leak_rate: float
+    reservoir: ReservoirSweepConfig,
+    rho: float,
+    leak_rate: float,
+    *,
+    state_noise: float = 0.0,
 ) -> ESNConfig:
     """1条件ぶんの ``ESNConfig`` を組む。掃引軸だけが条件ごとに変わる。
 
@@ -231,6 +235,13 @@ def build_esn_config(
     ある (F-1-005)。本体が読むのは ``reservoir`` の4フィールドと ``BIAS_SCALE``
     だけなので、``Esp02Config`` に型で結合すると 03 (MC/IPC) が ESN 構成を
     再利用するために ``Esp02Config`` を丸ごと写経する羽目になる。
+
+    ``state_noise`` は **既定値つきキーワード**である (D-36)。03 の 3-B' は
+    「ノイズ下では IPC_total が厳密に N 未満」(受け入れ条件2) を測るために
+    状態ノイズを掛ける必要があるが、02 の呼び出しは書き換えない。
+    ``state_noise=0`` では ``ESN`` が乱数を1個も引かないため、02 の成果物は
+    バイト単位で不変である
+    (``tests/test_experiment_capacity.py::test_reference_states_match_esp_simulate_condition``)。
     """
     return ESNConfig(
         n_units=reservoir.n_units,
@@ -239,6 +250,7 @@ def build_esn_config(
         input_scale=reservoir.input_scale,
         bias_scale=BIAS_SCALE,
         density=reservoir.density,
+        state_noise=state_noise,
     )
 
 
@@ -268,6 +280,7 @@ def simulate_reference_trajectory(
     sigma_u: float,
     replicate: int,
     x0: FloatArray | None = None,
+    state_noise: float = 0.0,
 ) -> ReferenceTrajectory:
     """参照軌道1本を作る (``Esp02Config`` を要らない。F-1-005)。
 
@@ -294,6 +307,9 @@ def simulate_reference_trajectory(
         sigma_u: 駆動信号の標準偏差 (D-17)。
         replicate: レプリケート番号 (0 始まり)。
         x0: 初期状態 ``(N,)``。``None`` なら ``ESN.run`` の既定 (零ベクトル)。
+        state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。**既定値
+            つきキーワード**なので 02 の呼び出しは書き換えない。0 のとき
+            ``ESN`` は乱数を1個も引かず、既存の成果物はバイト単位で不変である。
 
     Returns:
         ESN・駆動入力・状態系列 ``(T, N)``。
@@ -307,9 +323,18 @@ def simulate_reference_trajectory(
     )
     reservoir_rng = make_rng_for(reservoir_seed, SeedStream.RESERVOIR, replicate)
     esn = ESN(
-        build_esn_config(reservoir, rho, leak_rate), reservoir_rng, n_inputs=_N_INPUTS
+        build_esn_config(reservoir, rho, leak_rate, state_noise=state_noise),
+        reservoir_rng,
+        n_inputs=_N_INPUTS,
     )
-    return ReferenceTrajectory(esn=esn, drive=u, states=esn.run(u, x0=x0))
+    # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir
+    # ストリームの続き。01 の ``runner.plan_replicate`` と同じ形)。**常に**
+    # 渡すのは、rng を省く分岐が残っていると state_noise > 0 を設定した瞬間に
+    # ``ESN.run`` が ValueError になる配線漏れが復活するため (D-36)。
+    # state_noise=0 では1個も引かれないので既存の結果は変わらない。
+    return ReferenceTrajectory(
+        esn=esn, drive=u, states=esn.run(u, x0=x0, rng=reservoir_rng)
+    )
 
 
 @dataclass(frozen=True, slots=True)
