@@ -696,3 +696,70 @@ write_washout_csv(
 **01 の成果物は 1 バイトも変わっていない**。`comparison.csv`（`wall_time_s` 除く）と
 `comparison_summary.csv` が 02 の実装前後で完全一致することを確認済みで、
 `seeds.py` の既存3ストリームの `spawn_key` を動かさなかったこと（D-14）の帰結である。
+
+## 11. 容量測定（MC / IPC）の設計（サイクル03 3a）
+
+### 11.1 容量測定の定義と正規化
+
+MC（線形メモリ容量）と IPC（情報処理容量）はどちらも「状態 `X` に対して、
+目標 `z_k` を線形読み出しでどれだけ説明できるか」を測る同一の量であり、
+違いは目標の作り方だけである（Dambre 2012）。容量は決定係数
+
+```
+C_k = 1 - ||z_k - Phi w_k||^2 / ||z_k||^2        (w_k はリッジ回帰の閉形式解)
+```
+
+で、目標が入力測度に対して正規直交である限り `Σ C_k <= N`（保存則、N は状態の
+次元）。この節は両診断が共有する回帰カーネル（`diagnostics._capacity`）の設計を記す。
+
+**t0（単一基準点、D-24）。** 遅延 `k` の目標は先頭 `k` 行が未定義になる。素直に実装すると
+遅延が深いほど使える標本数が減り、容量が系統的に下がる —— これは測りたい現象
+（記憶の減衰）と**まったく同じ向き**に出るため、プロファイルの図を見ても気づけない。
+そこで `t0 = max(ctx.washout, 全目標の最大遅延)` を単一の基準点にし、全目標が
+同一の行集合 `X[t0:]` を共有する。窓の切り出しは `CapacityProblem.lagged(series,
+delay)` に1本だけ実装し（round 1 で MC・IPC 双方の複製をここへ統合、
+F-03-1-001）、`series[t0 - delay : t0 - delay + n_samples]` を返す。
+
+**Gram 共有カーネル（D-26）とブロック分解（round 1 で追加）。** 回帰の左辺
+`Phi = [1, X]` の Gram `Phi.T @ Phi` は条件ごとに1回だけ作り、目標が何本増えても
+作り直さない。容量は Gram 量だけで閉じる形
+
+```
+||z - Phi w||^2 = z.T z - 2 w.T (Phi.T z) + w.T (Phi.T Phi) w
+```
+
+で評価するため、目標数 K を増やしても `O(T F K)` の走査は `rhs = Phi.T @ Z` の
+1回で済む。当初の実装は `Phi` を `np.concatenate((ones, X))` で実体化しており、
+T=1e6 級の本番設定で `X` と同じ大きさのコピーがもう1枚でき、単独でメモリ予算
+4GB の9割近くを消費する BLOCKER だった（F-03-1-013）。バイアス列は定数列なので
+Gram は `[[T_eff, sum(X,0)], [sum(X,0).T, X.T @ X]]` にブロック分解でき、`Phi`
+そのものは一度も作らずに済む。`CapacityProblem` はこのブロック Gram と、`X` の
+ビュー（コピーなし）だけを保持する。
+
+**D-25 の固定 alpha。** 容量は「線形読み出しで到達可能な最大の説明率」という
+定義そのものなので、検証分割による alpha 選択（D-04）は行わない。alpha=0 は
+数値的に不安定（`Phi.T Phi` の条件数が `~1e18` に達しうる、D-11 の実測と同型）
+なので、数値安定の下駄として微小な固定値を使う。
+
+**D-28 の正規直交化。** 目標を作る多項式基底（Legendre / Hermite）は、宣言された
+入力分布に対して正規直交でなければならない。直交していない基底で目標を作ると
+容量が目標間で二重計上され、保存則が「N をわずかに超える」という穏やかな形で
+破れる（図では気づけない）。対応する組は `(uniform, legendre)` と
+`(normal, hermite)` の2つのみで、未対応な組は黙って Legendre に倒さず
+`ValueError` にする。正規化は入力の**実測**の平均・標準偏差で行う（振幅に
+追従させるため、D-17 と両立する）。
+
+| 項目 | 既定値 | コード上の出どころ |
+|---|---|---|
+| MC のリッジ正則化係数 `alpha`（D-25） | `1e-09` | `diagnostics.memory_capacity.MemoryCapacityConfig.alpha` |
+| MC の最大遅延 `max_delay` | `400` | `diagnostics.memory_capacity.MemoryCapacityConfig.max_delay` |
+| MC のサロゲート分位点 `surrogate_quantile` | `0.99` | `diagnostics.memory_capacity.MemoryCapacityConfig.surrogate_quantile` |
+| IPC のリッジ正則化係数 `alpha`（D-25） | `1e-09` | `diagnostics.ipc.IpcConfig.alpha` |
+| IPC の目標数上限 `max_targets` | `200000` | `diagnostics.ipc.IpcConfig.max_targets` |
+| IPC の chunk_size（性能パラメータ、D-26） | `256` | `diagnostics.ipc.IpcConfig.chunk_size` |
+| 対応する `(input_distribution, basis)` の組（D-28） | `(('uniform', 'legendre'), ('normal', 'hermite'))` | `diagnostics._capacity.SUPPORTED_BASIS_PAIRS` |
+
+3-B（本番の飽和実測）向けのメモリ予算（4GB 未満、`/usr/bin/time -l` 実測）は
+round 1 レビューで発見された2件の BLOCKER（サロゲートの一括確保 F-03-1-012、
+`Phi` の実体化 F-03-1-013）を修正して満たしている。数値（保存則・しきい値・
+遅延プロファイル）そのものは3b の `capacity.csv` 生成時に一次資料と機械照合する。
