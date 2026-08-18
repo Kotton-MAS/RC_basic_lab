@@ -10,8 +10,9 @@
 「実際に効いている」ことが実測される。ここはその**割り当てが漏れていない**
 ことを機械的に固定する。
 
-- ``CHANNEL_ROWS``: 値を変えると縮小した条件の結果行 (= ``capacity.csv``
-  相当) の指紋が変わる。1条件の配線 (T1) が消費する葉がここに入る。
+- ``CHANNEL_ROWS``: 値を変えると縮小した掃引の結果行 (= ``capacity.csv``
+  相当) の指紋が変わる。``scope`` を伴うものは、**その実験の行だけ**が変わる
+  ことまで測る (セクション固有の葉が他の実験に漏れていないことの実測)。
 - ``CHANNEL_META``: 結果行は変えないが ``meta.json`` を変える (``name``)。
 - ``CHANNEL_ERROR``: 値域が1点しかなく、別の値は即座に例外になる
   (``drive.distribution``)。黙って既定として扱わないこと自体が配線である。
@@ -19,12 +20,14 @@
   変わり、他ストリームは1バイトも動かないことまで測る。``seeds.surrogate``
   は ``SeedStream`` ではなく ``ctx.seed`` へ直接渡る整数なのでここには入れず、
   ``CHANNEL_ROWS`` で「しきい値が動く」ことを測る (D-37)。
-- ``CHANNEL_PENDING``: 消費側 (掃引 = T2 / NARMA10 = 3b-2 の T4) がまだ存在
-  しない葉。T1 の成果物は「1条件の配線」までであり、``mc_sweep.*`` のような
-  **どの条件を回すかを決める**葉は、掃引が生えるまで出力で実測できない。
-  黙って見逃すと「設定したのに効いていない」が復活するので、消費側が生えた
-  瞬間に落ちる信管 (``test_pending_cases_disappear_once_the_sweeps_exist``)
-  を張ってある。
+- ``CHANNEL_PENDING``: 消費側がまだ存在しない葉。T1 の成果物は「1条件の配線」
+  までで、``mc_sweep.*`` のような**どの条件を回すかを決める**葉は掃引が生える
+  まで出力で実測できなかった。黙って見逃すと「設定したのに効いていない」が
+  復活するので、消費側が生えた瞬間に落ちる信管
+  (``test_pending_cases_disappear_once_the_sweeps_exist``) を張ってある。
+  **T2 で掃引4本が生えたので、格子・レプリケート数・系列長の 22 葉は
+  ``CHANNEL_ROWS`` + ``scope`` へ移した**。残る pending は 3-C (NARMA10、
+  3b-2 の T4) の ``narma.length`` 1件だけである。
 
 **委譲**: ``mc.*`` / ``ipc.*`` は 3a の診断設定 (D-15) をそのまま載せた部分、
 ``narma.base.*`` は 01 の ``ExperimentConfig`` をまるごと内包した部分なので、
@@ -96,7 +99,7 @@ CHANNEL_SEEDS = "seeds"
 """基底シードを変えると、そのストリームの乱数列だけが変わる。"""
 
 CHANNEL_PENDING = "pending"
-"""消費側 (掃引 / NARMA10) がまだ無い葉。T2 以降で実チャネルへ書き換える。"""
+"""消費側 (3-C の NARMA10) がまだ無い葉。3b-2 の T4 で実チャネルへ書き換える。"""
 
 DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
     ("mc.", MemoryCapacityConfig),
