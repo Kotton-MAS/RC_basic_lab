@@ -459,8 +459,9 @@
    「どの次数が落ちたか」を書けないため。
 8. **`ipc_nonlinear` は `ipc_total - ipc_linear`** (次数2以上の合計)。
    `saturation_ratio` は**しきい値後**の `ipc_total / N`。
-9. **容量の下限クリップは T1 の決定 (上記1) を継承**する。このため
-   `threshold_mode="none"` では `ipc_total == ipc_total_raw` になる。
+9. **容量の下限クリップは T1 の決定 (「T1 実装時に決めたこと」1) をそのまま継承**
+    する (共有カーネルの `capacity_of_targets` が担当する)。このため
+    `threshold_mode="none"` では `ipc_total == ipc_total_raw` になる。
 10. **`IpcConfig` の全フィールド検査から `chunk_size` と `max_targets` を外した**。
     `chunk_size` は逆向きの要求 (§10-2)、`max_targets` は上限であって
     「超えたときに `ValueError` にする」ことが唯一の観測可能な効果なので、
