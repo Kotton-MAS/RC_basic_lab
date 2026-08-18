@@ -91,19 +91,49 @@ SUPPORTED_THRESHOLD_MODES: tuple[str, ...] = (
 状態で通ってしまう。
 """
 
+_MAX_DEGREES = 32
+"""``max_degrees`` (設定フィールド) 自体に置く絶対上限 (CWE-789 対策、
+F-03-3-019、D-34)。
+
+``max_degrees`` は ``len(max_delay_by_degree) <= max_degrees`` を強制する
+だけの通常の設定フィールドで、それ自体には上限が無かった。``psi_table``
+(次数の本数 x 系列長、``diagnostics.ipc.ipc`` 本体で確保) の確保サイズは
+次数の本数に線形に伸びるため、``max_degrees`` を1行変更するだけで
+round2 の防御 (``len(max_delay_by_degree) > max_degrees`` の検査) を素通り
+して psi_table を膨らませられる (実測: ``max_delay_by_degree=(1,)*400``,
+``max_degrees=400`` で peak RSS 0.095GB -> 0.721GB。``max_degrees`` を既定20
+のままにすると同じ設定は 0.0000s で ``ValueError``)。同じコミットで追加
+された ``_MAX_VARIABLES_FOR_COUNT`` (上書き不能なモジュール定数) と防御の
+強度を揃えるため、``max_degrees`` 自体も上書き不能な絶対上限で縛る。
+既定 ``n_degrees=4``、3b の深い打ち切りでも4〜6 本想定なので5〜8倍の余裕を
+見て 32 とする。
+"""
+
 _MAX_VARIABLES_FOR_COUNT = 20
-"""``max_variables`` に独立して置く上限 (CWE-400 対策、F-03-2-014)。
+"""``max_variables`` に独立して置く上限 (CWE-400 対策、F-03-2-014、D-34)。
 
 ``count_targets`` の閉形式は各次数で ``math.comb(max_delay, n_vars)`` を
-``n_vars in [1, min(max_variables, degree)]`` について合計する。``max_delay``
-自体が大きくても ``n_vars`` が小さければ多倍長整数の桁数は小さく抑えられる
-(``comb(max_delay, n_vars)`` の計算量は ``n_vars`` にほぼ比例する) が、
-``max_variables`` (延いては ``n_vars`` の上限) が大きいと ``comb`` の引数の
-組合せ数自体が爆発する。実測: ``max_delay_by_degree=(1,)*D``,
-``max_variables=D`` で D=4000 のとき ``count_targets`` が 373.73s かかり、
-その手前の ``_validate_config`` は 0.0001s で通過していた (防御の前段が
-防御対象と同じ失敗モードを持っていた)。ここで独立に縛ることで、
-``_validate_config`` (確保・列挙より前) で弾く。
+``n_vars in [1, min(max_variables, degree)]`` について合計する。``n_vars``
+の実際の上限は ``min(max_variables, degree)`` であり、``degree`` は
+``max_delay_by_degree`` の index (1 始まり) を超えないので、``n_vars`` は
+必ず ``len(max_delay_by_degree) <= max_degrees`` によっても縛られる。
+
+**この上限が「実際に効く」条件は ``max_degrees`` の絶対上限
+(``_MAX_DEGREES``) を経由してのみ生じる。** round2 時点 (F-03-2-014) の
+根拠は ``max_delay_by_degree=(1,)*4000`` (次数4000本) で ``count_targets``
+が 373.73s かかるというものだったが、この設定は次数の本数 (4000) が既定の
+``max_degrees=20`` を超えるため、``_validate_config`` の ``max_degrees``
+検査に先に捕まり ``count_targets`` へ到達しない。到達可能な最悪ケースを
+実測すると: 既定 ``max_degrees=20`` の下限界 (次数20本・遅延20・
+``max_variables=20``) で 15us、``_MAX_DEGREES`` の上限界 (次数32本・遅延32・
+``max_variables=32`` —``_MAX_VARIABLES_FOR_COUNT`` を仮に外した場合) でも
+35us で、どちらも桁違いに軽い。すなわち ``_MAX_DEGREES=32`` (D-34) を
+導入した現状では、``_MAX_VARIABLES_FOR_COUNT`` は ``count_targets`` の
+実行時間に対する実効的な防御ではない。それでも維持するのは (a) 目標1本に
+掛け合わせる変数の本数として意味を持つ値域を明示する、(b) ``_MAX_DEGREES``
+が将来引き上げられた場合の独立した多重防御、の2点のため
+(``n_vars`` を ``degree`` だけで縛ると ``_MAX_DEGREES`` が唯一の防御点に
+なり、変更1箇所で組合せ計算量の上限も一緒に動いてしまう)。
 """
 
 type TargetSpec = tuple[tuple[int, int], ...]
