@@ -72,7 +72,7 @@ round 1 の BLOCKER 修正 (F-03-1-012/013) の副産物として fixer が指�
 | ID | severity | 概要 |
 |---|---|---|
 | F-03-2-001 | HIGH | `bounded_chunk_size` の実効値が `params['chunk_size']` に反映されず (設定値をそのまま記録)、D-26 guard の閉形式 (`ceil(K/chunk_size)`) が本番規模 (T=200000) で崩れていた (期待2回、実際4回)。適用も `ipc.py` 2箇所・`memory_capacity.py` 1箇所に手書きで複製されていた。`CapacityProblem.effective_chunk_size(configured)` を追加して3箇所の複製を解消し、`params['chunk_size_effective']` を追加、D-26 の guard (`test_gram_solve_count_does_not_scale_with_target_count`) にキャップが実際に発動する規模のケースを足して閉形式を `ceil(K/effective_chunk_size)` に更新した。 |
-| F-03-2-002 | MEDIUM | `_MAX_CHUNK_BYTES=128MiB` と「設定値は変えず実効値だけ内部で縛る」判断が decisions.yaml にも design.md にも plan doc にも記録されていなかった。`.claude/decisions.yaml` に D-29 を追加し、`docs/design.md` §11 の既定値表に `_MAX_CHUNK_BYTES` / `max_degrees` の行を足した。 |
+| F-03-2-002 | MEDIUM | `_MAX_CHUNK_BYTES=128MiB` と「設定値は変えず実効値だけ内部で縛る」判断が decisions.yaml にも design.md にも plan doc にも記録されていなかった。`.claude/decisions.yaml` に決定 (round3 で D-33 へ改番、F-03-3-001) を追加し、`docs/design.md` §11 の既定値表に `_MAX_CHUNK_BYTES` / `max_degrees` の行を足した。 |
 | F-03-2-003 | MEDIUM | `CapacityProblem.x` が呼び出し側 `X` のビューであるため、`from_states` 後に `X` を書き換えると `gram` と desync し、例外も警告もなく誤った容量が返る (実測: 容量 1.2553668e+08)。`CapacityProblem` の docstring (クラス docstring と `x`/`gram` の Attributes) に「`from_states` 後に元の `X` を書き換えてはならない」契約を明記した。 |
 | F-03-2-004 | MEDIUM | `ipc.py` の `__all__` に `LEGENDRE`/`HERMITE`/`UNIFORM`/`NORMAL`/`SUPPORTED_BASIS_PAIRS` (既に import 済み) が無く、`threshold_mode` 側の語彙とだけ公開方針が割れていた。3b を待たず `__all__` に5シンボルを追加した (F-03-1-002 の3b送りを round 2 で前倒しで解消)。 |
 | F-03-2-005 | INFO | `CapacityProblem.lagged` が窓計算専用でテストがダミー状態行列を構築している件。reviewer 自身が「対応不要、3b で `RowAlignment` 切り出しを検討」と結論。対応不要。 |

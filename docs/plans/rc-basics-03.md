@@ -511,3 +511,25 @@
     バイアスの無い `tanh` リザバーが奇関数で、対称な入力に対して偶数次の
     多項式と相関しないため。3b で `input_scale` にオフセットを入れるなら
     ここが動くはずなので、図の読み方として §11 に残すとよい。
+17. **`chunk_size` は 128MiB 予算で黙って切り詰めうる (`bounded_chunk_size` /
+    `CapacityProblem.effective_chunk_size`、D-33)**。round 1 の BLOCKER 修正
+    (F-03-1-012/013、T=1e6 で peak RSS を 4GB 未満に収める) の副産物として
+    fixer が指示に無いまま追加した安全機構で、round 2 まで decisions.yaml /
+    design.md / この plan doc のどこにも記録されていなかった (F-03-2-002)。
+    `configured` (`chunk_size`) より小さい実効値 (`chunk_size_effective`) に
+    黙って下げてよいが大きくはしない。呼び出し側は `cfg.chunk_size` を直接
+    使わず `CapacityProblem.effective_chunk_size` を経由し、成果物の
+    `params` には両方の値を記録する (D-26 のソルブ回数の閉形式も
+    `ceil(K/chunk_size_effective)` に更新した)。代表目標 `picked` のブロック
+    分割 (`_iter_surrogate_chunks` と同じ 128MiB 予算、F-03-2-015) も同じ
+    `chunk_size` を経由する。
+18. **IPC の確保・組合せ計算量は3段の独立な上限で縛る (D-34)**。
+    `max_degrees` (既定20、設定フィールド) は `len(max_delay_by_degree)` の
+    上限で `psi_table` (次数の本数 x 系列長) の確保サイズを縛る。
+    `max_degrees` 自身にも上書き不能な絶対上限 `_MAX_DEGREES=32` を置き
+    (F-03-3-019、CWE-789)、`max_variables` には上書き不能な絶対上限
+    `_MAX_VARIABLES_FOR_COUNT=20` を置いて `count_targets` の閉形式
+    (`math.comb`) の組合せ爆発を縛る (F-03-2-014、CWE-400)。3つとも
+    `count_targets` の先頭 (`_validate_combinatorial_bounds`、F-03-3-018) で
+    確保・列挙より前に検査するため、`count_targets` / `enumerate_targets` を
+    `ipc()` の外から直接呼んでも保護される。
