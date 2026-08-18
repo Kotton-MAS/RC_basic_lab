@@ -35,6 +35,7 @@ from rc_basics_lab.diagnostics.ipc import (
     THRESHOLD_SURROGATE,
     IpcConfig,
     TargetSpec,
+    _format_target_count,
     _target_column,
     count_targets,
     enumerate_targets,
@@ -739,6 +740,32 @@ def test_target_enumeration_raises_instead_of_truncating() -> None:
     # 上限ちょうどは通る (境界で off-by-one していない)。
     exact = dataclasses.replace(IpcConfig(), max_targets=601)
     assert len(enumerate_targets(exact)) == 601
+
+
+def test_format_target_count_handles_huge_and_normal_totals() -> None:
+    """``_format_target_count`` は巨大な多倍長整数でも例外を投げず、
+    通常範囲では ``str(total)`` と一致する (F-03-3-021 / F-03-4-012 BLOCKER)。
+
+    Python 3.11+ の int→str 変換には桁数上限 (既定4300桁) があり、素の
+    ``str`` を直接呼ぶとこの上限自体が別の ``ValueError`` (`Exceeds the
+    limit ... for integer string conversion`) に化けて、意図した『目標数が
+    max_targets を超えました』というメッセージが運用者に届かない。この関数
+    を丸ごと ``str`` に戻す変異を注入しても、この対比 (a) を固定しない限り
+    検出できない (round4 レビューで実測: 43 passed のまま検出漏れ)。
+    """
+    huge = 10**5000
+    # (a) 例外を投げない。
+    formatted = _format_target_count(huge)
+    # (b) 指数表記になる。
+    assert formatted == "~1e5000 (桁数が大きいため概算の指数表記)", formatted
+    # 対比: 素の str は桁数上限で ValueError になる (この対比が (a)(b) の
+    # 存在理由そのもの)。
+    with pytest.raises(ValueError, match="digits"):
+        str(huge)
+
+    # (c) 通常範囲では str(total) と一致する。
+    for normal in (0, 1, 601, 123_456_789, 10**3000):
+        assert _format_target_count(normal) == str(normal)
 
 
 def test_max_targets_also_bounds_the_heatmap_cell_count() -> None:
