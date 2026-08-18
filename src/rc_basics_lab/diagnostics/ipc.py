@@ -136,6 +136,32 @@ _MAX_VARIABLES_FOR_COUNT = 20
 なり、変更1箇所で組合せ計算量の上限も一緒に動いてしまう)。
 """
 
+_MAX_DELAY_BIT_LENGTH = 128
+"""``max_delay_by_degree`` の要素の**桁数**に置く絶対上限 (CWE-400 対策、
+F-03-4-007、D-34 の4段目)。
+
+``_validate_combinatorial_bounds`` は既に ``max_degrees`` (既定値・絶対上限
+の2段) と ``max_variables`` (``_MAX_VARIABLES_FOR_COUNT``) の3段で
+``count_targets`` の組合せ計算量を縛っていたが、``max_delay_by_degree`` の
+要素は「1以上」としか検査しておらず、**値の桁数**には上限が無かった。
+``math.comb(max_delay, n_vars)`` のコストは値ではなく桁数に対して約
+``digits^1.6`` で伸びるため、既定 ``max_degrees<=32`` / ``max_variables<=20``
+の下でも桁数だけを伸ばせば無防備なまま長時間走らせられる (実測:
+``max_delay_by_degree=(10**M,)*32``, ``max_variables=20``, ``max_degrees=32``
+で ``M=300`` は 0.013s だが ``M=5000`` は 1.14s、``M=20000`` は 10.17s、
+``M=60000`` は 57.02s)。``ipc()`` 本体は ``heatmap_cells`` 検査
+(F-03-1-016) が先に効くため保護されるが、``count_targets`` /
+``enumerate_targets`` は公開関数であり round3 の修正 (F-03-3-018) で
+``max_targets`` / ``heatmap_cells`` の検査を意図的に除外している
+(``count_targets`` を目標数の下見に使う既存の呼び出し側の意味を変えない
+ため) ので、この軸だけが無防備のまま残っていた。128 bit (10進で約38桁) は
+既定の遅延打ち切り (``max_delay<=60``) を大きく上回る余裕を持ちつつ、
+``digits^1.6`` の伸びが効き始めるはるか手前で縛る。検査メッセージには
+``max_delay`` の値そのものを ``str`` 化しない
+(``_format_target_count`` と同じ理由 —— 桁数上限自体が別の ``ValueError``
+に化けうるため、``bit_length`` だけを報告する)。
+"""
+
 type TargetSpec = tuple[tuple[int, int], ...]
 """目標1本の仕様 ``((k_1, n_1), ..., (k_m, n_m))``。
 
@@ -213,6 +239,18 @@ def _validate_combinatorial_bounds(cfg: IpcConfig) -> None:
             raise ValueError(
                 f"max_delay_by_degree の要素は 1 以上が必要です"
                 f" (次数 {degree}: {max_delay})"
+            )
+        if max_delay.bit_length() > _MAX_DELAY_BIT_LENGTH:
+            # F-03-4-007 (CWE-400): math.comb のコストは値ではなく桁数に対して
+            # 伸びるため、値そのものを検査に使う。値を str 化すると桁数上限
+            # (_format_target_count が対処する事象) に触れうるので、
+            # bit_length だけをメッセージに含める (D-34 の4段目)。
+            raise ValueError(
+                "max_delay_by_degree の要素の桁数が安全上限を超えます "
+                f"(CWE-400 対策、F-03-4-007、D-34): 次数 {degree} の max_delay は"
+                f" {max_delay.bit_length()} bit ( > {_MAX_DELAY_BIT_LENGTH} bit)。"
+                " comb の計算量が桁数に対して増大するため、値そのものは"
+                " エラーメッセージに含めません"
             )
     if cfg.max_degrees < 1:
         raise ValueError(f"max_degrees は 1 以上が必要です: {cfg.max_degrees}")
