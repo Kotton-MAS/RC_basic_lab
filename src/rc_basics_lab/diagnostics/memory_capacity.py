@@ -32,6 +32,7 @@ import numpy as np
 from rc_basics_lab.diagnostics._capacity import (
     UNIFORM,
     CapacityProblem,
+    bounded_chunk_size,
     capacity_of_chunks,
     input_series,
     orthonormal_basis,
@@ -202,6 +203,12 @@ def memory_capacity(
         )
     problem = CapacityProblem.from_states(X, t0=t0)
     n_samples = problem.n_samples
+    # F-03-1-012/013 の BLOCKER 完了条件 (T=1e6 で peak RSS < 4GB) は
+    # 既定の chunk_size=256 のままでは満たせない (1チャンクが T_eff * 256 *
+    # 8byte に達し、生成器のチャンク境界での一時的な2重生存と合わさって
+    # 4GB を超える)。結果を変えない性能パラメータのまま (D-26)、実際に使う
+    # チャンク列数だけを T_eff に応じて下げる (`_capacity.bounded_chunk_size`)。
+    chunk_size = bounded_chunk_size(cfg.chunk_size, n_samples)
 
     # 正規直交化は系列全体で1回だけ行う (遅延ごとに標準化し直すと、遅延ごとに
     # 別の測度で直交化することになり保存則が破れる)。次数1は入力分布に
@@ -210,7 +217,7 @@ def memory_capacity(
     delays = tuple(range(1, cfg.max_delay + 1))
     profile_raw = capacity_of_chunks(
         problem,
-        _iter_delay_chunks(problem, psi, delays, chunk_size=cfg.chunk_size),
+        _iter_delay_chunks(problem, psi, delays, chunk_size=chunk_size),
         cfg.alpha,
     )
 
@@ -228,7 +235,7 @@ def memory_capacity(
             cfg.alpha,
             n_surrogates=cfg.n_surrogates,
             quantile=cfg.surrogate_quantile,
-            chunk_size=cfg.chunk_size,
+            chunk_size=chunk_size,
             rng=np.random.default_rng(context.seed),
         )
         profile: FloatArray = np.where(profile_raw > threshold, profile_raw, 0.0)
