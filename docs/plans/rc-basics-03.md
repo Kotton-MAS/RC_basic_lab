@@ -132,8 +132,9 @@
    時間シャッフルで `n_surrogates` 本ずつ作り、**通常の目標とまったく同じ経路**に流す。
    乱数は `ctx.seed` のみ。`surrogate` かつ `ctx.seed is None` なら `ValueError`。
    `chi2` (Dambre 2012 SupMat 3.2) と `none` も実装
-5. **性能構造 (D-26)**: 目標は `chunk_size` 列ずつ生成し `rhs` に畳んだら破棄。
-   `fit_ridge_from_gram` の呼び出し回数は `ceil(K/chunk_size)` に比例し、**目標数 K には比例しない**
+5. **性能構造 (D-26)**: 目標は `chunk_size`（実効値 `chunk_size_effective`、D-33）列ずつ生成し
+   `rhs` に畳んだら破棄。`fit_ridge_from_gram` の呼び出し回数は `ceil(K/chunk_size_effective)`
+   に比例し、**目標数 K には比例しない**
 
 **受け入れ基準**
 

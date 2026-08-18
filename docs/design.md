@@ -768,7 +768,7 @@ round 1 レビューで発見された2件の BLOCKER（サロゲートの一括
 `Phi` の実体化 F-03-1-013）を修正して満たしている。数値（保存則・しきい値・
 遅延プロファイル）そのものは3b の `capacity.csv` 生成時に一次資料と機械照合する。
 
-**chunk_size は設定値を黙って下げうる（D-29、round 2 で追加）。** `chunk_size`
+**chunk_size は設定値を黙って下げうる（D-33、round 2 で追加）。** `chunk_size`
 は結果を変えない性能パラメータだが、1チャンクの目標行列（`T_eff x
 chunk_size`）が `_MAX_CHUNK_BYTES`（128 MiB）を超える場合に限り、実装が
 `CapacityProblem.effective_chunk_size` 経由で `configured` より小さい実効値へ
@@ -777,3 +777,19 @@ BLOCKER 修正（F-03-1-012/013）の副産物として `bounded_chunk_size` に
 されていたが、round 1 では正本（decisions.yaml / design.md / plan doc）の
 どこにも記録されていなかった（F-03-2-002）。成果物の `params` には設定値
 （`chunk_size`）と実効値（`chunk_size_effective`）の両方を記録する。
+round 3 でこの決定を D-29 から D-33 へ改番した（F-03-3-001）:
+`docs/plans/rc-basics-03.md` line 9（ユーザー承認済み）が 3b 用に
+D-29〜D-32 を予約しており、line 271 に D-29 = NARMA10 が既に記録されて
+いたため、番号が衝突していた。
+
+**IPC の確保・組合せ計算量を縛る3段の上限（D-34、round 3 で追加）。**
+`max_degrees`（既定20）は `len(max_delay_by_degree)` の上限で、`psi_table`
+（次数の本数 x 系列長）の確保サイズを縛る。`max_degrees` 自身にも上書き
+不能な絶対上限 `_MAX_DEGREES=32` を置く（`max_degrees` を引き上げるだけで
+上記の検査を素通りできないようにするため、F-03-3-019）。`max_variables`
+には上書き不能な絶対上限 `_MAX_VARIABLES_FOR_COUNT=20` を置き、
+`count_targets` の閉形式（`math.comb`）の組合せ爆発を縛る。3つとも
+`_validate_config`（延いては `count_targets` の先頭、F-03-3-018）で
+確保・列挙より前に検査する。round 2 でこの判断の根拠がコードコメントにしか
+無く、`design.md` も存在しない決定（D-29）を誤って参照していた
+（F-03-3-003）。
