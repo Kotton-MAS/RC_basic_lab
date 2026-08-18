@@ -662,7 +662,7 @@ def test_production_config_matches_the_committed_meta_json() -> None:
     入るまで不活性)、ここに含めると T4 が narma を配線する最初の一手 (例:
     D-39 に合わせた ``n_units`` の変更) で無関係な CSV・図の再生成を要求して
     しまう。``PENDING_SECTIONS`` から引いているので、T4 が narma を配線して
-    このフレーゼットから外れれば1か所の変更で自動的に比較対象へ戻る。
+    ``PENDING_SECTIONS`` から外れれば1か所の変更で自動的に比較対象へ戻る。
     """
     config = load_config_as(
         ROOT / "experiments" / "03_capacity" / "config.yaml", Capacity03Config
