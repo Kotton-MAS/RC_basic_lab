@@ -324,12 +324,14 @@ def _validate_config(cfg: IpcConfig) -> None:
         # ValueError に化けうる。この検査は _validate_combinatorial_bounds
         # (D-34 の桁数上限、F-03-4-007) より後に走るため通常は到達しないが、
         # 二重に閉じておく。
+        max_delay_display = _format_target_count(max(cfg.max_delay_by_degree))
+        heatmap_cells_display = _format_target_count(heatmap_cells)
         raise ValueError(
             "ipc_heatmap のセル数が max_targets を超えます (CWE-789 対策、"
             "F-03-1-016): "
             f"n_degrees={len(cfg.max_delay_by_degree)} x"
-            f" max(max_delay_by_degree)={_format_target_count(max(cfg.max_delay_by_degree))} ="
-            f" {_format_target_count(heatmap_cells)} > max_targets={cfg.max_targets}。"
+            f" max(max_delay_by_degree)={max_delay_display} ="
+            f" {heatmap_cells_display} > max_targets={cfg.max_targets}。"
             " max_delay_by_degree を下げるか max_targets を上げてください"
         )
     if cfg.threshold_mode == THRESHOLD_SURROGATE:
