@@ -30,6 +30,7 @@ from rc_basics_lab.diagnostics.memory_capacity import (
     THRESHOLD_NONE,
     THRESHOLD_SURROGATE,
     MemoryCapacityConfig,
+    _iter_delay_chunks,
     memory_capacity,
 )
 from rc_basics_lab.readout.ridge import fit_ridge_from_gram
@@ -448,6 +449,34 @@ def test_capacity_problem_lagged_matches_expected_offset() -> None:
         problem.lagged(ramp, t0 + 1)  # 範囲外 (窓の先頭が負になる)。
     with pytest.raises(ValueError, match="0 以上"):
         problem.lagged(ramp, -1)
+
+
+def test_iter_delay_chunks_matches_expected_offset() -> None:
+    """MC が実際に使う ``_iter_delay_chunks`` の出力値そのものを固定する。
+
+    ``CapacityProblem.lagged`` 単体の正しさを固定するだけでは、
+    ``_iter_delay_chunks`` (``memory_capacity`` が実際に呼ぶ関数) 側で
+    ``lagged`` に渡す ``delay`` を取り違えるミス (例: ``delay - 1``) までは
+    検出できない。``lagged`` に触れず ``_iter_delay_chunks`` を丸ごと
+    差し替える形の変異 (関数全体の monkeypatch) でこの穴を実際に確認した:
+    ``lagged`` 自身のガードは無傷のまま、``psi[t0-delay+1 : ...]`` 相当へ
+    ずらしても既存22テストは全て緑のまま通った。ここで実際に MC が呼ぶ
+    ``_iter_delay_chunks`` の出力を直接検査することで、その穴を閉じる。
+    """
+    n_steps = 500
+    ramp: FloatArray = np.arange(n_steps, dtype=np.float64)
+    t0 = 42
+    n_samples = n_steps - t0
+    problem = CapacityProblem.from_states(np.zeros((n_steps, 3)), t0=t0)
+    delays = (1, 5, 20)
+    chunks = list(_iter_delay_chunks(problem, ramp, delays, chunk_size=2))
+    columns: FloatArray = np.concatenate(chunks, axis=1)
+    assert columns.shape == (n_samples, len(delays))
+    for index, delay in enumerate(delays):
+        expected: FloatArray = np.arange(
+            t0 - delay, t0 - delay + n_samples, dtype=np.float64
+        )
+        np.testing.assert_array_equal(columns[:, index], expected)
 
 
 def test_memory_capacity_requires_single_channel_input() -> None:
