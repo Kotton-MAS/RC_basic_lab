@@ -732,13 +732,17 @@ def test_heatmap_aggregates_targets_at_their_deepest_delay() -> None:
 
 
 def test_ipc_config_fields_change_output() -> None:
-    """``chunk_size`` / ``max_targets`` 以外の全フィールドは出力を変える。
+    """``chunk_size`` / ``max_targets`` / ``max_degrees`` 以外の全フィールドは
+    出力を変える。
 
-    「設定したのに効いていない」除け。除外した2つは専用テストが担当する。
+    「設定したのに効いていない」除け。除外した3つは専用テストが担当する。
 
     - ``chunk_size``: 逆向きの要求 (``test_chunk_size_does_not_change_results``)
     - ``max_targets``: 上限であり、超えたときに ``ValueError`` にすることが
       唯一の観測可能な効果 (``test_target_enumeration_raises_instead_of_truncating``)
+    - ``max_degrees``: 上限であり、超えたときに ``ValueError`` にすることが
+      唯一の観測可能な効果 (F-03-2-013、
+      ``test_max_degrees_bounds_the_psi_table_row_count``)
 
     ``basis`` と ``input_distribution`` は**対で**意味を持つ (D-28: 片方だけ
     変えると未対応な組になり ``ValueError``) ので、対で入れ替えた設定を
@@ -770,7 +774,7 @@ def test_ipc_config_fields_change_output() -> None:
         "n_surrogate_targets": dataclasses.replace(base_cfg, n_surrogate_targets=1),
         "surrogate_quantile": dataclasses.replace(base_cfg, surrogate_quantile=0.5),
     }
-    covered = set(changed) | {"chunk_size", "max_targets"}
+    covered = set(changed) | {"chunk_size", "max_targets", "max_degrees"}
     actual = {field.name for field in dataclasses.fields(IpcConfig)}
     assert covered == actual, (
         "IpcConfig のフィールドに対する検査が不足しています: "
