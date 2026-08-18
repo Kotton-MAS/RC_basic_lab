@@ -25,9 +25,9 @@
   まで出力で実測できなかった。黙って見逃すと「設定したのに効いていない」が
   復活するので、消費側が生えた瞬間に落ちる信管
   (``test_pending_cases_disappear_once_the_sweeps_exist``) を張ってある。
-  **T2 で掃引4本が生えたので、格子・レプリケート数・系列長の 22 葉は
-  ``CHANNEL_ROWS`` + ``scope`` へ移した**。残る pending は 3-C (NARMA10、
-  3b-2 の T4) の ``narma.length`` 1件だけである。
+  T2 で掃引4本が、**T4 で 3-C (``run_narma10``) が生えたので pending は
+  1件も残っていない** (``PENDING_SECTIONS`` は空集合)。機構そのものは
+  04 以降のために残す。
 
 **委譲**: ``mc.*`` / ``ipc.*`` は 3a の診断設定 (D-15) をそのまま載せた部分、
 ``narma.base.*`` は 01 の ``ExperimentConfig`` をまるごと内包した部分なので、
@@ -68,12 +68,16 @@ from rc_basics_lab.config import (
     CapacityReservoirConfig,
     ConfigError,
     ConservationConfig,
+    ESNConfig,
     ExperimentConfig,
     IpcConfig,
     IpcSweepConfig,
     LengthSweepConfig,
     McSweepConfig,
     MemoryCapacityConfig,
+    Narma10Config,
+    RidgeConfig,
+    SplitConfig,
     load_config_as,
 )
 from rc_basics_lab.experiment.capacity import (
@@ -82,6 +86,7 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_LENGTH_SWEEP,
     EXPERIMENT_MC_SWEEP,
+    EXPERIMENT_NARMA10,
     CapacityOutcome,
     CapacityRow,
     run_conservation_sweep,
@@ -89,6 +94,7 @@ from rc_basics_lab.experiment.capacity import (
     run_length_sweep,
     run_mc_sweep,
 )
+from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.meta import collect_meta_for
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 
@@ -99,7 +105,7 @@ CHANNEL_SEEDS = "seeds"
 """基底シードを変えると、そのストリームの乱数列だけが変わる。"""
 
 CHANNEL_PENDING = "pending"
-"""消費側 (3-C の NARMA10) がまだ無い葉。3b-2 の T4 で実チャネルへ書き換える。"""
+"""消費側がまだ無い葉のチャネル (**T4 時点で該当なし**、``PENDING_SECTIONS``)。"""
 
 DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
     ("mc.", MemoryCapacityConfig),
@@ -119,13 +125,19 @@ DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
 ``WashoutSweepConfig.base`` (02) と同じ形。被覆は 01 側へ委譲する。
 """
 
-PENDING_SECTIONS: frozenset[str] = frozenset({"narma"})
-"""``CHANNEL_PENDING`` を名乗ってよいセクション。
+PENDING_SECTIONS: frozenset[str] = frozenset()
+"""``CHANNEL_PENDING`` を名乗ってよいセクション (**現在は空**)。
 
 T2 で掃引 (``run_mc_sweep`` / ``run_ipc_sweep`` / ``run_conservation_sweep``
-/ ``run_length_sweep``) が生えたので、**どの条件を回すか**を決める葉
-(格子・レプリケート数・系列長) はすべて出力で実測できるようになった。
-残る pending は 3-C (NARMA10、3b-2 の T4) の ``narma.length`` だけである。
+/ ``run_length_sweep``) が、T4 で 3-C (``run_narma10``) が生えたので、
+``Capacity03Config`` の全葉が出力で実測できるようになった
+(``narma.length`` は ``3C_narma10`` の行の ``n_steps`` を動かす)。
+
+**空集合のまま残す**のは、04 以降で「消費側がまだ無い葉」を足すときに
+この機構ごと書き直さずに済ませるためである。空である事実そのものは
+``tests/test_capacity_pipeline.py::test_production_config_matches_the_committed_meta_json``
+の比較対象 (このセクションを引いたもの) にも効いている —— pending が空に
+なった時点で、``narma`` セクションも本番 ``meta.json`` との突合対象に戻る。
 """
 
 TASK_STAGE_CONSUMERS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -215,7 +227,32 @@ def base_config() -> Capacity03Config:
         ipc=IpcConfig(
             max_delay_by_degree=(8, 4), n_surrogates=5, n_surrogate_targets=2
         ),
+        # 3-C も他セクションと違う n_units / n_steps にしてある (セクション間で
+        # 値を取り違える配線を落とすため)。base は 01 の ExperimentConfig を
+        # 内包した部分で、被覆は 01 側へ委譲する (DELEGATED_SECTIONS)。
+        narma=Narma10Config(
+            length=900,
+            base=ExperimentConfig(
+                name="capacity-wiring-narma",
+                n_replicates=1,
+                split=SplitConfig(washout=50, max_start_offset=20),
+                ridge=RidgeConfig(alpha_grid=(1e-2,), n_lags_grid=(2,)),
+                esn_mackey_glass=ESNConfig(
+                    n_units=7, leak_rate=1.0, input_scale=1.0, density=0.5
+                ),
+            ),
+        ),
     )
+
+
+def run_narma10_capacity(config: Capacity03Config) -> tuple[CapacityOutcome, ...]:
+    """3-C の容量を掃引と同じ形 (``CapacityOutcome`` の並び) で返す。
+
+    3-C は条件を1つしか持たない (掃引ではない) が、``capacity.csv`` に行が
+    出る以上ここで一緒に指紋を取る。そうしないと ``narma.length`` の効きも、
+    「他のセクションを変えたら 3-C の行まで動いた」も測れない。
+    """
+    return (run_narma10(config).capacity,)
 
 
 SWEEPS: tuple[Callable[[Capacity03Config], tuple[CapacityOutcome, ...]], ...] = (
@@ -223,8 +260,9 @@ SWEEPS: tuple[Callable[[Capacity03Config], tuple[CapacityOutcome, ...]], ...] = 
     run_ipc_sweep,
     run_conservation_sweep,
     run_length_sweep,
+    run_narma10_capacity,
 )
-"""指紋を取る掃引。**4実験すべて**を回す (``scope`` 検査の前提)。
+"""指紋を取る実験。**5実験すべて**を回す (``scope`` 検査の前提)。
 
 T1 の時点では掃引が無かったため固定の条件を並べていたが、T2 で条件は
 ``config`` から作られるようになった。セクション固有の葉 (``mc_sweep.*`` /
@@ -245,9 +283,6 @@ def _seeds_case(field: str, value: int, stream: SeedStream) -> WiringCase:
 
 def _pending_case(field: str, value: object, task: str, note: str) -> WiringCase:
     return case(field, value, channel=CHANNEL_PENDING, task=task, note=note)
-
-
-_NARMA_PENDING = "3-C (3b-2 の T4) がまだ無い"
 
 
 def _section_case(field: str, value: object, scope: str) -> WiringCase:
@@ -303,8 +338,8 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     _section_case("length_sweep.leak_rate", 0.5, EXPERIMENT_LENGTH_SWEEP),
     _section_case("length_sweep.sigma_u", 0.6, EXPERIMENT_LENGTH_SWEEP),
     _section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
-    # --- 3-C: NARMA10 (3b-2 の T4) ---
-    _pending_case("narma.length", 4000, "T4", _NARMA_PENDING),
+    # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
+    _section_case("narma.length", 400, EXPERIMENT_NARMA10),
 )
 
 
