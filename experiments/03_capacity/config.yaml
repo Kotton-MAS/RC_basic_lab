@@ -141,6 +141,11 @@ narma:
       n_bits: 2
       delay: 1
       length: 8000
+    # D-39 (仕様 §8、ユーザー承認済み) は 3-C の ESN を N=50 とし 3-B (IPC 掃引)
+    # と同じ規模にすると決めている。以下の ESN セクション (esn_mackey_glass /
+    # esn_delay_parity) はどちらも D-39 (N=50) に未追従で、n_units はまだ 200
+    # のまま (3b-2 の T4 がどちらのセクションを読むか配線するまでは不活性なため)。
+    # T4 で配線するセクションを 50 へ変更すること (F-3b1-1-008)。
     esn_mackey_glass:
       n_units: 200
       spectral_radius: 0.9
@@ -150,10 +155,6 @@ narma:
       density: 0.1
       activation: tanh
       state_noise: 0.0
-    # D-39 (仕様 §8、ユーザー承認済み) は 3-C の ESN を N=50 とし 3-B (IPC 掃引)
-    # と同じ規模にすると決めている。この n_units はまだ D-39 に合わせていない
-    # (3b-2 の T4 がどちらのセクションを読むか配線するまでは不活性なため)。
-    # T4 でこのセクションを配線するときに 50 へ変更すること (F-3b1-1-008)。
     esn_delay_parity:
       n_units: 200
       spectral_radius: 0.9
