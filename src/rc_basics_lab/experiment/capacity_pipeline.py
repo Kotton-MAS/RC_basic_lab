@@ -1,7 +1,7 @@
 """1コマンドで 03 の成果物をそろえる経路 (受け入れ条件7).
 
-``capacity.csv`` / ``capacity_profile.csv`` / ``meta.json`` をここで一括生成
-する。CLI (``main.py --experiment 03`` と
+``capacity.csv`` / ``capacity_profile.csv`` / 図4枚 / ``meta.json`` をここで
+一括生成する。CLI (``main.py --experiment 03`` と
 ``experiments/03_capacity/run_03.py``) はこの関数を呼ぶだけの薄い層にして、
 「どのコマンドから走らせても同じ成果物が出る」を構造で保証する
 (01 の ``pipeline.py`` / 02 の ``esp_pipeline.py`` と同じ規律)。
@@ -42,18 +42,26 @@ logger = logging.getLogger(__name__)
 CAPACITY_CSV = "capacity.csv"
 CAPACITY_PROFILE_CSV = "capacity_profile.csv"
 CAPACITY_LENGTH_CSV = "capacity_length.csv"
+FIG_MC_SWEEP = "fig_mc_sweep.png"
+FIG_IPC_PROFILE = "fig_ipc_profile.png"
+FIG_MEMORY_NONLINEARITY = "fig_memory_nonlinearity.png"
+FIG_IPC_CONSERVATION = "fig_ipc_conservation.png"
 
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
     CAPACITY_PROFILE_CSV,
+    FIG_MC_SWEEP,
+    FIG_IPC_PROFILE,
+    FIG_MEMORY_NONLINEARITY,
+    FIG_IPC_CONSERVATION,
     META_JSON,
 )
-"""1コマンド (``make figures-03``) で必ず出る 03 の成果物。
+"""1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV2枚 + 図4枚 + meta)。
 
-**図4枚 (T3) はまだ入っていない**。3b-1 の T3 が
-``fig_mc_sweep.png`` / ``fig_ipc_profile.png`` / ``fig_memory_nonlinearity.png``
-/ ``fig_ipc_conservation.png`` をここに足す (02 の ``ESP_ARTIFACTS`` と同じく
-「宣言と実体が食い違ったら落ちる」テストがこの並びを見る)。
+並びは 02 の ``ESP_ARTIFACTS`` と同じく「CSV -> 図 -> meta.json」で、
+``run_and_report_capacity`` が返す ``paths`` の順序と一致する。宣言と実体が
+食い違ったら落ちるテスト (``test_artifacts_are_regenerated_in_one_command_within_the_budget``)
+がこの並びを見る。
 
 ``capacity_length.csv`` (系列長 T の掃引) は**この並びに入れない**。記事に
 載る成果物ではなく「容量が足りないのか T が足りないのか」を切り分ける補助

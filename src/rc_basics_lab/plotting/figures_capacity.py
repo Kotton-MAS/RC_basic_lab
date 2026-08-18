@@ -35,6 +35,7 @@ import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.collections import QuadMesh
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 
@@ -376,8 +377,8 @@ def _plot_heatmap_panel(
     style: StyleContext,
     *,
     show_ylabel: bool,
-) -> None:
-    """1つの rho ぶんの (次数 x 遅延) ヒートマップ。"""
+) -> QuadMesh:
+    """1つの rho ぶんの (次数 x 遅延) ヒートマップ (配色は呼び出し側と共通)。"""
     n_degrees, n_delays = cells.shape
     mesh = axis.pcolormesh(
         np.arange(n_delays + 1, dtype=np.float64) + 0.5,
@@ -396,7 +397,7 @@ def _plot_heatmap_panel(
         fontsize=10,
     )
     axis.grid(visible=False)
-    axis.set_label(str(mesh))
+    return mesh
 
 
 def plot_ipc_profile(
@@ -426,13 +427,14 @@ def plot_ipc_profile(
     with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(3.4 * len(rhos) + 1.2, 3.6)
         axes = figure.subplots(1, len(rhos), squeeze=False)
-        for index, rho in enumerate(rhos):
+        meshes = [
             _plot_heatmap_panel(
                 axes[0][index], means[rho], rho, norm, style, show_ylabel=index == 0
             )
-        mappable = matplotlib.cm.ScalarMappable(norm=norm, cmap=_HEATMAP_CMAP)
+            for index, rho in enumerate(rhos)
+        ]
         figure.colorbar(
-            mappable,
+            meshes[-1],
             ax=list(axes[0]),
             label=style.label(
                 "容量 (しきい値後・レプリケート平均)",
