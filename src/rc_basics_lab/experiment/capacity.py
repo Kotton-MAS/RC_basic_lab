@@ -203,12 +203,77 @@ class CapacityOutcome:
         ipc_heatmap: (次数, 遅延) のしきい値後の容量 (``fig_ipc_profile.png``)。
         ipc_by_degree: 次数ごとのしきい値後の容量
             (``fig_memory_nonlinearity.png``)。
+        ipc_thresholds: 次数ごとのしきい値 (``ipc_threshold_degree{d}`` を
+            次数の昇順に並べたもの)。**cfg 依存で本数が変わる**ため
+            ``CapacityRow`` の列にはできず (D-38)、長形式の
+            ``CapacityProfileRow.threshold`` に落とす。ここに持たせるのは、
+            同じ条件で ``ipc`` をもう一度走らせて取り直すことを禁じるため
+            (1条件あたり数秒〜7秒の再計算になる)。
     """
 
     row: CapacityRow
     mc_profile: FloatArray
     ipc_heatmap: FloatArray
     ipc_by_degree: FloatArray
+    ipc_thresholds: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityProfileRow:
+    """``capacity_profile.csv`` の1行 (**長形式**、D-38)。宣言順が CSV の列順。
+
+    IPC の ``scalars`` は ``ipc_threshold_degree{d}`` を**次数の本数だけ**持つ
+    ため、キー集合が ``cfg.max_delay_by_degree`` に依存する (F-03-1-005)。
+    これを列にすると 3-B' (次数4) と 3-A/3-B (次数4) で列数が揃っていても、
+    打ち切りを1本増やした瞬間に CSV の列が変わる —— 「列は cfg に依らず一定」
+    という単一の真実が壊れる。次数と遅延を**行の値**に落とせば列は静的なままで、
+    しきい値も次数ごとの行に自然に乗る。
+
+    MC は次数の概念を持たないので ``degree=1`` に固定する (次数1の線形容量で
+    あることは IPC の次数1と同じ意味であり、``diagnostic`` 列で区別する)。
+
+    **書くのはしきい値後の容量が厳密に正のセルだけ**である。全セルを書くと
+    本番設定で約6万行になり、``results/`` はコミット対象なのでリポジトリが
+    その分だけ重くなる。正値だけに絞る規準は IPC の ``n_targets_kept``
+    (``np.count_nonzero(kept)``) の定義と同じで、「しきい値を超えた」ことと
+    「行が在る」ことが1対1に対応する。
+
+    Attributes:
+        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。
+        replicate: レプリケート番号 (0 始まり)。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        n_units: リザバーのユニット数 N。
+        state_noise: 状態ノイズの標準偏差。
+        diagnostic: ``"mc"`` か ``"ipc"`` (``DIAGNOSTIC_MC`` / ``DIAGNOSTIC_IPC``)。
+        degree: 次数 (MC は常に1)。
+        delay: 遅延 [ステップ] (1 始まり)。
+        capacity: しきい値後の容量 (**厳密に正**)。
+        threshold: その次数のしきい値 (MC は ``mc_threshold``)。
+    """
+
+    experiment: str
+    replicate: int
+    rho: float
+    leak_rate: float
+    n_units: int
+    state_noise: float
+    diagnostic: str
+    degree: int
+    delay: int
+    capacity: float
+    threshold: float
+
+
+CAPACITY_PROFILE_CSV_COLUMNS: tuple[str, ...] = tuple(
+    f.name for f in fields(CapacityProfileRow)
+)
+"""``capacity_profile.csv`` の列順 (``CapacityProfileRow`` の宣言順が単一の真実)。
+
+**cfg に依らず一定**であることが D-38 の中心で、
+``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
+が2つの異なる打ち切り設定で実測する。
+"""
 
 
 def reservoir_config_for(
