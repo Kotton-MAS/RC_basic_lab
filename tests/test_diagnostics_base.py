@@ -575,9 +575,7 @@ def test_diagnostics_package_does_not_import_reservoir() -> None:
         assert f'"{FORBIDDEN_MODULE}"' not in text
 
 
-def test_diagnostics_package_does_not_transitively_import_reservoir_or_config() -> (
-    None
-):
+def test_diagnostics_package_does_not_transitively_import_reservoir_or_config() -> None:
     """diagnostics の import が reservoir / config を sys.modules に載せない (D-23)。
 
     上の ``test_diagnostics_package_does_not_import_reservoir`` は diagnostics

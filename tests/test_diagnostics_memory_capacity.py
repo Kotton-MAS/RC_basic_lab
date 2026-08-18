@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import itertools
 from collections.abc import Sequence
 from typing import cast
 
@@ -31,6 +32,7 @@ from rc_basics_lab.diagnostics.memory_capacity import (
     MemoryCapacityConfig,
     memory_capacity,
 )
+from rc_basics_lab.readout.ridge import fit_ridge_from_gram
 from rc_basics_lab.types import FloatArray
 
 CTX_SEED = 20240303
@@ -213,8 +215,8 @@ def test_polynomial_family_is_exactly_orthonormal_under_quadrature() -> None:
     hermite_matrix: FloatArray = np.column_stack(
         [capacity_module._hermite_normalized(nodes, degree) for degree in range(5)]
     )
-    hermite_gram = (hermite_matrix * weights[:, None]).T @ hermite_matrix / np.sqrt(
-        2.0 * np.pi
+    hermite_gram = (
+        (hermite_matrix * weights[:, None]).T @ hermite_matrix / np.sqrt(2.0 * np.pi)
     )
     np.testing.assert_allclose(hermite_gram, np.eye(5), rtol=0.0, atol=1.0e-10)
 
@@ -277,7 +279,7 @@ def test_capacity_is_monotone_decreasing_in_alpha() -> None:
         )["mc_total_raw"]
         for alpha in (1.0e-9, 1.0e-6, 1.0e-3, 1.0, 100.0)
     ]
-    for smaller, larger in zip(totals[:-1], totals[1:], strict=True):
+    for smaller, larger in itertools.pairwise(totals):
         assert larger <= smaller + 1.0e-9, f"alpha に対して容量が増えました: {totals}"
     assert totals[-1] < totals[0], f"alpha=100 で容量が減っていません: {totals}"
 
@@ -331,12 +333,12 @@ def test_memory_capacity_config_fields_change_output() -> None:
     base_cfg = MemoryCapacityConfig(max_delay=40, n_surrogates=20, chunk_size=16)
     reference = _scalars(memory_capacity(states, inputs, ctx=ctx, cfg=base_cfg))
 
-    changed: dict[str, object] = {
-        "max_delay": 55,
-        "alpha": 10.0,
-        "threshold_mode": THRESHOLD_NONE,
-        "n_surrogates": 60,
-        "surrogate_quantile": 0.5,
+    changed: dict[str, MemoryCapacityConfig] = {
+        "max_delay": dataclasses.replace(base_cfg, max_delay=55),
+        "alpha": dataclasses.replace(base_cfg, alpha=10.0),
+        "threshold_mode": dataclasses.replace(base_cfg, threshold_mode=THRESHOLD_NONE),
+        "n_surrogates": dataclasses.replace(base_cfg, n_surrogates=60),
+        "surrogate_quantile": dataclasses.replace(base_cfg, surrogate_quantile=0.5),
     }
     covered = set(changed) | {"chunk_size"}
     actual = {field.name for field in dataclasses.fields(MemoryCapacityConfig)}
@@ -345,15 +347,8 @@ def test_memory_capacity_config_fields_change_output() -> None:
         f"{sorted(actual - covered)}"
     )
 
-    for name, value in changed.items():
-        other = _scalars(
-            memory_capacity(
-                states,
-                inputs,
-                ctx=ctx,
-                cfg=dataclasses.replace(base_cfg, **{name: value}),
-            )
-        )
+    for name, cfg in changed.items():
+        other = _scalars(memory_capacity(states, inputs, ctx=ctx, cfg=cfg))
         assert other != reference, f"{name} を変えても出力が変わりません"
 
 
@@ -441,7 +436,7 @@ def test_surrogate_threshold_requires_ctx_seed_and_is_reproducible() -> None:
     """
     states, inputs = _cached_states(0.9, 15, 2000, 5)
     cfg = MemoryCapacityConfig(max_delay=40, n_surrogates=25, chunk_size=8)
-    with pytest.raises(ValueError, match="ctx.seed"):
+    with pytest.raises(ValueError, match=r"ctx\.seed"):
         memory_capacity(states, inputs, ctx=DiagnosticContext(), cfg=cfg)
 
     first = memory_capacity(
@@ -546,7 +541,7 @@ def test_capacity_of_targets_touches_phi_exactly_once(
     targets: FloatArray = rng.standard_normal((problem.n_samples, 12))
 
     solves: list[str] = []
-    original = capacity_module.fit_ridge_from_gram
+    original = fit_ridge_from_gram
 
     def counting_solve(
         gram: FloatArray, rhs: FloatArray, alpha: float, *, bias_column: int | None
@@ -583,7 +578,7 @@ def test_capacity_matches_direct_least_squares_residual() -> None:
     alpha = 1.0e-8
 
     capacities = capacity_of_targets(problem, targets, alpha)
-    weights = capacity_module.fit_ridge_from_gram(
+    weights = fit_ridge_from_gram(
         problem.gram, problem.phi.T @ targets, alpha, bias_column=problem.bias_column
     )
     residual: FloatArray = targets - problem.phi @ weights
@@ -624,7 +619,7 @@ def test_solve_count_is_driven_by_chunks_not_by_target_count(
     """
     states, inputs = _cached_states(0.9, 15, 2000, 5)
     ctx = DiagnosticContext(washout=50, seed=CTX_SEED)
-    original = capacity_module.fit_ridge_from_gram
+    original = fit_ridge_from_gram
 
     for max_delay in (40, 160):
         solves: list[str] = []
