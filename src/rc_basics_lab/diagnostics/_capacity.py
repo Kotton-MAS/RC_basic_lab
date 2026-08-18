@@ -76,20 +76,27 @@ _UNIFORM_HALF_WIDTH_IN_SIGMA = math.sqrt(3.0)
 
 @dataclass(frozen=True, slots=True, eq=False)
 class CapacityProblem:
-    """容量測定の左辺 (設計行列と Gram) を1回だけ作って保持する。
+    """容量測定の左辺 (状態のビューと Gram) を1回だけ作って保持する。
 
     ``eq=False`` にしてあるのは、numpy 配列を持つ dataclass の ``__eq__`` が
     要素ごとの比較結果 (配列) を真偽値に落とそうとして ``ValueError`` になる
     ため。同一性の比較には使わない。
 
+    設計行列 ``Phi = [1, X]`` はここでは**実体化しない** (F-03-1-013)。
+    バイアス列は定数列なので、Gram ``Phi.T @ Phi`` は
+    ``[[T_eff, sum(X,0)], [sum(X,0).T, X.T @ X]]`` というブロックに閉じて
+    書ける。``x`` に ``X[t0:]`` の**ビュー** (先頭からの基本スライスなので
+    コピーが発生しない) を持つだけで済み、``T=1e6`` 級の本番設定で ``Phi``
+    のコピー1枚ぶん (状態と同じ大きさ) のメモリを節約できる。
+
     Attributes:
-        phi: 設計行列 ``[1, X[t0:]]`` ``(T_eff, 1 + N)``。
-        gram: ``phi.T @ phi`` ``(F, F)``。
-        bias_column: 正則化しない列の index (D-03)。``phi`` の作り方から常に 0。
+        x: 状態のビュー ``X[t0:]`` ``(T_eff, N)``。バイアス列は含まない。
+        gram: ブロック分解した ``Phi.T @ Phi`` ``(F, F)`` (``F = 1 + N``)。
+        bias_column: 正則化しない列の index (D-03)。``gram`` の作り方から常に 0。
         t0: ``X`` の何行目から使ったか (D-24 の単一基準点)。
     """
 
-    phi: FloatArray
+    x: FloatArray
     gram: FloatArray
     bias_column: int
     t0: int
@@ -97,21 +104,26 @@ class CapacityProblem:
     @property
     def n_samples(self) -> int:
         """回帰に使う行数 ``T_eff``。全目標がこの行集合を共有する (D-24)。"""
-        return int(self.phi.shape[0])
+        return int(self.x.shape[0])
 
     @property
     def n_features(self) -> int:
         """特徴数 ``F = 1 + N`` (バイアス列を含む)。"""
-        return int(self.phi.shape[1])
+        return int(self.x.shape[1]) + 1
 
     @property
     def n_units(self) -> int:
         """状態の次元 ``N``。容量の理論上限 (Dambre 2012) がこの値。"""
-        return self.n_features - 1
+        return int(self.x.shape[1])
 
     @classmethod
     def from_states(cls, X: FloatArray, *, t0: int) -> CapacityProblem:
-        """状態系列 ``X`` の ``t0`` 行目以降から ``Phi = [1, X]`` と Gram を作る。
+        """状態系列 ``X`` の ``t0`` 行目以降から ``Phi = [1, X]`` の Gram を作る。
+
+        ``Phi`` そのものは作らない。バイアス列の寄与 (行和・列和) は ``X`` の
+        縮約 (``sum``) だけで閉じるため、``X`` に触れるのは
+        ``X.T @ X`` の**1回**で済む (D-26 と同じ「触れるのは1回」の規律を
+        構築時にも適用する)。
 
         Args:
             X: 状態系列 ``(T, N)``。
@@ -138,10 +150,53 @@ class CapacityProblem:
                 f"(n_samples={n_samples}, n_features={n_features})。"
                 " T を伸ばすか t0 (washout / max_delay) を下げてください"
             )
-        ones: FloatArray = np.ones((n_samples, 1), dtype=np.float64)
-        phi: FloatArray = np.concatenate((ones, window), axis=1)
-        gram: FloatArray = phi.T @ phi
-        return cls(phi=phi, gram=gram, bias_column=0, t0=t0)
+        # Phi.T @ Phi = [[T_eff, sum(X,0)], [sum(X,0).T, X.T @ X]] (バイアス
+        # 列は定数1なので、ones.T @ ones = T_eff、ones.T @ X = sum(X, 0))。
+        column_sums: FloatArray = np.sum(window, axis=0)
+        gram_xx: FloatArray = window.T @ window
+        gram: FloatArray = np.empty((n_features, n_features), dtype=np.float64)
+        gram[0, 0] = float(n_samples)
+        gram[0, 1:] = column_sums
+        gram[1:, 0] = column_sums
+        gram[1:, 1:] = gram_xx
+        return cls(x=window, gram=gram, bias_column=0, t0=t0)
+
+    def lagged(self, series: FloatArray, delay: int) -> FloatArray:
+        """入力系列を D-24 の単一基準点に合わせて遅延 ``delay`` だけずらす。
+
+        ``series[t0 - delay : t0 - delay + n_samples]`` を返す。MC と IPC は
+        どちらも「遅延 k の目標は状態と同じ行集合 (``t0`` 始まり) に対応する」
+        という同じ規律 (D-24) の実体をこの1本の窓計算に依存する。かつては
+        MC (2箇所) と IPC (1箇所) がこの式を共有カーネルの外でそれぞれ書いて
+        おり、MC 側だけ複製が値レベルで検査されていなかった (F-03-1-001:
+        窓を1ステップずらしても MC のテスト22本が全て緑のまま通った)。ここに
+        1本だけ置くことで、以後どの容量診断が増えても複製が生まれない。
+
+        Args:
+            series: 1次元の系列 (入力の正規直交多項式など)。
+            delay: 遅延 (0 以上)。
+
+        Returns:
+            ``(n_samples,)`` のビュー。
+
+        Raises:
+            ValueError: ``series`` が1次元でない / ``delay`` が負 /
+                窓が ``series`` の範囲外になる場合。
+        """
+        if delay < 0:
+            raise ValueError(f"delay は 0 以上が必要です: {delay}")
+        values = np.asarray(series, dtype=np.float64)
+        if values.ndim != 1:
+            raise ValueError(f"series は1次元配列が必要です: {values.shape}")
+        start = self.t0 - delay
+        stop = start + self.n_samples
+        if start < 0 or stop > values.shape[0]:
+            raise ValueError(
+                "delay が範囲外です (D-24): "
+                f"t0={self.t0}, delay={delay}, series長={values.shape[0]},"
+                f" n_samples={self.n_samples}"
+            )
+        return values[start:stop]
 
 
 def capacity_of_targets(
