@@ -1,7 +1,7 @@
 """1コマンドで 03 の成果物をそろえる経路 (受け入れ条件7).
 
-``capacity.csv`` / ``capacity_profile.csv`` / 図4枚 / ``meta.json`` をここで
-一括生成する。CLI (``main.py --experiment 03`` と
+``capacity.csv`` / ``capacity_profile.csv`` / ``narma10.csv`` / 図5枚 /
+``meta.json`` をここで一括生成する。CLI (``main.py --experiment 03`` と
 ``experiments/03_capacity/run_03.py``) はこの関数を呼ぶだけの薄い層にして、
 「どのコマンドから走らせても同じ成果物が出る」を構造で保証する
 (01 の ``pipeline.py`` / 02 の ``esp_pipeline.py`` と同じ規律)。
@@ -36,7 +36,10 @@ from rc_basics_lab.experiment.capacity import (
     run_capacity_experiment,
     run_length_sweep,
 )
-from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.report import (
+    META_JSON,
+    write_meta_for,
+)
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
     plot_ipc_profile,
@@ -50,21 +53,25 @@ logger = logging.getLogger(__name__)
 CAPACITY_CSV = "capacity.csv"
 CAPACITY_PROFILE_CSV = "capacity_profile.csv"
 CAPACITY_LENGTH_CSV = "capacity_length.csv"
+NARMA10_CSV = "narma10.csv"
 FIG_MC_SWEEP = "fig_mc_sweep.png"
 FIG_IPC_PROFILE = "fig_ipc_profile.png"
 FIG_MEMORY_NONLINEARITY = "fig_memory_nonlinearity.png"
 FIG_IPC_CONSERVATION = "fig_ipc_conservation.png"
+FIG_NARMA10_CONTROL = "fig_narma10_control.png"
 
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
     CAPACITY_PROFILE_CSV,
+    NARMA10_CSV,
     FIG_MC_SWEEP,
     FIG_IPC_PROFILE,
     FIG_MEMORY_NONLINEARITY,
     FIG_IPC_CONSERVATION,
+    FIG_NARMA10_CONTROL,
     META_JSON,
 )
-"""1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV2枚 + 図4枚 + meta)。
+"""1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV3枚 + 図5枚 + meta)。
 
 並びは 02 の ``ESP_ARTIFACTS`` と同じく「CSV -> 図 -> meta.json」で、
 ``run_and_report_capacity`` が返す ``paths`` の順序と一致する。宣言と実体が
@@ -124,26 +131,33 @@ class CapacityOutputs:
     """``run_and_report_capacity`` の成果物。
 
     Attributes:
-        results: 3実験ぶんの条件別の結果 (行 + 図が使う配列)。
+        results: 掃引3本ぶんの条件別の結果 (行 + 図が使う配列)。
+        narma: 実験 3-C の結果 (``narma10.csv`` の行 + 容量1条件)。
         timings: 実験ごとの実測時間の内訳 (``FIGURE_EXPERIMENTS`` と同じ並び)。
         paths: 生成したファイル (``CAPACITY_ARTIFACTS`` と同じ並び)。
         wall_time_s: 計算部分の実測 wall time (書き出しは含まない)。
     """
 
     results: CapacityResults
+    narma: Narma10Results
     timings: tuple[SectionTiming, ...]
     paths: tuple[Path, ...]
     wall_time_s: float
 
     @property
     def rows(self) -> tuple[CapacityRow, ...]:
-        """``capacity.csv`` と同じ行。"""
-        return self.results.rows
+        """``capacity.csv`` と同じ行 (掃引3本 + 3-C の1行)。"""
+        return (*self.results.rows, self.narma.capacity.row)
 
     @property
     def profile_rows(self) -> tuple[CapacityProfileRow, ...]:
-        """``capacity_profile.csv`` と同じ行。"""
-        return self.results.profile_rows
+        """``capacity_profile.csv`` と同じ行 (掃引3本 + 3-C)。"""
+        return (*self.results.profile_rows, *profile_rows(self.narma.capacity))
+
+    @property
+    def narma_rows(self) -> tuple[ResultRow, ...]:
+        """``narma10.csv`` と同じ行 (01 の ``ResultRow``)。"""
+        return self.narma.rows
 
 
 def write_capacity_csv(rows: Sequence[CapacityRow], path: Path) -> Path:
