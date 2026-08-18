@@ -835,6 +835,17 @@ def test_production_profile_rows_are_positive_and_reference_the_same_conditions(
     縮小設定での D-38 の検査 (上) と対にして、**コミット済みの成果物**が同じ
     性質を持つことを固定する。長形式の行が別の実験・別のレプリケートを指して
     いたら、図 (T3) は存在しない条件を描くことになる。
+
+    D-38 (訂正後) の rule は「成果物から保存則を検算する不変条件は、
+    ``capacity_profile.csv`` の capacity 列の総和が ``capacity.csv`` の
+    ``ipc_total`` / ``mc_total`` と一致すること」。これまでこの検算は
+    ``tiny_config`` を回す
+    ``test_profile_csv_columns_are_static_and_cells_are_positive`` の中にしか
+    無く、**本番成果物側では検査されていなかった** (round1 で指摘された
+    「行数 == n_targets_kept」という本番で成立しない不変条件の再発と同型の
+    構図 — 記録が本番成果物について述べているのに、本番成果物側にその検査が
+    無い)。条件ごとに diagnostic 別の capacity 列の総和を取り、両 CSV は
+    既に読み込み済みなので追加コストはほぼ0で突き合わせる。
     """
     profile = _read_csv(RESULTS / CAPACITY_PROFILE_CSV)
     assert profile, "capacity_profile.csv が空です"
@@ -852,6 +863,26 @@ def test_production_profile_rows_are_positive_and_reference_the_same_conditions(
 
     assert {key(row) for row in profile} <= {key(row) for row in _production_rows()}
     assert {row["diagnostic"] for row in profile} == {DIAGNOSTIC_MC, DIAGNOSTIC_IPC}
+
+    diagnostic_sums: dict[tuple[str, str, str, str, str, str], dict[str, float]] = (
+        defaultdict(lambda: defaultdict(float))
+    )
+    for row in profile:
+        diagnostic_sums[key(row)][row["diagnostic"]] += float(row["capacity"])
+    for row in _production_rows():
+        sums = diagnostic_sums[key(row)]
+        assert math.isclose(
+            sums.get(DIAGNOSTIC_MC, 0.0),
+            float(row["mc_total"]),
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ), (row["experiment"], row["replicate"])
+        assert math.isclose(
+            sums.get(DIAGNOSTIC_IPC, 0.0),
+            float(row["ipc_total"]),
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ), (row["experiment"], row["replicate"])
 
 
 def test_run_and_report_capacity_returns_what_it_wrote(tmp_path: Path) -> None:
