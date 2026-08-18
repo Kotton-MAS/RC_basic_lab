@@ -32,6 +32,17 @@ from rc_basics_lab.types import FloatArray
 
 FORBIDDEN_MODULE = "rc_basics_lab.reservoir"
 
+FORBIDDEN_TRANSITIVE_MODULES = ("rc_basics_lab.reservoir", "rc_basics_lab.config")
+"""diagnostics の import が (推移的にも) 引き込んではならないモジュール (D-23)。
+
+D-12 の文言は「``types`` 以外の自作モジュールを import しない」だったが、
+guard は ``reservoir`` だけを見ていた。03 で ``diagnostics`` -> ``readout.ridge``
+の import を許可する (D-23) にあたり、**禁止対象に ``config`` を明示的に足して**
+guard を現状より強くする。``config.py`` は ``reservoir.esn.ESNConfig`` を import
+しているので ``config`` を引き込めば ``reservoir`` も一緒に来るが、逆は成り立た
+ないため、``config`` を名指しすることで検出できる違反が増える。
+"""
+
 
 def _external_states(n_steps: int = 300, n_units: int = 20) -> FloatArray:
     """ESN を一切使わずに作った「外部由来の」状態系列。"""
@@ -70,6 +81,25 @@ def _minimal_input_conditional_lyapunov(states: FloatArray) -> _MinimalInput:
     return states, None, None, DiagnosticContext(propagator=propagator)
 
 
+def _minimal_input_memory_capacity(states: FloatArray) -> _MinimalInput:
+    """``memory_capacity`` は ``u`` と (既定の閾値法のため) ``ctx.seed`` が必須。
+
+    ここだけ引数の ``states`` を使わず、より長い状態系列を作り直している。
+    MC の既定 ``max_delay`` は 400 で、D-24 により ``t0 = max(washout,
+    max_delay)`` が基準点になるため、``_external_states()`` の T=300 では
+    「系列が短すぎる」で ``ValueError`` になる。ここで ``cfg`` を小さくして
+    逃げないのは、契約テストが ``func(X, u, y, ctx=ctx)`` としか呼ばない
+    (= 既定の ``cfg`` で走る) 以上、既定値で完走できることを確かめる方が
+    guard として強いため。状態は ESN を通さない外部生成のまま
+    (受け入れ条件6)。
+    """
+    rng = np.random.default_rng(20240303)
+    n_steps = 1200
+    long_states: FloatArray = rng.standard_normal((n_steps, states.shape[1]))
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, size=(n_steps, 1))
+    return long_states, inputs, None, DiagnosticContext(seed=20240303)
+
+
 MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.dummy.state_mean_norm": _minimal_input_no_extras,
     "rc_basics_lab.diagnostics.state_space.state_pca": _minimal_input_no_extras,
@@ -79,6 +109,9 @@ MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     ),
     "rc_basics_lab.diagnostics.timescale.autocorrelation_time": (
         _minimal_input_no_extras
+    ),
+    "rc_basics_lab.diagnostics.memory_capacity.memory_capacity": (
+        _minimal_input_memory_capacity
     ),
 }
 """診断 qualname -> 「その診断が最後まで走れる最小限の入力」を返すファクトリ。
@@ -122,7 +155,8 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
     (= 別モジュールからの re-export ではなく)、戻り値アノテーションが
     ``DiagnosticResult`` である public callable」。``pkgutil.iter_modules`` で
     サブモジュールを網羅する手法は
-    D-12 の guard (``test_diagnostics_package_does_not_transitively_import_reservoir``)
+    D-12 / D-23 の guard
+    (``test_diagnostics_package_does_not_transitively_import_reservoir_or_config``)
     と同じであり、02〜05 で新しい診断モジュール (``echo_state`` / ``memory`` /
     ``ipc`` / ``lyapunov`` / ``criticality``) が追加されれば自動的にここへ入る。
     ``base`` は Protocol 定義そのもので診断の実装ではないため対象から除く。
@@ -179,8 +213,9 @@ KNOWN_DIAGNOSTICS = (
     "rc_basics_lab.diagnostics.esp.esp_convergence",
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov",
     "rc_basics_lab.diagnostics.timescale.autocorrelation_time",
+    "rc_basics_lab.diagnostics.memory_capacity.memory_capacity",
 )
-"""現時点で存在する全診断 (サイクル1 の2本 + サイクル2 で追加した3本)。
+"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の1本)。
 
 件数まで固定するのは、列挙条件を壊して件数が減っても
 ``test_all_diagnostics_conform_to_d01_signature_contract`` が緑のまま通る
@@ -193,8 +228,8 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
 
     列挙条件 (戻り値アノテーションが DiagnosticResult の public callable) を
     間違えて0件になると、下の契約テストは何も検査せずに緑になってしまう。
-    サイクル2 で ``esp`` / ``timescale`` の3本が加わり、列挙件数は 2 から 5 に
-    増えた。
+    サイクル2 で ``esp`` / ``timescale`` の3本が加わって 2 から 5 に、
+    サイクル3a で ``memory_capacity`` が加わって 6 になった。
     """
     names = {qualname for qualname, _ in _iter_diagnostic_callables()}
     assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
@@ -203,7 +238,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
         f"(不足={sorted(set(KNOWN_DIAGNOSTICS) - names)}, "
         f"余剰={sorted(names - set(KNOWN_DIAGNOSTICS))})"
     )
-    assert len(names) == 5
+    assert len(names) == 6
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
@@ -540,8 +575,10 @@ def test_diagnostics_package_does_not_import_reservoir() -> None:
         assert f'"{FORBIDDEN_MODULE}"' not in text
 
 
-def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
-    """diagnostics を import しても reservoir が sys.modules に載らない (推移閉包)。
+def test_diagnostics_package_does_not_transitively_import_reservoir_or_config() -> (
+    None
+):
+    """diagnostics の import が reservoir / config を sys.modules に載せない (D-23)。
 
     上の ``test_diagnostics_package_does_not_import_reservoir`` は diagnostics
     配下の *.py の AST を直接 import 検査するだけなので、
@@ -561,6 +598,13 @@ def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
     ローカルの遅延 import (関数本体の中に書かれ、呼び出されるまで実行されない
     import 文) は import 時点の ``sys.modules`` に出ないため、この guard では
     検出できない。
+
+    D-23 (03): 禁止対象を ``FORBIDDEN_TRANSITIVE_MODULES`` に広げ、``config`` を
+    明示的に足した。03 の容量カーネルは ``readout.ridge.fit_ridge_from_gram``
+    (バイアス列を正則化しない D-03 の唯一の実装) を import する —— この依存は
+    許可するが、``config`` / ``reservoir`` は引き続き直接・推移のいずれでも
+    禁止する。``readout`` は ``metrics`` / ``types`` しか import しないので
+    移植性の前提は保たれる。
     """
     probe = textwrap.dedent("""
         import importlib
@@ -568,15 +612,19 @@ def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
         import pkgutil
         import sys
 
+        FORBIDDEN = __FORBIDDEN__
+
         pkg = importlib.import_module("rc_basics_lab.diagnostics")
         for info in pkgutil.iter_modules(pkg.__path__):
             importlib.import_module(f"rc_basics_lab.diagnostics.{info.name}")
 
         leaked = sorted(
-            name for name in sys.modules if name.startswith("rc_basics_lab.reservoir")
+            name
+            for name in sys.modules
+            if any(name == f or name.startswith(f + ".") for f in FORBIDDEN)
         )
         print("LEAKED=" + json.dumps(leaked))
-        """)
+        """).replace("__FORBIDDEN__", json.dumps(list(FORBIDDEN_TRANSITIVE_MODULES)))
     completed = subprocess.run(
         [sys.executable, "-c", probe],
         capture_output=True,
@@ -585,8 +633,9 @@ def test_diagnostics_package_does_not_transitively_import_reservoir() -> None:
     )
     leaked = _extract_leaked(completed.stdout)
     assert leaked == [], (
-        "rc_basics_lab.diagnostics の import が rc_basics_lab.reservoir を "
-        f"引き込んでいます (推移的依存): {leaked}"
+        "rc_basics_lab.diagnostics の import が禁止モジュール "
+        f"{list(FORBIDDEN_TRANSITIVE_MODULES)} を引き込んでいます "
+        f"(推移的依存): {leaked}"
     )
 
 
