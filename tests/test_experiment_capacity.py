@@ -24,12 +24,14 @@ from __future__ import annotations
 
 import dataclasses
 import importlib
-from collections.abc import Callable
+import sys
 from types import ModuleType
+from typing import Protocol
 
 import numpy as np
 import pytest
 
+import rc_basics_lab.diagnostics as diagnostics_package
 from rc_basics_lab.config import (
     Capacity03Config,
     CapacityDriveConfig,
@@ -43,6 +45,8 @@ from rc_basics_lab.config import (
     esp_stream_seed,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
+from rc_basics_lab.diagnostics.ipc import ipc
+from rc_basics_lab.diagnostics.memory_capacity import memory_capacity
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
@@ -52,6 +56,7 @@ from rc_basics_lab.experiment.capacity import (
     ipc_config_for,
 )
 from rc_basics_lab.experiment.esp import (
+    ReferenceTrajectory,
     make_initial_states,
     simulate_condition,
     simulate_reference_trajectory,
@@ -84,23 +89,46 @@ def base_config() -> Capacity03Config:
 
 
 def condition(
-    experiment: str = EXPERIMENT_MC_SWEEP, **overrides: object
+    experiment: str = EXPERIMENT_MC_SWEEP,
+    *,
+    rho: float = 0.9,
+    leak_rate: float = 1.0,
+    n_units: int = 12,
+    state_noise: float = 0.0,
 ) -> CapacityCondition:
-    """縮小条件1本。``overrides`` は ``dataclasses.replace`` に流す。"""
-    base = CapacityCondition(
+    """縮小条件1本 (秒未満で回る大きさ)。"""
+    return CapacityCondition(
         experiment=experiment,
-        rho=0.9,
-        leak_rate=1.0,
-        n_units=12,
-        state_noise=0.0,
+        rho=rho,
+        leak_rate=leak_rate,
+        n_units=n_units,
+        state_noise=state_noise,
         sigma_u=0.3,
         n_steps=1200,
         replicate=0,
     )
-    return dataclasses.replace(base, **overrides)
 
 
-class _StateSpy:
+class _DiagnosticCall[C](Protocol):
+    """D-01 の署名に ``cfg`` (D-15) を足した呼び出し規約。
+
+    ``cfg`` の型は診断ごとに違う (``MemoryCapacityConfig`` /
+    ``IpcConfig``) ので型変数にする。``object`` で受けると
+    「MC に IPC の cfg を渡す」取り違えが型で落ちなくなる。
+    """
+
+    def __call__(
+        self,
+        X: FloatArray,
+        u: FloatArray | None = None,
+        y: FloatArray | None = None,
+        *,
+        ctx: DiagnosticContext | None = None,
+        cfg: C,
+    ) -> DiagnosticResult: ...
+
+
+class _StateSpy[C]:
     """診断へ渡された ``X`` / ``u`` / ``ctx`` を記録しつつ本物を呼ぶ。
 
     本物を呼ぶのは、行の組み立て (``DiagnosticResult`` のキー参照) まで含めて
@@ -108,7 +136,7 @@ class _StateSpy:
     どのキーを読むか」が固定されなくなる。
     """
 
-    def __init__(self, wrapped: Callable[..., DiagnosticResult]) -> None:
+    def __init__(self, wrapped: _DiagnosticCall[C]) -> None:
         self._wrapped = wrapped
         self.states: list[FloatArray] = []
         self.inputs: list[FloatArray] = []
@@ -121,7 +149,7 @@ class _StateSpy:
         y: FloatArray | None = None,
         *,
         ctx: DiagnosticContext | None = None,
-        cfg: object = None,
+        cfg: C,
     ) -> DiagnosticResult:
         self.states.append(X)
         assert u is not None
@@ -131,11 +159,17 @@ class _StateSpy:
         return self._wrapped(X, u, ctx=ctx, cfg=cfg)
 
 
-def _install_spies(monkeypatch: pytest.MonkeyPatch) -> tuple[_StateSpy, _StateSpy]:
-    """MC / IPC の**呼び出し側属性**をスパイに差し替える (§10-1)。"""
-    module = importlib.import_module(CAPACITY_MODULE)
-    mc_spy = _StateSpy(module.memory_capacity)
-    ipc_spy = _StateSpy(module.ipc)
+def _install_spies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[_StateSpy[MemoryCapacityConfig], _StateSpy[IpcConfig]]:
+    """MC / IPC を**呼び出し側のモジュール属性**でスパイに差し替える (§10-1)。
+
+    ``rc_basics_lab.diagnostics.ipc`` を差し替えても配線層が既に束縛した参照は
+    変わらないうえ、その名前は**関数**を指す (§10-1 の罠)。差し替える先は
+    常に呼び出し側 (``rc_basics_lab.experiment.capacity``) の属性である。
+    """
+    mc_spy: _StateSpy[MemoryCapacityConfig] = _StateSpy(memory_capacity)
+    ipc_spy: _StateSpy[IpcConfig] = _StateSpy(ipc)
     monkeypatch.setattr(f"{CAPACITY_MODULE}.memory_capacity", mc_spy)
     monkeypatch.setattr(f"{CAPACITY_MODULE}.ipc", ipc_spy)
     return mc_spy, ipc_spy
@@ -155,18 +189,14 @@ def test_diagnostics_ipc_module_and_function_are_both_reachable() -> None:
     module = importlib.import_module("rc_basics_lab.diagnostics.ipc")
     assert isinstance(module, ModuleType)
     assert module.__name__ == "rc_basics_lab.diagnostics.ipc"
+    assert sys.modules["rc_basics_lab.diagnostics.ipc"] is module
 
-    import rc_basics_lab.diagnostics as diagnostics_package
-
+    # 同じドット付き名前が、パッケージの属性としては**関数**を指す。
+    # ``import rc_basics_lab.diagnostics.ipc as m`` で束縛されるのはこちら。
     assert callable(diagnostics_package.ipc)
     assert not isinstance(diagnostics_package.ipc, ModuleType)
-    assert diagnostics_package.ipc is module.ipc
-
-    # 罠そのもの: ``import ... as m`` は関数を束縛する
-    import rc_basics_lab.diagnostics.ipc as bound
-
-    assert bound is diagnostics_package.ipc
-    assert bound is not module
+    assert diagnostics_package.ipc is ipc
+    assert getattr(module, "ipc") is ipc  # noqa: B009
 
 
 def test_states_are_read_only_before_capacity_problem(
@@ -334,20 +364,22 @@ def test_state_noise_changes_states_and_requires_rng() -> None:
     存在しないことになる —— この変更前は実際にそうだった (仕様 §2.4-4)。
     """
     config = esp_base_config()
-    kwargs = {
-        "reservoir_seed": esp_stream_seed(config.seeds, SeedStream.RESERVOIR),
-        "drive_seed": esp_stream_seed(config.seeds, SeedStream.TASK),
-        "rho": 0.9,
-        "leak_rate": 0.6,
-        "sigma_u": 0.3,
-        "replicate": 0,
-    }
-    quiet = simulate_reference_trajectory(
-        config.reservoir, config.drive, state_noise=0.0, **kwargs
-    )
-    noisy = simulate_reference_trajectory(
-        config.reservoir, config.drive, state_noise=0.05, **kwargs
-    )
+
+    def simulate(state_noise: float) -> ReferenceTrajectory:
+        return simulate_reference_trajectory(
+            config.reservoir,
+            config.drive,
+            reservoir_seed=esp_stream_seed(config.seeds, SeedStream.RESERVOIR),
+            drive_seed=esp_stream_seed(config.seeds, SeedStream.TASK),
+            rho=0.9,
+            leak_rate=0.6,
+            sigma_u=0.3,
+            replicate=0,
+            state_noise=state_noise,
+        )
+
+    quiet = simulate(0.0)
+    noisy = simulate(0.05)
     assert noisy.esn.config.state_noise == 0.05
     assert not np.array_equal(quiet.states, noisy.states)
 
