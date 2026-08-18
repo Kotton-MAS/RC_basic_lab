@@ -497,6 +497,15 @@ class ConservationConfig:
         leak_rate: リーク率 (固定)。
         sigma_u: 駆動信号の標準偏差 (固定)。
         n_steps: 系列長 [ステップ]。
+        n_replicates: このセクションだけのレプリケート数。``None`` なら
+            ``Capacity03Config.reservoir.n_replicates`` (横断共有) を継承する。
+            ``max_delay_by_degree`` と**同じ片方向の上書き**であり、逆向き
+            (3-B' の値が 3-A / 3-B にも効く) にはならない。3-B' は予算
+            400 秒と3実験で最も重いので、仕様 §7 リスク1 の縮退規則
+            (「予算超過時に許可される調整は ``conservation.n_replicates``
+            を 3 → 1 に落とすことだけ」) のノブがここだけに効く必要がある。
+            横断共有 (``reservoir.n_replicates``) を 1 に落とすと 3-A / 3-B の
+            平均 +- s.d. まで消えるため、縮退の意味が変わる。
         max_delay_by_degree: 3-B' でだけ使う次数ごとの遅延の打ち切り。
             既定 ``(200, 60, 20, 10)`` の目標数は 4,075 本 / heatmap 800 セル
             (``count_targets`` で実測) で、``ipc.max_targets`` (200,000) に対し
@@ -510,6 +519,7 @@ class ConservationConfig:
     sigma_u: float = 0.2
     n_steps: int = 200_000
     max_delay_by_degree: tuple[int, ...] = (200, 60, 20, 10)
+    n_replicates: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -617,6 +627,28 @@ def _coerce_tuple(value: object, annotation: object, location: str) -> object:
     )
 
 
+def _coerce_optional(value: object, annotation: object, location: str) -> object:
+    """``X | None`` 型のフィールドを構築する (``None`` は素通しする)。
+
+    受理するのは ``None`` との2項 union だけで、``int | str`` のような
+    「どちらでも良い」型は従来どおり ``ConfigError`` にする。YAML の値から
+    どちらの型かを推測し始めると、``1`` を書いたのか ``"1"`` を書いたのかで
+    挙動が変わる設定が生まれ、D-09 (未知キー・暗黙変換で落とす) の規律が
+    崩れるため。
+
+    ``None`` を許すのは「セクション側が名乗らなければ横断共有の値を継承する」
+    という**片方向の上書き**を型で表すためで、既定値そのものをこちら側に
+    書くことはしない (書くと二重定義になり、継承元を変えても効かなくなる)。
+    """
+    args = get_args(annotation)
+    if len(args) != 2 or type(None) not in args:
+        raise _fail(location, f"未対応の Union 型です: {annotation!r}")
+    if value is None:
+        return None
+    (inner,) = (arg for arg in args if arg is not type(None))
+    return _coerce(value, inner, location)
+
+
 def _coerce(value: object, annotation: object, location: str) -> object:
     if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
         return _build(annotation, value, location)
@@ -624,7 +656,7 @@ def _coerce(value: object, annotation: object, location: str) -> object:
     if origin is tuple:
         return _coerce_tuple(value, annotation, location)
     if origin is UnionType:
-        raise _fail(location, f"未対応の Union 型です: {annotation!r}")
+        return _coerce_optional(value, annotation, location)
     if isinstance(annotation, type):
         return _coerce_scalar(value, annotation, location)
     raise _fail(location, f"未対応の設定型です: {annotation!r}")

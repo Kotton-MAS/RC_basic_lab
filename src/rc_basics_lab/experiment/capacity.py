@@ -60,12 +60,41 @@ EXPERIMENT_IPC_SWEEP = "3B_ipc_sweep"
 EXPERIMENT_CONSERVATION = "3Bp_conservation"
 """実験 3-B': ノイズ下での保存則 IPC_total <= N (受け入れ条件2)。"""
 
+EXPERIMENT_LENGTH_SWEEP = "3L_length_sweep"
+"""系列長 T に対する容量の飽和 (``make saturation-03``)。**本番には含めない**。
+
+``figures-03`` の成果物 (``capacity.csv``) には入らず ``capacity_length.csv``
+に別途書く (仕様 §8: 「本番 (figures-03) には含めない」)。それでも実験ラベルを
+名乗るのは、``length_sweep.*`` の設定が**他の実験の行を動かしていない**ことを
+scope 検査 (``tests/test_config_wiring_capacity.py``) で測るためである。
+ラベルを共有すると、T 掃引の設定を変えたときに 3-A の行まで動いても
+気づけない。
+"""
+
 CAPACITY_EXPERIMENTS: tuple[str, ...] = (
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_CONSERVATION,
+    EXPERIMENT_LENGTH_SWEEP,
 )
-"""``CapacityRow.experiment`` が取りうる値 (3-C は 3b-2 の T4 が足す)。"""
+"""``CapacityRow.experiment`` が取りうる値 (3-C は 3b-2 の T4 が足す)。
+
+``capacity.csv`` に出るのは先頭3つで、``3L_length_sweep`` だけは
+``capacity_length.csv`` (``make saturation-03``) 側にしか現れない。
+"""
+
+FIGURE_EXPERIMENTS: tuple[str, ...] = (
+    EXPERIMENT_MC_SWEEP,
+    EXPERIMENT_IPC_SWEEP,
+    EXPERIMENT_CONSERVATION,
+)
+"""``make figures-03`` (``capacity.csv``) が回す実験。予算 900 秒の対象。"""
+
+DIAGNOSTIC_MC = "mc"
+"""``CapacityProfileRow.diagnostic``: 線形メモリ容量 (次数は常に1)。"""
+
+DIAGNOSTIC_IPC = "ipc"
+"""``CapacityProfileRow.diagnostic``: 情報処理容量 (次数 x 遅延)。"""
 
 
 @dataclass(frozen=True, slots=True)
