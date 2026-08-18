@@ -151,6 +151,31 @@
 
 ### T3: 設定層と実験 3-A / 3-B・図3枚・CLI (想定所要: **L**) 〔3b〕
 
+**3a から持ち越した設計課題** (F-03-4-001。着手前に一読すること。詳細は
+`docs/review-findings-03.md` の該当 round を参照):
+
+- F-03-1-005: IPC の `scalars` キー名が `cfg` (次数の本数など) に依存しており、
+  config 層でキー集合を静的に決め打てない
+- F-03-1-006: `orthonormal_basis` の引数設計 (`u_lagged` の形状を問わない
+  柔軟さと、呼び出し側の意図の対応)
+- `max_targets` が「目標数」と「`ipc_heatmap` のセル数」という単位の違う
+  2量を同じ値で縛っている (F-03-3-005)
+- `RowAlignment` の切り出し、または D-24 の t0 計算・行合わせを1本化する
+  引数集約用 dataclass
+- F-03-3-007: `chunk_size` が「1回の solve に畳む幅」(性能パラメータ) と
+  「代表目標の確保幅」(メモリ予算) という別の2軸を1つの値で兼ねている
+- `diagnostics/__init__.py` が関数 `ipc` を再エクスポートしているため、
+  `import rc_basics_lab.diagnostics.ipc as m` が**モジュールではなく関数**を
+  返す (3a のレビュー中に実際に踏み、変異試験が偽の緑になった。3b で
+  モンキーパッチ等を書く前に必ず確認すること)
+
+**受け入れ基準に追加 (F-03-4-001)**: `CapacityProblem.from_states` に渡す
+`X` は、呼び出し側 (`experiment/capacity.py`) が渡す前に読み取り専用
+(`X.flags.writeable = False` 等) にすること。`CapacityProblem` 自身は
+保持するビュー (`problem.x`) を読み取り専用にするが、元の `X` への書き込み
+までは塞げない (`src/rc_basics_lab/diagnostics/_capacity.py` の
+`CapacityProblem` docstring 参照)。
+
 1. `config.py` に `Capacity03Config` (D-13。`ExperimentConfig` には触らない):
    `seeds` / `drive` / `mc_sweep` (N=200, T=20000) / `ipc_sweep` (N=50, T=100000) /
    `saturation` (N∈{25,50,100} × noise 3点, T=200000) / `mc` / `ipc` / `narma`

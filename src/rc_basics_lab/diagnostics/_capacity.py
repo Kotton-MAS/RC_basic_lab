@@ -98,7 +98,9 @@ class CapacityProblem:
     ``from_states`` が ``writeable=False`` にして保持するため、``problem.x[...]
     = ...`` は ``ValueError`` になる (F-03-3-006)。ただし元の ``X`` の
     writeable フラグは変えないため、``X`` 自身への書き込みは塞げない
-    (呼び出し側が渡す前に読み取り専用にすることを 3b の受け入れ条件とする)。
+    (呼び出し側が渡す前に読み取り専用にすることが
+    ``docs/plans/rc-basics-03.md`` T3 の受け入れ基準に明記されている、
+    F-03-4-001)。
 
     Attributes:
         x: 状態のビュー ``X[t0:]`` ``(T_eff, N)``。バイアス列は含まない。
