@@ -8,10 +8,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from rc_basics_lab import config as _tmp_probe_config
-
-_TMP_PROBE = _tmp_probe_config
-
 from rc_basics_lab.diagnostics.base import (
     DiagnosticContext,
     DiagnosticResult,
