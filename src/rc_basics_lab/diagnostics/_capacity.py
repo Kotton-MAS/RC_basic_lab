@@ -496,7 +496,25 @@ def _iter_surrogate_chunks(
         yield chunk
 
 
-def surrogate_capacities(
+def _reject_ndarray_base_blocks(base_blocks: Iterable[FloatArray]) -> None:
+    """``base_blocks`` に ``ndarray`` が直接渡された誤用を専用の ``TypeError``
+    にする (F-03-4-004)。
+
+    ``base_blocks`` の型は ``FloatArray`` (単一の ``(T, M)`` 配列) から
+    ``Iterable[FloatArray]`` (ブロックの列) へ広がったが (F-03-3-002)、
+    ``np.ndarray`` はイテレートすると行を返すため ``Iterable[np.ndarray]`` を
+    構造的に満たしてしまい、mypy は旧来の呼び方 (2次元配列を直接渡す) を
+    素通りする (実測: mypy exit 0)。型で防げない以上、境界で1行落とす。
+    """
+    if isinstance(base_blocks, np.ndarray):
+        raise TypeError(
+            "base_blocks に ndarray を直接渡すことはできません "
+            f"(F-03-4-004): shape={base_blocks.shape}。"
+            " 単一の (T, M) 配列なら [base] のように包んでください"
+        )
+
+
+def _surrogate_capacities(
     problem: CapacityProblem,
     base_blocks: Iterable[FloatArray],
     alpha: float,
@@ -516,6 +534,12 @@ def surrogate_capacities(
     共有カーネル1本) を分離する。1ブロックしか無い呼び出し側 (MC) は
     ``[base]`` のように1要素の Iterable を渡せばよい。
 
+    F-03-4-003: モジュール外からの import が0件で、D-27 (『閾値は同じ関数で
+    1箇所だけ計算する』) を回避するための材料 (閾値を伴わないサロゲート容量)
+    を共有カーネルの公開面にそのまま置いていたため非公開にした
+    (``__all__`` からも外した)。公開が必要になったときは D-27 の見直しと
+    セットで判断する。
+
     Args:
         problem: 容量問題 (通常の目標と同じもの)。
         base_blocks: 実目標から決定的に選んだ代表を、呼び出し側が
@@ -530,9 +554,12 @@ def surrogate_capacities(
         全ブロックのサロゲート容量を連結した ``(Σ M_i * n_surrogates,)``。
 
     Raises:
+        TypeError: ``base_blocks`` に ``ndarray`` が直接渡された場合
+            (F-03-4-004)。
         ValueError: ``n_surrogates`` が 1 未満 / ``chunk_size`` が 1 未満 /
             ``base_blocks`` が空 / いずれかのブロックが2次元でない場合。
     """
+    _reject_ndarray_base_blocks(base_blocks)
     if n_surrogates < 1:
         raise ValueError(f"n_surrogates は 1 以上が必要です: {n_surrogates}")
     if chunk_size < 1:
@@ -589,12 +616,14 @@ def surrogate_threshold(
         ``(閾値, 全ブロックのサロゲート容量を連結したもの)``。
 
     Raises:
+        TypeError: ``base_blocks`` に ``ndarray`` が直接渡された場合
+            (F-03-4-004。単一の (T, M) 配列は ``[base]`` のように包むこと)。
         ValueError: ``n_surrogates`` が 1 未満 / ``quantile`` が範囲外 /
             ``chunk_size`` が 1 未満 / ``base_blocks`` が空の場合。
     """
     if not 0.0 <= quantile <= 1.0:
         raise ValueError(f"quantile は 0〜1 が必要です: {quantile}")
-    capacities = surrogate_capacities(
+    capacities = _surrogate_capacities(
         problem,
         base_blocks,
         alpha,
@@ -660,6 +689,5 @@ __all__ = [
     "chi2_threshold",
     "input_series",
     "orthonormal_basis",
-    "surrogate_capacities",
     "surrogate_threshold",
 ]
