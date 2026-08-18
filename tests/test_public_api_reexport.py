@@ -5,7 +5,7 @@ conventions.md は「既存6パッケージは全サブモジュールを再エ�
 02 で ``diagnostics/echo_state.py`` 等の新規モジュールを追加する際、
 ``__init__.py`` への配線 (import 文 / ``__all__`` 追加) を忘れると、公開 API から
 そのモジュールが静かに欠落する。D-12 の推移閉包 guard
-(``tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir``)
+(``tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config``)
 は ``pkgutil.iter_modules`` でサブモジュールを直接列挙するため配線漏れの影響を
 受けないが、公開 API の一貫性はこの guard の対象外であり、本テストが別途守る。
 """
