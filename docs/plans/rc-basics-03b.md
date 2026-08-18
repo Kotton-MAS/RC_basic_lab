@@ -581,3 +581,104 @@ T4 が使うセクションだが、`ExperimentConfig` の既定 (`01_what_is_rc
 (`mc_total` 15.153 -> 15.138 / `ipc_total` 31.365 -> 31.203、T を 10 倍にして 0.1〜0.5% の低下)
 ので、本番の 3-B (T=1e5) の値は「T 不足による過小評価」ではない —— §7 リスク2 の (b) も
 これで切り分け済みである。
+
+---
+
+## T3 実装時に決めたこと (3b-1 T3 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+
+### 1. 受け入れ条件1 の「単調非減少」は **rho <= 1.0 に限る** (**確定・D-40**)
+
+T2 実装メモ4 の「要確認」に対するユーザー判断 (2026-08-19): **仕様 §4 T2 の文言が本番格子に
+対して誤り**であり、T2 が実装したテスト (i) rho<=1.0 で単調非減少 / (ii) 1.1 が 0.5 の 1.5 倍以上 /
+(iii) rho=1.1 が格子の最大値**ではない** を**正**とする。`.claude/decisions.yaml` に **D-40**
+(guard_test: `tests/test_capacity_pipeline.py::test_mc_effective_delay_increases_with_rho`) として
+実測表つきで記録した。**§4 T2 と §9 の受け入れ条件1 の文言は D-40 が上書きする**。
+
+### 2. 図が読むのは配列ではなく**長形式の行** (D-38 の成果物と同じもの)
+
+`plot_mc_sweep` / `plot_ipc_profile` は `CapacityOutcome.mc_profile` / `ipc_heatmap` (配列) では
+なく `CapacityProfileRow` の並び (= `capacity_profile.csv` の行) を受け取る。成果物と図が
+別々の入力を見ると「CSV には正値セルしか無いのに図は配列の全セルを見ている」という食い違いが
+起こりうるため。長形式は正値セルしか無いので、格子に戻すときは**欠けたセルを 0 で埋める**
+(「未測定」と「容量 0」を区別しない)。**レプリケート平均の分母は `capacity.csv` 側の行から取る**
+(`_n_replicates`) —— 長形式の行数で割ると、容量が 0 のレプリケートを無視した過大評価になる。
+`_for_rows` が実験ラベルで長形式を絞るのは、3-A と 3-B の (rho, leak) 格子が一部重なるため。
+診断は図でも pipeline でも一切走らせない (`_profile_of` は T2 の `profile_rows` を呼ぶだけ)。
+
+### 3. 「代表 leak」の選び方 = **総容量の平均が最大**のリーク率 (同点なら小さい方)
+
+仕様は「代表 leak」としか書いていない。`representative_leak_rate(rows, key)` を純関数として
+置き、`mc_total` / `ipc_total` の平均が最大の点を選ぶ (本番はどちらも a=1.0)。理由は、その図が
+見せたい構造 (プロファイルの伸び / 次数の配分) が最も読める動作点だからで、同点時に小さい方を
+採るのは選択が行の並び順に依存しないようにするため。
+
+### 4. 軸と配色の選択 (どれも「主張が読めるか」で決めた)
+
+- **3-A 左パネルの縦軸は対数**。上限線 y=N (本番 200) と実測 (10〜36) を線形軸で1枚に載せると、
+  受け入れ条件1 の「rho とともに伸びる」が潰れて読めない。
+- **3-A 右パネルの横軸は対数**にし、各 rho の `mc_effective_delay` を同色の**縦点線**で入れた。
+  受け入れ条件1 が測る量そのものを図の中に出すため。
+- **ヒートマップの配色は平方根スケール** (`PowerNorm(gamma=0.5)`、`_HEATMAP_GAMMA`)。本番の
+  3-B ではセルの最大が次数3 で 6.0、次数1 で 1.0 と値域が2桁近く違い、線形の配色だと次数1 の行が
+  真っ暗になって「rho を上げると線形の取り分が増える」側が消える。スケールを変えたことは
+  colorbar のラベルに明記した (図の中で申告する)。配色の上限は**全パネル共通**にする
+  (パネルごとに正規化すると配分の移動が色の付け替えで消える)。
+- **`fig_memory_nonlinearity` はリーク率ごとのパネル x 横軸 rho**。棒の上の数値は非線形の割合で、
+  総容量の減少と配分の移動を分離して読ませる。凡例は左端の1枚だけ (全パネルに出すと棒と重なる)。
+
+### 5. 上限線の座標は `conservation_bound()` に切り出した
+
+描画 (`_draw_conservation_bound`) とテスト (`test_conservation_figure_draws_the_bound_line`) が
+**同じ1か所**から座標を取る。「線は在るが別の場所に引かれている」を排除するため。
+`BOUND_MARGIN = 0.1` で格子の外へ両端を伸ばすのは、`n_units` が1点しかない縮小設定でも
+長さ 0 の線分に退化しないようにするため (縮退ケースのテストつき)。
+
+### 6. 図の `Figure` はテストから `figures_capacity._save` の差し替えで捕まえる
+
+上限線の有無とラベル言語は PNG の画素からは測れない (閾値の選び方でいくらでも偽の緑になる)。
+保存直前の `Figure` を掴んで artist を直接見る。private 関数を差し替えるのは
+`tests/test_plotting_style.py` が `style._available_font_names` を差し替えているのと同じ形。
+**変異試験の実測**: `_draw_conservation_bound` の `axis.plot` を消すと
+`test_conservation_figure_draws_the_bound_line` だけが落ち (他 12 件は緑)、線を戻すと通る。
+
+### 7. `test_figures_use_the_style_context_labels` は**両方向**を測る
+
+CJK フォントが無い環境で「日本語の符号位置が1文字も無い」ことと、フォントが在る環境で
+「日本語が在る」ことの両方を見る。片方だけだと、ラベルを英語で直書きした (= `style.label` を
+通していない) 実装が通ってしまう。判定はひらがな/カタカナ/CJK 統合漢字/全角形の符号位置範囲で、
+負符号 (U+2212) や `±` は対象外 (D-10 が問題にしているのは豆腐文字になる字形)。
+
+### 8. `CAPACITY_ARTIFACTS` の並びと `meta.json` の `cjk_font`
+
+並びは 02 の `ESP_ARTIFACTS` と同じ「CSV -> 図 -> meta.json」で、`run_and_report_capacity` が
+返す `paths` の順序と一致する。`meta.json` に `cjk_font` を足したのは 02 と同じ形で、英語ラベルの
+図が出たときに「フォントの無い環境で生成した」と成果物だけで判別できるようにするため。
+
+### 9. 実測 (本番 `make figures-03`、Darwin 25.3.0 / Python 3.12)
+
+| 区間 | T2 時点 | T3 後 (1回目 / 2回目) | 予算 |
+|---|---|---|---|
+| `make figures-03` 全体 | 325.20s | **328.60s / 371.55s** | < 900s |
+| うち図4枚の生成 | — | **約 0.6s** (CSV から描き直すと 1.14s。プロセス起動込み) | — |
+| 状態生成の合計 | 35.19s | 35.12s / 39.37s | < 60s |
+| ピーク RSS | 0.99 GB | **0.99 GB** | < 4 GB |
+| `results/03_capacity/*.csv` | 1.78 MB | 1.78 MB (不変) | < 5 MB |
+| PNG 4枚 | — | 合計 **0.59 MB** (247 / 114 / 125 / 122 KB) | — |
+
+2回の実行で 328.60s と 371.55s に開きがあるのは同一コードに対する機械側のばらつき (3-B' の IPC が
+189.20s -> 219.82s) で、図の追加による増分ではない。`capacity.csv` は実測時間の4列を除いて
+**再生成前と完全一致**、`capacity_profile.csv` は**バイト一致**。`fig_mc_sweep.png` と
+`fig_ipc_conservation.png` は2回の実行でバイト一致 (図の生成は決定的)。
+
+### 10. スコープ外として触らなかったもの
+
+- `diagnostics/` は**差分 0 行** (`git diff <base-ref> HEAD --stat -- src/rc_basics_lab/diagnostics/` が空)。
+- README / `docs/design.md` の 03 節は **T5 (3b-2) の担当**なので触っていない。
+  `Makefile` の `figures-03` は**コメントの成果物一覧だけ**を図4枚ぶん更新した。
+- **既知の残件 (今回のスコープ外)**: `import rc_basics_lab.plotting` を**最初に**行うと循環
+  import (`plotting.figures` -> `experiment.runner` -> `experiment/__init__` -> `pipeline` ->
+  `plotting.figures`) で `ImportError` になる。**T3 以前から同じ**で (base-ref の状態でも再現)、
+  実際の入口 (`main.py` / pytest) は `experiment` 側から入るため踏まない。`figures_capacity` は
+  この構造に新しい辺を足していない (`experiment.capacity` -> `plotting` の向きは 01・02 と同じ)。
