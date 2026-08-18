@@ -29,6 +29,7 @@ MC (線形メモリ容量) と IPC (情報処理容量) は「同じ状態行列
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -332,23 +333,18 @@ def surrogate_threshold(
     for index in range(n_base * n_surrogates):
         source = base[:, index // n_surrogates]
         surrogates[:, index] = source[rng.permutation(n_samples)]
-    capacities = capacity_in_chunks(problem, surrogates, alpha, chunk_size=chunk_size)
+    capacities = capacity_of_chunks(
+        problem, iter_column_chunks(surrogates, chunk_size), alpha
+    )
     return float(np.quantile(capacities, quantile)), capacities
 
 
-def capacity_in_chunks(
-    problem: CapacityProblem,
-    targets: FloatArray,
-    alpha: float,
-    *,
-    chunk_size: int,
-) -> FloatArray:
-    """``targets`` を ``chunk_size`` 列ずつ ``capacity_of_targets`` に流す。
+def iter_column_chunks(targets: FloatArray, chunk_size: int) -> Iterator[FloatArray]:
+    """実体化済みの ``(T, K)`` を ``chunk_size`` 列ずつのビューに切って返す。
 
-    ``fit_ridge_from_gram`` の呼び出し回数は ``ceil(K / chunk_size)`` になり、
-    目標数 K には比例しない (D-26)。列ごとの容量は互いに独立に決まるので、
-    ``chunk_size`` は**結果を変えない性能パラメータ**である
-    (``tests/test_diagnostics_memory_capacity.py::test_chunk_size_does_not_change_results``)。
+    サロゲートのように総数が小さく既に実体化されている目標のための補助。
+    IPC の本番の目標 (最大 20 万本) はこの関数を通さず、生成器が chunk を
+    その場で作って ``capacity_of_chunks`` に渡し、畳んだら捨てる (D-26)。
 
     Raises:
         ValueError: ``chunk_size`` が 1 未満の場合。
@@ -358,10 +354,35 @@ def capacity_in_chunks(
     matrix = np.asarray(targets, dtype=np.float64)
     if matrix.ndim != 2:
         raise ValueError(f"targets は (T, K) が必要です: {matrix.shape}")
+    for start in range(0, matrix.shape[1], chunk_size):
+        yield matrix[:, start : start + chunk_size]
+
+
+def capacity_of_chunks(
+    problem: CapacityProblem,
+    chunks: Iterable[FloatArray],
+    alpha: float,
+) -> FloatArray:
+    """目標チャンクの列を順に ``capacity_of_targets`` へ流して連結する。
+
+    引数を **iterable of chunk** にしてあるのは D-26 のため: 呼び出し側は
+    ``(T_eff, chunk_size)`` を1枚ずつ作って渡し、畳んだら捨てられる。全目標を
+    ``(T_eff, K)`` として実体化する必要が無いので、IPC の T=1e6 x 2395 列
+    (19 GB) を持たずに済む。``fit_ridge_from_gram`` の呼び出し回数は
+    チャンク数 (``ceil(K / chunk_size)``) であり、目標数 K には比例しない。
+
+    チャンクの切り方は結果を変えない —— 列ごとの容量は互いに独立に決まる
+    ため、``chunk_size`` は純粋な性能パラメータである
+    (``tests/test_diagnostics_memory_capacity.py::test_chunk_size_does_not_change_results``)。
+
+    Raises:
+        ValueError: チャンクが1枚も無い場合。
+    """
     pieces: list[FloatArray] = [
-        capacity_of_targets(problem, matrix[:, start : start + chunk_size], alpha)
-        for start in range(0, matrix.shape[1], chunk_size)
+        capacity_of_targets(problem, chunk, alpha) for chunk in chunks
     ]
+    if not pieces:
+        raise ValueError("目標チャンクが1枚もありません")
     return np.concatenate(pieces)
 
 
@@ -372,8 +393,9 @@ __all__ = [
     "SUPPORTED_BASIS_PAIRS",
     "UNIFORM",
     "CapacityProblem",
-    "capacity_in_chunks",
+    "capacity_of_chunks",
     "capacity_of_targets",
+    "iter_column_chunks",
     "orthonormal_basis",
     "surrogate_threshold",
 ]
