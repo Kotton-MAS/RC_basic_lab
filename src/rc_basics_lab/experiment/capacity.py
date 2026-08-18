@@ -26,6 +26,15 @@ IPC は ``max(washout, max(ipc.max_delay_by_degree))``) ため、
 
 **サロゲートのシードは全条件で1個を共有する** (D-37、共通乱数法)。
 条件ごとに振ると、条件間の容量差にしきい値の推定ノイズが独立に乗る。
+
+**1条件の処理は3段に分かれている** (F-3b1-1-004)。``evaluate_capacity_condition``
+は軌道生成と下の2つを繋ぐ薄い層であり、``X`` を**外から**渡す経路
+(3-C は 01 の ``run_task`` が作った状態を測る) はこの2つを直接呼ぶ。
+
+- ``measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg)`` —— read-only 化
+  (D-35) と2診断の呼び出し (D-37 の ``ctx`` 共有) だけ
+- ``capacity_row_from(measurement, *, experiment, ...)`` —— ``CapacityRow``
+  (約35フィールド) の組み立て。**実験ごとに複製しない**
 """
 
 from __future__ import annotations
@@ -41,9 +50,10 @@ from rc_basics_lab.config import (
     Capacity03Config,
     DriveConfig,
     IpcConfig,
+    MemoryCapacityConfig,
     ReservoirSweepConfig,
 )
-from rc_basics_lab.diagnostics.base import DiagnosticContext
+from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.ipc import ipc
 from rc_basics_lab.diagnostics.memory_capacity import memory_capacity
 from rc_basics_lab.experiment.esp import simulate_reference_trajectory
@@ -398,21 +408,253 @@ def ipc_config_for(config: Capacity03Config, experiment: str) -> IpcConfig:
     return config.ipc
 
 
+@dataclass(frozen=True, slots=True)
+class CapacityMeasurement:
+    """**外部で作られた** ``X`` に対する MC / IPC の測定結果 (行にする前の素材)。
+
+    ``measure_capacity`` の返り値であり、``capacity_row_from`` の入力である。
+    ``CapacityOutcome`` (行 + 図の配列) との違いは、**まだ行になっていない**
+    ことで、条件の識別子 (実験ラベル・rho・リーク率・…) を1つも持たない。
+    行にするために要る値のうち「診断の結果から決まるもの」だけをここに集め、
+    「どういう条件で測ったか」は ``capacity_row_from`` のキーワード引数として
+    外から与える —— この分け方があるので、``CapacityCondition`` で表現できない
+    実験 (3-C は 01 の ``run_task`` が作った状態を測る) でも
+    ``CapacityRow`` の約35フィールドを複製せずに行が作れる (F-3b1-1-004)。
+
+    Attributes:
+        mc: ``memory_capacity`` の結果。
+        ipc: ``ipc`` の結果。
+        ipc_thresholds: 次数ごとのしきい値 (次数の昇順)。``ipc.scalars`` の
+            ``ipc_threshold_degree{d}`` は**本数が cfg 依存**なので (D-38)、
+            ここで一度だけ昇順のタプルに畳んでおく。``n_degrees`` はこの
+            タプルの長さであり、``ipc_by_degree`` 配列そのものは運ばない
+            (F-3b1-1-002)。
+        input_drive_std: 駆動入力の実測標準偏差 (``CapacityRow.input_drive_std``)。
+            設定値 ``sigma_u`` と区別するため、実際に診断が見た ``u`` から測る。
+        wall_time_mc_s: MC の実行時間 [秒]。
+        wall_time_ipc_s: IPC の実行時間 [秒]。
+    """
+
+    mc: DiagnosticResult
+    ipc: DiagnosticResult
+    ipc_thresholds: tuple[float, ...]
+    input_drive_std: float
+    wall_time_mc_s: float
+    wall_time_ipc_s: float
+
+
+def measure_capacity(
+    states: FloatArray,
+    u: FloatArray,
+    *,
+    ctx: DiagnosticContext,
+    mc_cfg: MemoryCapacityConfig,
+    ipc_cfg: IpcConfig,
+) -> CapacityMeasurement:
+    """**どこで作られた ``X`` でも**同じ規律で MC と IPC を測る (D-35 / D-37)。
+
+    ``evaluate_capacity_condition`` から切り出した「測る」部分であり、
+    **D-35 (read-only 化) と D-37 (``ctx`` の共有) の実体はここにある**。
+
+    1. ``X`` を読み取り専用にしてから診断へ渡す (D-35)。``CapacityProblem`` は
+       ``X`` の**ビュー**を持ち ``gram`` は構築時点のスナップショットなので、
+       構築後に ``X`` を書き換えると両者が例外も警告もなく desync する。
+       ``CapacityProblem`` は自分のビューしか塞げず**元の ``X`` は塞げない**
+       ため、呼び出し側であるここで塞ぐ。診断側でコピーすると T=1e6 で 1.6GB
+       増えて 4GB 予算を壊す (F-03-1-012/013)。
+    2. 同じ ``X`` と同じ ``u`` で ``memory_capacity`` と ``ipc`` を呼ぶ
+       (D-26 / 仕様 §5 の禁止構造「条件ごとに X を2回作る」を避ける)。
+    3. ``ctx`` は**呼び出し側が作った1個**をそのまま両診断へ渡す (D-37:
+       サロゲートのシードは全条件で共通)。``t0`` の違いは各診断が
+       ``max(ctx.washout, 自分の最大遅延)`` として決める (D-24)。
+
+    ``ctx`` を引数で受け取り中で作らないのは、3-C のように条件が
+    ``CapacityCondition`` で表現できない経路でも「全条件で ``ctx`` は1個」
+    (D-37) を呼び出し側が保てるようにするためである。
+
+    Args:
+        states: 状態行列 ``(n_steps, n_units)``。**この関数が読み取り専用に
+            する** (呼び出し側で塞いでおく必要はない)。
+        u: 駆動入力 ``(n_steps,)``。``states`` と同じ走行のものであること。
+        ctx: 両診断で共有する ``DiagnosticContext`` (D-37)。
+        mc_cfg: 線形メモリ容量の測定条件。
+        ipc_cfg: IPC の測定条件 (3-B' は ``ipc_config_for`` が上書き済み)。
+
+    Returns:
+        行の組み立てに必要な素材 (``capacity_row_from`` へ渡す)。
+
+    Raises:
+        ValueError: 系列が短すぎる / ``ctx.seed`` が要るのに無い / 設定が
+            範囲外の場合 (診断層が投げる)。
+    """
+    # D-35: 診断へ渡す前にここで塞ぐ。CapacityProblem は自分が持つビューしか
+    # 読み取り専用にできず、元の X への書き込みは黙って gram と desync する。
+    states.flags.writeable = False
+
+    mc_started = time.perf_counter()
+    mc = memory_capacity(states, u, ctx=ctx, cfg=mc_cfg)
+    wall_time_mc_s = time.perf_counter() - mc_started
+
+    ipc_started = time.perf_counter()
+    ipc_result = ipc(states, u, ctx=ctx, cfg=ipc_cfg)
+    wall_time_ipc_s = time.perf_counter() - ipc_started
+
+    n_degrees = int(ipc_result.arrays["ipc_by_degree"].shape[0])
+    return CapacityMeasurement(
+        mc=mc,
+        ipc=ipc_result,
+        ipc_thresholds=tuple(
+            ipc_result.scalars[f"ipc_threshold_degree{degree}"]
+            for degree in range(1, n_degrees + 1)
+        ),
+        input_drive_std=float(np.std(u)),
+        wall_time_mc_s=wall_time_mc_s,
+        wall_time_ipc_s=wall_time_ipc_s,
+    )
+
+
+def capacity_row_from(
+    measurement: CapacityMeasurement,
+    *,
+    experiment: str,
+    replicate: int,
+    seed_reservoir: int,
+    seed_drive: int,
+    seed_surrogate: int,
+    rho: float,
+    leak_rate: float,
+    input_scale: float,
+    sigma_u: float,
+    n_units: int,
+    density: float,
+    state_noise: float,
+    n_steps: int,
+    washout: int,
+    wall_time_state_s: float,
+    wall_time_s: float,
+) -> CapacityRow:
+    """測定結果と条件の識別子から ``capacity.csv`` の1行を組む (**唯一の経路**)。
+
+    ``CapacityRow`` は約35フィールドあり、``mc`` / ``ipc`` の ``scalars`` と
+    ``params`` のどのキーがどの列になるかの対応もここにしかない。この組み立てを
+    実験ごとに複製すると「CSV の列順の単一の真実 = 行 dataclass の宣言順」
+    (§2.2-1) が実質的に破れる —— 列を1本足したときに複製側が置き去りになり、
+    かつ型検査では落ちない (キーワード引数の名前は一致したままなので)。
+    3-C (``experiment="3C_narma10"``) は ``CapacityCondition`` で表現できない
+    条件を持つが、行の作り方はここを通す (F-3b1-1-004)。
+
+    ``experiment`` 以降がキーワード専用なのは、位置引数で並べると隣接する
+    同型の値 (``rho`` / ``leak_rate``、3本の ``seed_*``) を取り違えても
+    静かに通ってしまうためである。
+
+    Args:
+        measurement: ``measure_capacity`` の返り値。
+        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか (CSV の ``experiment``)。
+        replicate: レプリケート番号 (0 始まり)。
+        seed_reservoir: リザバー重みの基底シード。
+        seed_drive: 駆動入力の基底シード。
+        seed_surrogate: しきい値サロゲートのシード (``ctx.seed`` と同じ値、D-37)。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        input_scale: 入力結合の強さ (横断共有値)。
+        sigma_u: 駆動信号の標準偏差の**設定値** (実測は
+            ``measurement.input_drive_std``)。
+        n_units: リザバーのユニット数 N。
+        density: 再帰結合の密度 (横断共有値)。
+        state_noise: 状態ノイズの標準偏差。
+        n_steps: 系列長 [ステップ]。
+        washout: ``ctx.washout`` として渡した値 (実効基準点は ``t0_mc`` /
+            ``t0_ipc`` に別途出る、D-24)。
+        wall_time_state_s: 状態行列の生成にかかった時間 [秒]。
+        wall_time_s: 条件1本の合計時間 [秒]。
+
+    Returns:
+        ``capacity.csv`` の1行。
+    """
+    mc = measurement.mc
+    ipc_result = measurement.ipc
+    return CapacityRow(
+        experiment=experiment,
+        replicate=replicate,
+        seed_reservoir=seed_reservoir,
+        seed_drive=seed_drive,
+        seed_surrogate=seed_surrogate,
+        rho=rho,
+        leak_rate=leak_rate,
+        input_scale=input_scale,
+        sigma_u=sigma_u,
+        input_drive_std=measurement.input_drive_std,
+        n_units=n_units,
+        density=density,
+        state_noise=state_noise,
+        n_steps=n_steps,
+        washout=washout,
+        t0_mc=int(mc.params["t0"]),
+        n_samples_mc=int(mc.params["n_samples"]),
+        mc_total=mc.scalars["mc_total"],
+        mc_total_raw=mc.scalars["mc_total_raw"],
+        mc_threshold=mc.scalars["mc_threshold"],
+        mc_effective_delay=mc.scalars["mc_effective_delay"],
+        mc_ratio=mc.scalars["mc_ratio"],
+        n_delays=int(mc.scalars["n_delays"]),
+        t0_ipc=int(ipc_result.params["t0"]),
+        n_samples_ipc=int(ipc_result.params["n_samples"]),
+        ipc_total=ipc_result.scalars["ipc_total"],
+        ipc_total_raw=ipc_result.scalars["ipc_total_raw"],
+        ipc_linear=ipc_result.scalars["ipc_linear"],
+        ipc_nonlinear=ipc_result.scalars["ipc_nonlinear"],
+        ipc_saturation_ratio=ipc_result.scalars["saturation_ratio"],
+        n_targets=int(ipc_result.scalars["n_targets"]),
+        n_targets_kept=int(ipc_result.scalars["n_targets_kept"]),
+        n_degrees=len(measurement.ipc_thresholds),
+        chunk_size_mc_effective=int(mc.params["chunk_size_effective"]),
+        chunk_size_ipc_effective=int(ipc_result.params["chunk_size_effective"]),
+        wall_time_state_s=wall_time_state_s,
+        wall_time_mc_s=measurement.wall_time_mc_s,
+        wall_time_ipc_s=measurement.wall_time_ipc_s,
+        wall_time_s=wall_time_s,
+    )
+
+
+def capacity_outcome_from(
+    measurement: CapacityMeasurement, row: CapacityRow
+) -> CapacityOutcome:
+    """行と測定結果から ``CapacityOutcome`` を組む (図が使う配列を積み替える)。
+
+    ``CapacityOutcome`` は図が必要とする配列を運ぶ役割 (02 の
+    ``ConditionOutcome`` と同型) を持ち、``profile_rows`` と
+    ``capacity_pipeline`` の入口はこの型である。3-C も同じ型で
+    ``capacity.csv`` / ``capacity_profile.csv`` に合流できるよう、
+    積み替えをここ1か所に置く。
+    """
+    return CapacityOutcome(
+        row=row,
+        mc_profile=measurement.mc.arrays["mc_profile"],
+        ipc_heatmap=measurement.ipc.arrays["ipc_heatmap"],
+        ipc_thresholds=measurement.ipc_thresholds,
+    )
+
+
 def evaluate_capacity_condition(
     config: Capacity03Config, condition: CapacityCondition
 ) -> CapacityOutcome:
-    """1条件を回して MC と IPC の**両方**を取る。
+    """1条件を回して MC と IPC の**両方**を取る (**軌道生成 + 2段の薄い層**)。
 
     手順は4つで、順序そのものが設計判断である。
 
     1. ``simulate_reference_trajectory`` で ``X`` を**1条件につき1回だけ**作る
        (仕様 §5 の禁止構造「条件ごとに X を2回作る」を避ける)。参照軌道の
        生成は 02 から切り出し済みの関数をそのまま呼び、03 側で書き直さない。
-    2. ``X`` を読み取り専用にしてから診断へ渡す (D-35)。
-    3. 同じ ``X`` と ``u`` で ``memory_capacity`` と ``ipc`` を呼ぶ。
-    4. ``ctx`` は1個を両診断で共有する (D-37: サロゲートのシードは全条件で
-       共通)。``washout`` も同じ値を使い、``t0`` の違いは各診断が
+    2. ``ctx`` を1個だけ作る (D-37: サロゲートのシードは全条件で共通)。
+       ``washout`` も同じ値を使い、``t0`` の違いは各診断が
        ``max(washout, 自分の最大遅延)`` として決める (D-24)。
+    3. ``measure_capacity`` が ``X`` を読み取り専用にして (D-35) 2診断を呼ぶ。
+    4. ``capacity_row_from`` が行を組む。
+
+    3 と 4 を別関数にしてあるのは、条件が ``CapacityCondition`` で表現できない
+    実験 (3-C は 01 の ``run_task`` が作った状態を測る) が、行の組み立て
+    (約35フィールド) を複製せずに合流できるようにするためである
+    (F-3b1-1-004)。この関数自体はその2つと軌道生成を繋ぐ薄い層である。
 
     Args:
         config: 03 の設定。
@@ -442,25 +684,16 @@ def evaluate_capacity_condition(
     )
     wall_time_state_s = time.perf_counter() - started
 
-    states = reference.states
-    # D-35: 診断へ渡す前にここで塞ぐ。CapacityProblem は自分が持つビューしか
-    # 読み取り専用にできず、元の X への書き込みは黙って gram と desync する。
-    states.flags.writeable = False
-    u = reference.drive
     ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
-
-    mc_started = time.perf_counter()
-    mc = memory_capacity(states, u, ctx=ctx, cfg=config.mc)
-    wall_time_mc_s = time.perf_counter() - mc_started
-
-    ipc_started = time.perf_counter()
-    ipc_result = ipc(
-        states, u, ctx=ctx, cfg=ipc_config_for(config, condition.experiment)
+    measurement = measure_capacity(
+        reference.states,
+        reference.drive,
+        ctx=ctx,
+        mc_cfg=config.mc,
+        ipc_cfg=ipc_config_for(config, condition.experiment),
     )
-    wall_time_ipc_s = time.perf_counter() - ipc_started
-
-    ipc_by_degree = ipc_result.arrays["ipc_by_degree"]
-    row = CapacityRow(
+    row = capacity_row_from(
+        measurement,
         experiment=condition.experiment,
         replicate=condition.replicate,
         seed_reservoir=config.seeds.reservoir,
@@ -470,35 +703,12 @@ def evaluate_capacity_condition(
         leak_rate=condition.leak_rate,
         input_scale=config.reservoir.input_scale,
         sigma_u=condition.sigma_u,
-        input_drive_std=float(np.std(u)),
         n_units=condition.n_units,
         density=config.reservoir.density,
         state_noise=condition.state_noise,
         n_steps=condition.n_steps,
         washout=config.drive.washout,
-        t0_mc=int(mc.params["t0"]),
-        n_samples_mc=int(mc.params["n_samples"]),
-        mc_total=mc.scalars["mc_total"],
-        mc_total_raw=mc.scalars["mc_total_raw"],
-        mc_threshold=mc.scalars["mc_threshold"],
-        mc_effective_delay=mc.scalars["mc_effective_delay"],
-        mc_ratio=mc.scalars["mc_ratio"],
-        n_delays=int(mc.scalars["n_delays"]),
-        t0_ipc=int(ipc_result.params["t0"]),
-        n_samples_ipc=int(ipc_result.params["n_samples"]),
-        ipc_total=ipc_result.scalars["ipc_total"],
-        ipc_total_raw=ipc_result.scalars["ipc_total_raw"],
-        ipc_linear=ipc_result.scalars["ipc_linear"],
-        ipc_nonlinear=ipc_result.scalars["ipc_nonlinear"],
-        ipc_saturation_ratio=ipc_result.scalars["saturation_ratio"],
-        n_targets=int(ipc_result.scalars["n_targets"]),
-        n_targets_kept=int(ipc_result.scalars["n_targets_kept"]),
-        n_degrees=int(ipc_by_degree.shape[0]),
-        chunk_size_mc_effective=int(mc.params["chunk_size_effective"]),
-        chunk_size_ipc_effective=int(ipc_result.params["chunk_size_effective"]),
         wall_time_state_s=wall_time_state_s,
-        wall_time_mc_s=wall_time_mc_s,
-        wall_time_ipc_s=wall_time_ipc_s,
         wall_time_s=time.perf_counter() - started,
     )
     logger.debug(
@@ -516,15 +726,7 @@ def evaluate_capacity_condition(
         row.wall_time_mc_s,
         row.wall_time_ipc_s,
     )
-    return CapacityOutcome(
-        row=row,
-        mc_profile=mc.arrays["mc_profile"],
-        ipc_heatmap=ipc_result.arrays["ipc_heatmap"],
-        ipc_thresholds=tuple(
-            ipc_result.scalars[f"ipc_threshold_degree{degree}"]
-            for degree in range(1, int(ipc_by_degree.shape[0]) + 1)
-        ),
-    )
+    return capacity_outcome_from(measurement, row)
 
 
 def profile_rows(outcome: CapacityOutcome) -> tuple[CapacityProfileRow, ...]:
