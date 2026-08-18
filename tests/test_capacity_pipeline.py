@@ -599,6 +599,17 @@ def test_conservation_respects_the_bound() -> None:
 
     3 を要求するのは、差の向きだけでは「たまたまそちらに転んだ」と区別できない
     ためである (02 の washout 感度で同じ規律を使っている)。
+
+    **差は同じレプリケート番号どうしで取る (対応のある比較)**。レプリケート
+    番号はリザバー重み (``SeedStream.RESERVOIR``) と駆動信号
+    (``SeedStream.TASK``) の両方を決めるので、ノイズ有無の2条件は**同じ
+    リザバー・同じ入力**を共有する (共通乱数法。D-37 がしきい値のシードに
+    ついて言っているのと同じ設計)。対応を無視してセルごとの s.d. を使うと、
+    測りたいノイズの効果ではなく「リザバーの引きの良し悪し」がばらつきとして
+    分母に乗る —— 実測 (本番 N=25, noise=0.01): 対応なしの s.d. は 2.99
+    (差 7.41 の 2.5 倍にしかならない) だが、対応のある差の s.d. は 1.04 で
+    比は 7.16 になる。3条件とも同じ向きに動いているのに検出できないのは
+    検定の側の問題である。
     """
     rows = [
         row
@@ -609,27 +620,30 @@ def test_conservation_respects_the_bound() -> None:
     for row in rows:
         bound = int(row["n_units"]) * CONSERVATION_TOLERANCE
         assert float(row["ipc_total"]) <= bound, row
+        if float(row["state_noise"]) > 0.0:
+            # ノイズ下では厳密に N 未満 (受け入れ条件2 の後半)
+            assert float(row["ipc_total"]) < int(row["n_units"]), row
 
-    by_cell: dict[tuple[int, float], list[float]] = defaultdict(list)
+    total: dict[tuple[int, float, int], float] = {}
     for row in rows:
-        by_cell[(int(row["n_units"]), float(row["state_noise"]))].append(
-            float(row["ipc_total"])
-        )
-    units = sorted({n_units for n_units, _ in by_cell})
-    noises = sorted({noise for _, noise in by_cell})
+        key = (int(row["n_units"]), float(row["state_noise"]), int(row["replicate"]))
+        assert key not in total, f"条件が重複しています: {key}"
+        total[key] = float(row["ipc_total"])
+    units = sorted({n_units for n_units, _, _ in total})
+    noises = sorted({noise for _, noise, _ in total})
+    replicates = sorted({replicate for _, _, replicate in total})
     assert noises[0] == 0.0, "ノイズ無しの基準点が格子にありません"
     assert len(noises) >= 2
+    assert len(replicates) >= 2, "レプリケート間 s.d. を取るには2本以上が要ります"
 
     for n_units in units:
-        clean = by_cell[(n_units, 0.0)]
-        clean_mean = statistics.fmean(clean)
         for noise in noises[1:]:
-            noisy = by_cell[(n_units, noise)]
-            gap = clean_mean - statistics.fmean(noisy)
-            spread = max(
-                statistics.stdev(clean) if len(clean) > 1 else 0.0,
-                statistics.stdev(noisy) if len(noisy) > 1 else 0.0,
-            )
+            diffs = [
+                total[(n_units, 0.0, replicate)] - total[(n_units, noise, replicate)]
+                for replicate in replicates
+            ]
+            gap = statistics.fmean(diffs)
+            spread = statistics.stdev(diffs)
             assert gap > 0.0, f"N={n_units}, noise={noise}: 差の向きが逆です ({gap})"
             assert gap >= NOISE_MARGIN_SIGMAS * spread, (
                 f"N={n_units}, noise={noise}: 差 {gap:.4f} が"
