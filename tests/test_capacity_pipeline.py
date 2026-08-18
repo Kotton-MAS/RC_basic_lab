@@ -469,7 +469,7 @@ def test_conservation_section_does_not_change_the_other_experiments(
     assert other_rows(base) == other_rows(changed)
 
 
-def test_conservation_replicates_default_to_the_shared_value_and_can_be_overridden() -> (
+def test_conservation_replicates_default_to_the_shared_value_and_can_be_overridden() -> (  # noqa: E501  (仕様 §4 T2 が指定したテスト名。改名すると受け入れ基準との対応が切れる)
     None
 ):
     """``conservation.n_replicates`` は継承と上書きの**両方**が効く。
