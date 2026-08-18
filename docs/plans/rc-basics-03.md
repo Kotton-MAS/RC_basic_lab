@@ -458,7 +458,10 @@
    しきい値法比較がスカラ3つ (`ipc_total` / `ipc_total_raw` / 閾値) だけでは
    「どの次数が落ちたか」を書けないため。
 8. **`ipc_nonlinear` は `ipc_total - ipc_linear`** (次数2以上の合計)。
-   `saturation_ratio` は**しきい値後**の `ipc_total / N`。
+   `saturation_ratio` は**しきい値後**の `ipc_total / N`。`n_targets_kept` は
+   「しきい値後の容量が厳密に正である目標の本数」と定義した (しきい値を
+   超えなかった目標と、下限クリップで 0 になった目標を同じ『残らなかった』側に
+   置く。`threshold_mode="none"` でも容量 0 の目標は数えない)。
 9. **容量の下限クリップは T1 の決定 (「T1 実装時に決めたこと」1) をそのまま継承**
     する (共有カーネルの `capacity_of_targets` が担当する)。このため
     `threshold_mode="none"` では `ipc_total == ipc_total_raw` になる。
