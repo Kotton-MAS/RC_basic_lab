@@ -94,7 +94,11 @@ class CapacityProblem:
     ``gram`` は構築時点の ``X`` から作った**スナップショット**である。
     ``from_states`` の後で元の ``X`` を書き換えると ``x`` はその変更を映すが
     ``gram`` は映さず、両者が独立に (かつ例外もなく) desync する。
-    ``from_states`` に渡した後の ``X`` は不変として扱うこと。
+    ``from_states`` に渡した後の ``X`` は不変として扱うこと。``x`` 自身は
+    ``from_states`` が ``writeable=False`` にして保持するため、``problem.x[...]
+    = ...`` は ``ValueError`` になる (F-03-3-006)。ただし元の ``X`` の
+    writeable フラグは変えないため、``X`` 自身への書き込みは塞げない
+    (呼び出し側が渡す前に読み取り専用にすることを 3b の受け入れ条件とする)。
 
     Attributes:
         x: 状態のビュー ``X[t0:]`` ``(T_eff, N)``。バイアス列は含まない。
@@ -163,6 +167,13 @@ class CapacityProblem:
         window: FloatArray = states[t0:]
         if not np.all(np.isfinite(window)):
             raise ValueError("X に有限でない値があります")
+        # F-03-3-006: window は X (または dtype 変換されていなければ X 自身) の
+        # ビューであり、書き込み可能なままだと診断内部や呼び出し側が
+        # problem.x[...] = ... と書いても素通りし、既に作成済みの gram と
+        # 無言で desync する (上記クラス docstring の契約)。ここで held する
+        # ビュー自身を読み取り専用にする (元の X の writeable フラグは変えない
+        # ので、呼び出し側が X を書き換える経路は 3b の受け入れ条件で塞ぐ)。
+        window.flags.writeable = False
         n_samples = window.shape[0]
         n_features = n_units + 1
         if n_samples <= n_features:
@@ -436,7 +447,7 @@ def bounded_chunk_size(configured: int, n_samples: int) -> int:
     逆方向 —— 性能チューニングのために大きい ``configured`` を明示指定した
     意図 —— は保護されない: ``n_samples`` が大きい本番規模では
     ``configured`` の値によらず必ず ``_MAX_CHUNK_BYTES`` 相当まで切り詰める
-    (D-29)。呼び出し側は実際に使われた値を ``CapacityProblem.
+    (D-33)。呼び出し側は実際に使われた値を ``CapacityProblem.
     effective_chunk_size`` 経由で取得し、成果物の ``params`` に記録すること
     (``chunk_size_effective``、F-03-2-001 / F-03-2-009)。
 
