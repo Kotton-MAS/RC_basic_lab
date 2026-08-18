@@ -26,8 +26,10 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from types import ModuleType
+from typing import cast
 
 import pytest
+from test_config_wiring_capacity import PENDING_SECTIONS
 
 import main
 from rc_basics_lab.config import (
@@ -653,14 +655,28 @@ def test_production_config_matches_the_committed_meta_json() -> None:
     ``run_and_report_capacity`` が書き出し時点の設定を丸ごとダンプしたもの
     (``dataclasses.asdict``) なので、現在の ``load_config_as(...)`` と突き合わ
     せれば値ドリフトを丸ごと閉じられる。
+
+    ``PENDING_SECTIONS`` (``tests/test_config_wiring_capacity.py``) に含まれる
+    セクション (現状は ``narma`` のみ) は比較対象から除く。``figures-03`` の
+    成果物はこのセクションに一切依存しないため (3-C は 3b-2 の T4 で本番経路に
+    入るまで不活性)、ここに含めると T4 が narma を配線する最初の一手 (例:
+    D-39 に合わせた ``n_units`` の変更) で無関係な CSV・図の再生成を要求して
+    しまう。``PENDING_SECTIONS`` から引いているので、T4 が narma を配線して
+    このフレーゼットから外れれば1か所の変更で自動的に比較対象へ戻る。
     """
     config = load_config_as(
         ROOT / "experiments" / "03_capacity" / "config.yaml", Capacity03Config
     )
-    current = _normalize_for_json_comparison(dataclasses.asdict(config))
+    current = cast(
+        "dict[str, object]",
+        _normalize_for_json_comparison(dataclasses.asdict(config)),
+    )
     meta_path = RESULTS / META_JSON
     assert meta_path.is_file(), "make figures-03 を実行してください"
     committed = json.loads(meta_path.read_text(encoding="utf-8"))["config"]
+    for section in PENDING_SECTIONS:
+        current.pop(section, None)
+        committed.pop(section, None)
     assert current == committed, (
         "experiments/03_capacity/config.yaml の値が"
         " results/03_capacity/meta.json に記録された設定と食い違っています"
