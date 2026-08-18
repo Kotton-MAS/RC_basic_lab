@@ -24,6 +24,7 @@ from rc_basics_lab.diagnostics._capacity import (
     LEGENDRE,
     NORMAL,
     UNIFORM,
+    CapacityProblem,
     orthonormal_basis,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
@@ -106,6 +107,14 @@ def _cached_states(
 
 def _scalars(result: DiagnosticResult) -> dict[str, float]:
     return {key: float(value) for key, value in result.scalars.items()}
+
+
+def _dummy_problem(*, t0: int, n_samples: int) -> CapacityProblem:
+    """``_target_column`` の窓計算 (``CapacityProblem.lagged``) だけを使う
+    テストのための最小の ``CapacityProblem``。状態そのものの値は使わない
+    (``t0`` / ``n_samples`` が一致していればよい)。
+    """
+    return CapacityProblem.from_states(np.zeros((t0 + n_samples, 1)), t0=t0)
 
 
 def _independent_states(
@@ -470,11 +479,12 @@ def test_all_targets_share_identical_rows() -> None:
     psi_table = [orthonormal_basis(ramp, degree, UNIFORM) for degree in (1, 2)]
     t0 = 20
     n_samples = n_steps - t0
+    problem = _dummy_problem(t0=t0, n_samples=n_samples)
     mean = float(np.mean(ramp))
     sigma = float(np.std(ramp))
     for delay in (1, 5, 20):
         spec: TargetSpec = ((delay, 1),)
-        column = _target_column(psi_table, spec, t0=t0, n_samples=n_samples)
+        column = _target_column(problem, psi_table, spec)
         assert column.shape == (n_samples,)
         expected: FloatArray = (
             np.arange(t0 - delay, t0 - delay + n_samples, dtype=np.float64) - mean
@@ -507,9 +517,10 @@ def test_basis_is_orthonormal_and_mismatched_pair_raises() -> None:
     ]
     t0 = max(cfg.max_delay_by_degree)
     n_samples = n_steps - t0
+    problem = _dummy_problem(t0=t0, n_samples=n_samples)
     columns: FloatArray = np.empty((n_samples, len(specs)), dtype=np.float64)
     for index, spec in enumerate(specs):
-        columns[:, index] = _target_column(psi_table, spec, t0=t0, n_samples=n_samples)
+        columns[:, index] = _target_column(problem, psi_table, spec)
     gram: FloatArray = columns.T @ columns / n_samples
     deviation = float(np.max(np.abs(gram - np.eye(len(specs)))))
     assert deviation < 0.02, (
