@@ -96,6 +96,21 @@ def _scalars(result: DiagnosticResult) -> dict[str, float]:
 # --------------------------------------------------------------------------
 
 
+_MC_RATIO_LOWER_BOUND = {0.5: 0.25, 0.9: 0.4, 0.99: 0.4}
+"""rho ごとの ``mc_ratio`` 下限 (F-03-2-019)。
+
+一律 0.2 は rho=0.5 (実測ベースライン 0.376) では約48〜50%喪失で検出できて
+いたが、rho=0.9/0.99 (ベースライン 0.620/0.653) では約65〜70%喪失まで
+``capacity_of_chunks`` の戻り値を潰す変異が素通りしていた。IPC の同種テスト
+(``saturation_ratio >= 0.5``、ベースライン 0.6831 に対し約30%喪失で検出) と
+同水準に揃えるため、``capacity_of_chunks`` を factor 倍する変異を rho ごとに
+注入して破断点を実測し (``/tmp`` の使い捨てスクリプト、in-process
+monkeypatch)、rho=0.5 は 0.25 (約33%喪失で検出)、rho=0.9/0.99 は 0.4
+(約36%/39%喪失で検出) に個別値化した。詳細は
+docs/review-findings-03.md の F-03-2-019 対応記録を参照。
+"""
+
+
 @pytest.mark.parametrize("rho", [0.5, 0.9, 0.99])
 def test_mc_total_does_not_exceed_n_units(rho: float) -> None:
     """N=30, T=5000 で総容量が N を (1.02 倍の余裕込みで) 超えない。
@@ -108,10 +123,12 @@ def test_mc_total_does_not_exceed_n_units(rho: float) -> None:
     容量測定がほぼ意味を成さない状態 (深刻な回帰バグ) でも通ってしまう:
     実測で ``capacity_of_chunks`` の戻り値を 0.02 倍に潰す変異を注入すると
     ``mc_ratio`` は 0.011 まで落ちるが、上限チェックと ``> 0.0`` はどちらも
-    成立してこのテストを素通りした。IPC の同種テスト
+    成立してこのテストを素通りした。下限は rho ごとに個別値を置く
+    (``_MC_RATIO_LOWER_BOUND``、F-03-2-019): IPC の同種テスト
     (``test_ipc_total_does_not_exceed_n_units`` の ``saturation_ratio >=
-    0.5``) に相当する下限を、MC の実測ベースライン (rho=0.5/0.9/0.99 で
-    ``mc_ratio`` は 0.376/0.620/0.653) に合わせて ``0.2`` に置く。
+    0.5``) は約30%喪失で検出するが、MC 側は一律 0.2 だと rho=0.9/0.99 で
+    約65〜70%喪失まで検出できなかった (docstring 上の『IPC の相当品』という
+    説明は強度差に触れていなかった)。
     """
     n_units = 30
     states, inputs = _cached_states(rho, n_units, 5000, 7)
@@ -124,9 +141,10 @@ def test_mc_total_does_not_exceed_n_units(rho: float) -> None:
     )
     assert scalars["mc_ratio"] <= 1.02
     assert scalars["mc_total"] > 0.0
-    assert scalars["mc_ratio"] >= 0.2, (
-        f"rho={rho}: mc_ratio={scalars['mc_ratio']} が下限 0.2 を下回りました"
-        " (容量測定がほぼ意味を成さない状態を示唆、F-03-1-023)"
+    lower_bound = _MC_RATIO_LOWER_BOUND[rho]
+    assert scalars["mc_ratio"] >= lower_bound, (
+        f"rho={rho}: mc_ratio={scalars['mc_ratio']} が下限 {lower_bound} を"
+        " 下回りました (容量測定がほぼ意味を成さない状態を示唆、F-03-1-023)"
     )
     assert scalars["n_delays"] == 400.0
     assert result.arrays["mc_profile"].shape == (400,)

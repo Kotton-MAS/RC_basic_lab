@@ -90,9 +90,18 @@ class CapacityProblem:
     コピーが発生しない) を持つだけで済み、``T=1e6`` 級の本番設定で ``Phi``
     のコピー1枚ぶん (状態と同じ大きさ) のメモリを節約できる。
 
+    契約 (F-03-2-003): ``x`` は呼び出し側が渡した ``X`` の**ビュー**であり、
+    ``gram`` は構築時点の ``X`` から作った**スナップショット**である。
+    ``from_states`` の後で元の ``X`` を書き換えると ``x`` はその変更を映すが
+    ``gram`` は映さず、両者が独立に (かつ例外もなく) desync する。
+    ``from_states`` に渡した後の ``X`` は不変として扱うこと。
+
     Attributes:
         x: 状態のビュー ``X[t0:]`` ``(T_eff, N)``。バイアス列は含まない。
+            ``X`` のビューなので、``from_states`` 後に元の ``X`` を書き換えて
+            はならない (``gram`` と desync する。上記の契約を参照)。
         gram: ブロック分解した ``Phi.T @ Phi`` ``(F, F)`` (``F = 1 + N``)。
+            構築時点の ``X`` から作ったスナップショット (コピー)。
         bias_column: 正則化しない列の index (D-03)。``gram`` の作り方から常に 0。
         t0: ``X`` の何行目から使ったか (D-24 の単一基準点)。
     """
@@ -116,6 +125,17 @@ class CapacityProblem:
     def n_units(self) -> int:
         """状態の次元 ``N``。容量の理論上限 (Dambre 2012) がこの値。"""
         return int(self.x.shape[1])
+
+    def effective_chunk_size(self, configured: int) -> int:
+        """``configured`` を、この問題の ``n_samples`` に基づき下げた実効値。
+
+        ``bounded_chunk_size(configured, self.n_samples)`` に委譲するだけだが、
+        ``n_samples`` を持っているのは ``CapacityProblem`` 自身なので、ここに
+        置くことで呼び出し側 (``ipc.py`` / ``memory_capacity.py``) が
+        ``n_samples`` を取り出して ``bounded_chunk_size`` を個別に呼ぶ形の
+        複製を防ぐ (F-03-2-001: F-03-1-001 で潰した複製が別の軸で復活していた)。
+        """
+        return bounded_chunk_size(configured, self.n_samples)
 
     @classmethod
     def from_states(cls, X: FloatArray, *, t0: int) -> CapacityProblem:
