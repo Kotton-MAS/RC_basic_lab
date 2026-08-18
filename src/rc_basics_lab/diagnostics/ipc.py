@@ -172,7 +172,9 @@ class IpcConfig:
             独立な確保軸である ``psi_table`` (次数ごとに系列全体を1回評価した
             もの、``n_degrees x T`` 相当) と ``count_targets`` の組合せ計算量
             (``n_vars`` の探索幅) を、次数の本数だけで確保・列挙より前に
-            縛るための上限 (F-03-2-013 / F-03-2-014)。
+            縛るための上限 (F-03-2-013 / F-03-2-014、既定値・上限とも D-34)。
+            フィールド自身にも ``_MAX_DEGREES`` (上書き不能) の絶対上限が
+            ある (F-03-3-019)。
     """
 
     max_delay_by_degree: tuple[int, ...] = (60, 20, 10, 6)
@@ -204,6 +206,15 @@ def _validate_config(cfg: IpcConfig) -> None:
             )
     if cfg.max_degrees < 1:
         raise ValueError(f"max_degrees は 1 以上が必要です: {cfg.max_degrees}")
+    if cfg.max_degrees > _MAX_DEGREES:
+        # F-03-3-019: max_degrees は「len(max_delay_by_degree) を超えてはいけ
+        # ない」上限としてしか検査されておらず、上限自体が上限を持たなかった
+        # (max_degrees を1行引き上げるだけで直後の検査を素通りできる)。
+        # _MAX_VARIABLES_FOR_COUNT と同じ、上書き不能な絶対上限で縛る (D-34)。
+        raise ValueError(
+            "max_degrees が安全上限を超えます (CWE-789 対策、F-03-3-019): "
+            f"{cfg.max_degrees} > {_MAX_DEGREES}"
+        )
     if len(cfg.max_delay_by_degree) > cfg.max_degrees:
         # F-03-2-013: max_targets / heatmap_cells は次数の本数を弱くしか
         # 縛らない (次数を1本ずつ、遅延を1にすると目標数もセル数も小さいまま
@@ -297,7 +308,18 @@ def count_targets(cfg: IpcConfig) -> int:
     ``max_delay=1000``、``max_variables=3`` なら 5 億通り) で
     ``max_targets`` の検査に到達する前にメモリと時間が尽きる。組合せ数は
     ``Σ_d Σ_m C(K_d, m) * C(d-1, m-1)`` で閉じるので先に数える。
+
+    F-03-3-018 (CWE-400): ``count_targets`` / ``enumerate_targets`` は
+    ``__all__`` の公開関数だが ``ipc()`` の外から直接呼ぶと ``_validate_config``
+    を経由しないため、``max_degrees`` / ``max_variables`` の上限が一切かから
+    ない (実測: ``max_delay_by_degree=(10**6,)*1600``, ``max_variables=1600``
+    を ``count_targets`` に直接渡すと 107.89s)。先頭で ``_validate_config``
+    を呼び、``enumerate_targets`` は ``count_targets`` 経由で自動的に保護
+    される。下記の早期打ち切り自体は comb と数学的に等価な純粋な最適化で、
+    **検証を通った cfg にのみ有効な防御ではなく、検証前の呼び出しからも
+    保護する** ようになった (この関数自身が検証するため)。
     """
+    _validate_config(cfg)
     total = 0
     for degree, max_delay in enumerate(cfg.max_delay_by_degree, start=1):
         for n_vars in range(1, min(cfg.max_variables, degree) + 1):
