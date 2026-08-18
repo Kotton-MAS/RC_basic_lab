@@ -445,3 +445,64 @@ def test_capacity_outcome_carries_the_arrays_the_figures_need() -> None:
     )
     assert outcome.row.n_degrees == len(config.ipc.max_delay_by_degree)
     assert outcome.row.n_samples_mc == condition().n_steps - outcome.row.t0_mc
+
+
+def test_oversized_n_units_is_rejected_before_any_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``n_units`` の上限超過は ``ESN`` を作る前に ``ValueError`` になる (F-3b1-1-017)。
+
+    3a の D-34 (IPC の確保・組合せ計算量を4段の上限で縛る) と同じ threat model
+    ―― 実験層の確保軸 (``n_units`` / ``n_steps``) には上限検査が無く、設定
+    YAML の1行変更 (例: ``conservation.n_units_grid: [100000]``) だけで
+    ``ESN`` の重み行列に数十GB の確保が発生しうる。``simulate_reference_trajectory``
+    を monkeypatch して**呼ばれないこと**を直接固定する (確保より前に落ちる
+    ことの実証。D-34 の規律「確保より前に落とす」と同じ)。
+    """
+    module = importlib.import_module(CAPACITY_MODULE)
+    called = False
+
+    def fail_if_called(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("simulate_reference_trajectory が呼ばれました")
+
+    monkeypatch.setattr(
+        f"{CAPACITY_MODULE}.simulate_reference_trajectory", fail_if_called
+    )
+    config = base_config()
+    huge = condition(n_units=module._MAX_UNITS + 1)
+    with pytest.raises(ValueError, match="n_units"):
+        evaluate_capacity_condition(config, huge)
+    assert not called, "上限検査より前に状態行列の確保が始まっています"
+
+
+def test_oversized_state_matrix_is_rejected_before_any_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``n_units * n_steps`` の上限超過も確保の前に ``ValueError`` になる (F-3b1-1-017)。
+
+    ``n_units`` 単体では上限内でも、``n_steps`` を巨大にすれば状態行列
+    ``(n_steps, n_units)`` の確保量は同じだけ膨らむ。両方を独立した軸として
+    検査しないと、片方の上限だけを見て安全と誤認する (D-34 の rationale が
+    ``max_degrees`` 単体では防げない、と言っているのと同じ形)。
+    """
+    module = importlib.import_module(CAPACITY_MODULE)
+    called = False
+
+    def fail_if_called(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("simulate_reference_trajectory が呼ばれました")
+
+    monkeypatch.setattr(
+        f"{CAPACITY_MODULE}.simulate_reference_trajectory", fail_if_called
+    )
+    config = base_config()
+    huge_steps = dataclasses.replace(
+        condition(n_units=10),
+        n_steps=module._MAX_STATE_ELEMENTS // 10 + 1,
+    )
+    with pytest.raises(ValueError, match="n_units \\* n_steps"):
+        evaluate_capacity_condition(config, huge_steps)
+    assert not called, "上限検査より前に状態行列の確保が始まっています"
