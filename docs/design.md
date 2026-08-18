@@ -757,8 +757,10 @@ Gram は `[[T_eff, sum(X,0)], [sum(X,0).T, X.T @ X]]` にブロック分解で�
 | IPC のリッジ正則化係数 `alpha`（D-25） | `1e-09` | `diagnostics.ipc.IpcConfig.alpha` |
 | IPC の目標数上限 `max_targets` | `200000` | `diagnostics.ipc.IpcConfig.max_targets` |
 | IPC の chunk_size（性能パラメータ、D-26） | `256` | `diagnostics.ipc.IpcConfig.chunk_size` |
-| chunk_size の実効上限バイト数 `_MAX_CHUNK_BYTES`（D-29） | `134217728` | `diagnostics._capacity._MAX_CHUNK_BYTES` |
-| IPC の次数の本数上限 `max_degrees`（D-29） | `20` | `diagnostics.ipc.IpcConfig.max_degrees` |
+| chunk_size の実効上限バイト数 `_MAX_CHUNK_BYTES`（D-33） | `134217728` | `diagnostics._capacity._MAX_CHUNK_BYTES` |
+| IPC の次数の本数上限 `max_degrees`（既定値・絶対上限とも D-34） | `20` | `diagnostics.ipc.IpcConfig.max_degrees` |
+| `max_degrees` 自身の絶対上限 `_MAX_DEGREES`（D-34） | `32` | `diagnostics.ipc._MAX_DEGREES` |
+| IPC の目標変数本数の絶対上限 `_MAX_VARIABLES_FOR_COUNT`（D-34） | `20` | `diagnostics.ipc._MAX_VARIABLES_FOR_COUNT` |
 | 対応する `(input_distribution, basis)` の組（D-28） | `(('uniform', 'legendre'), ('normal', 'hermite'))` | `diagnostics._capacity.SUPPORTED_BASIS_PAIRS` |
 
 3-B（本番の飽和実測）向けのメモリ予算（4GB 未満、`/usr/bin/time -l` 実測）は

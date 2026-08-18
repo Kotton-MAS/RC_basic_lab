@@ -164,10 +164,32 @@
   guard_test: "tests/test_diagnostics_ipc.py::test_surrogate_threshold_requires_ctx_seed_and_is_reproducible"
 
 # サイクル 3a T2 round1 の BLOCKER 修正 (F-03-1-012/013、T=1e6 で peak RSS を
-# 4GB 未満に収める) の副産物として round2 で発見された D-29。fixer が自分で
+# 4GB 未満に収める) の副産物として round2 で発見された決定。fixer が自分で
 # 追加した bounded_chunk_size (指示に無い安全機構) の設計判断を正本化する。
+#
+# F-03-3-001 (BLOCKER): round2 でこの決定に D-29 を割り当てたが、
+# docs/plans/rc-basics-03.md line 9 (ユーザー承認済み) が「3b = T3・T4 + T5
+# の残り (D-29〜D-32)」を既に予約しており、line 271 に D-29 = NARMA10 を
+# rule/rationale/guard_test 付きで記録済みだった。予約を確認せずに番号を
+# 指定したオーケストレータの指示ミスで、正本の中に同じ ID の別定義が2つ
+# 存在する状態が成立していた。3b 用の D-29〜D-32 は plan doc の採番のまま
+# 動かさず、この決定を D-33 (現行最大 D-29 の次の空き番号) へ改番する。
+# design.md / ipc.py / _capacity.py / review-findings-03.md の D-29 参照も
+# 同時に D-33 へ置換した。
 
-- id: D-29
+- id: D-33
   rule: "MC / IPC の chunk_size は結果を変えない性能パラメータであり、1チャンクの目標行列 (T_eff x chunk_size) が _MAX_CHUNK_BYTES (128 MiB) を超える場合に限り、実装が configured より小さい実効値へ黙って下げてよい (configured より大きくはしない)。呼び出し側は cfg.chunk_size を直接使わず CapacityProblem.effective_chunk_size(cfg.chunk_size) を経由し、成果物の params には設定値 (chunk_size) と実効値 (chunk_size_effective) の両方を記録する"
-  rationale: "round1 の BLOCKER 修正 (F-03-1-012/013) は指示 (仕様書・plan doc) に無い bounded_chunk_size を fixer が自分で追加したもので、この判断とその根拠 (_MAX_CHUNK_BYTES=128MiB、4GB 予算) が decisions.yaml にも design.md にも plan doc にも記録されていなかった (F-03-2-002)。round2 の4つの reviewer が独立にこの関数を突いた: (1) no-op に差し替えても既存58テストが1件も落ちない空虚な安全機構だった (F-03-2-018 BLOCKER。テスト規模の budget_columns がテスト規模の chunk_size を一度も下回らないため切り詰め分岐が一度も真にならない)。(2) 実効値が params にも guard の閉形式 (D-26) にも反映されず、T=200000/chunk_size=256 で D-26 の期待 solve 回数=2 に対し実際4回になる本番規模の乖離が生じていた (F-03-2-001 HIGH)。(3) 適用が ipc.py 2箇所・memory_capacity.py 1箇所に手書きで複製され、F-03-1-001 で潰した『同じ規律を呼び出し側で複製する』形が別の軸で復活していた。今回 CapacityProblem.effective_chunk_size に一本化し、params に chunk_size_effective を追加し、D-26 の guard (test_gram_solve_count_does_not_scale_with_target_count) にキャップが実際に発動する規模のケースを足して閉形式を ceil(K/effective_chunk_size) に更新した。docs/design.md §11 の既定値表にも _MAX_CHUNK_BYTES の行を足した"
-  guard_test: "tests/test_diagnostics_memory_capacity.py::test_bounded_chunk_size_truncates_when_over_budget"
+  rationale: "round1 の BLOCKER 修正 (F-03-1-012/013) は指示 (仕様書・plan doc) に無い bounded_chunk_size を fixer が自分で追加したもので、この判断とその根拠 (_MAX_CHUNK_BYTES=128MiB、4GB 予算) が decisions.yaml にも design.md にも plan doc にも記録されていなかった (F-03-2-002)。round2 の4つの reviewer が独立にこの関数を突いた: (1) no-op に差し替えても既存58テストが1件も落ちない空虚な安全機構だった (F-03-2-018 BLOCKER。テスト規模の budget_columns がテスト規模の chunk_size を一度も下回らないため切り詰め分岐が一度も真にならない)。(2) 実効値が params にも guard の閉形式 (D-26) にも反映されず、T=200000/chunk_size=256 で D-26 の期待 solve 回数=2 に対し実際4回になる本番規模の乖離が生じていた (F-03-2-001 HIGH)。(3) 適用が ipc.py 2箇所・memory_capacity.py 1箇所に手書きで複製され、F-03-1-001 で潰した『同じ規律を呼び出し側で複製する』形が別の軸で復活していた。今回 CapacityProblem.effective_chunk_size に一本化し、params に chunk_size_effective を追加し、D-26 の guard (test_gram_solve_count_does_not_scale_with_target_count) にキャップが実際に発動する規模のケースを足して閉形式を ceil(K/effective_chunk_size) に更新した。docs/design.md §11 の既定値表にも _MAX_CHUNK_BYTES の行を足した。round3 (F-03-3-004): rule (iii) (params への記録) 単体を守る guard_test が無く、chunk_size_effective を params から削除しても落ちるテストが0件だった。tests/test_diagnostics_ipc.py::test_params_record_configured_and_effective_chunk_size_when_capped を追加し、guard_test をこちらへ差し替えた (rule (i) の純関数としての正しさは test_bounded_chunk_size_truncates_when_over_budget が引き続き独立に守る)"
+  guard_test: "tests/test_diagnostics_ipc.py::test_params_record_configured_and_effective_chunk_size_when_capped"
+
+# サイクル 3a T2 round3 (F-03-3-003 / F-03-3-019、D-33 の次)。IPC の確保・
+# 組合せ計算量を縛る上限群 (max_degrees の既定値・絶対上限、
+# _MAX_VARIABLES_FOR_COUNT) を1件にまとめて正本化する。round2 で
+# max_degrees / _MAX_VARIABLES_FOR_COUNT を追加した際、判断と根拠が
+# decisions.yaml にも plan doc にも記録されず、design.md も存在しない
+# D-29 を参照していた (F-03-3-003)。
+
+- id: D-34
+  rule: "IPC の確保・組合せ計算量は3段の独立な上限で縛る。(1) max_degrees (既定20、設定フィールド) は len(max_delay_by_degree) の上限であり、psi_table (次数の本数 x 系列長) の確保サイズを縛る。(2) max_degrees 自身にも上書き不能な絶対上限 _MAX_DEGREES=32 を置く (max_degrees を1行引き上げるだけで (1) を素通りできてはならない)。(3) max_variables には上書き不能な絶対上限 _MAX_VARIABLES_FOR_COUNT=20 を置き、count_targets の閉形式 (math.comb) の組合せ爆発を縛る。3つとも _validate_config (延いては count_targets の先頭、F-03-3-018) で確保・列挙より前に検査する"
+  rationale: "F-03-3-003: round2 で追加した max_degrees=20 と _MAX_VARIABLES_FOR_COUNT=20 の根拠が decisions.yaml にも plan doc にもコードコメントにしか無く、design.md:761 は max_degrees を『(D-29)』と誤って参照していた (D-29 の rule は chunk_size のキャップのみで max_degrees に触れていない)。加えて _MAX_VARIABLES_FOR_COUNT の docstring/テストが根拠にしていた実測ケース (max_delay_by_degree=(1,)*4000, max_variables=4000, 373.73s) は、次数の本数 (4000) が既定 max_degrees=20 を超えるため _validate_config の max_degrees 検査に先に捕まり、count_targets へ到達しなかった (到達不能な根拠)。既定 max_degrees=20 の下の最悪ケース (次数20・遅延20・max_variables=20) は 15us で、_MAX_VARIABLES_FOR_COUNT は『count_targets の実行時間に対する独立した防御』としては実質的に max_degrees を引き上げた場合の後段の砦としてのみ意味を持つ。F-03-3-019 (security, CWE-789): max_degrees 自身は通常の設定フィールドで上限が無く、max_degrees=400 の1行変更だけで round2 の防御 (len(max_delay_by_degree) > max_degrees の検査) を素通りして psi_table を膨らませられた (実測 peak RSS 0.095GB -> 0.721GB)。_MAX_VARIABLES_FOR_COUNT (上書き不能なモジュール定数) と防御強度を揃えるため、_MAX_DEGREES=32 を追加した。_MAX_DEGREES=32 の下で改めて測ると、max_degrees=32・max_variables=32 (_MAX_VARIABLES_FOR_COUNT を仮に外した場合) でも count_targets は 35us・comb(10**300, 20) でも 0.3ms と、_MAX_VARIABLES_FOR_COUNT を除いても count_targets の実行時間は問題にならない水準に収まる。それでも _MAX_VARIABLES_FOR_COUNT を維持するのは (a) 目標1本に掛け合わせる変数の本数として意味のある値域を明示するため、(b) _MAX_DEGREES が将来引き上げられた場合の独立した多重防御のためで、この非対称 (max_degrees は現在 (1) と (2) の二重、max_variables は (3) 単独) を rule に明記した。F-03-3-018: count_targets / enumerate_targets は __all__ の公開関数だが _validate_config を経由せず、max_delay_by_degree=(10**6,)*1600 を count_targets に直接渡すと 107.89s かかっていた。count_targets の先頭に (max_targets / heatmap_cells とは独立な) 組合せ計算量の検査だけを切り出した _validate_combinatorial_bounds を置き、count_targets 経由で enumerate_targets も自動的に保護されるようにした"
+  guard_test: "tests/test_diagnostics_ipc.py::test_max_degrees_bounds_the_psi_table_row_count"
