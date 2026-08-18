@@ -27,6 +27,10 @@ from rc_basics_lab.config import Capacity03Config
 from rc_basics_lab.experiment.capacity import (
     CAPACITY_CSV_COLUMNS,
     CAPACITY_PROFILE_CSV_COLUMNS,
+    EXPERIMENT_CONSERVATION,
+    EXPERIMENT_IPC_SWEEP,
+    EXPERIMENT_MC_SWEEP,
+    EXPERIMENT_NARMA10,
     FIGURE_EXPERIMENTS,
     CapacityOutcome,
     CapacityProfileRow,
@@ -226,8 +230,29 @@ def _profile_of(
     return tuple(row for outcome in outcomes for row in profile_rows(outcome))
 
 
+def _narma_timing(narma: Narma10Results) -> SectionTiming:
+    """3-C の実測時間 (**容量測定の内訳 + 3-C 全体の wall time**)。
+
+    ``wall_time_state_s`` / ``wall_time_mc_s`` / ``wall_time_ipc_s`` は掃引と
+    同じ意味 (状態行列1本の生成と2診断) だが、``wall_time_s`` だけは
+    ``run_task`` (3手法 x 全レプリケート) を含む 3-C 全体である。3-C の予算
+    (仕様 §5: < 120 秒) は成績の計算まで含めた区間に対する数字なので、
+    容量測定ぶんだけを載せると予算の判断に使えない内訳になる。
+    """
+    return dataclasses.replace(
+        summarize_timing(EXPERIMENT_NARMA10, (narma.capacity,)),
+        wall_time_s=narma.wall_time_s,
+    )
+
+
 def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> CapacityOutputs:
-    """実験 3-A / 3-B / 3-B' を実行し、CSV2枚・図4枚・meta.json を書き出す。
+    """実験 3-A / 3-B / 3-B' / 3-C を実行し、CSV3枚・図5枚・meta.json を書き出す。
+
+    3-C (NARMA10) の**成績**は 01 の ``ResultRow`` のまま ``narma10.csv`` へ、
+    **容量** (MC / IPC) は ``experiment="3C_narma10"`` の1行として
+    ``capacity.csv`` / ``capacity_profile.csv`` へ合流する。2枚の CSV を条件
+    キーで join すると「NARMA10 の成績が容量のどの成分と相関するか」を見られる
+    (要件書 実験3-C)。
 
     Args:
         config: 03 の実験設定。
@@ -238,23 +263,32 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     """
     started = time.perf_counter()
     results = run_capacity_experiment(config)
+    narma = run_narma10(config)
     wall_time_s = time.perf_counter() - started
-    rows = results.rows
-    profile = results.profile_rows
-    timings = tuple(
-        summarize_timing(experiment, outcomes)
-        for experiment, outcomes in zip(
-            FIGURE_EXPERIMENTS,
-            (results.mc_sweep, results.ipc_sweep, results.conservation),
-            strict=True,
-        )
+    rows = (*results.rows, narma.capacity.row)
+    profile = (*results.profile_rows, *profile_rows(narma.capacity))
+    timings = (
+        summarize_timing(EXPERIMENT_MC_SWEEP, results.mc_sweep),
+        summarize_timing(EXPERIMENT_IPC_SWEEP, results.ipc_sweep),
+        summarize_timing(EXPERIMENT_CONSERVATION, results.conservation),
+        _narma_timing(narma),
     )
+    # 内訳の並びは FIGURE_EXPERIMENTS が単一の真実 (実験を1本足したときに
+    # meta.json の内訳から静かに落ちるのを防ぐ)。
+    if tuple(timing.experiment for timing in timings) != FIGURE_EXPERIMENTS:
+        raise ValueError(
+            "wall_time_breakdown の並びが FIGURE_EXPERIMENTS と違います: "
+            f"{[timing.experiment for timing in timings]}"
+        )
     _log_timings(timings)
 
     style = setup_style()
     paths = (
         write_capacity_csv(rows, out_dir / CAPACITY_CSV),
         write_capacity_profile_csv(profile, out_dir / CAPACITY_PROFILE_CSV),
+        # 列順は 01 の CSV_COLUMNS (= ResultRow の宣言順) をそのまま使う。
+        # 3-C 専用の書き出しを作ると列順の単一の真実が2つになる (D-31)。
+        write_comparison_csv(narma.rows, out_dir / NARMA10_CSV),
         plot_mc_sweep(
             _rows_of(results.mc_sweep),
             _profile_of(results.mc_sweep),
@@ -277,6 +311,11 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             out_dir / FIG_IPC_CONSERVATION,
             style=style,
         ),
+        plot_narma10_control(
+            narma.rows,
+            out_dir / FIG_NARMA10_CONTROL,
+            style=style,
+        ),
         write_meta_for(
             config,
             config.seeds,
@@ -289,6 +328,11 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             extra={
                 "n_profile_rows": len(profile),
                 "wall_time_breakdown": [timing.to_summary() for timing in timings],
+                # 3-C は向きを問わない (仕様 §4 T4)。遅延線が ESN を上回った
+                # 場合もここに同じ形で残る。参照値 (0.16 / 0.107) とその
+                # **原典未特定**である旨も一緒に書く。
+                "narma10_verdict": narma.verdict.to_summary(),
+                "n_narma10_rows": len(narma.rows),
                 # 図のラベル言語を決めた要因 (02 の meta.json と同じ形)。
                 # 英語ラベルの図が出たときに「フォントが無い環境で生成した」と
                 # 成果物だけで判別できる。
@@ -297,15 +341,20 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         ),
     )
     logger.info(
-        "完了: %d 行 (capacity.csv) + %d 行 (capacity_profile.csv) / "
-        "wall_time=%.2fs / 出力=%s",
+        "完了: %d 行 (capacity.csv) + %d 行 (capacity_profile.csv) + "
+        "%d 行 (narma10.csv) / wall_time=%.2fs / 出力=%s",
         len(rows),
         len(profile),
+        len(narma.rows),
         wall_time_s,
         ", ".join(str(path) for path in paths),
     )
     return CapacityOutputs(
-        results=results, timings=timings, paths=paths, wall_time_s=wall_time_s
+        results=results,
+        narma=narma,
+        timings=timings,
+        paths=paths,
+        wall_time_s=wall_time_s,
     )
 
 
@@ -339,6 +388,8 @@ __all__ = [
     "FIG_IPC_PROFILE",
     "FIG_MC_SWEEP",
     "FIG_MEMORY_NONLINEARITY",
+    "FIG_NARMA10_CONTROL",
+    "NARMA10_CSV",
     "CapacityOutputs",
     "SectionTiming",
     "run_and_report_capacity",
