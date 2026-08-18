@@ -111,9 +111,11 @@
 | 5 | `RowAlignment` の切り出し / 引数集約 dataclass | **04 送り** |
 | 6 | `chunk_size` が性能軸とメモリ軸を兼ねる | **04 送り** (分離に新しい設計判断が要る) |
 | 7 | `diagnostics/__init__.py` の関数 `ipc` によるモジュール名の隠蔽 | **3b では直さない** (公開 API 変更)。§10-1 の注意 + テストを1本 |
+| 8 (F-3b1-1-004, round1 で追加) | `evaluate_capacity_condition` が軌道生成/read-only化/2診断呼び出し/行組み立ての4つを1関数に閉じており、外部生成の `X` (3-C は `run_task` が作る) から `CapacityRow` を作る接ぎ目が無い | **3b-2 の T4 冒頭**で `measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg)` + `capacity_row_from(mc, ipc, *, ...)` の2段に割る別タスクとして切り出す。今回の diff (3b-1) では急いで割らない (行の組み立て約35フィールドを T4 が複製しない限り実害は顕在化しないため) |
 
-> **3〜6 を 04 へ送る根拠**: いずれも `diagnostics/` 内部の整理であり、3b の成果物の正しさに影響しない。
-> 3b で触ると「測定装置の設計判断が実験層の設計に混ざる」という 3a/3b 分割の目的が崩れる。
+> **3〜6、8 を 04 / T4 送りにする根拠**: いずれも `diagnostics/` 内部の整理、または T4 が実際に踏むまで
+> 実害の無い接ぎ目であり、3b-1 の成果物の正しさに影響しない。3b-1 で触ると「測定装置の設計判断が
+> 実験層の設計に混ざる」という 3a/3b 分割の目的が崩れる。
 
 ---
 
@@ -692,8 +694,11 @@ CJK フォントが無い環境で「日本語の符号位置が1文字も無い
 - `diagnostics/` は**差分 0 行** (`git diff <base-ref> HEAD --stat -- src/rc_basics_lab/diagnostics/` が空)。
 - README / `docs/design.md` の 03 節は **T5 (3b-2) の担当**なので触っていない。
   `Makefile` の `figures-03` は**コメントの成果物一覧だけ**を図4枚ぶん更新した。
-- **既知の残件 (今回のスコープ外)**: `import rc_basics_lab.plotting` を**最初に**行うと循環
+- **既知の残件 (今回のスコープ外、F-3b1-1-009。04 の別タスク候補として記録)**:
+  `import rc_basics_lab.plotting` を**最初に**行うと循環
   import (`plotting.figures` -> `experiment.runner` -> `experiment/__init__` -> `pipeline` ->
   `plotting.figures`) で `ImportError` になる。**T3 以前から同じ**で (base-ref の状態でも再現)、
   実際の入口 (`main.py` / pytest) は `experiment` 側から入るため踏まない。`figures_capacity` は
-  この構造に新しい辺を足していない (`experiment.capacity` -> `plotting` の向きは 01・02 と同じ)。
+  この構造に新しい辺を足していない (`experiment.capacity` -> `plotting` の向きは 01・02 と同じ、
+  循環の形自体は変わっていない)。**04 冒頭の `config.py` package 化と同じ回で扱う**のが自然
+  (re-export を遅延 import にするか、pipeline 系を `experiment/__init__` の re-export から外す)。
