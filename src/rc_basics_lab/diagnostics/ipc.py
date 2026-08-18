@@ -33,6 +33,7 @@ Dambre 2012 の情報処理容量。入力の正規直交多項式の積
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -250,18 +251,10 @@ def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
     for degree, max_delay in enumerate(cfg.max_delay_by_degree, start=1):
         delays = range(1, max_delay + 1)
         for n_vars in range(1, min(cfg.max_variables, degree) + 1):
-            for delay_combo in _combinations(delays, n_vars):
+            for delay_combo in itertools.combinations(delays, n_vars):
                 for orders in _ordered_compositions(degree, n_vars):
                     specs.append(tuple(zip(delay_combo, orders, strict=True)))
     return tuple(specs)
-
-
-def _combinations(values: range, size: int) -> Iterator[tuple[int, ...]]:
-    """``itertools.combinations`` の薄い包み (型を ``tuple[int, ...]`` に固定)。"""
-    import itertools
-
-    for combo in itertools.combinations(values, size):
-        yield tuple(int(value) for value in combo)
 
 
 def _target_column(
@@ -308,7 +301,25 @@ def _iter_target_chunks(
         yield chunk
 
 
-def _surrogate_indices(n_targets: int, n_selected: int) -> FloatArray:
+def _degree_bounds(
+    degree_of: Sequence[int], n_degrees: int
+) -> tuple[tuple[int, int], ...]:
+    """次数ごとの目標 index の半開区間 ``[start, end)`` を返す。
+
+    ``enumerate_targets`` は次数昇順に並べるので、次数の集合は連続区間になる。
+    区間で持てば「次数 d の目標」を毎回走査せずに切り出せる。
+    """
+    bounds: list[tuple[int, int]] = []
+    cursor = 0
+    for degree in range(1, n_degrees + 1):
+        start = cursor
+        while cursor < len(degree_of) and degree_of[cursor] == degree:
+            cursor += 1
+        bounds.append((start, cursor))
+    return tuple(bounds)
+
+
+def _surrogate_indices(start: int, end: int, n_selected: int) -> tuple[int, ...]:
     """次数内の目標から代表を**決定的に**選ぶ index (等間隔、D-27)。
 
     先頭から詰めて取らないのは、列挙順の先頭が「変数1本」の目標に偏っており、
@@ -316,11 +327,12 @@ def _surrogate_indices(n_targets: int, n_selected: int) -> FloatArray:
     等間隔なら変数本数の違う目標がまんべんなく入る。乱数で選ぶと閾値が
     非再現になる (D-27 が禁じているのはまさにこれ)。
     """
-    count = min(n_selected, n_targets)
-    picked: FloatArray = np.unique(
-        np.round(np.linspace(0, n_targets - 1, count)).astype(np.int64)
-    )
-    return picked
+    span = end - start
+    count = min(n_selected, span)
+    if count <= 1:
+        return (start,)
+    step = (span - 1) / (count - 1)
+    return tuple(sorted({start + round(index * step) for index in range(count)}))
 
 
 def _chi2_threshold(*, n_units: int, n_samples: int, quantile: float) -> float:
@@ -330,6 +342,66 @@ def _chi2_threshold(*, n_units: int, n_samples: int, quantile: float) -> float:
     変数の本数) のカイ二乗を標本数で割った分布に漸近する。
     """
     return float(chi2.ppf(quantile, n_units)) / float(n_samples)
+
+
+def _degree_thresholds(
+    problem: CapacityProblem,
+    psi_table: Sequence[FloatArray],
+    specs: Sequence[TargetSpec],
+    bounds: Sequence[tuple[int, int]],
+    cfg: IpcConfig,
+    *,
+    t0: int,
+    seed: int | None,
+) -> tuple[float, ...]:
+    """次数ごとのしきい値を返す (D-27)。
+
+    サロゲートは代表目標を時間シャッフルして**通常の目標とまったく同じ経路**
+    (``capacity_of_targets``) に流す。別経路で計算すると、閾値と容量が別実装から
+    ずれても誰も気づけない。乱数は ``seed`` から作った1本の Generator だけで、
+    次数の順に消費する (次数をまたいで再現するのはこの順序があるから)。
+
+    Raises:
+        ValueError: ``surrogate`` なのに ``seed`` が ``None`` の場合 (D-27)。
+    """
+    n_degrees = len(bounds)
+    if cfg.threshold_mode == THRESHOLD_NONE:
+        return (0.0,) * n_degrees
+    if cfg.threshold_mode == THRESHOLD_CHI2:
+        threshold = _chi2_threshold(
+            n_units=problem.n_units,
+            n_samples=problem.n_samples,
+            quantile=cfg.surrogate_quantile,
+        )
+        return tuple(
+            threshold if end > start else 0.0 for start, end in bounds
+        )
+    if seed is None:
+        raise ValueError("threshold_mode='surrogate' には ctx.seed が必要です (D-27)")
+    rng = np.random.default_rng(seed)
+    n_samples = problem.n_samples
+    thresholds: list[float] = []
+    for start, end in bounds:
+        if end <= start:
+            thresholds.append(0.0)
+            continue
+        picked = _surrogate_indices(start, end, cfg.n_surrogate_targets)
+        base: FloatArray = np.empty((n_samples, len(picked)), dtype=np.float64)
+        for column, index in enumerate(picked):
+            base[:, column] = _target_column(
+                psi_table, specs[index], t0=t0, n_samples=n_samples
+            )
+        threshold, _ = surrogate_threshold(
+            problem,
+            base,
+            cfg.alpha,
+            n_surrogates=cfg.n_surrogates,
+            quantile=cfg.surrogate_quantile,
+            chunk_size=cfg.chunk_size,
+            rng=rng,
+        )
+        thresholds.append(threshold)
+    return tuple(thresholds)
 
 
 def ipc(
