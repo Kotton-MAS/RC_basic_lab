@@ -47,6 +47,7 @@ from rc_basics_lab.diagnostics._capacity import (
     CapacityProblem,
     capacity_of_chunks,
     chi2_threshold,
+    input_series,
     orthonormal_basis,
     surrogate_threshold,
 )
@@ -395,6 +396,61 @@ def _degree_thresholds(
     return tuple(thresholds)
 
 
+def _aggregate_by_cell(
+    degree_of: Sequence[int],
+    cell_of: Sequence[int],
+    capacities: FloatArray,
+    kept: FloatArray,
+    *,
+    n_degrees: int,
+    max_delay: int,
+) -> tuple[FloatArray, FloatArray, FloatArray]:
+    """目標を ``(次数 d, max(k_i))`` のセルへ足し込む (仕様 §4 T2-3, F-03-1-018)。
+
+    ``ipc()`` から集約ループを切り出したもの。ヒートマップの行和が次数ごとの
+    容量に一致し、全体の和が ``ipc_total`` に一致することで、集約が
+    「取りこぼしも二重計上もない」ことが保たれる (``test_heatmap_aggregates_
+    targets_at_their_deepest_delay``)。
+
+    Returns:
+        ``(ipc_heatmap, ipc_by_degree, ipc_by_degree_raw)``。
+    """
+    heatmap: FloatArray = np.zeros((n_degrees, max_delay), dtype=np.float64)
+    by_degree: FloatArray = np.zeros(n_degrees, dtype=np.float64)
+    by_degree_raw: FloatArray = np.zeros(n_degrees, dtype=np.float64)
+    for index, (degree, cell) in enumerate(zip(degree_of, cell_of, strict=True)):
+        heatmap[degree - 1, cell - 1] += kept[index]
+        by_degree[degree - 1] += kept[index]
+        by_degree_raw[degree - 1] += capacities[index]
+    return heatmap, by_degree, by_degree_raw
+
+
+def _build_scalars(
+    capacities: FloatArray,
+    kept: FloatArray,
+    by_degree: FloatArray,
+    thresholds: Sequence[float],
+    *,
+    n_targets: int,
+    n_units: int,
+) -> dict[str, float]:
+    """``ipc()`` が返す ``scalars`` 辞書を組み立てる (F-03-1-018)。"""
+    total = float(np.sum(kept))
+    linear = float(by_degree[0])
+    scalars: dict[str, float] = {
+        "ipc_total": total,
+        "ipc_total_raw": float(np.sum(capacities)),
+        "ipc_linear": linear,
+        "ipc_nonlinear": total - linear,
+        "n_targets": float(n_targets),
+        "n_targets_kept": float(np.count_nonzero(kept)),
+        "saturation_ratio": total / float(n_units),
+    }
+    for degree, threshold in enumerate(thresholds, start=1):
+        scalars[f"ipc_threshold_degree{degree}"] = threshold
+    return scalars
+
+
 def ipc(
     X: FloatArray,
     u: FloatArray | None = None,
@@ -429,7 +485,7 @@ def ipc(
     validate_diagnostic_input(X, u, y, ctx)
     _validate_config(cfg)
     context = resolve_context(ctx)
-    series = _input_series(u)
+    series = input_series(u, diagnostic="ipc")
 
     specs = enumerate_targets(cfg)
     n_steps = int(np.asarray(X).shape[0])
@@ -463,14 +519,12 @@ def ipc(
     # 回帰を回し切ってから告げるのではなく着手前に落とす)。乱数は
     # ここでしか使わないので、順序を変えても再現性には影響しない。
     thresholds = _degree_thresholds(
-        problem, psi_table, specs, bounds, cfg, t0=t0, seed=context.seed
+        problem, psi_table, specs, bounds, cfg, seed=context.seed
     )
 
     capacities = capacity_of_chunks(
         problem,
-        _iter_target_chunks(
-            psi_table, specs, t0=t0, n_samples=n_samples, chunk_size=cfg.chunk_size
-        ),
+        _iter_target_chunks(problem, psi_table, specs, chunk_size=cfg.chunk_size),
         cfg.alpha,
     )
     threshold_per_target: FloatArray = np.asarray(
@@ -478,28 +532,17 @@ def ipc(
     )
     kept: FloatArray = np.where(capacities > threshold_per_target, capacities, 0.0)
 
-    # 集約規則 (仕様 §4 T2-3): 目標を (次数 d, max(k_i)) のセルへ足し込む。
-    heatmap: FloatArray = np.zeros((n_degrees, max_delay), dtype=np.float64)
-    by_degree: FloatArray = np.zeros(n_degrees, dtype=np.float64)
-    by_degree_raw: FloatArray = np.zeros(n_degrees, dtype=np.float64)
-    for index, (degree, cell) in enumerate(zip(degree_of, cell_of, strict=True)):
-        heatmap[degree - 1, cell - 1] += kept[index]
-        by_degree[degree - 1] += kept[index]
-        by_degree_raw[degree - 1] += capacities[index]
-
-    total = float(np.sum(kept))
-    linear = float(by_degree[0])
-    scalars: dict[str, float] = {
-        "ipc_total": total,
-        "ipc_total_raw": float(np.sum(capacities)),
-        "ipc_linear": linear,
-        "ipc_nonlinear": total - linear,
-        "n_targets": float(len(specs)),
-        "n_targets_kept": float(np.count_nonzero(kept)),
-        "saturation_ratio": total / float(problem.n_units),
-    }
-    for degree, threshold in enumerate(thresholds, start=1):
-        scalars[f"ipc_threshold_degree{degree}"] = threshold
+    heatmap, by_degree, by_degree_raw = _aggregate_by_cell(
+        degree_of, cell_of, capacities, kept, n_degrees=n_degrees, max_delay=max_delay
+    )
+    scalars = _build_scalars(
+        capacities,
+        kept,
+        by_degree,
+        thresholds,
+        n_targets=len(specs),
+        n_units=problem.n_units,
+    )
 
     return DiagnosticResult(
         name=NAME,
