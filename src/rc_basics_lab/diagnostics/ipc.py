@@ -46,6 +46,7 @@ from rc_basics_lab.diagnostics._capacity import (
     UNIFORM,
     CapacityProblem,
     capacity_of_chunks,
+    chi2_threshold,
     orthonormal_basis,
     surrogate_threshold,
 )
@@ -165,6 +166,23 @@ def _validate_config(cfg: IpcConfig) -> None:
         raise ValueError(f"chunk_size は 1 以上が必要です: {cfg.chunk_size}")
     if cfg.max_targets < 1:
         raise ValueError(f"max_targets は 1 以上が必要です: {cfg.max_targets}")
+    # F-03-1-016: max_targets は目標数だけを縛り、ipc_heatmap の確保サイズ
+    # (n_degrees x max(max_delay_by_degree)) を縛っていなかった。目標数と
+    # heatmap 面積は独立に増やせるため (例: 次数を1000個、遅延を1本ずつにすると
+    # 目標数は少ないまま heatmap は 1000 x 199000 になりうる)、確保の前に
+    # 閉形式でセル数を検査する。実測: max_delay_by_degree=(199_000,)+(1,)*1000,
+    # max_variables=3 は count_targets=200_000 で max_targets を超えないまま
+    # heatmap 1.59GB を確保しようとする。
+    heatmap_cells = len(cfg.max_delay_by_degree) * max(cfg.max_delay_by_degree)
+    if heatmap_cells > cfg.max_targets:
+        raise ValueError(
+            "ipc_heatmap のセル数が max_targets を超えます (CWE-789 対策、"
+            "F-03-1-016): "
+            f"n_degrees={len(cfg.max_delay_by_degree)} x"
+            f" max(max_delay_by_degree)={max(cfg.max_delay_by_degree)} ="
+            f" {heatmap_cells} > max_targets={cfg.max_targets}。"
+            " max_delay_by_degree を下げるか max_targets を上げてください"
+        )
     if cfg.threshold_mode == THRESHOLD_SURROGATE:
         if cfg.n_surrogates < 1:
             raise ValueError(f"n_surrogates は 1 以上が必要です: {cfg.n_surrogates}")
