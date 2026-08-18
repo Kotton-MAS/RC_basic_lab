@@ -693,6 +693,99 @@ def test_max_targets_also_bounds_the_heatmap_cell_count() -> None:
         )
 
 
+def test_max_degrees_bounds_the_psi_table_row_count() -> None:
+    """``max_targets`` / ``heatmap_cells`` は次数の本数 (psi_table の行数) を
+    弱くしか縛らない (CWE-789、F-03-2-013)。
+
+    次数を1000本超・遅延を1本ずつにすると目標数もヒートマップ面積も
+    小さいまま ``psi_table`` (次数 x 系列長) だけが線形に伸びる。実測:
+    ``max_delay_by_degree=(1,)*1400``, T=200000 で psi_table 単独 peak RSS
+    2.69GB (この設定は count_targets=1400・heatmap_cells=1400 のどちらも
+    max_targets=200000 を超えず、round1 の検査を素通りしていた)。
+    ``max_degrees`` (既定20) が確保の前に独立して ``ValueError`` にする。
+    """
+    cfg = IpcConfig(max_delay_by_degree=(1,) * 1400, max_variables=1)
+    assert count_targets(cfg) < cfg.max_targets, "目標数の検査では捕まらない設定"
+    heatmap_cells = len(cfg.max_delay_by_degree) * max(cfg.max_delay_by_degree)
+    assert heatmap_cells < cfg.max_targets, "heatmap_cells の検査でも捕まらない設定"
+
+    states, inputs = _cached_states(0.9, 5, 100, 5)
+    with pytest.raises(ValueError, match="max_degrees"):
+        ipc(
+            states,
+            inputs,
+            ctx=DiagnosticContext(washout=10, seed=CTX_SEED),
+            cfg=cfg,
+        )
+
+
+def test_max_variables_bounds_the_combinatorial_blowup_in_count_targets() -> None:
+    """``count_targets`` の閉形式は ``max_variables`` が大きいと組合せ爆発する
+    (CWE-400、F-03-2-014)。
+
+    ``count_targets`` は防御そのもの (``max_targets`` の検査に到達する前に
+    閉形式で先に数える) だが、その閉形式自体が
+    ``math.comb(max_delay, n_vars)`` の多倍長整数計算で、``n_vars`` の上限を
+    決める ``max_variables`` が大きいと防御の前段が防御対象と同じ失敗モードを
+    持つ。実測: ``max_delay_by_degree=(1,)*D``, ``max_variables=D`` で
+    D=4000 のとき ``count_targets`` が 373.73s かかり、その手前の
+    ``_validate_config`` は 0.0001s で通過していた。``_validate_config`` が
+    ``max_variables`` を独立に縛るため、危険な設定は ``count_targets`` に
+    到達する前に ``ValueError`` になる。
+    """
+    cfg = IpcConfig(max_delay_by_degree=(4000,), max_variables=4000)
+    states, inputs = _cached_states(0.9, 5, 100, 5)
+    with pytest.raises(ValueError, match="max_variables"):
+        ipc(
+            states,
+            inputs,
+            ctx=DiagnosticContext(washout=10, seed=CTX_SEED),
+            cfg=cfg,
+        )
+
+
+def test_surrogate_base_matrix_never_exceeds_the_effective_chunk_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """代表目標行列 ``base`` は一括確保されず、chunk_size と同じ上限で分割
+    される (CWE-789、F-03-2-015)。
+
+    round1 の BLOCKER 修正はサロゲート列の生成 (``_iter_surrogate_chunks``)
+    をチャンク化したが、その入力である代表目標行列 ``base`` は対象外だった。
+    ``n_surrogate_targets`` に上限が無いため ``len(picked)`` は
+    ``chunk_size`` と無関係に大きくなりうる (実測: K=400, T=1e6,
+    ``n_surrogate_targets=K``, ``chunk_size=1`` で base 単独 peak RSS
+    3.23GB)。ここでは ``np.empty`` に渡された列数の最大値を監視し、
+    ``effective_chunk_size`` を超える確保が一度も起きないことを確認する。
+    """
+    states, inputs = _cached_states(0.9, 15, 4000, 5)
+    ctx = DiagnosticContext(washout=100, seed=CTX_SEED)
+    cfg = IpcConfig(
+        max_delay_by_degree=(20, 8, 4),
+        max_variables=2,
+        n_surrogates=5,
+        n_surrogate_targets=1_000_000,  # 上限が無いことをそのまま突く
+        chunk_size=3,
+    )
+    n_samples = 4000 - 100  # t0=max(washout=100, max_delay=20)=100
+    max_columns_seen = 0
+    original_empty = np.empty
+
+    def spying_empty(shape: object, *args: object, **kwargs: object) -> FloatArray:
+        nonlocal max_columns_seen
+        if isinstance(shape, tuple) and len(shape) == 2 and shape[0] == n_samples:
+            max_columns_seen = max(max_columns_seen, shape[1])
+        return original_empty(shape, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(np, "empty", spying_empty)
+    ipc(states, inputs, ctx=ctx, cfg=cfg)
+    assert max_columns_seen > 0, "監視対象の確保が一度も起きませんでした"
+    assert max_columns_seen <= cfg.chunk_size, (
+        f"chunk_size={cfg.chunk_size} を超える列数の確保がありました: "
+        f"{max_columns_seen}"
+    )
+
+
 def test_heatmap_aggregates_targets_at_their_deepest_delay() -> None:
     """各目標は ``(次数 d, max(k_i))`` のセルに集約される (仕様 §4 T2-3)。
 
