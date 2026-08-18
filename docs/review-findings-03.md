@@ -50,14 +50,16 @@ Gram) だけを持つようになったことに伴い、`capacity_of_targets` �
 
 **実測した条件下では bit-for-bit 一致したが、アルゴリズム的に保証されているわけではない
 (F-03-2-007)。** 旧実装 (`Phi = concatenate((ones, X))` を実体化し `Phi.T @ Phi` を1回の BLAS
-呼び出しで計算) と新実装 (`gram_xx = X.T @ X` とバイアス行 `sum(X, axis=0)` をブロックごとに計算し
-組み立てる) を実際の `from_states` 経路で比較すると、`gram` / `rhs` / `weights` / `capacity` は
-`cond(Phi.T Phi) ~ 7.7e17` (T=1e6, N=200) および `cond ~ 6.3e19` (T=4000, N=200) のどちらでも
-`np.array_equal` で bit-for-bit 一致した (`gram_old = phi_concat.T @ phi_concat`,
-`gram_new = CapacityProblem.from_states(...).gram` を突き合わせ)。ただしこれは「ブロック分解は常に
+呼び出しで計算) と新実装 (`CapacityProblem.from_states` のブロック分解: `gram_xx = X.T @ X` と
+バイアス行 `column_sums = np.sum(X, axis=0)` を別々に計算して `gram` に埋める) を独立な標準正規乱数
+`X ~ N(0, I)` (T=4000 と T=1,000,000、いずれも N=200) で比較すると `np.array_equal(gram_old,
+gram_new)` は両方とも `True` だった (再現: `/tmp` の使い捨てスクリプトで
+`gram_old = np.concatenate((ones, X), axis=1); gram_old = gram_old.T @ gram_old` と
+`CapacityProblem.from_states(X, t0=10).gram` を突き合わせ)。ただしこれは「ブロック分解は常に
 数値的に安全」を意味しない —— 分解に使う部分演算 `ones.T @ X` (BLAS matmul 経由) と
-`np.sum(X, axis=0)` は一般には加算順序が異なり、iid ガウス乱数では最大絶対誤差
-`4.67e-11`〜`1.66e-10` (T=50000〜999600、相対誤差 5.0e-13 程度) が生じることを実測した
-(`rng.standard_normal((T, N))` に対し `np.abs(ones @ X - np.sum(X, axis=0)).max()` を評価)。
-今回のデータ (低ランク信号+微小ノイズ) ではたまたま一致しただけで、データ形状・numpy/BLAS
-バージョン・プラットフォームが変われば丸め誤差レベルでの乖離がありうる。
+`np.sum(X, axis=0)` は一般には加算順序が異なり、独立な標準正規乱数でも最大絶対誤差が
+`4.18e-12` (T=50,000) から `7.37e-11` (T=999,600) までTに応じて増加することを実測した
+(`np.abs((np.ones((1, T)) @ X) - np.sum(X, axis=0, keepdims=True)).max()`。performance
+reviewer は別データ・別条件で最大 `1.66e-10` を報告しており、オーダーは一致する)。今回の
+`from_states` 経路の入力 (低ランク信号+微小ノイズが典型) ではたまたま一致しただけで、データ形状・
+numpy/BLAS バージョン・プラットフォームが変われば丸め誤差レベルでの乖離がありうる。
