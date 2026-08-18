@@ -37,11 +37,16 @@ from rc_basics_lab.config import (
     CapacityDriveConfig,
     CapacityReservoirConfig,
     DriveConfig,
+    ESNConfig,
     Esp02Config,
     EspSeedConfig,
+    ExperimentConfig,
     IpcConfig,
+    MackeyGlassConfig,
     MemoryCapacityConfig,
     ReservoirSweepConfig,
+    RidgeConfig,
+    SplitConfig,
     esp_stream_seed,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
@@ -52,8 +57,10 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_MC_SWEEP,
     CapacityCondition,
+    capacity_row_from,
     evaluate_capacity_condition,
     ipc_config_for,
+    measure_capacity,
 )
 from rc_basics_lab.experiment.esp import (
     ReferenceTrajectory,
@@ -61,7 +68,8 @@ from rc_basics_lab.experiment.esp import (
     simulate_condition,
     simulate_reference_trajectory,
 )
-from rc_basics_lab.seeds import SeedStream, make_rng_for
+from rc_basics_lab.experiment.runner import build_tasks, plan_replicate
+from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
 CAPACITY_MODULE = "rc_basics_lab.experiment.capacity"
@@ -630,7 +638,7 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     config = base_config()
     ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
     measurement = measure_capacity(
-        states, u, ctx=ctx, cfg_holder := None or config.mc, ipc_cfg=config.ipc
+        states, u, ctx=ctx, mc_cfg=config.mc, ipc_cfg=config.ipc
     )
     row = capacity_row_from(
         measurement,
@@ -639,7 +647,10 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
         seed_reservoir=config_01.seeds.reservoir,
         seed_drive=config_01.seeds.task,
         seed_surrogate=config.seeds.surrogate,
-        rho=float("nan"),
+        # rho は ESN 設定から取れるが、sigma_u (駆動信号の標準偏差の設定値) は
+        # 3-C に存在しない。何を書くか (NaN / 0.0 / 実測値) は T4 が決めること
+        # で、このテストが固定するのは**接ぎ目が在ること**だけである。
+        rho=entry.esn.spectral_radius,
         leak_rate=entry.esn.leak_rate,
         input_scale=entry.esn.input_scale,
         sigma_u=float("nan"),
@@ -659,8 +670,11 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     assert row.mc_total > 0.0
     assert row.input_drive_std == pytest.approx(float(np.std(u)))
     # 列の集合は掃引経路の行と完全に一致する (行を複製していない証拠)
-    assert dataclasses.asdict(row).keys() == dataclasses.asdict(
-        evaluate_capacity_condition(config, condition()).row
-    ).keys()
+    assert (
+        dataclasses.asdict(row).keys()
+        == dataclasses.asdict(
+            evaluate_capacity_condition(config, condition()).row
+        ).keys()
+    )
     # D-35 は外部生成の X にも効く (measure_capacity が塞ぐ)
     assert states.flags.writeable is False
