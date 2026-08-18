@@ -12,7 +12,7 @@ help:
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
-	@echo "  figures-03   - Regenerate results/ for experiment 03 (2 CSV + meta)"
+	@echo "  figures-03   - Regenerate results/ for experiment 03 (2 CSV + 4 figures + meta)"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"

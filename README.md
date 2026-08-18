@@ -123,6 +123,31 @@ make threshold-02
   `exceeds_replicate_noise = false`）。補償を入れないと同じ曲線が
   **完全に単調増加**（比 1.01151）に見えるが、それは訓練データ量の効果である
 
+## 実験03: 記憶容量 (MC / IPC)
+
+```bash
+# 5成果物 (2 CSV + 4 図 + meta.json) を results/03_capacity/ に再生成する (予算 900 秒)
+make figures-03
+
+# 系列長 T の掃引 CSV だけを再生成する (予算外・手動、~30分)
+make saturation-03
+```
+
+`make figures-03` は `python main.py --experiment 03` と同じ経路。
+出力先は `results/03_capacity/`:
+
+| ファイル | 内容 |
+|---|---|
+| `capacity.csv` | 117行。条件 (3-A/3-B/3-B') ごとの MC/IPC 総容量・実効遅延など |
+| `capacity_profile.csv` | 21,636行。次数・遅延ごとの長形式プロファイル (D-38) |
+| `fig_mc_sweep.png` | 記憶容量プロファイルの ρ 依存性 |
+| `fig_ipc_profile.png` | IPC の (次数, 遅延) ヒートマップ |
+| `fig_memory_nonlinearity.png` | 線形/非線形容量の分解 |
+| `fig_ipc_conservation.png` | 3-B' (状態ノイズ下) の保存則 |
+| `meta.json` | commit / 設定全体 / 実測 wall time |
+
+数値の考察 (何が分かるか) は 3b-2 (T5) で `docs/design.md` §11 に追記する。
+
 ## リポジトリ構成
 
 ```
@@ -134,11 +159,14 @@ src/rc_basics_lab/
 ├── readout/         # 設計行列 (3手法の差はここだけ) とリッジ回帰
 ├── experiment/      # 分割・ランナー・PCA 比較・書き出し・1コマンド経路
 │                   #   02: esp / washout / threshold と esp_pipeline
+│                   #   03: capacity (MC/IPC) と capacity_pipeline
 └── plotting/        # スタイル (CJK フォント探索) と図
 experiments/01_what_is_rc/{config.yaml,run.py}         # 実験1の設定と CLI
 experiments/02_esp_and_dynamics/{config.yaml,run_02.py}  # 実験2の設定と CLI
+experiments/03_capacity/{config.yaml,run_03.py}          # 実験3の設定と CLI
 results/             # 生成物 (コミット対象。再実行で上書きされる)
 results/02_esp_and_dynamics/  # 実験2の生成物
+results/03_capacity/  # 実験3の生成物
 docs/design.md       # 数値の根拠と実測結果
 docs/plans/          # 仕様書 (タスク分解と受け入れ基準)
 tests/               # pytest
