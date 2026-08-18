@@ -1,0 +1,163 @@
+# 実験03: メモリ容量 (MC) と情報処理容量 (IPC)
+#
+# 未知キーは ConfigError で即座に落ちる (D-09)。
+#
+# 実験ごとに設定クラスを分ける (D-13)。このファイルは Capacity03Config を
+# 埋めるもので、01 の ExperimentConfig / 02 の Esp02Config とはローダ
+# (load_config_as) だけを共有する。
+#
+# n_units は**セクションが持つ** (D-32)。MC は上限線 y=N を引ける規模
+# (N=200)、IPC は目標数が (次数 x 遅延) で増えるため小さい規模 (N=50) が要る。
+# reservoir セクションに n_units を書くと未知キーとして落ちる。
+
+name: 03_capacity
+
+seeds:
+  # reservoir / drive は SeedStream 経由 (01・02 と同じ4ストリームの2本)。
+  reservoir: 0
+  drive: 1
+  # surrogate は SeedStream ではなく DiagnosticContext.seed へ直接渡る整数。
+  # 全条件・両診断で1個を共有する (共通乱数法、D-37)。
+  surrogate: 4
+
+drive:
+  distribution: uniform
+  # 診断へ渡す ctx.washout。実際の基準点は t0 = max(washout, 最大遅延) で、
+  # 本番では最大遅延 (MC 400 / IPC 60・3-B' は 200) の側が binding になる (D-24)。
+  washout: 200
+
+reservoir:
+  # 横断共有はこの3つだけ (D-32)。入力強度は信号側 (sigma_u) で振る (D-17)。
+  input_scale: 1.0
+  density: 0.1
+  n_replicates: 3
+
+mc_sweep:
+  # 6 x 3 x 3レプリケート = 54 条件 (仕様 §5 の 3-A)。
+  rho_grid: [0.5, 0.7, 0.9, 0.95, 1.0, 1.1]
+  leak_rate_grid: [0.3, 0.6, 1.0]
+  # T2-5 の較正で確定した値。0.05 は rho=1.0 付近で mc_effective_delay が
+  # 非単調になり (leak=0.3)、0.5 は準線形域を外れて rho 依存が 1.5 倍に届かない。
+  # 受け入れ条件1 を満たす最小値がこの 0.1 (較正の実測は design.md §11.5、T5)。
+  sigma_u: 0.1
+  n_units: 200
+  n_steps: 20000
+
+ipc_sweep:
+  # 4 x 3 x 3レプリケート = 36 条件 (仕様 §5 の 3-B)。
+  rho_grid: [0.5, 0.8, 0.95, 1.1]
+  leak_rate_grid: [0.3, 0.6, 1.0]
+  # 次数分解には中程度の駆動が要るため 3-A とは別の動作点を持つ (仕様 §3.2)。
+  # 図をまたいだ絶対値比較はしない。
+  sigma_u: 0.2
+  n_units: 50
+  n_steps: 100000
+
+conservation:
+  # 3 x 3 x 3レプリケート = 27 条件 (仕様 §5 の 3-B')。
+  n_units_grid: [25, 50, 100]
+  # 0.0 はノイズ無しの基準点 (同じ図に乗る)。
+  state_noise_grid: [0.0, 0.01, 0.1]
+  rho: 0.95
+  leak_rate: 1.0
+  sigma_u: 0.2
+  n_steps: 200000
+  # 3-B' でだけ ipc.max_delay_by_degree を上書きする (片方向)。保存則は
+  # 打ち切りの外に残った容量が見えないと N に届かないため深く取る。
+  max_delay_by_degree: [200, 60, 20, 10]
+  # null なら reservoir.n_replicates を継承する。予算超過時の縮退規則
+  # (仕様 §7 リスク1) のノブで、3-B' だけを 1 に落とせる。
+  n_replicates: null
+
+length_sweep:
+  # make saturation-03 用。figures-03 には含めない (T=1e6 まで回すため)。
+  n_steps_grid: [100000, 200000, 500000, 1000000]
+  rho: 0.95
+  leak_rate: 1.0
+  sigma_u: 0.2
+  n_units: 50
+
+# 診断の判定基準 (D-15: 診断の設定は ctx ではなく cfg で渡る)。
+mc:
+  max_delay: 400
+  # 容量の定義そのものが「線形読み出しで到達可能な最大の説明率」なので、
+  # 検証分割による alpha 選択 (D-04) は行わず固定の微小値を使う (D-25)。
+  alpha: 1.0e-9
+  threshold_mode: surrogate
+  n_surrogates: 100
+  surrogate_quantile: 0.99
+  chunk_size: 256
+
+ipc:
+  max_delay_by_degree: [60, 20, 10, 6]
+  max_variables: 3
+  # (input_distribution, basis) は対で意味を持つ。未対応の組は ValueError (D-28)。
+  basis: legendre
+  input_distribution: uniform
+  alpha: 1.0e-9
+  threshold_mode: surrogate
+  n_surrogates: 100
+  n_surrogate_targets: 4
+  surrogate_quantile: 0.99
+  chunk_size: 256
+  max_targets: 200000
+  max_degrees: 20
+
+narma:
+  # 3-C (3b-2 の T4)。係数と入力分布は tasks/narma.py のモジュール定数で
+  # あり設定にしない (D-29)。ここが持つのは系列長と 01 側の土台だけ。
+  length: 8000
+  base:
+    name: 03_narma10
+    n_replicates: 5
+    seeds:
+      reservoir: 0
+      task: 1
+      split: 2
+    split:
+      train_ratio: 0.5
+      val_ratio: 0.15
+      test_ratio: 0.35
+      washout: 200
+      max_start_offset: 200
+    ridge:
+      alpha_grid:
+        [
+          1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1,
+          1.0, 10.0, 100.0,
+        ]
+      n_lags_grid: [1, 2, 4, 8, 16]
+    mackey_glass:
+      tau: 17.0
+      beta: 0.2
+      gamma: 0.1
+      exponent: 10
+      rk4_step: 0.1
+      sample_interval: 10
+      integration_burn_in: 1000
+      length: 8000
+      horizon: 1
+    delay_parity:
+      n_bits: 2
+      delay: 1
+      length: 8000
+    esn_mackey_glass:
+      n_units: 200
+      spectral_radius: 0.9
+      leak_rate: 0.3
+      input_scale: 0.5
+      bias_scale: 0.1
+      density: 0.1
+      activation: tanh
+      state_noise: 0.0
+    # 3-C の ESN は N=50 とし 3-B (IPC 掃引) と同じ規模にする (D-39)。
+    # 実際に 3-C がどちらのセクションを読むかは 3b-2 の T4 が決める。
+    esn_delay_parity:
+      n_units: 200
+      spectral_radius: 0.9
+      leak_rate: 1.0
+      input_scale: 1.0
+      bias_scale: 0.1
+      density: 0.1
+      activation: tanh
+      state_noise: 0.0
