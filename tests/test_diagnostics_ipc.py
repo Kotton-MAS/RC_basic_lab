@@ -743,14 +743,22 @@ def test_max_degrees_bounds_the_psi_table_row_count() -> None:
     次数を1000本超・遅延を1本ずつにすると目標数もヒートマップ面積も
     小さいまま ``psi_table`` (次数 x 系列長) だけが線形に伸びる。実測:
     ``max_delay_by_degree=(1,)*1400``, T=200000 で psi_table 単独 peak RSS
-    2.69GB (この設定は count_targets=1400・heatmap_cells=1400 のどちらも
-    max_targets=200000 を超えず、round1 の検査を素通りしていた)。
-    ``max_degrees`` (既定20) が確保の前に独立して ``ValueError`` にする。
+    2.69GB (この設定は heatmap_cells=1400 が max_targets=200000 を超えず、
+    round1 の検査を素通りしていた)。``max_degrees`` (既定20) が確保の前に
+    独立して ``ValueError`` にする。
+
+    F-03-3-018: round3 以降は ``count_targets`` 自身も
+    ``_validate_combinatorial_bounds`` (``max_degrees`` を含む) を先頭で
+    呼ぶため、``count_targets`` を直接呼んでも同じ理由で ``ValueError`` に
+    なることも合わせて固定する (round2 時点は ``count_targets`` 単体では
+    捕まらなかった設定だが、それは弱点でありここで塞いだ)。
     """
     cfg = IpcConfig(max_delay_by_degree=(1,) * 1400, max_variables=1)
-    assert count_targets(cfg) < cfg.max_targets, "目標数の検査では捕まらない設定"
     heatmap_cells = len(cfg.max_delay_by_degree) * max(cfg.max_delay_by_degree)
     assert heatmap_cells < cfg.max_targets, "heatmap_cells の検査でも捕まらない設定"
+
+    with pytest.raises(ValueError, match="max_degrees"):
+        count_targets(cfg)
 
     states, inputs = _cached_states(0.9, 5, 100, 5)
     with pytest.raises(ValueError, match="max_degrees"):
