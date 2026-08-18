@@ -89,6 +89,21 @@ SUPPORTED_THRESHOLD_MODES: tuple[str, ...] = (
 状態で通ってしまう。
 """
 
+_MAX_VARIABLES_FOR_COUNT = 20
+"""``max_variables`` に独立して置く上限 (CWE-400 対策、F-03-2-014)。
+
+``count_targets`` の閉形式は各次数で ``math.comb(max_delay, n_vars)`` を
+``n_vars in [1, min(max_variables, degree)]`` について合計する。``max_delay``
+自体が大きくても ``n_vars`` が小さければ多倍長整数の桁数は小さく抑えられる
+(``comb(max_delay, n_vars)`` の計算量は ``n_vars`` にほぼ比例する) が、
+``max_variables`` (延いては ``n_vars`` の上限) が大きいと ``comb`` の引数の
+組合せ数自体が爆発する。実測: ``max_delay_by_degree=(1,)*D``,
+``max_variables=D`` で D=4000 のとき ``count_targets`` が 373.73s かかり、
+その手前の ``_validate_config`` は 0.0001s で通過していた (防御の前段が
+防御対象と同じ失敗モードを持っていた)。ここで独立に縛ることで、
+``_validate_config`` (確保・列挙より前) で弾く。
+"""
+
 type TargetSpec = tuple[tuple[int, int], ...]
 """目標1本の仕様 ``((k_1, n_1), ..., (k_m, n_m))``。
 
@@ -120,6 +135,12 @@ class IpcConfig:
             (``test_chunk_size_does_not_change_results``)。
         max_targets: 目標数の上限。超えたら黙って切り詰めず ``ValueError``
             (``test_target_enumeration_raises_instead_of_truncating``)。
+        max_degrees: 評価する次数の本数 (``len(max_delay_by_degree)``) の上限。
+            ``max_targets`` (目標数) や ``heatmap_cells`` (F-03-1-016) とは
+            独立な確保軸である ``psi_table`` (次数ごとに系列全体を1回評価した
+            もの、``n_degrees x T`` 相当) と ``count_targets`` の組合せ計算量
+            (``n_vars`` の探索幅) を、次数の本数だけで確保・列挙より前に
+            縛るための上限 (F-03-2-013 / F-03-2-014)。
     """
 
     max_delay_by_degree: tuple[int, ...] = (60, 20, 10, 6)
@@ -133,6 +154,7 @@ class IpcConfig:
     surrogate_quantile: float = 0.99
     chunk_size: int = 256
     max_targets: int = 200_000
+    max_degrees: int = 20
 
 
 DEFAULT_IPC = IpcConfig()
@@ -148,8 +170,31 @@ def _validate_config(cfg: IpcConfig) -> None:
                 f"max_delay_by_degree の要素は 1 以上が必要です"
                 f" (次数 {degree}: {max_delay})"
             )
+    if cfg.max_degrees < 1:
+        raise ValueError(f"max_degrees は 1 以上が必要です: {cfg.max_degrees}")
+    if len(cfg.max_delay_by_degree) > cfg.max_degrees:
+        # F-03-2-013: max_targets / heatmap_cells は次数の本数を弱くしか
+        # 縛らない (次数を1本ずつ、遅延を1にすると目標数もセル数も小さいまま
+        # psi_table (n_degrees x T) だけが伸びる)。次数の本数自体を確保の前に
+        # 独立して縛る。実測: max_delay_by_degree=(1,)*1400, T=200000 で
+        # psi_table 単独 peak RSS 2.69GB (count_targets=1400、
+        # heatmap_cells=1400、どちらも max_targets の検査に到達しない)。
+        raise ValueError(
+            "max_delay_by_degree の本数が max_degrees を超えます (CWE-789 対策、"
+            "F-03-2-013): "
+            f"len(max_delay_by_degree)={len(cfg.max_delay_by_degree)} >"
+            f" max_degrees={cfg.max_degrees}。"
+            " psi_table (次数 x 系列長) の確保サイズが次数の本数に線形に"
+            " 伸びるため、max_delay_by_degree を短くするか max_degrees を"
+            " 上げてください"
+        )
     if cfg.max_variables < 1:
         raise ValueError(f"max_variables は 1 以上が必要です: {cfg.max_variables}")
+    if cfg.max_variables > _MAX_VARIABLES_FOR_COUNT:
+        raise ValueError(
+            "max_variables が組合せ計算の安全上限を超えます (CWE-400 対策、"
+            f"F-03-2-014): {cfg.max_variables} > {_MAX_VARIABLES_FOR_COUNT}"
+        )
     if (cfg.input_distribution, cfg.basis) not in SUPPORTED_BASIS_PAIRS:
         raise ValueError(
             "(input_distribution, basis) の組が未対応です (D-28): "
@@ -224,6 +269,12 @@ def count_targets(cfg: IpcConfig) -> int:
     total = 0
     for degree, max_delay in enumerate(cfg.max_delay_by_degree, start=1):
         for n_vars in range(1, min(cfg.max_variables, degree) + 1):
+            if n_vars > max_delay:
+                # max_delay < n_vars では相異なる遅延を n_vars 個選べないので
+                # comb(max_delay, n_vars) は必ず 0 (F-03-2-014: comb 自身も
+                # 0 を返すが、大きい n_vars を許す設定 (_MAX_VARIABLES_FOR_COUNT
+                # 未満でも) での無駄な多倍長整数計算を早期に打ち切る)。
+                continue
             total += math.comb(max_delay, n_vars) * math.comb(degree - 1, n_vars - 1)
     return total
 
