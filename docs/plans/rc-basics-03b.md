@@ -111,7 +111,7 @@
 | 5 | `RowAlignment` の切り出し / 引数集約 dataclass | **04 送り** |
 | 6 | `chunk_size` が性能軸とメモリ軸を兼ねる | **04 送り** (分離に新しい設計判断が要る) |
 | 7 | `diagnostics/__init__.py` の関数 `ipc` によるモジュール名の隠蔽 | **3b では直さない** (公開 API 変更)。§10-1 の注意 + テストを1本 |
-| 8 (F-3b1-1-004, round1 で追加) | `evaluate_capacity_condition` が軌道生成/read-only化/2診断呼び出し/行組み立ての4つを1関数に閉じており、外部生成の `X` (3-C は `run_task` が作る) から `CapacityRow` を作る接ぎ目が無い | **3b-2 の T4 冒頭**で `measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg)` + `capacity_row_from(mc, ipc, *, ...)` の2段に割る別タスクとして切り出す。今回の diff (3b-1) では急いで割らない (行の組み立て約35フィールドを T4 が複製しない限り実害は顕在化しないため) |
+| 8 (F-3b1-1-004, round1 で追加) | `evaluate_capacity_condition` が軌道生成/read-only化/2診断呼び出し/行組み立ての4つを1関数に閉じており、外部生成の `X` (3-C は `run_task` が作る) から `CapacityRow` を作る接ぎ目が無い | **3b-2 準備で対応済み** (下記「3b-2 準備で決めたこと」1)。`measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg)` + `capacity_row_from(measurement, *, ...)` + `capacity_outcome_from(measurement, row)` の3つに割り、`evaluate_capacity_condition` は軌道生成 + この3つを呼ぶ薄い層にした。成果物はバイト不変 |
 
 > **3〜6、8 を 04 / T4 送りにする根拠**: いずれも `diagnostics/` 内部の整理、または T4 が実際に踏むまで
 > 実害の無い接ぎ目であり、3b-1 の成果物の正しさに影響しない。3b-1 で触ると「測定装置の設計判断が
@@ -715,3 +715,138 @@ CJK フォントが無い環境で「日本語の符号位置が1文字も無い
   この構造に新しい辺を足していない (`experiment.capacity` -> `plotting` の向きは 01・02 と同じ、
   循環の形自体は変わっていない)。**04 冒頭の `config.py` package 化と同じ回で扱う**のが自然
   (re-export を遅延 import にするか、pipeline 系を `experiment/__init__` の re-export から外す)。
+
+---
+
+## 3b-2 準備で決めたこと
+
+> サイクル 3b-2 の**着手準備**として行った作業 (T4 の接ぎ目の切り出し + 3b-1 で見送った INFO 5件)
+> の記録。**T4 の本体 (NARMA10 のタスク・実験・図) はここには含まない**。
+> 仕様に書かれていない選択を自分で決めた箇所だけを列挙する。
+
+### 1. `evaluate_capacity_condition` の分割 (F-3b1-1-004 / §3.3-8)
+
+reviewer の推奨は 2段 (`measure_capacity` + `capacity_row_from`) だったが、**3段**にした。
+
+```python
+def measure_capacity(
+    states: FloatArray,
+    u: FloatArray,
+    *,
+    ctx: DiagnosticContext,
+    mc_cfg: MemoryCapacityConfig,
+    ipc_cfg: IpcConfig,
+) -> CapacityMeasurement: ...
+
+def capacity_row_from(
+    measurement: CapacityMeasurement,
+    *,
+    experiment: str,
+    replicate: int,
+    seed_reservoir: int,
+    seed_drive: int,
+    seed_surrogate: int,
+    rho: float,
+    leak_rate: float,
+    input_scale: float,
+    sigma_u: float,
+    n_units: int,
+    density: float,
+    state_noise: float,
+    n_steps: int,
+    washout: int,
+    wall_time_state_s: float,
+    wall_time_s: float,
+) -> CapacityRow: ...
+
+def capacity_outcome_from(
+    measurement: CapacityMeasurement, row: CapacityRow
+) -> CapacityOutcome: ...
+```
+
+**仕様 (§3.3-8) との差分と理由**:
+
+1. **`capacity_row_from` の第1引数を `(mc, ipc)` の2つではなく `CapacityMeasurement` 1つにした** ——
+   行に要る値のうち診断由来のものは `mc` / `ipc` の他に `input_drive_std` (u の実測 s.d.)、
+   `wall_time_mc_s` / `wall_time_ipc_s`、`ipc_thresholds` (次数ごとのしきい値、本数が cfg 依存) の
+   4種類があり、`(mc, ipc)` だけでは呼び出し側がこれらを別途持ち回ることになる。
+   持ち回らせると 3-C 側で「`np.std(u)` を計算し忘れる」「`n_degrees` を別経路で数える」等の
+   複製が復活し、分割の目的 (行の組み立てを1か所に閉じる) が薄まる。
+2. **`capacity_outcome_from` を足した (3段目)** —— `CapacityOutcome` (行 + 図が使う配列) は
+   `profile_rows` と `capacity_pipeline` の入口の型であり、3-C も `capacity.csv` /
+   `capacity_profile.csv` に合流するならここを通る。`measurement.mc.arrays["mc_profile"]` 等の
+   キー名を T4 側に書かせないために、積み替えもここ1か所に置いた。
+3. **`ctx` は `measure_capacity` の引数**で、中では作らない —— 中で作ると
+   「全条件で `ctx` は1個」(D-37) を保証する主体が `Capacity03Config` を持つ経路に限定され、
+   3-C のように条件が `CapacityCondition` で表現できない経路で共通乱数法が崩れる。
+4. **`experiment` 以降はキーワード専用** —— 位置引数だと隣接する同型の値
+   (`rho` / `leak_rate`、3本の `seed_*`) の取り違えが静かに通る。
+
+**D-35 / D-37 の記述を実装に合わせて更新した** (`.claude/decisions.yaml`)。
+read-only 化を「軌道を生成した側」ではなく「診断へ渡す側」(`measure_capacity`) に置いたので、
+外部生成の `X` でも同じ1行で守られる。
+
+**実測 (純粋なリファクタであることの確認)**:
+
+| 対象 | 結果 |
+|---|---|
+| `make figures-03` 再実行 | 328.91s (`make` 全体 330.06s) |
+| `capacity_profile.csv` / 図4枚 / `capacity_length.csv` | **バイト一致** |
+| `capacity.csv` | ヘッダ一致・117行、`wall_time_*` 4列を除き**異なるセル 0 個** |
+| `meta.json` | 差分は `commit` / `timestamp_utc` / `wall_time_*` のみ |
+| `results/` 全22ファイル | 実行後に `capacity.csv` / `meta.json` を復元し、**SHA-256 が全件一致** |
+| D-35 の変異試験 (`states.flags.writeable = False` を削除) | 2 failed / 13 passed (guard_test + 3-C 予行演習テスト) |
+
+> **`sigma_u` を 3-C の行に何と書くかは決めていない** (T4 の判断)。3-C には
+> 「駆動信号の標準偏差の設定値」に当たる設定が無く、NaN / 0.0 / 実測値のどれを書くかで
+> `capacity.csv` の読み方が変わる。予行演習テストは `float("nan")` を渡しているが、
+> これは**接ぎ目が在ることだけ**を測る値であって決定ではない。
+
+### 2. 上限ガードの境界値テスト (F-3b1-2-005)
+
+`>` が `>=` に書き換えられても検出できなかったので、境界の**許容側**を2本で固定した。
+
+- `test_bounds_accept_the_exact_limits` —— 実際の上限ちょうど
+  (`n_units=5,000` かつ `n_units*n_steps=200,000,000`、2軸を同時にちょうど踏む) が
+  `ValueError` にならないことを、軌道生成の入口で番兵例外 `_PastTheGuard` を投げて観測する
+  (このサイズを本当に確保すると重み行列 200MB + 5000x5000 の固有値計算 + 状態行列 1.6GB になる)。
+- `test_exact_limit_condition_runs_to_completion` —— 上限を条件側に合わせて小さく差し替え
+  (`_MAX_UNITS=12` / `_MAX_STATE_ELEMENTS=14,400`)、**確保も診断も実際に走らせて**行が出ることと、
+  上限 + 1 が両軸とも落ちることを固定する。
+
+**決めたこと**: 上限の**値** (5,000 / 2e8) 自体は monkeypatch で差し替えているので、この2本が
+測っているのは**比較演算子の向き**であって値の妥当性ではない。値の根拠は `_MAX_UNITS` /
+`_MAX_STATE_ELEMENTS` の docstring 側に残す (F-3b1-1-017 で書いた確保量の見積り)。
+実測: `>` を `>=` に変えると 2 failed / 13 passed。
+
+### 3. `esn_propagator` に rng を渡さない理由の明文化 (F-3b1-2-006)
+
+**コードは変更していない**。`esn_propagator` の docstring に「意図的に `rng` を渡さない。
+伝播器は決定的でなければならない (`conditional_lyapunov` は摂動の成長率を測るので、
+ノイズを入れると『摂動 + ノイズ実現値の差の成長率』という別の量になる)」を書き、
+04 で 02 経路に `state_noise` を効かせる担当が「単に rng を渡して `ValueError` を黙らせる」
+ことのないよう、**「伝播器はノイズ無しで回す」を別の決定として明文化し guard_test を付ける**
+ことを指示として残した。D-36 の「常に rng を渡す」は**軌道**を作る呼び出しの規律であって
+伝播器は含まない、という線引きをここで初めて文字にしている。
+
+### 4. 比較軌道とノイズの申し送り (F-3b1-2-007)
+
+`simulate_condition` の比較軌道ループの直前にコメントを置いた。`state_noise>0` になると
+(a) 比較軌道が「初期状態もノイズ実現値も違う」軌道になり D-14 の3ストリーム分離に4本目の
+未制御な変動が混ざる、(b) 各軌道が引く乱数は参照軌道が消費した個数に依存するため結果が
+**評価順に依存する**。04 の担当がそこで止まって、ノイズ実現値のストリームを分離するか否かを
+先に決められるようにしてある。
+
+### 5. CSV 合計サイズの訂正 (F-3b1-2-008)
+
+`1.78 MB` → **`1.74 MB` (1,824,677 バイト)**。3箇所 (`.claude/decisions.yaml` の D-38 rationale、
+本書 §8 の性能実測、§9 の実測表) を実測値に直した。誤りの由来は
+`capacity_profile.csv` のバイト数 1,778,605 を「1.78 MB」と読んだことで、
+内訳 (`capacity.csv` 45 KB / `capacity_profile.csv` 1.70 MB) の方は正しかった。
+
+### 6. 実行時間の2山構成の可能性 (F-3b1-2-009)
+
+§9 に注記を追加。**実務上の結論 (最悪観測値ベースで予算判断) は変えていない**。
+なお本作業で取った5標本目は 330.06s (`make` 全体) で **fast 側の山**に入り、
+2山仮説と矛盾しない (ただし4標本 + 1では区別できないので、断定は引き続きしない)。
+
