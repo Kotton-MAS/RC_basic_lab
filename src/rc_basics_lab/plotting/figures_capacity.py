@@ -48,6 +48,12 @@ from rc_basics_lab.experiment.capacity import (
     CapacityProfileRow,
     CapacityRow,
 )
+from rc_basics_lab.experiment.narma import (
+    NARMA10_REFERENCE_NMSE,
+    NARMA10_REFERENCE_NOTE,
+    NARMA10_REFERENCE_NOTE_EN,
+)
+from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
 from rc_basics_lab.plotting.style import StyleContext, rc_params_for
 from rc_basics_lab.types import FloatArray
 
