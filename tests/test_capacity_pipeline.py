@@ -208,6 +208,25 @@ def tiny_experiment(
     return config_path, tmp_path / "out"
 
 
+VOLATILE_COLUMNS: tuple[str, ...] = (
+    "wall_time_state_s",
+    "wall_time_mc_s",
+    "wall_time_ipc_s",
+    "wall_time_s",
+)
+"""実行ごとに変わる実測時間の列 (**列そのものは CSV に残る**)。"""
+
+
+def _without_wall_time(csv_text: str) -> list[list[str]]:
+    """CSV から実測時間の列だけ落とす (02 の ``_without_wall_time`` と同じ形)。"""
+    rows = [line.split(",") for line in csv_text.strip().splitlines()]
+    dropped = {rows[0].index(name) for name in VOLATILE_COLUMNS}
+    return [
+        [field for index, field in enumerate(row) if index not in dropped]
+        for row in rows
+    ]
+
+
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
@@ -257,19 +276,22 @@ def test_run_03_and_main_py_agree(tiny_experiment: tuple[Path, Path]) -> None:
     config_path, out_dir = tiny_experiment
     module = _load_run_03()
     assert module.main(["--config", str(config_path), "--out", str(out_dir)]) == 0
-    from_script = (out_dir / CAPACITY_CSV).read_bytes()
+    from_script = (out_dir / CAPACITY_CSV).read_text(encoding="utf-8")
 
     other = out_dir.parent / "via_main"
     assert main.main(["--experiment", "03", "--out", str(other)]) == 0
-    assert (other / CAPACITY_CSV).read_bytes() == from_script
+    assert _without_wall_time(
+        (other / CAPACITY_CSV).read_text(encoding="utf-8")
+    ) == _without_wall_time(from_script)
 
 
 def test_length_sweep_is_not_part_of_the_production_artifacts(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
-    """``--length-sweep`` は ``capacity_length.csv`` だけを書く (``threshold-02`` と同型)。
+    """``--length-sweep`` は ``capacity_length.csv`` だけを書く。
 
-    本番 (``make figures-03``) に含めると T=1e6 の掃引が 900 秒予算に紛れ込む。
+    ``threshold-02`` (02 の閾値感度) と同型の分離である。本番
+    (``make figures-03``) に含めると T=1e6 の掃引が 900 秒予算に紛れ込む。
     """
     config_path, out_dir = tiny_experiment
     module = _load_run_03()
@@ -440,26 +462,9 @@ def test_conservation_section_does_not_change_the_other_experiments(
             if row.experiment in {EXPERIMENT_MC_SWEEP, EXPERIMENT_IPC_SWEEP}
         ]
         path = write_capacity_csv(rows, tmp_path / f"{config.conservation.rho}.csv")
-        text = path.read_text(encoding="utf-8").splitlines()
         # 実測時間の4列だけは実行ごとに変わるので落とす (列そのものは残る)。
-        volatile = [
-            CAPACITY_CSV_COLUMNS.index(name)
-            for name in (
-                "wall_time_state_s",
-                "wall_time_mc_s",
-                "wall_time_ipc_s",
-                "wall_time_s",
-            )
-        ]
-        stripped = [
-            ",".join(
-                field
-                for index, field in enumerate(line.split(","))
-                if index not in volatile
-            )
-            for line in text
-        ]
-        return "\n".join(stripped).encode("utf-8")
+        stripped = _without_wall_time(path.read_text(encoding="utf-8"))
+        return "\n".join(",".join(row) for row in stripped).encode("utf-8")
 
     assert other_rows(base) == other_rows(changed)
 
