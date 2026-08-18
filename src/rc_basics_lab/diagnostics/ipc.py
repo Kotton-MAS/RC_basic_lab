@@ -527,12 +527,17 @@ def _build_params(
     t0: int,
     n_samples: int,
     n_units: int,
+    chunk_size_effective: int,
     seed: int | None,
 ) -> dict[str, str]:
     """``ipc()`` が返す ``params`` (成果物への再現用メタデータ) を組み立てる。
 
     F-03-1-018 の一環 (集約ループ・scalars 組み立てに続き、この辞書も
-    ``ipc()`` 本体から切り出して 120 行未満に戻す)。
+    ``ipc()`` 本体から切り出して 120 行未満に戻す)。``chunk_size_effective``
+    は F-03-2-001/009 のため: ``chunk_size`` (設定値) は
+    ``CapacityProblem.effective_chunk_size`` で黙って下げられうるので、
+    設定値だけを記録すると成果物のメタデータが「実行に使われなかった値」を
+    記録することになる。
     """
     return {
         "washout": str(washout),
@@ -549,7 +554,9 @@ def _build_params(
         "n_surrogate_targets": str(cfg.n_surrogate_targets),
         "surrogate_quantile": repr(cfg.surrogate_quantile),
         "chunk_size": str(cfg.chunk_size),
+        "chunk_size_effective": str(chunk_size_effective),
         "max_targets": str(cfg.max_targets),
+        "max_degrees": str(cfg.max_degrees),
         "seed": str(seed),
     }
 
@@ -627,7 +634,8 @@ def ipc(
 
     # F-03-1-012/013 の BLOCKER 完了条件 (T=1e6 で peak RSS < 4GB) のため、
     # 実際に使うチャンク列数を T_eff に応じて下げる (結果は変わらない、D-26)。
-    chunk_size = bounded_chunk_size(cfg.chunk_size, n_samples)
+    # F-03-2-001: CapacityProblem 自身に委譲し、呼び出し側での複製を消す。
+    chunk_size = problem.effective_chunk_size(cfg.chunk_size)
     capacities = capacity_of_chunks(
         problem,
         _iter_target_chunks(problem, psi_table, specs, chunk_size=chunk_size),
