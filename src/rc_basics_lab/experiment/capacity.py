@@ -447,20 +447,296 @@ def evaluate_capacity_condition(
         mc_profile=mc.arrays["mc_profile"],
         ipc_heatmap=ipc_result.arrays["ipc_heatmap"],
         ipc_by_degree=ipc_by_degree,
+        ipc_thresholds=tuple(
+            ipc_result.scalars[f"ipc_threshold_degree{degree}"]
+            for degree in range(1, int(ipc_by_degree.shape[0]) + 1)
+        ),
+    )
+
+
+def profile_rows(outcome: CapacityOutcome) -> tuple[CapacityProfileRow, ...]:
+    """1条件の配列を ``capacity_profile.csv`` の長形式の行に落とす (D-38)。
+
+    **しきい値後の容量が厳密に正のセルだけ**を返す。全セルを書くと本番設定で
+    約6万行になり、``results/`` はコミット対象なのでリポジトリがその分だけ
+    重くなる。正値だけに絞る規準は IPC の ``n_targets_kept``
+    (``np.count_nonzero(kept)``) と同じ ``> 0`` であり、「しきい値を超えた」と
+    「行が在る」が1対1に対応する。
+
+    MC は ``degree=1`` 固定・遅延は ``mc_profile`` の index+1、IPC は
+    ``ipc_heatmap`` の (次数, 遅延) セルをそのまま行にする。しきい値は MC が
+    ``row.mc_threshold``、IPC が ``outcome.ipc_thresholds[degree-1]``
+    (**再計算しない**。診断を2回走らせることになるため)。
+    """
+    row = outcome.row
+    rows: list[CapacityProfileRow] = []
+
+    def add(
+        diagnostic: str, degree: int, delay: int, capacity: float, threshold: float
+    ) -> None:
+        rows.append(
+            CapacityProfileRow(
+                experiment=row.experiment,
+                replicate=row.replicate,
+                rho=row.rho,
+                leak_rate=row.leak_rate,
+                n_units=row.n_units,
+                state_noise=row.state_noise,
+                diagnostic=diagnostic,
+                degree=degree,
+                delay=delay,
+                capacity=capacity,
+                threshold=threshold,
+            )
+        )
+
+    for index, capacity in enumerate(outcome.mc_profile):
+        if capacity > 0.0:
+            add(DIAGNOSTIC_MC, 1, index + 1, float(capacity), row.mc_threshold)
+    for degree_index, cells in enumerate(outcome.ipc_heatmap):
+        threshold = outcome.ipc_thresholds[degree_index]
+        for delay_index, capacity in enumerate(cells):
+            if capacity > 0.0:
+                add(
+                    DIAGNOSTIC_IPC,
+                    degree_index + 1,
+                    delay_index + 1,
+                    float(capacity),
+                    threshold,
+                )
+    return tuple(rows)
+
+
+def n_replicates_for(config: Capacity03Config, experiment: str) -> int:
+    """実験ラベルに応じたレプリケート数を返す (**上書きは片方向**)。
+
+    3-B' (``conservation``) だけが ``conservation.n_replicates`` で横断共有の
+    ``reservoir.n_replicates`` を上書きできる。``None`` (既定) なら継承する。
+    ``ipc_config_for`` と同じ形にしてあるのは、3-B' が予算 400 秒と3実験で
+    最も重く、仕様 §7 リスク1 の縮退規則 (「合計見積りが 700 秒を超えた場合に
+    許可される調整は ``conservation.n_replicates`` を 3 → 1 に落とすことだけ」)
+    のノブがそこだけに効く必要があるためである。横断共有を 1 に落とすと
+    3-A / 3-B の平均 +- s.d. まで消え、縮退の意味が変わる。
+
+    Raises:
+        ValueError: レプリケート数が 1 未満の場合。
+    """
+    n_replicates = config.reservoir.n_replicates
+    if (
+        experiment == EXPERIMENT_CONSERVATION
+        and config.conservation.n_replicates is not None
+    ):
+        n_replicates = config.conservation.n_replicates
+    if n_replicates < 1:
+        raise ValueError(f"レプリケート数は 1 以上である必要があります: {n_replicates}")
+    return n_replicates
+
+
+def _sweep(
+    config: Capacity03Config,
+    experiment: str,
+    axes: tuple[CapacityCondition, ...],
+) -> tuple[CapacityOutcome, ...]:
+    """レプリケート番号だけが違う条件を並べて回す共通ループ (02 の ``_sweep``)。
+
+    ``axes`` は ``replicate=0`` の条件の並びで、ここがレプリケートぶん複製する。
+    レプリケートを外側にするのは 02 と同じ並び順にするためで、CSV の行順が
+    実験間で揃う。
+    """
+    started = time.perf_counter()
+    outcomes = tuple(
+        evaluate_capacity_condition(
+            config, dataclasses.replace(condition, replicate=replicate)
+        )
+        for replicate in range(n_replicates_for(config, experiment))
+        for condition in axes
+    )
+    logger.info(
+        "experiment=%s 条件数=%d (軸=%d x レプリケート=%d) wall_time=%.2fs "
+        "(状態生成 %.2fs / MC %.2fs / IPC %.2fs)",
+        experiment,
+        len(outcomes),
+        len(axes),
+        n_replicates_for(config, experiment),
+        time.perf_counter() - started,
+        sum(outcome.row.wall_time_state_s for outcome in outcomes),
+        sum(outcome.row.wall_time_mc_s for outcome in outcomes),
+        sum(outcome.row.wall_time_ipc_s for outcome in outcomes),
+    )
+    return outcomes
+
+
+def run_mc_sweep(config: Capacity03Config) -> tuple[CapacityOutcome, ...]:
+    """実験 3-A: rho x リーク率 に対する線形メモリ容量 (受け入れ条件1)。
+
+    N は ``mc_sweep.n_units`` (既定 200) で、上限線 y=N を引ける規模にする
+    (D-32)。IPC も同じ ``X`` から測る (仕様 §8: 全条件で MC と IPC の両方)。
+    """
+    section = config.mc_sweep
+    return _sweep(
+        config,
+        EXPERIMENT_MC_SWEEP,
+        tuple(
+            CapacityCondition(
+                experiment=EXPERIMENT_MC_SWEEP,
+                rho=rho,
+                leak_rate=leak_rate,
+                n_units=section.n_units,
+                state_noise=0.0,
+                sigma_u=section.sigma_u,
+                n_steps=section.n_steps,
+                replicate=0,
+            )
+            for rho in section.rho_grid
+            for leak_rate in section.leak_rate_grid
+        ),
+    )
+
+
+def run_ipc_sweep(config: Capacity03Config) -> tuple[CapacityOutcome, ...]:
+    """実験 3-B: rho x リーク率 に対する IPC の次数・遅延分解 (受け入れ条件4)。
+
+    N は ``ipc_sweep.n_units`` (既定 50) で 3-A より小さい (D-32)。
+    """
+    section = config.ipc_sweep
+    return _sweep(
+        config,
+        EXPERIMENT_IPC_SWEEP,
+        tuple(
+            CapacityCondition(
+                experiment=EXPERIMENT_IPC_SWEEP,
+                rho=rho,
+                leak_rate=leak_rate,
+                n_units=section.n_units,
+                state_noise=0.0,
+                sigma_u=section.sigma_u,
+                n_steps=section.n_steps,
+                replicate=0,
+            )
+            for rho in section.rho_grid
+            for leak_rate in section.leak_rate_grid
+        ),
+    )
+
+
+def run_conservation_sweep(config: Capacity03Config) -> tuple[CapacityOutcome, ...]:
+    """実験 3-B': N x 状態ノイズ に対する保存則 IPC_total <= N (受け入れ条件2)。
+
+    ``n_units`` が掃引軸そのものであり、IPC の遅延打ち切りだけが
+    ``conservation.max_delay_by_degree`` で深くなる (``ipc_config_for``、片方向)。
+    レプリケート数もこのセクションだけ上書きできる (``n_replicates_for``)。
+    """
+    section = config.conservation
+    return _sweep(
+        config,
+        EXPERIMENT_CONSERVATION,
+        tuple(
+            CapacityCondition(
+                experiment=EXPERIMENT_CONSERVATION,
+                rho=section.rho,
+                leak_rate=section.leak_rate,
+                n_units=n_units,
+                state_noise=state_noise,
+                sigma_u=section.sigma_u,
+                n_steps=section.n_steps,
+                replicate=0,
+            )
+            for n_units in section.n_units_grid
+            for state_noise in section.state_noise_grid
+        ),
+    )
+
+
+def run_length_sweep(config: Capacity03Config) -> tuple[CapacityOutcome, ...]:
+    """系列長 T の掃引 (``make saturation-03``)。**本番の figures-03 に含めない**。
+
+    「容量が足りないのか T が足りないのか」を分けるための補助実験であり、
+    T=1e6 まで回すので単独で 900 秒予算を食い潰す。成果物も
+    ``capacity_length.csv`` に分ける (仕様 §8)。
+    """
+    section = config.length_sweep
+    return _sweep(
+        config,
+        EXPERIMENT_LENGTH_SWEEP,
+        tuple(
+            CapacityCondition(
+                experiment=EXPERIMENT_LENGTH_SWEEP,
+                rho=section.rho,
+                leak_rate=section.leak_rate,
+                n_units=section.n_units,
+                state_noise=0.0,
+                sigma_u=section.sigma_u,
+                n_steps=n_steps,
+                replicate=0,
+            )
+            for n_steps in section.n_steps_grid
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityResults:
+    """``figures-03`` が回す3実験ぶんの結果 (図はそれぞれ別の実験だけを見る)。
+
+    02 の ``EspResults`` と同型。``length_sweep`` は本番に含めない (仕様 §8)
+    ので**ここには入れない** —— 入れると ``make figures-03`` の予算 900 秒に
+    T=1e6 の掃引が紛れ込む。
+    """
+
+    mc_sweep: tuple[CapacityOutcome, ...]
+    ipc_sweep: tuple[CapacityOutcome, ...]
+    conservation: tuple[CapacityOutcome, ...]
+
+    @property
+    def outcomes(self) -> tuple[CapacityOutcome, ...]:
+        """3実験ぶんを宣言順につなげたもの。"""
+        return self.mc_sweep + self.ipc_sweep + self.conservation
+
+    @property
+    def rows(self) -> tuple[CapacityRow, ...]:
+        """``capacity.csv`` に書く行 (3実験ぶん)。"""
+        return tuple(outcome.row for outcome in self.outcomes)
+
+    @property
+    def profile_rows(self) -> tuple[CapacityProfileRow, ...]:
+        """``capacity_profile.csv`` に書く行 (正値セルのみ、D-38)。"""
+        return tuple(row for outcome in self.outcomes for row in profile_rows(outcome))
+
+
+def run_capacity_experiment(config: Capacity03Config) -> CapacityResults:
+    """実験 3-A / 3-B / 3-B' をこの順に回す (``length_sweep`` は含めない)。"""
+    return CapacityResults(
+        mc_sweep=run_mc_sweep(config),
+        ipc_sweep=run_ipc_sweep(config),
+        conservation=run_conservation_sweep(config),
     )
 
 
 __all__ = [
     "CAPACITY_CSV_COLUMNS",
     "CAPACITY_EXPERIMENTS",
+    "CAPACITY_PROFILE_CSV_COLUMNS",
+    "DIAGNOSTIC_IPC",
+    "DIAGNOSTIC_MC",
     "EXPERIMENT_CONSERVATION",
     "EXPERIMENT_IPC_SWEEP",
+    "EXPERIMENT_LENGTH_SWEEP",
     "EXPERIMENT_MC_SWEEP",
+    "FIGURE_EXPERIMENTS",
     "CapacityCondition",
     "CapacityOutcome",
+    "CapacityProfileRow",
+    "CapacityResults",
     "CapacityRow",
     "drive_config_for",
     "evaluate_capacity_condition",
     "ipc_config_for",
+    "n_replicates_for",
+    "profile_rows",
     "reservoir_config_for",
+    "run_capacity_experiment",
+    "run_conservation_sweep",
+    "run_ipc_sweep",
+    "run_length_sweep",
+    "run_mc_sweep",
 ]
