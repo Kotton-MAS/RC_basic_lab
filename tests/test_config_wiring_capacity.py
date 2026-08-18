@@ -38,7 +38,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import pkgutil
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields
 from functools import lru_cache
 from pathlib import Path
@@ -64,8 +64,12 @@ from rc_basics_lab.config import (
     CapacityDriveConfig,
     CapacityReservoirConfig,
     ConfigError,
+    ConservationConfig,
     ExperimentConfig,
     IpcConfig,
+    IpcSweepConfig,
+    LengthSweepConfig,
+    McSweepConfig,
     MemoryCapacityConfig,
     load_config_as,
 )
@@ -232,8 +236,13 @@ def _pending_case(field: str, value: object, task: str, note: str) -> WiringCase
     return case(field, value, channel=CHANNEL_PENDING, task=task, note=note)
 
 
-_SWEEP_PENDING = "掃引 (T2) がまだ無いので、どの条件を回すかを決める葉は実測できない"
 _NARMA_PENDING = "3-C (3b-2 の T4) がまだ無い"
+
+
+def _section_case(field: str, value: object, scope: str) -> WiringCase:
+    """セクション固有の葉。**その実験の行だけ**が変わることまで測る。"""
+    return case(field, value, scope=scope)
+
 
 CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     # name は結果行に出ない純粋なメタ情報。meta.json に載ることを確かめる。
@@ -248,39 +257,41 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("drive.distribution", "gaussian", channel=CHANNEL_ERROR),
     case("drive.washout", 60),
     # --- セクション横断で共有するリザバー構造 (n_units は持たない、D-32) ---
+    # 横断共有なので scope は付かない (全実験の行が動くのが正しい)。
     case("reservoir.input_scale", 2.0),
     case("reservoir.density", 0.6),
-    _pending_case("reservoir.n_replicates", 2, "T2", _SWEEP_PENDING),
+    case("reservoir.n_replicates", 2),
     # --- 3-A: 線形メモリ容量の掃引軸 ---
-    _pending_case("mc_sweep.rho_grid", (0.6, 1.0), "T2", _SWEEP_PENDING),
-    _pending_case("mc_sweep.leak_rate_grid", (0.4, 1.0), "T2", _SWEEP_PENDING),
-    _pending_case("mc_sweep.sigma_u", 0.4, "T2", _SWEEP_PENDING),
-    _pending_case("mc_sweep.n_units", 24, "T2", _SWEEP_PENDING),
-    _pending_case("mc_sweep.n_steps", 2400, "T2", _SWEEP_PENDING),
+    _section_case("mc_sweep.rho_grid", (0.6, 1.0), EXPERIMENT_MC_SWEEP),
+    _section_case("mc_sweep.leak_rate_grid", (0.4,), EXPERIMENT_MC_SWEEP),
+    _section_case("mc_sweep.sigma_u", 0.5, EXPERIMENT_MC_SWEEP),
+    _section_case("mc_sweep.n_units", 14, EXPERIMENT_MC_SWEEP),
+    _section_case("mc_sweep.n_steps", 1400, EXPERIMENT_MC_SWEEP),
     # --- 3-B: IPC の掃引軸 ---
-    _pending_case("ipc_sweep.rho_grid", (0.7, 1.05), "T2", _SWEEP_PENDING),
-    _pending_case("ipc_sweep.leak_rate_grid", (0.5, 1.0), "T2", _SWEEP_PENDING),
-    _pending_case("ipc_sweep.sigma_u", 0.35, "T2", _SWEEP_PENDING),
-    _pending_case("ipc_sweep.n_units", 16, "T2", _SWEEP_PENDING),
-    _pending_case("ipc_sweep.n_steps", 2600, "T2", _SWEEP_PENDING),
-    # --- 3-B': 保存則。打ち切りだけは1条件の配線が消費する (片方向の上書き) ---
-    _pending_case("conservation.n_units_grid", (8, 12), "T2", _SWEEP_PENDING),
-    _pending_case("conservation.state_noise_grid", (0.0, 0.05), "T2", _SWEEP_PENDING),
-    _pending_case("conservation.rho", 0.85, "T2", _SWEEP_PENDING),
-    _pending_case("conservation.leak_rate", 0.7, "T2", _SWEEP_PENDING),
-    _pending_case("conservation.sigma_u", 0.45, "T2", _SWEEP_PENDING),
-    _pending_case("conservation.n_steps", 2800, "T2", _SWEEP_PENDING),
-    case(
-        "conservation.max_delay_by_degree",
-        (12, 6),
-        scope=EXPERIMENT_CONSERVATION,
+    _section_case("ipc_sweep.rho_grid", (0.7,), EXPERIMENT_IPC_SWEEP),
+    _section_case("ipc_sweep.leak_rate_grid", (0.5, 1.0), EXPERIMENT_IPC_SWEEP),
+    _section_case("ipc_sweep.sigma_u", 0.5, EXPERIMENT_IPC_SWEEP),
+    _section_case("ipc_sweep.n_units", 16, EXPERIMENT_IPC_SWEEP),
+    _section_case("ipc_sweep.n_steps", 1300, EXPERIMENT_IPC_SWEEP),
+    # --- 3-B': 保存則。打ち切りとレプリケート数はこの実験だけを上書きする ---
+    _section_case("conservation.n_units_grid", (8, 12), EXPERIMENT_CONSERVATION),
+    _section_case(
+        "conservation.state_noise_grid", (0.0, 0.05), EXPERIMENT_CONSERVATION
     ),
+    _section_case("conservation.rho", 0.85, EXPERIMENT_CONSERVATION),
+    _section_case("conservation.leak_rate", 0.7, EXPERIMENT_CONSERVATION),
+    _section_case("conservation.sigma_u", 0.55, EXPERIMENT_CONSERVATION),
+    _section_case("conservation.n_steps", 1500, EXPERIMENT_CONSERVATION),
+    _section_case("conservation.max_delay_by_degree", (12, 6), EXPERIMENT_CONSERVATION),
+    # None なら reservoir.n_replicates を継承する片方向の上書き (仕様 §7 の
+    # 縮退規則のノブ)。3-B' の行だけが増える。
+    _section_case("conservation.n_replicates", 2, EXPERIMENT_CONSERVATION),
     # --- 系列長掃引 (make saturation-03。本番の figures-03 には含めない) ---
-    _pending_case("length_sweep.n_steps_grid", (1500, 3000), "T2", _SWEEP_PENDING),
-    _pending_case("length_sweep.rho", 0.88, "T2", _SWEEP_PENDING),
-    _pending_case("length_sweep.leak_rate", 0.8, "T2", _SWEEP_PENDING),
-    _pending_case("length_sweep.sigma_u", 0.25, "T2", _SWEEP_PENDING),
-    _pending_case("length_sweep.n_units", 18, "T2", _SWEEP_PENDING),
+    _section_case("length_sweep.n_steps_grid", (1100, 1600), EXPERIMENT_LENGTH_SWEEP),
+    _section_case("length_sweep.rho", 0.6, EXPERIMENT_LENGTH_SWEEP),
+    _section_case("length_sweep.leak_rate", 0.5, EXPERIMENT_LENGTH_SWEEP),
+    _section_case("length_sweep.sigma_u", 0.6, EXPERIMENT_LENGTH_SWEEP),
+    _section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
     # --- 3-C: NARMA10 (3b-2 の T4) ---
     _pending_case("narma.length", 4000, "T4", _NARMA_PENDING),
 )
@@ -316,9 +327,7 @@ def fingerprint(rows: Sequence[CapacityRow], experiment: str | None = None) -> s
 
 def run_config(config: Capacity03Config) -> tuple[CapacityRow, ...]:
     """縮小設定で4実験の掃引を回して結果行を得る。"""
-    return tuple(
-        outcome.row for sweep in SWEEPS for outcome in sweep(config)
-    )
+    return tuple(outcome.row for sweep in SWEEPS for outcome in sweep(config))
 
 
 @lru_cache(maxsize=1)
