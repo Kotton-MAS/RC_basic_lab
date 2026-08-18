@@ -337,6 +337,18 @@ def _expected_solve_count(cfg: IpcConfig, n_samples: int) -> int:
     (設定値) ではなく実効値 (``ceil(K / effective_chunk_size)``) を使う。
     従来の閉形式は「上限が発動しない規模」でしか検証しておらず、本番規模
     (T=1e6 級) で崩れていた (HIGH: 期待2回に対し実際4回)。
+
+    F-03-3-023: ここは本番の ``bounded_chunk_size`` を直接呼んで実効値を得る
+    ため、``bounded_chunk_size`` 自体にバグがあると期待値側も同じバグを
+    踏んで一致し、``test_gram_solve_count_does_not_scale_with_target_count``
+    単独では検知できない (実測: バイト予算計算を4倍過剰に厳しくする変異を
+    注入し、このテストだけを単独実行すると 1 passed で素通りする)。
+    ``bounded_chunk_size`` 自身の正しさ (バイト予算からの独立な計算) は
+    ``tests/test_diagnostics_memory_capacity.py`` の
+    ``test_bounded_chunk_size_truncates_when_over_budget`` /
+    ``test_bounded_chunk_size_keeps_configured_when_under_budget`` /
+    ``test_bounded_chunk_size_never_returns_less_than_one`` が別途固定する
+    (``make ci`` のフルスイート実行では検知される)。
     """
     effective = bounded_chunk_size(cfg.chunk_size, n_samples)
     n_targets = count_targets(cfg)
