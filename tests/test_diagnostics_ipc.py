@@ -969,6 +969,7 @@ def test_ipc_config_fields_change_output() -> None:
         ),
         (IpcConfig(max_variables=0), "max_variables"),
         (IpcConfig(max_variables=21), "max_variables"),
+        (IpcConfig(max_degrees=33), "max_degrees"),
         (IpcConfig(alpha=-1.0), "alpha"),
         (IpcConfig(threshold_mode="bonferroni"), "threshold_mode"),
         (IpcConfig(chunk_size=0), "chunk_size"),
@@ -983,6 +984,21 @@ def test_out_of_range_config_raises(cfg: IpcConfig, message: str) -> None:
     states, inputs = _cached_states(0.9, 15, 4000, 5)
     with pytest.raises(ValueError, match=message):
         ipc(states, inputs, ctx=DiagnosticContext(seed=CTX_SEED), cfg=cfg)
+
+
+def test_max_variables_boundary_value_20_is_accepted() -> None:
+    """``max_variables`` の上限ちょうど (20) は成功する (境界値、F-03-3-022)。
+
+    上限違反 (21) と下限違反 (0) は ``test_out_of_range_config_raises`` が
+    カバーするが、成功すべき境界値 20 のテストが無かった。off-by-one で
+    20 を誤って拒否しても、境界値の正常系テストが無ければ検出できない
+    (実測: `_MAX_VARIABLES_FOR_COUNT` の比較を `>` から `>=` に変異させても
+    tests/test_diagnostics_ipc.py の既存テストは1件も落ちない)。
+    """
+    states, inputs = _cached_states(0.9, 15, 4000, 5)
+    cfg = IpcConfig(max_delay_by_degree=(30,) * 20, max_variables=20, max_degrees=20)
+    result = ipc(states, inputs, ctx=DiagnosticContext(seed=CTX_SEED), cfg=cfg)
+    assert np.isfinite(result.scalars["ipc_total"])
 
 
 def test_ipc_requires_single_channel_input() -> None:
