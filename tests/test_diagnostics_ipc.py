@@ -771,11 +771,13 @@ def test_surrogate_base_matrix_never_exceeds_the_effective_chunk_size(
     max_columns_seen = 0
     original_empty = np.empty
 
-    def spying_empty(shape: object, *args: object, **kwargs: object) -> FloatArray:
+    def spying_empty(
+        shape: tuple[int, ...] | int, dtype: type[np.float64] = np.float64
+    ) -> FloatArray:
         nonlocal max_columns_seen
         if isinstance(shape, tuple) and len(shape) == 2 and shape[0] == n_samples:
             max_columns_seen = max(max_columns_seen, shape[1])
-        return original_empty(shape, *args, **kwargs)  # type: ignore[arg-type]
+        return original_empty(shape, dtype=dtype)
 
     monkeypatch.setattr(np, "empty", spying_empty)
     ipc(states, inputs, ctx=ctx, cfg=cfg)
