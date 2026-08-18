@@ -25,6 +25,7 @@ from rc_basics_lab.diagnostics._capacity import (
     NORMAL,
     UNIFORM,
     CapacityProblem,
+    bounded_chunk_size,
     orthonormal_basis,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
@@ -328,17 +329,25 @@ def test_threshold_mode_changes_total_capacity() -> None:
 # --------------------------------------------------------------------------
 
 
-def _expected_solve_count(cfg: IpcConfig) -> int:
-    """``fit_ridge_from_gram`` の想定呼び出し回数 (目標チャンク + サロゲート)。"""
+def _expected_solve_count(cfg: IpcConfig, n_samples: int) -> int:
+    """``fit_ridge_from_gram`` の想定呼び出し回数 (目標チャンク + サロゲート)。
+
+    F-03-2-001: ``chunk_size`` は ``CapacityProblem.effective_chunk_size``
+    (``bounded_chunk_size``) で下げられうるため、閉形式は ``cfg.chunk_size``
+    (設定値) ではなく実効値 (``ceil(K / effective_chunk_size)``) を使う。
+    従来の閉形式は「上限が発動しない規模」でしか検証しておらず、本番規模
+    (T=1e6 級) で崩れていた (HIGH: 期待2回に対し実際4回)。
+    """
+    effective = bounded_chunk_size(cfg.chunk_size, n_samples)
     n_targets = count_targets(cfg)
-    total = math.ceil(n_targets / cfg.chunk_size)
+    total = math.ceil(n_targets / effective)
     for degree, max_delay in enumerate(cfg.max_delay_by_degree, start=1):
         per_degree = sum(
             math.comb(max_delay, n_vars) * math.comb(degree - 1, n_vars - 1)
             for n_vars in range(1, min(cfg.max_variables, degree) + 1)
         )
         selected = min(cfg.n_surrogate_targets, per_degree)
-        total += math.ceil(selected * cfg.n_surrogates / cfg.chunk_size)
+        total += math.ceil(selected * cfg.n_surrogates / effective)
     return total
 
 
@@ -412,7 +421,16 @@ def test_chunk_size_does_not_change_results() -> None:
     ctx = DiagnosticContext(washout=100, seed=CTX_SEED)
     reference = ipc(states, inputs, ctx=ctx, cfg=SMALL_CFG)
 
-    for chunk_size in (1, 7, 64, 1000):
+    # F-03-2-018: 20_000 は bounded_chunk_size の 128MiB 予算を実際に超え、
+    # 無条件切り詰め (キャップ) が発動する。「キャップが発動しない規模」しか
+    # 通っていなかった既存テストに、発動する規模のケースを1件足す。
+    n_samples = int(reference.params["n_samples"])
+    capped_chunk_size = 20_000
+    assert bounded_chunk_size(capped_chunk_size, n_samples) < capped_chunk_size, (
+        "この chunk_size ではキャップが発動しません (テストの前提が崩れています)"
+    )
+
+    for chunk_size in (1, 7, 64, 1000, capped_chunk_size):
         other = ipc(
             states,
             inputs,
