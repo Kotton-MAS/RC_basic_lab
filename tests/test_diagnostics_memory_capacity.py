@@ -240,7 +240,7 @@ def test_capacity_is_monotone_decreasing_in_alpha() -> None:
         )["mc_total_raw"]
         for alpha in (1.0e-9, 1.0e-6, 1.0e-3, 1.0, 100.0)
     ]
-    for smaller, larger in zip(totals, totals[1:], strict=True):
+    for smaller, larger in zip(totals[:-1], totals[1:], strict=True):
         assert larger <= smaller + 1.0e-9, f"alpha に対して容量が増えました: {totals}"
     assert totals[-1] < totals[0], f"alpha=100 で容量が減っていません: {totals}"
 
