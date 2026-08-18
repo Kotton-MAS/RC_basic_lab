@@ -341,7 +341,17 @@ def test_chunk_size_does_not_change_results() -> None:
     base_cfg = MemoryCapacityConfig(max_delay=120, n_surrogates=40, chunk_size=256)
     reference = memory_capacity(states, inputs, ctx=ctx, cfg=base_cfg)
 
-    for chunk_size in (1, 7, 64, 1000):
+    # F-03-2-018: 20_000 は bounded_chunk_size の 128MiB 予算を実際に超え、
+    # 無条件切り詰め (キャップ) が発動する (n_samples=1880 で budget<9000)。
+    # 「キャップが発動しない規模」しか通っていなかった既存テストに、発動する
+    # 規模のケースを1件足す。
+    n_samples = int(reference.params["n_samples"])
+    capped_chunk_size = 20_000
+    assert bounded_chunk_size(capped_chunk_size, n_samples) < capped_chunk_size, (
+        "この chunk_size ではキャップが発動しません (テストの前提が崩れています)"
+    )
+
+    for chunk_size in (1, 7, 64, 1000, capped_chunk_size):
         other = memory_capacity(
             states,
             inputs,
