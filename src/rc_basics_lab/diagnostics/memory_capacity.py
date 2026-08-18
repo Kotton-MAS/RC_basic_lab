@@ -206,8 +206,10 @@ def memory_capacity(
     # 既定の chunk_size=256 のままでは満たせない (1チャンクが T_eff * 256 *
     # 8byte に達し、生成器のチャンク境界での一時的な2重生存と合わさって
     # 4GB を超える)。結果を変えない性能パラメータのまま (D-26)、実際に使う
-    # チャンク列数だけを T_eff に応じて下げる (`_capacity.bounded_chunk_size`)。
-    chunk_size = bounded_chunk_size(cfg.chunk_size, n_samples)
+    # チャンク列数だけを T_eff に応じて下げる。F-03-2-001: 呼び出し側で
+    # ``_capacity.bounded_chunk_size`` を直接呼ぶ代わりに ``CapacityProblem``
+    # 自身に委譲し、IPC 側と同じ規律の複製を防ぐ。
+    chunk_size = problem.effective_chunk_size(cfg.chunk_size)
 
     # 正規直交化は系列全体で1回だけ行う (遅延ごとに標準化し直すと、遅延ごとに
     # 別の測度で直交化することになり保存則が破れる)。次数1は入力分布に
@@ -266,6 +268,7 @@ def memory_capacity(
             "n_surrogates": str(cfg.n_surrogates),
             "surrogate_quantile": repr(cfg.surrogate_quantile),
             "chunk_size": str(cfg.chunk_size),
+            "chunk_size_effective": str(chunk_size),
             "seed": str(context.seed),
         },
     )

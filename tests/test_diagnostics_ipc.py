@@ -671,9 +671,11 @@ def test_max_targets_also_bounds_the_heatmap_cell_count() -> None:
     ``np.zeros`` を確保する経路が残っていないことを確認する。
     """
     # count_targets はここでは少ないが (max_variables=1 なので次数ごとに
-    # max_delay 本)、heatmap は 1000 x 500 = 500,000 セルになる。
+    # max_delay 本)、heatmap は 20 x 11000 = 220,000 セルになる。次数の本数
+    # (20) は max_degrees の既定値ちょうど (F-03-2-013 の独立な上限には
+    # 抵触しない設定で、heatmap_cells の検査だけを単独で踏む)。
     cfg = IpcConfig(
-        max_delay_by_degree=(500,) + (1,) * 999,
+        max_delay_by_degree=(11_000,) + (1,) * 19,
         max_variables=1,
         max_targets=200_000,
     )
