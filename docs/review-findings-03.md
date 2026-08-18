@@ -63,3 +63,31 @@ gram_new)` は両方とも `True` だった (再現: `/tmp` の使い捨てス�
 reviewer は別データ・別条件で最大 `1.66e-10` を報告しており、オーダーは一致する)。今回の
 `from_states` 経路の入力 (低ランク信号+微小ノイズが典型) ではたまたま一致しただけで、データ形状・
 numpy/BLAS バージョン・プラットフォームが変われば丸め誤差レベルでの乖離がありうる。
+
+## サイクル 3a round 2 (`F-03-2-xxx`)
+
+round 1 の BLOCKER 修正 (F-03-1-012/013) の副産物として fixer が指示に無いまま追加した
+`bounded_chunk_size` を、4つの reviewer が独立に突いた回 (BLOCKER 1 / HIGH 2 / MEDIUM 10 / INFO 7)。
+
+| ID | severity | 概要 |
+|---|---|---|
+| F-03-2-001 | HIGH | `bounded_chunk_size` の実効値が `params['chunk_size']` に反映されず (設定値をそのまま記録)、D-26 guard の閉形式 (`ceil(K/chunk_size)`) が本番規模 (T=200000) で崩れていた (期待2回、実際4回)。適用も `ipc.py` 2箇所・`memory_capacity.py` 1箇所に手書きで複製されていた。`CapacityProblem.effective_chunk_size(configured)` を追加して3箇所の複製を解消し、`params['chunk_size_effective']` を追加、D-26 の guard (`test_gram_solve_count_does_not_scale_with_target_count`) にキャップが実際に発動する規模のケースを足して閉形式を `ceil(K/effective_chunk_size)` に更新した。 |
+| F-03-2-002 | MEDIUM | `_MAX_CHUNK_BYTES=128MiB` と「設定値は変えず実効値だけ内部で縛る」判断が decisions.yaml にも design.md にも plan doc にも記録されていなかった。`.claude/decisions.yaml` に D-29 を追加し、`docs/design.md` §11 の既定値表に `_MAX_CHUNK_BYTES` / `max_degrees` の行を足した。 |
+| F-03-2-003 | MEDIUM | `CapacityProblem.x` が呼び出し側 `X` のビューであるため、`from_states` 後に `X` を書き換えると `gram` と desync し、例外も警告もなく誤った容量が返る (実測: 容量 1.2553668e+08)。`CapacityProblem` の docstring (クラス docstring と `x`/`gram` の Attributes) に「`from_states` 後に元の `X` を書き換えてはならない」契約を明記した。 |
+| F-03-2-004 | MEDIUM | `ipc.py` の `__all__` に `LEGENDRE`/`HERMITE`/`UNIFORM`/`NORMAL`/`SUPPORTED_BASIS_PAIRS` (既に import 済み) が無く、`threshold_mode` 側の語彙とだけ公開方針が割れていた。3b を待たず `__all__` に5シンボルを追加した (F-03-1-002 の3b送りを round 2 で前倒しで解消)。 |
+| F-03-2-005 | INFO | `CapacityProblem.lagged` が窓計算専用でテストがダミー状態行列を構築している件。reviewer 自身が「対応不要、3b で `RowAlignment` 切り出しを検討」と結論。対応不要。 |
+| F-03-2-006 | INFO | F-03-1-001 (窓計算の複製解消) が実効であることの確認結果 (変異注入3種で検出、MC/IPC の基準点一致を確認)。対応不要。 |
+| F-03-2-007 | MEDIUM | `docs/review-findings-03.md` (旧版) が浮動小数の丸め差分の根拠を「fixer の最終報告 (会話ログ)」としており、リポジトリ内の成果物ではなく再現不能だった。実測値 (`np.array_equal` による bit-for-bit 一致の確認、`ones.T@X` vs `np.sum` の丸め差分) を本文に直接書き、再現コマンドも残した。あわせて「丸めはわずかに異なりうる」という記述が実測 (bit-for-bit 一致) より弱かった点も「実測した条件下では一致したが、アルゴリズム的に保証されているわけではない」に訂正した (F-03-2-012 も同時に解消)。 |
+| F-03-2-008 | INFO | `bounded_chunk_size` だけ Args/Returns セクションが無かった。追加した (安価な修正のため対応)。 |
+| F-03-2-009 | MEDIUM | `chunk_size` を大きく明示指定しても無条件に切り下げられ、`params` にも切り下げ後の値が記録されないため利用者が気づけなかった。F-03-2-001 の `chunk_size_effective` で解決し、`bounded_chunk_size` の docstring に「大きい方向の意図は保護されない」旨を明記した。 |
+| F-03-2-010 | INFO | BLOCKER 2件 (F-03-1-012/013) の解消を reviewer が独立に実測確認した結果 (IPC 0.93GB / MC 2.11GB)。対応不要。 |
+| F-03-2-011 | INFO | 実行時間の悪化なし (むしろ約7%高速) の確認結果。対応不要。 |
+| F-03-2-012 | INFO | ブロック分解後の bit-for-bit 一致と、`ones.T@X` vs `np.sum` の丸め差分 (最大 1.66e-10) の実測。F-03-2-007 の文書修正に統合して対応した。 |
+| F-03-2-013 | MEDIUM | CWE-789。`max_targets` / heatmap のセル数検査は次数の本数 (`len(max_delay_by_degree)`)、延いては `psi_table` (次数 x 系列長) の確保サイズを縛っていなかった (実測: n_degrees=1400, T=200000 で psi_table 単独 peak RSS 2.69GB)。`IpcConfig.max_degrees` (既定20) を追加し、`_validate_config` で確保前に検査するようにした。 |
+| F-03-2-014 | MEDIUM | CWE-400。`count_targets` の閉形式が `max_variables` の上限を持たず、大きい値では多倍長整数の組合せ計算がハングしうる (実測: D=V=4000 で 373.73s)。`_validate_config` に `max_variables` の独立な安全上限 (20) を追加し、`count_targets` にも `n_vars > max_delay` の早期打ち切りを追加した。 |
+| F-03-2-015 | MEDIUM | CWE-789。BLOCKER 修正でサロゲート列の生成はチャンク化されたが、その入力である代表目標行列 `base` は対象外で `chunk_size=1` を指定しても効かなかった (実測: K=400, T=1e6 で base 単独 peak RSS 3.23GB)。`_degree_thresholds` で `picked` (代表目標の index) 自体も `chunk_size` と同じ予算で分割し、`base` を一括確保しない形にした。 |
+| F-03-2-016 | MEDIUM | `capacity_of_targets()` の docstring 本文が phi→x のブロック分解 (F-03-1-013) 前の実装を説明したまま残っていた。モジュール先頭 docstring やコード内コメントと同じ書き振りに揃えた。 |
+| F-03-2-017 | INFO | `_aggregate_by_cell` 等4関数が引数6個で目安の5個を超える件。reviewer 自身が「急いで直す必要はない、3b で検討」と結論。対応不要。 |
+| F-03-2-018 | BLOCKER | `bounded_chunk_size` を no-op に差し替えても既存58テストが1件も落ちない空虚な安全機構だった (テスト規模では切り詰め分岐が一度も真にならないため)。直接の単体テスト (configured<budget で無変更 / configured>budget で切り詰め / n_samples<=0 の防御分岐 / 下限 max(1,...)) を追加し、`test_chunk_size_does_not_change_results` にキャップが実際に発動するケースを1件追加した。in-process で `bounded_chunk_size` を no-op 化すると5テストが失敗することを確認済み。 |
+| F-03-2-019 | HIGH | `mc_ratio >= 0.2` は rho=0.5 では約48〜50%喪失で検出できるが rho=0.9/0.99 では約65〜70%喪失まで通過し、IPC の `saturation_ratio >= 0.5` (約30%喪失で検出) より明確に緩かった。rho ごとの個別下限 (`_MC_RATIO_LOWER_BOUND = {0.5: 0.25, 0.9: 0.4, 0.99: 0.4}`) に変更し、実測で破断点が33%/36%/39%喪失になることを確認した (IPC と同水準の30〜45%レンジ)。 |
+| F-03-2-020 | MEDIUM | `CapacityProblem.lagged` の `values.ndim != 1` 分岐がテストで一度も実行されず coverage で Missing だった。`test_capacity_problem_lagged_rejects_multi_dimensional_series` を追加した。 |
