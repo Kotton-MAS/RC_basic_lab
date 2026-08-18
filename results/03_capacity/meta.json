@@ -1,5 +1,6 @@
 {
-  "commit": "e57cbf23188c681917f9fbf6b4ab4ed3c82f5c1e",
+  "cjk_font": "Hiragino Sans",
+  "commit": "508493d48ea87a54df871dd724c8c8b508068205",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -203,32 +204,32 @@
     "reservoir": 0,
     "surrogate": 4
   },
-  "timestamp_utc": "2026-08-18T15:13:55.578716+00:00",
+  "timestamp_utc": "2026-08-18T15:46:56.499731+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 20.739010917866835,
-      "wall_time_mc_s": 2.8863207069807686,
-      "wall_time_s": 28.836956455983454,
-      "wall_time_state_s": 5.209423707041424
+      "wall_time_ipc_s": 20.90345732899732,
+      "wall_time_mc_s": 2.8999208790191915,
+      "wall_time_s": 29.03669442096725,
+      "wall_time_state_s": 5.231151376850903
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 55.973877832031576,
-      "wall_time_mc_s": 6.389040754031157,
-      "wall_time_s": 73.45644854102284,
-      "wall_time_state_s": 11.090703376044985
+      "wall_time_ipc_s": 56.88631796010304,
+      "wall_time_mc_s": 6.589935082971351,
+      "wall_time_s": 74.44620187397231,
+      "wall_time_state_s": 10.967027167062042
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 187.85118199890712,
-      "wall_time_mc_s": 15.52801537202322,
-      "wall_time_s": 222.27710708189989,
-      "wall_time_state_s": 18.894447083002888
+      "wall_time_ipc_s": 189.19852608404472,
+      "wall_time_mc_s": 15.869961539981887,
+      "wall_time_s": 223.9898492488719,
+      "wall_time_state_s": 18.917930374998832
     }
   ],
-  "wall_time_s": 324.57369750001817
+  "wall_time_s": 327.47813875001157
 }
