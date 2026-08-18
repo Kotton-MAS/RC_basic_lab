@@ -233,3 +233,28 @@
   rule: "受け入れ条件1 (MC のプロファイルが rho とともに伸びる) の単調性は rho <= 1.0 の範囲でのみ要求する。rho > 1.0 は ESP が崩れる領域であり、記憶容量は臨界点近傍 (rho = 1.0) で最大になる。あわせて『格子の最大 rho (1.1) が格子の最大値ではない』ことを固定し、この制限の根拠 (rho=1.1 で実際に下がる) が消えたらテストが落ちるようにする"
   rationale: "仕様 docs/plans/rc-basics-03b.md §4 T2 の受け入れ基準は『mc_effective_delay が rho に単調非減少』と書いていたが、本番格子 (rho in {0.5,0.7,0.9,0.95,1.0,1.1}) に対してこの文言は**誤り**だった。本番実測 (3-A、3レプリケート平均の mc_effective_delay): leak=0.3 で 20.99 / 30.63 / 49.62 / 58.95 / **69.40 (rho=1.0)** / 60.24 (rho=1.1)、leak=0.6 で 11.78 / 15.80 / 22.06 / 25.00 / **35.73** / 26.98、leak=1.0 で 9.20 / 11.64 / 16.29 / 18.19 / **21.74** / 21.37。3つの leak すべてで rho=1.0 がピークで rho=1.1 で落ちる。これは測定の失敗ではなく『rho>1 では ESP が崩れて記憶容量が下がる = 容量は臨界点近傍で最大になる』という 3-A が見せたい現象そのものである。仕様 §7 リスク2 の (a) 駆動強度は T2-5 の較正で切り分け済みで、sigma_u in {0.05,0.1,0.2,0.5} の4点すべてでどこかの leak が rho=1.1 で低下する (0.05 は rho<=1.0 の内側でも非単調、0.5 は比が 1.5 未満)。(b) T 不足も make saturation-03 の実測 (T=1e5 -> 1e6 で mc_total 15.153 -> 15.138) で切り分け済み。したがって格子から 1.1 を外す (= 条件数を動かす) のではなく**仕様の文言の方を訂正**し、実装 (T2 が書いたテスト) を正とする。guard_test は3点を固定する: (i) rho <= 1.0 でレプリケート平均が単調非減少、(ii) 格子の最大 rho (1.1) の値が最小 rho (0.5) の 1.5 倍以上 (仕様の文言どおり)、(iii) rho=1.1 が格子の最大値ではない —— (iii) があるので、物理が変わって rho=1.1 が最大になった場合はここが赤くなり、(i) の制限を残す根拠が消えたことに気づける"
   guard_test: "tests/test_capacity_pipeline.py::test_mc_effective_delay_increases_with_rho"
+
+# サイクル 3b-2 T4 (docs/plans/rc-basics-03b.md §4 T4 / §6)。D-29〜D-31 は
+# docs/plans/rc-basics-03.md §6 が 3b 用に予約していた採番で、rule は予約時の
+# 文言のまま、rationale に T4 の実装で確かめた実測値を足した版が正本。
+# D-39 は仕様 §8 でユーザー承認済み (3-C の ESN 規模)。
+
+- id: D-29
+  rule: "NARMA10 は y[t+1] = 0.3 y[t] + 0.05 y[t] sum_{i=0}^{9} y[t-i] + 1.5 u[t-9] u[t] + 0.1, u ~ U[0, 0.5] i.i.d. を採用する。記事にはこの式をそのまま載せる。係数と入力分布は tasks/narma.py のモジュール定数とし、設定フィールドにはしない (Narma10Config が持つのは length と 01 側の土台 base だけ)"
+  rationale: "要件書 未確定3 / サーベイ Q2: 文献の添字が2系統 (1.5 u(n-9) u(n) 系と 1.5 u(k-1) u(k-10) 系) に割れており、どちらを使ったかで数値が変わるのに明記されないことが多い。実験3-C の直接の先行 (Goudarzi 2014) がこの形なので比較可能性を優先する。係数・入力分布を設定にしないのは、YAML の1行変更で『記事に載せた式』と成果物の対応が黙って切れる経路を作らないため (D-09 の未知キー検査と同じ規律の適用先)。guard_test は先頭5ステップ (y[10]..y[14]) を、実装のループでも実装のモジュール定数でもなく**1ステップずつ書き下した有理数 (Fraction) の式**と 1e-12 以内で照合する —— 実装と同じ定数・同じループを参照すると添字を取り違えたまま両方が同じ値を出す同語反復になるため。手計算の先頭値は y[10] = 1.5*u[0]*u[9] + 0.1 = 0.1675 で、テストにリテラルでも置いてある。添字を1つずらした版がこの値と一致しないことは test_shifted_index_would_not_match が別途実測する (guard_test が空虚でないことの確認)"
+  guard_test: "tests/test_tasks_narma.py::test_matches_reference_recurrence"
+
+- id: D-30
+  rule: "NARMA10 の発散 (|y| > 1e3 または非有限) は ValueError にする。クリップも自動再抽選もしない"
+  rationale: "NARMA10 は入力次第で発散する既知の系であり、黙ってクリップすると『クリップの飽和特性』という別の非線形性を手法に与えることになる (遅延線対照が不当に有利/不利になる)。再抽選も、どのシードが捨てられたかが記録されないと 3-C の公平性の外に穴が開く。実測 (T4): 宣言した分布 U[0, 0.5] の**内側**でも発散は普通に起きる —— np.random.default_rng(s) の s=0..199 のうち 6 本 (75 / 83 / 107 / 111 / 140 / 144) が length=8000 で発散し、定数入力 u=0.5 は 33 ステップで発散する。本番の 5 レプリケート (task ストリーム、seeds.task=1) は発散せず 3-C は回るが、**レプリケート7 は発散する**ので narma.base.n_replicates を 7 以上にするときは D-30 で落ちることを承知の上で行うこと (test_production_replicates_do_not_diverge が両方を実測している)"
+  guard_test: "tests/test_tasks_narma.py::test_divergence_raises_instead_of_clipping"
+
+- id: D-31
+  rule: "実験3-C は 01 の run_task を再利用し、TaskEntry を 03 側 (experiment/narma.py) で組み立てる。build_tasks / ExperimentConfig に NARMA10 を足さない。レプリケート0 の ReplicatePlan は 3-C 側で1回だけ作り run_task(base, entry, plan0=plan0) へ渡す"
+  rationale: "要件書 設計判断4。build_tasks に足すと 01 の comparison.csv に行が増えて 01 の成果物が変わり D-13 の分離も崩れる。run_task は task_entry を引数に取るので、公平性の3決定 (D-04 同一 alpha 格子 / D-05 同一分割 / D-08 構造 HP を検証分割で選ばない) を1行も書き写さずに 3-C へ効かせられる。plan0 を渡す形 (F-1-009 の前例: 01 の pipeline が collect_state_space に対してやっているのと同じ) にするのは、『NARMA10 を解いた ESN』と『容量 (MC/IPC) を測った ESN』が同一のリザバー・同一の状態行列であることを構造で保証するため —— plan_replicate を2回呼んでも同じシードなら同じ値になるが、それは偶然の一致であって片方の n_steps やシードを変えれば黙って別物になる。実測 (T4): 01 の本番設定を再生成して results/comparison.csv と突き合わせたところ wall_time_s 列を除いて完全一致 (test_01_artifacts_are_unchanged)。guard_test は run_task がちょうど1回 plan0 つきで呼ばれること・3手法 x 全レプリケートの行が出ること・同一レプリケート内で (t0, n_train, n_val, n_test) が全手法で一致すること (D-05)・build_tasks に narma10 が混ざっていないことを同時に固定する。状態行列の同一性 (同じオブジェクトであること、および run_task がレプリケート0 を作り直していないこと) は test_narma10_capacity_uses_the_same_states_as_the_esn_run が別途実測する"
+  guard_test: "tests/test_experiment_narma.py::test_narma10_reuses_run_task_and_shares_rows_across_methods"
+
+- id: D-39
+  rule: "実験3-C の ESN は N=50 とし、3-B (IPC 掃引) と同じリザバー規模にする。読む ESN セクションは narma.base.esn_mackey_glass の1本だけとし、その解決は experiment/narma.py の narma_esn_config に閉じる"
+  rationale: "仕様 docs/plans/rc-basics-03b.md §6 / §8 (ユーザー承認済み、2026-08-18)。参照値 (NMSE 0.16 / 0.107) が N = 50 規模の報告であり、N=200 で回すと『先行より良い』が規模差なのか対照設計の差なのか分離できない。3-B (IPC 掃引 N=50) とそのまま突き合わせられる利点もある (3-C の容量行は experiment=3C_narma10 として同じ capacity.csv に出る)。D-08 により N は検証分割で選ばれないので、宣言した1点をそのまま報告する。読むセクションを1本に決めて narma_esn_config に閉じるのは、narma.base が 01 の ExperimentConfig をまるごと内包していて ESN セクションが2本あるためで、Mackey-Glass 側を選ぶのは NARMA10 が連続値入力の回帰課題で漏れ積分が効く点で MG と同型だからである (esn_delay_parity は ±1 の2値入力・leak=1.0 前提)。guard_test は宣言 (NARMA10_ESN_SECTION) と実際に TaskEntry へ載る ESN 設定が同じ1本であること・n_units == 50 であること・それが ipc_sweep.n_units と一致することを固定する —— 宣言だけを見ると『50 に直したセクションを誰も読んでいない』を通してしまう"
+  guard_test: "tests/test_experiment_narma.py::test_narma10_esn_size_matches_the_declared_choice"
