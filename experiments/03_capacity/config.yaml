@@ -104,8 +104,13 @@ ipc:
   max_degrees: 20
 
 narma:
-  # 3-C (3b-2 の T4)。係数と入力分布は tasks/narma.py のモジュール定数で
-  # あり設定にしない (D-29)。ここが持つのは系列長と 01 側の土台だけ。
+  # 3-C (公平な対照での NARMA10)。係数と入力分布は tasks/narma.py のモジュール
+  # 定数であり設定にしない (D-29)。ここが持つのは系列長と 01 側の土台だけ。
+  #
+  # base は 01 の ExperimentConfig をまるごと内包したもので、3-C は
+  # run_task(base, entry, plan0=...) をそのまま通す (D-31)。したがって
+  # 公平性の3決定 (D-04 同一 alpha 格子 / D-05 同一分割 / D-08 構造 HP を
+  # 検証分割で選ばない) は 01 の経路がそのまま担保する。
   length: 8000
   base:
     name: 03_narma10
@@ -121,12 +126,20 @@ narma:
       washout: 200
       max_start_offset: 200
     ridge:
+      # 01 (experiments/01_what_is_rc/config.yaml) と**同一の格子**にする
+      # (D-04)。3-C の主張は「探索予算をそろえた比較」なので、01 と別の
+      # alpha 格子を使うと 01 の結果と並べて読めなくなる。一致は
+      # tests/test_experiment_narma.py::test_narma10_alpha_grid_is_shared_across_methods
+      # が本番 YAML どうしで突き合わせる。
       alpha_grid:
         [
-          1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 1.0e-1,
-          1.0, 10.0, 100.0,
+          1.0e-10, 1.0e-9, 1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3,
+          1.0e-2, 1.0e-1, 1.0, 10.0, 100.0,
         ]
-      n_lags_grid: [1, 2, 4, 8, 16]
+      # 要件書「タップ数を妥当な範囲 (k=10〜30) に抑え」。NARMA10 の目標は
+      # u[t-1] と u[t-10] の積を含むので、k < 10 では対照が構造的に届かない
+      # (対照を不当に弱くしない)。上端 30 は要件書の指定そのまま。
+      n_lags_grid: [10, 15, 20, 25, 30]
     mackey_glass:
       tau: 17.0
       beta: 0.2
@@ -141,13 +154,17 @@ narma:
       n_bits: 2
       delay: 1
       length: 8000
-    # D-39 (仕様 §8、ユーザー承認済み) は 3-C の ESN を N=50 とし 3-B (IPC 掃引)
-    # と同じ規模にすると決めている。以下の ESN セクション (esn_mackey_glass /
-    # esn_delay_parity) はどちらも D-39 (N=50) に未追従で、n_units はまだ 200
-    # のまま (3b-2 の T4 がどちらのセクションを読むか配線するまでは不活性なため)。
-    # T4 で配線するセクションを 50 へ変更すること (F-3b1-1-008)。
+    # 3-C が読むのは esn_mackey_glass の**1本だけ** (experiment/narma.py の
+    # NARMA10_ESN_SECTION)。NARMA10 は連続値入力の回帰課題で、漏れ積分が効く
+    # 点で MG と同型だからである。
+    #
+    # n_units = 50 は D-39 (仕様 §8、ユーザー承認済み): 参照値 (0.16 / 0.107)
+    # が N = 50 規模の報告であり、N=200 で回すと『先行より良い』が規模差なのか
+    # 対照設計の差なのか分離できない。3-B (IPC 掃引、N=50) とそのまま
+    # 突き合わせられる利点もある。D-08 により N は検証分割で選ばれないので、
+    # 宣言した1点をそのまま報告する。
     esn_mackey_glass:
-      n_units: 200
+      n_units: 50
       spectral_radius: 0.9
       leak_rate: 0.3
       input_scale: 0.5
@@ -155,6 +172,9 @@ narma:
       density: 0.1
       activation: tanh
       state_noise: 0.0
+    # 内包した 01 の ExperimentConfig の一部だが 3-C では**不活性**である
+    # (課題は narma10 の1本だけで、build_tasks は通らない, D-31)。値の効きの
+    # 実測は 01 側 (tests/test_config_wiring.py) へ委譲する。
     esn_delay_parity:
       n_units: 200
       spectral_radius: 0.9
