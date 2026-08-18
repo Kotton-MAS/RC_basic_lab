@@ -496,9 +496,67 @@ def _iter_surrogate_chunks(
         yield chunk
 
 
+def surrogate_capacities(
+    problem: CapacityProblem,
+    base_blocks: Iterable[FloatArray],
+    alpha: float,
+    *,
+    n_surrogates: int,
+    chunk_size: int,
+    rng: np.random.Generator,
+) -> FloatArray:
+    """代表目標の各ブロックをシャッフルサロゲート化し、容量を連結して返す。
+
+    F-03-3-002: round2 (F-03-2-015) で IPC が代表目標 ``base`` を 128MiB 予算
+    でブロック化した際、閾値の分位点計算 (``np.quantile``) までも ``ipc.py``
+    に複製してしまい、D-27 の rationale (『サロゲートを別経路で計算すると
+    閾値と容量が別実装からずれるので同じ関数に流す』) の前提が壊れた。
+    ``base_blocks`` を **Iterable of block** にすることで、ブロック化そのもの
+    (呼び出し側が 128MiB 予算にどう分けるか) と、しきい値の分位点計算 (この
+    共有カーネル1本) を分離する。1ブロックしか無い呼び出し側 (MC) は
+    ``[base]`` のように1要素の Iterable を渡せばよい。
+
+    Args:
+        problem: 容量問題 (通常の目標と同じもの)。
+        base_blocks: 実目標から決定的に選んだ代表を、呼び出し側が
+            (通常は 128MiB 予算で) ブロック化した ``(T_eff, M_i)`` の Iterable。
+        alpha: 通常の目標と同じ正則化係数。
+        n_surrogates: 代表1本あたりのサロゲート本数。
+        chunk_size: 1回の solve に畳む列数 (結果には影響しない、ブロック内の
+            サロゲート生成の粒度)。
+        rng: ``ctx.seed`` から作った乱数生成器 (D-27: 乱数源はこれだけ)。
+
+    Returns:
+        全ブロックのサロゲート容量を連結した ``(Σ M_i * n_surrogates,)``。
+
+    Raises:
+        ValueError: ``n_surrogates`` が 1 未満 / ``chunk_size`` が 1 未満 /
+            ``base_blocks`` が空 / いずれかのブロックが2次元でない場合。
+    """
+    if n_surrogates < 1:
+        raise ValueError(f"n_surrogates は 1 以上が必要です: {n_surrogates}")
+    if chunk_size < 1:
+        raise ValueError(f"chunk_size は 1 以上が必要です: {chunk_size}")
+    pieces: list[FloatArray] = []
+    for block in base_blocks:
+        base = np.asarray(block, dtype=np.float64)
+        if base.ndim != 2:
+            raise ValueError(f"base_blocks の要素は (T, M) が必要です: {base.shape}")
+        pieces.append(
+            capacity_of_chunks(
+                problem,
+                _iter_surrogate_chunks(base, n_surrogates, chunk_size, rng),
+                alpha,
+            )
+        )
+    if not pieces:
+        raise ValueError("base_blocks が1つもありません")
+    return np.concatenate(pieces)
+
+
 def surrogate_threshold(
     problem: CapacityProblem,
-    base_targets: FloatArray,
+    base_blocks: Iterable[FloatArray],
     alpha: float,
     *,
     n_surrogates: int,
@@ -508,16 +566,19 @@ def surrogate_threshold(
 ) -> tuple[float, FloatArray]:
     """時間シャッフルサロゲートから容量のしきい値を推定する (D-27)。
 
-    ``base_targets`` の各列を時間方向にシャッフルした系列を ``n_surrogates``
-    本ずつ作り、**通常の目標とまったく同じ経路** (``capacity_of_targets``) に
-    流して容量を測る。閾値はその分位点。別経路で閾値を計算すると、閾値と容量が
-    別実装からずれても誰も気づけない。シャッフル列は ``chunk_size`` 列ずつ
-    その場で生成しては畳んで捨てる (F-03-1-012)。``(n_samples, M *
-    n_surrogates)`` を一括確保しない。
+    ``base_blocks`` の各ブロックの各列を時間方向にシャッフルした系列を
+    ``n_surrogates`` 本ずつ作り、**通常の目標とまったく同じ経路**
+    (``capacity_of_targets``) に流して容量を測る。閾値はその分位点の**1箇所**
+    (この関数) だけで計算する (D-27 / F-03-3-002)。別経路で閾値を計算すると、
+    閾値と容量が別実装からずれても誰も気づけない。シャッフル列は
+    ``chunk_size`` 列ずつその場で生成しては畳んで捨てる (F-03-1-012)。
+    ``(n_samples, M * n_surrogates)`` を一括確保しない。
 
     Args:
         problem: 容量問題 (通常の目標と同じもの)。
-        base_targets: 実目標から決定的に選んだ代表 ``(T_eff, M)``。
+        base_blocks: 実目標から決定的に選んだ代表を、呼び出し側がブロック化
+            した ``(T_eff, M_i)`` の Iterable。1ブロックしか無い場合は
+            ``[base_targets]`` のように1要素の Iterable として渡す。
         alpha: 通常の目標と同じ正則化係数。
         n_surrogates: 代表1本あたりのサロゲート本数。
         quantile: 分位点 (0〜1)。
@@ -525,23 +586,21 @@ def surrogate_threshold(
         rng: ``ctx.seed`` から作った乱数生成器 (D-27: 乱数源はこれだけ)。
 
     Returns:
-        ``(閾値, サロゲート容量 (M * n_surrogates,))``。
+        ``(閾値, 全ブロックのサロゲート容量を連結したもの)``。
 
     Raises:
         ValueError: ``n_surrogates`` が 1 未満 / ``quantile`` が範囲外 /
-            ``chunk_size`` が 1 未満の場合。
+            ``chunk_size`` が 1 未満 / ``base_blocks`` が空の場合。
     """
-    if n_surrogates < 1:
-        raise ValueError(f"n_surrogates は 1 以上が必要です: {n_surrogates}")
     if not 0.0 <= quantile <= 1.0:
         raise ValueError(f"quantile は 0〜1 が必要です: {quantile}")
-    if chunk_size < 1:
-        raise ValueError(f"chunk_size は 1 以上が必要です: {chunk_size}")
-    base = np.asarray(base_targets, dtype=np.float64)
-    if base.ndim != 2:
-        raise ValueError(f"base_targets は (T, M) が必要です: {base.shape}")
-    capacities = capacity_of_chunks(
-        problem, _iter_surrogate_chunks(base, n_surrogates, chunk_size, rng), alpha
+    capacities = surrogate_capacities(
+        problem,
+        base_blocks,
+        alpha,
+        n_surrogates=n_surrogates,
+        chunk_size=chunk_size,
+        rng=rng,
     )
     return float(np.quantile(capacities, quantile)), capacities
 
@@ -601,5 +660,6 @@ __all__ = [
     "chi2_threshold",
     "input_series",
     "orthonormal_basis",
+    "surrogate_capacities",
     "surrogate_threshold",
 ]
