@@ -343,11 +343,15 @@ def _format_target_count(total: int) -> str:
     (実測: ``max_delay_by_degree=(10**6,)*1600``, ``max_variables=1600`` で
     106.99s 後に発生)。``str(total)`` を直接呼ぶとこの変換自体が上限に
     触れるため、桁数を ``bit_length`` から見積り、上限に近ければ指数表記へ
-    落とす (``float`` への変換は桁数上限の対象外)。
+    落とす。``float(total)`` も無限大への丸め (``OverflowError``、``float``
+    は約 1.8e308 が上限) を起こしうるため使わず、``bit_length`` だけから
+    10進の桁数を概算する (厳密な仮数部より、``ValueError`` そのものが確実に
+    運用者へ届くことを優先する)。
     """
     if total.bit_length() * 0.30103 < 4000:
         return str(total)
-    return f"{float(total):.6e} (桁数が大きいため指数表記)"
+    exponent = int(total.bit_length() * 0.3010299956639812)
+    return f"~1e{exponent} (桁数が大きいため概算の指数表記)"
 
 
 def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
