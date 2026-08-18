@@ -51,7 +51,9 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_LENGTH_SWEEP,
     EXPERIMENT_MC_SWEEP,
+    CapacityCondition,
     n_replicates_for,
+    reservoir_config_for,
     run_capacity_experiment,
     run_conservation_sweep,
 )
@@ -551,6 +553,39 @@ def test_conservation_replicates_default_to_the_shared_value_and_can_be_overridd
             ),
             EXPERIMENT_CONSERVATION,
         )
+
+
+def test_reservoir_config_for_carries_the_effective_replicate_count() -> None:
+    """``reservoir_config_for`` は実効レプリケート数を渡す (F-3b1-1-006)。
+
+    以前は横断共有の ``reservoir.n_replicates`` を無条件で詰めていたため、
+    3-B' で ``conservation.n_replicates`` が上書きされている場合に実効値と
+    食い違った ``ReservoirSweepConfig`` が境界を越えていた (実効1に対し3が
+    渡る)。``simulate_reference_trajectory`` は ``n_replicates`` を読まないため
+    現状は実害が無いが、``drive_config_for`` が ``n_pairs`` を外しているのと
+    同じ規律 (『設定したのに効いていないフィールドを作らない』) を
+    ``reservoir_config_for`` にも適用する。
+    """
+    config = dataclasses.replace(
+        tiny_config(),
+        reservoir=dataclasses.replace(tiny_config().reservoir, n_replicates=3),
+        conservation=dataclasses.replace(tiny_config().conservation, n_replicates=1),
+    )
+    mc_condition = CapacityCondition(
+        experiment=EXPERIMENT_MC_SWEEP,
+        rho=0.9,
+        leak_rate=0.6,
+        n_units=config.mc_sweep.n_units,
+        state_noise=0.0,
+        sigma_u=config.mc_sweep.sigma_u,
+        n_steps=config.mc_sweep.n_steps,
+        replicate=0,
+    )
+    conservation_condition = dataclasses.replace(
+        mc_condition, experiment=EXPERIMENT_CONSERVATION
+    )
+    assert reservoir_config_for(config, mc_condition).n_replicates == 3
+    assert reservoir_config_for(config, conservation_condition).n_replicates == 1
 
 
 # --- 本番成果物に対する受け入れ条件 ------------------------------------------
