@@ -154,7 +154,7 @@
   guard_test: "tests/test_diagnostics_ipc.py::test_capacity_is_monotone_decreasing_in_alpha"
 
 - id: D-26
-  rule: "IPC は X を条件ごとに1回だけ計算し、Gram も条件ごとに1回だけ作る。目標は chunk_size 列ずつ生成して rhs に畳み、fit_ridge_from_gram の呼び出し回数は ceil(K/chunk_size) に比例させる"
+  rule: "IPC は X を条件ごとに1回だけ計算し、Gram も条件ごとに1回だけ作る。目標は chunk_size (D-33 の実効値 chunk_size_effective) 列ずつ生成して rhs に畳み、fit_ridge_from_gram の呼び出し回数は ceil(K/chunk_size_effective) に比例させる"
   rationale: "(delay, degree) ごとに ESN を再実行する素直な設計は実測 4.7us/step x T=1e6 x 2395 通り = 約3.1時間になり実験そのものが回らない。容量は Gram 量だけで閉じるので Phi も Z も再走査は不要。Z 全体を実体化しないのはメモリ制約でもある (19 GB)。実測: 目標を 25 本から 270 本 (10.8 倍) に増やしても solve は 3 回から 4 回にしか増えない (chunk_size=256)。guard_test は solve 回数を『目標チャンク数 + 次数ごとのサロゲートチャンク数』の閉形式と厳密一致で固定するので、チャンク化を外して1本ずつ回帰する実装に戻すと即座に落ちる。既定設定 (打ち切り (60,20,10,6), max_variables=3) の目標数は 601 本で、N=25 / T=50000 の1条件が 0.83 秒 (サロゲート 1600 列込み)"
   guard_test: "tests/test_diagnostics_ipc.py::test_gram_solve_count_does_not_scale_with_target_count"
 
