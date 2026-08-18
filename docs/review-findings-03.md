@@ -47,6 +47,17 @@ ID と対応内容の一覧として記録する。
 F-03-1-012 / F-03-1-013 は D-26 (「(T,K) を実体化しない」原則) から外れていた2箇所を、原則に揃える形で
 修正した。`CapacityProblem` が `phi` (設計行列) ではなく `x` (状態のビュー) と `gram` (ブロック分解した
 Gram) だけを持つようになったことに伴い、`capacity_of_targets` が `Phi` に一度も触れない形へ変わっている。
-浮動小数の丸めは変更前後でわずかに異なりうる (`Phi.T @ Phi` を1回の BLAS 呼び出しで計算する経路と、
-ブロックごとに `sum` / `X.T @ X` で計算する経路は数学的に同一だが、加算順序が異なりうるため)。実測した
-差分は、fixer の最終報告 (会話ログ) を参照。
+
+**実測した条件下では bit-for-bit 一致したが、アルゴリズム的に保証されているわけではない
+(F-03-2-007)。** 旧実装 (`Phi = concatenate((ones, X))` を実体化し `Phi.T @ Phi` を1回の BLAS
+呼び出しで計算) と新実装 (`gram_xx = X.T @ X` とバイアス行 `sum(X, axis=0)` をブロックごとに計算し
+組み立てる) を実際の `from_states` 経路で比較すると、`gram` / `rhs` / `weights` / `capacity` は
+`cond(Phi.T Phi) ~ 7.7e17` (T=1e6, N=200) および `cond ~ 6.3e19` (T=4000, N=200) のどちらでも
+`np.array_equal` で bit-for-bit 一致した (`gram_old = phi_concat.T @ phi_concat`,
+`gram_new = CapacityProblem.from_states(...).gram` を突き合わせ)。ただしこれは「ブロック分解は常に
+数値的に安全」を意味しない —— 分解に使う部分演算 `ones.T @ X` (BLAS matmul 経由) と
+`np.sum(X, axis=0)` は一般には加算順序が異なり、iid ガウス乱数では最大絶対誤差
+`4.67e-11`〜`1.66e-10` (T=50000〜999600、相対誤差 5.0e-13 程度) が生じることを実測した
+(`rng.standard_normal((T, N))` に対し `np.abs(ones @ X - np.sum(X, axis=0)).max()` を評価)。
+今回のデータ (低ランク信号+微小ノイズ) ではたまたま一致しただけで、データ形状・numpy/BLAS
+バージョン・プラットフォームが変われば丸め誤差レベルでの乖離がありうる。
