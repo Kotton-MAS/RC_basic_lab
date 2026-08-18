@@ -9,7 +9,9 @@ Jaeger 2002 の短期記憶容量。遅延 ``k`` の入力 ``u[t-k]`` を状態 
 - **行集合は全遅延で同一** (D-24)。``t0 = max(ctx.washout, cfg.max_delay)`` を
   単一の基準点にする。遅延ごとに使える行数を変えると、深い遅延ほど標本数が
   減って容量が系統的に下がる —— これは測りたい現象 (記憶の減衰) と**まったく
-  同じ向き**に出るため、プロファイルの図を見ても気づけない。
+  同じ向き**に出るため、プロファイルの図を見ても気づけない。窓の切り出しは
+  ``CapacityProblem.lagged`` (共有カーネル) に1本だけ書き、ここで手で
+  ``t0 - delay`` を組み立てない (F-03-1-001)。
 - **正則化は固定の微小 alpha** (D-25)。容量は「線形読み出しで到達可能な最大の
   説明率」という定義そのものなので、検証分割による alpha 選択 (D-04) は行わない。
 - **有限標本のかさ上げをサロゲートで差し引く** (D-27)。時間シャッフルした目標を
@@ -115,41 +117,28 @@ def _validate_config(cfg: MemoryCapacityConfig) -> None:
             )
 
 
-def _input_series(u: FloatArray | None) -> FloatArray:
-    """``u`` を1次元の入力系列にして返す。無い / 多変数なら ``ValueError``。"""
-    if u is None:
-        raise ValueError(
-            "memory_capacity は入力系列 u が必須です (遅延目標を作れません)"
-        )
-    series = np.asarray(u, dtype=np.float64)
-    if series.shape[1] != 1:
-        raise ValueError(
-            f"memory_capacity は1変数入力のみ対応です: u.shape={series.shape}"
-        )
-    if not np.all(np.isfinite(series)):
-        raise ValueError("u に有限でない値があります")
-    return series[:, 0]
-
-
 def _iter_delay_chunks(
+    problem: CapacityProblem,
     psi: FloatArray,
     delays: Sequence[int],
     *,
-    t0: int,
-    n_samples: int,
     chunk_size: int,
 ) -> Iterator[FloatArray]:
     """遅延目標を ``chunk_size`` 列ずつ作って渡す (D-26)。
 
     ``psi`` は入力の1次正規直交多項式を**系列全体で1回だけ**評価したもの。
-    遅延 ``k`` の目標は ``psi[t0 - k : T - k]`` という同じ長さのビューであり、
-    どの遅延も ``t0`` から始まる同一の行集合に対応する (D-24)。
+    遅延 ``k`` の目標は ``problem.lagged(psi, k)`` という同じ長さのビューであり、
+    どの遅延も ``t0`` から始まる同一の行集合に対応する (D-24)。窓の切り出しを
+    共有カーネルの ``CapacityProblem.lagged`` に委譲しているのは F-03-1-001
+    のため —— かつてはここで ``psi[t0 - delay : t0 - delay + n_samples]`` を
+    直接書いており、IPC 側の複製と違って値レベルの guard が無かった。
     """
+    n_samples = problem.n_samples
     for start in range(0, len(delays), chunk_size):
         block = delays[start : start + chunk_size]
         chunk: FloatArray = np.empty((n_samples, len(block)), dtype=np.float64)
         for column, delay in enumerate(block):
-            chunk[:, column] = psi[t0 - delay : t0 - delay + n_samples]
+            chunk[:, column] = problem.lagged(psi, delay)
         yield chunk
 
 
@@ -199,7 +188,7 @@ def memory_capacity(
     validate_diagnostic_input(X, u, y, ctx)
     _validate_config(cfg)
     context = resolve_context(ctx)
-    series = _input_series(u)
+    series = input_series(u, diagnostic="memory_capacity")
 
     n_steps = int(np.asarray(X).shape[0])
     # D-24: 全遅延で同一の行集合。基準点は washout と最大遅延の大きい方。
@@ -220,9 +209,7 @@ def memory_capacity(
     delays = tuple(range(1, cfg.max_delay + 1))
     profile_raw = capacity_of_chunks(
         problem,
-        _iter_delay_chunks(
-            psi, delays, t0=t0, n_samples=n_samples, chunk_size=cfg.chunk_size
-        ),
+        _iter_delay_chunks(problem, psi, delays, chunk_size=cfg.chunk_size),
         cfg.alpha,
     )
 
@@ -231,8 +218,9 @@ def memory_capacity(
             raise ValueError(
                 "threshold_mode='surrogate' には ctx.seed が必要です (D-27)"
             )
-        offset = t0 - _SURROGATE_BASE_DELAY
-        base: FloatArray = psi[offset : offset + n_samples].reshape(n_samples, 1)
+        base: FloatArray = problem.lagged(psi, _SURROGATE_BASE_DELAY).reshape(
+            n_samples, 1
+        )
         threshold, _ = surrogate_threshold(
             problem,
             base,
