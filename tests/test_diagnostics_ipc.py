@@ -27,6 +27,7 @@ from rc_basics_lab.diagnostics._capacity import (
     CapacityProblem,
     bounded_chunk_size,
     orthonormal_basis,
+    surrogate_threshold,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.ipc import (
@@ -1087,6 +1088,9 @@ def test_ipc_config_fields_change_output() -> None:
         (IpcConfig(n_surrogates=0), "n_surrogates"),
         (IpcConfig(n_surrogate_targets=0), "n_surrogate_targets"),
         (IpcConfig(surrogate_quantile=1.5), "surrogate_quantile"),
+        # F-03-4-007 / D-34 の4段目: max_delay_by_degree の要素の桁数
+        # (bit_length) にも独立した絶対上限がある (CWE-400)。
+        (IpcConfig(max_delay_by_degree=(1 << 200,)), "bit"),
     ],
 )
 def test_out_of_range_config_raises(cfg: IpcConfig, message: str) -> None:
