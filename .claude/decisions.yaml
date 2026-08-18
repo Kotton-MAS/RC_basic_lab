@@ -73,7 +73,7 @@
 - id: D-12
   rule: "diagnostics/ 配下は rc_basics_lab.types 以外の自作モジュール (特に config / reservoir) を import しない。診断の設定 dataclass は diagnostics/ 側に定義し、YAML 配線が要るときは config.py 側から diagnostics の設定 dataclass を import する (config → diagnostics の向きのみ許可、逆向きは禁止)"
   rationale: "『diagnostics/ は reservoir に依存しない』が 02〜05・memristor-rc-lab への移植性の前提だが、これまで docstring 3か所 (diagnostics/__init__.py / diagnostics/base.py / conventions.md) の散文にしかなく正本が無かった。実測: `uv run python -c \"import importlib,sys; importlib.import_module('rc_basics_lab.config'); print(sorted(k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')))\"` は ['rc_basics_lab.reservoir', 'rc_basics_lab.reservoir.esn'] を返す。config.py が reservoir.esn.ESNConfig を import しているため、tasks/ の前例 (自分の設定 dataclass を config.py から import する) を diagnostics/ が真似ると reservoir が推移的に引き込まれる"
-  guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir"
+  guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config"
 
 - id: D-13
   rule: "実験ごとに設定 dataclass を分ける。02 の設定は Esp02Config に置き、ExperimentConfig (01 専用) には1フィールドも足さない。ローダは load_config_as(path, cls) で共有する"
@@ -124,3 +124,21 @@
   rule: "esp_convergence に渡す ctx の washout は 0 に固定する (experiment.esp.ESP_DISTANCE_WASHOUT)。drive.washout は λ と自己相関の ctx にだけ渡す。02 の esp.fit_skip の既定は 10 とし、診断側の既定 (DEFAULT_ESP, fit_skip=50) は変えない"
   rationale: "esp_convergence で washout が効くのは減衰率の当てはめ開始位置だけで、判定 (末尾 window の中央値) には効かない。2-A は過渡そのものを見せる図であり、距離が floor に届く前に当てはめを始めないと減衰率が測れない。実測: 無入力 rho=0.5 の距離は t=46 付近で 1e-14 を割るため、当てはめ開始が washout(200)+fit_skip(50)=250 だと当てはめ点が 0 点になり decay_rate_per_step が nan になる (rho=0.8 も同様)。過渡を捨てるのは λ と自己相関の側の要求なので、同じ条件でも ctx を2つに分ける"
   guard_test: "tests/test_experiment_esp.py::test_decay_fit_starts_before_the_distance_underflows"
+
+# サイクル 3a (docs/plans/rc-basics-03.md §6) の T1 分。D-24〜D-28 のうち
+# guard_test が tests/test_diagnostics_ipc.py にあるものは T2 が追記する。
+
+- id: D-23
+  rule: "diagnostics/ は readout.ridge / readout.design を import してよい。config / reservoir は直接・推移のいずれでも禁止し、推移閉包で機械検査する"
+  rationale: "D-12 の文言は『types 以外の自作モジュールを import しない』だが guard は reservoir だけを見ていた。IPC は同一 X に対する多数目標の回帰であり、fit_ridge_from_gram (バイアス列を正則化しない D-03 の唯一の実装) を使わないと同じ閉形式解を2箇所に持つことになり D-03 が片方だけで崩れる。readout.ridge は metrics/types しか import しないため移植性の前提は保たれる。禁止対象に config を明示的に足すことで guard は現状より強くなる —— 実測: 検出フィルタに ['rc_basics_lab.config'] を与えると旧 guard は [] (見逃し)、新 guard は ['rc_basics_lab.config'] を返す。diagnostics/dummy.py に `from rc_basics_lab import config` を一時的に入れると新 guard は leaked=['rc_basics_lab.config', 'rc_basics_lab.reservoir', 'rc_basics_lab.reservoir.esn'] で落ちることも確認済み (確認後 revert)。D-12 の guard_test はこのテストの改名に追随させた (決定そのものは変えていない)"
+  guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config"
+
+- id: D-24
+  rule: "MC / IPC は全目標を同一の行集合で回帰する。t0 = max(ctx.washout, 全目標の最大遅延) を単一の基準点とし、遅延ごとに使える行数を変えない"
+  rationale: "遅延 k の目標は先頭 k 行が未定義なので、素直に書くと遅延が深いほど標本数が減り容量が系統的に下がる。これは『記憶が減衰している』という測りたい現象とまったく同じ向きに出るため図を見ても気づけない。01 の D-05 と同じ規律を容量測定の軸に適用する。guard_test は T2 (IPC) で tests/test_diagnostics_ipc.py::test_all_targets_share_identical_rows へ移す予定だが、T1 時点では MC 側で固定する (washout を max_delay 未満で振っても結果が1ビットも変わらないこと + t0 の実測値)"
+  guard_test: "tests/test_diagnostics_memory_capacity.py::test_all_delays_share_identical_rows"
+
+- id: D-28
+  rule: "多項式基底は宣言された入力分布に対して正規直交化する。(input_distribution, basis) の未対応な組は ValueError にし、黙って Legendre として扱わない"
+  rationale: "要件書 設計判断2。基底が入力測度に対して直交していないと容量が目標間で二重計上され保存則が破れる。破れ方は『N をわずかに超える』という穏やかな形で出るため図では正常に見える。正規化を振幅に追従させることで sigma_u を自由に振れる (D-17 と両立)。対応する組は (uniform, legendre) と (normal, hermite) の2つで、正規化は入力の実測の平均・標準偏差で行う (一様は a = sqrt(3) sigma_u で割ってから Legendre に入れる)。guard_test は仕様では tests/test_diagnostics_ipc.py に置く予定だったが、基底は T1 の共有カーネルにあり T2 を待つ必要が無いのでこちらに置く"
+  guard_test: "tests/test_diagnostics_memory_capacity.py::test_mismatched_distribution_and_basis_raises"
