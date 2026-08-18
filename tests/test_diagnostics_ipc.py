@@ -662,7 +662,8 @@ def test_target_enumeration_raises_instead_of_truncating() -> None:
 
 
 def test_max_targets_also_bounds_the_heatmap_cell_count() -> None:
-    """``max_targets`` は目標数だけでなく ``ipc_heatmap`` の確保サイズも縛る (F-03-1-016)。
+    """``max_targets`` は目標数だけでなく ``ipc_heatmap`` の確保サイズも縛る
+    (F-03-1-016)。
 
     目標数と heatmap 面積 (``n_degrees x max(max_delay_by_degree)``) は独立に
     増やせる: 次数を大量に・遅延を浅く取ると目標数は少ないまま heatmap セル数
