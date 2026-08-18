@@ -427,26 +427,41 @@ def _degree_thresholds(
     n_samples = problem.n_samples
     # F-03-1-012 の BLOCKER 完了条件 (T=1e6 で peak RSS < 4GB) のため、実際に
     # 使うチャンク列数を T_eff に応じて下げる (結果は変わらない、D-26)。
-    chunk_size = bounded_chunk_size(cfg.chunk_size, n_samples)
+    # F-03-2-001: CapacityProblem 自身に委譲し、呼び出し側での複製を消す。
+    chunk_size = problem.effective_chunk_size(cfg.chunk_size)
     thresholds: list[float] = []
     for start, end in bounds:
         if end <= start:
             thresholds.append(0.0)
             continue
         picked = _surrogate_indices(start, end, cfg.n_surrogate_targets)
-        base: FloatArray = np.empty((n_samples, len(picked)), dtype=np.float64)
-        for column, index in enumerate(picked):
-            base[:, column] = _target_column(problem, psi_table, specs[index])
-        threshold, _ = surrogate_threshold(
-            problem,
-            base,
-            cfg.alpha,
-            n_surrogates=cfg.n_surrogates,
-            quantile=cfg.surrogate_quantile,
-            chunk_size=chunk_size,
-            rng=rng,
-        )
-        thresholds.append(threshold)
+        # F-03-2-015: 代表目標の行列 base はサロゲート生成 (_iter_surrogate_
+        # chunks) と違いチャンク化されておらず、len(picked) 本を一括確保して
+        # いた。n_surrogate_targets には上限が無いため、len(picked) が
+        # chunk_size と無関係に大きくなりうる (実測: K=400, T=1e6,
+        # n_surrogate_targets=400, chunk_size=1 で base 単独 peak RSS
+        # 3.23GB)。picked も chunk_size と同じ 128MiB 予算で分割して、
+        # 一度に保持する列数を chunk_size と同じ上限に揃える。
+        picked_capacities: list[FloatArray] = []
+        for picked_start in range(0, len(picked), chunk_size):
+            picked_block = picked[picked_start : picked_start + chunk_size]
+            base: FloatArray = np.empty(
+                (n_samples, len(picked_block)), dtype=np.float64
+            )
+            for column, index in enumerate(picked_block):
+                base[:, column] = _target_column(problem, psi_table, specs[index])
+            _, block_capacities = surrogate_threshold(
+                problem,
+                base,
+                cfg.alpha,
+                n_surrogates=cfg.n_surrogates,
+                quantile=cfg.surrogate_quantile,
+                chunk_size=chunk_size,
+                rng=rng,
+            )
+            picked_capacities.append(block_capacities)
+        capacities = np.concatenate(picked_capacities)
+        thresholds.append(float(np.quantile(capacities, cfg.surrogate_quantile)))
     return tuple(thresholds)
 
 
