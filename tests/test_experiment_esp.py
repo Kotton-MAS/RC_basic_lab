@@ -370,6 +370,40 @@ def test_simulate_reference_trajectory_matches_simulate_condition_bit_for_bit() 
     assert np.array_equal(reference.states, trajectories.states)
 
 
+def test_simulate_condition_always_passes_rng_to_every_esn_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``simulate_condition`` の比較軌道ループも常に ``rng`` を渡す (D-36)。
+
+    F-3b1-1-001: D-36 の rule は『``ESN.run`` には常に ``rng`` を渡す』だが、
+    以前は参照軌道 (``simulate_reference_trajectory`` 経由) にしか適用されず、
+    比較軌道ループ (``reference.esn.run(reference.drive, x0=x0)``) は ``rng``
+    無しで呼ばれていた。既存の
+    ``test_reference_states_match_esp_simulate_condition`` (D-36 guard) は
+    ``state_noise=0`` でのバイト不変だけを見ており、この配線漏れを検出しない。
+    ``ESN.run`` を monkeypatch して**すべての**呼び出し (参照軌道1回 + 比較軌道
+    ``n_pairs`` 回) が ``rng is not None`` で呼ばれることを直接固定する。
+    """
+    config = small_config()
+    original_run = ESN.run
+    seen_rngs: list[np.random.Generator | None] = []
+
+    def recording_run(
+        self: ESN,
+        u: FloatArray,
+        x0: FloatArray | None = None,
+        rng: np.random.Generator | None = None,
+    ) -> FloatArray:
+        seen_rngs.append(rng)
+        return original_run(self, u, x0=x0, rng=rng)
+
+    monkeypatch.setattr(ESN, "run", recording_run)
+    simulate_condition(config, rho=0.9, leak_rate=1.0, sigma_u=0.5, replicate=0)
+
+    assert len(seen_rngs) == 1 + config.drive.n_pairs
+    assert all(rng is not None for rng in seen_rngs)
+
+
 def test_simulate_reference_trajectory_defaults_to_a_zero_initial_state() -> None:
     """``x0`` を省略すると ``ESN.run`` の既定 (零ベクトル) が使われる。
 
