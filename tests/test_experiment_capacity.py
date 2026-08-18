@@ -391,9 +391,8 @@ def test_conservation_overrides_the_ipc_delays_one_way() -> None:
     ), "打ち切り以外のフィールドまで書き換わっています"
 
     rows = {
-        item.experiment: evaluate_capacity_condition(config, condition(item)).row
-        for item in (EXPERIMENT_IPC_SWEEP, EXPERIMENT_CONSERVATION)
-        for _ in (0,)
+        name: evaluate_capacity_condition(config, condition(name)).row
+        for name in (EXPERIMENT_IPC_SWEEP, EXPERIMENT_CONSERVATION)
     }
     assert (
         rows[EXPERIMENT_CONSERVATION].n_targets > rows[EXPERIMENT_IPC_SWEEP].n_targets
