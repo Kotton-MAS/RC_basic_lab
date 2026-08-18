@@ -4,6 +4,7 @@
 
     uv run python main.py --experiment 01
     uv run python main.py --experiment 02
+    uv run python main.py --experiment 03
 
 ``--experiment`` は ``experiments/`` 配下の実験番号。この層が知っているのは
 「どの設定 YAML を、どのローダで読み、どのパイプラインに渡すか」だけで、
@@ -20,7 +21,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from rc_basics_lab.config import Esp02Config, load_config, load_config_as
+from rc_basics_lab.config import (
+    Capacity03Config,
+    Esp02Config,
+    load_config,
+    load_config_as,
+)
+from rc_basics_lab.experiment.capacity_pipeline import run_and_report_capacity
 from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
 from rc_basics_lab.experiment.pipeline import run_and_report
 
@@ -73,6 +80,19 @@ def _run_02(config_path: Path, out_dir: Path) -> None:
     run_and_report_esp(config, out_dir)
 
 
+def _run_03(config_path: Path, out_dir: Path) -> None:
+    """実験03 (メモリ容量・情報処理容量)。"""
+    config = load_config_as(config_path, Capacity03Config)
+    logger.info(
+        "実験03 を実行します: %s (3-A N=%d / 3-B N=%d / n_replicates=%d)",
+        config_path,
+        config.mc_sweep.n_units,
+        config.ipc_sweep.n_units,
+        config.reservoir.n_replicates,
+    )
+    run_and_report_capacity(config, out_dir)
+
+
 EXPERIMENTS: dict[str, ExperimentSpec] = {
     "01": ExperimentSpec(
         config_path=ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
@@ -83,6 +103,11 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
         config_path=ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml",
         run=_run_02,
         out_dir=Path("results/02_esp_and_dynamics"),
+    ),
+    "03": ExperimentSpec(
+        config_path=ROOT / "experiments" / "03_capacity" / "config.yaml",
+        run=_run_03,
+        out_dir=Path("results/03_capacity"),
     ),
 }
 """実験番号 -> ``ExperimentSpec``。
