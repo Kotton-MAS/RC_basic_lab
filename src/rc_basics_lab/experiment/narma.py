@@ -94,7 +94,14 @@ NARMA10_REFERENCE_NOTE = (
     "50ノード級) は複数の物理 RC 論文が引用する値で、**原典は未特定** "
     "(要件_rc-basics-03 未確定1)。"
 )
-"""``meta.json`` と図の注に載せる、参照線の出所についての但し書き。"""
+"""``meta.json`` と図の注に載せる、参照線の出所についての但し書き (日本語)。"""
+
+NARMA10_REFERENCE_NOTE_EN = (
+    "Reference NMSE = 0.16 (ceiling without nonlinearity) / 0.107 (a good "
+    "nonlinear RC with ~50 nodes) are values quoted by several physical-RC "
+    "papers; the primary source is NOT identified (requirements, open item 1)."
+)
+"""同じ但し書きの英語版 (CJK フォントが無い環境の図に出る、D-10)。"""
 
 
 def narma_esn_config(base: ExperimentConfig) -> ESNConfig:
@@ -304,6 +311,7 @@ __all__ = [
     "NARMA10_ESN_SECTION",
     "NARMA10_REFERENCE_NMSE",
     "NARMA10_REFERENCE_NOTE",
+    "NARMA10_REFERENCE_NOTE_EN",
     "Narma10Results",
     "Narma10Verdict",
     "narma_esn_config",
