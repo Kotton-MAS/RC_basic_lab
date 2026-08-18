@@ -561,10 +561,17 @@ def test_production_config_matches_the_committed_results() -> None:
 def test_mc_effective_delay_increases_with_rho() -> None:
     """受け入れ条件1: 本番設定で ``mc_effective_delay`` が rho とともに伸びる。
 
-    2つの主張を分けて測る。
+    4つの主張を分けて測る。
 
     1. **rho <= 1.0 で単調非減少** (リーク率ごとに、レプリケート平均で)。
     2. **格子の最大 rho (1.1) の値が最小 rho (0.5) の 1.5 倍以上**。
+    3. (未使用にしない) rho=1.1 で実際に下がる。
+    4. **ピーク rho (=1.0) でのリーク率別平均 mc_ratio が最低ラインを上回る**
+       (F-3b1-1-024)。図に描かれる ``y=N`` の参照線が『N が上限として意識
+       されている』という印象を与えるが、それを裏付ける定量的な下限が
+       これまで実験レベルに存在しなかった。あわせて ``mc_total`` の
+       trivial 上限 (``<= n_units * 1.02``) も全行で固定する
+       (成果物単体で保存則を検算できるようにする)。
 
     単調性を rho <= 1.0 に限るのは、rho > 1 では駆動が弱いと ESP が成立せず
     記憶容量が**下がる**ためである (記憶容量は臨界点近傍で最大になる)。
@@ -575,11 +582,14 @@ def test_mc_effective_delay_increases_with_rho() -> None:
     この制限が不要になった (= 物理が変わった) 場合はここが赤くなる。
     """
     by_axis: dict[tuple[float, float], list[float]] = defaultdict(list)
+    ratio_by_axis: dict[tuple[float, float], list[float]] = defaultdict(list)
     for row in _production_rows():
         if row["experiment"] == EXPERIMENT_MC_SWEEP:
-            by_axis[(float(row["leak_rate"]), float(row["rho"]))].append(
-                float(row["mc_effective_delay"])
-            )
+            key = (float(row["leak_rate"]), float(row["rho"]))
+            by_axis[key].append(float(row["mc_effective_delay"]))
+            ratio_by_axis[key].append(float(row["mc_ratio"]))
+            bound = int(row["n_units"]) * MC_TOTAL_UPPER_TOLERANCE
+            assert float(row["mc_total"]) <= bound, row
     assert by_axis, "3-A の行がありません"
     leaks = sorted({leak for leak, _ in by_axis})
     rhos = sorted({rho for _, rho in by_axis})
@@ -603,6 +613,14 @@ def test_mc_effective_delay_increases_with_rho() -> None:
             f"leak={leak}: rho={rhos[-1]} が格子の最大値になっています"
             " (ESP 領域に単調性を限る根拠が消えたので受け入れ条件1 を見直すこと)"
         )
+
+    peak_ratio_means = [
+        statistics.fmean(ratio_by_axis[(leak, ESP_BOUNDARY_RHO)]) for leak in leaks
+    ]
+    assert min(peak_ratio_means) >= MC_RATIO_LOWER_BOUND, (
+        f"rho={ESP_BOUNDARY_RHO} でのリーク率別平均 mc_ratio が最低ラインを"
+        f" 下回っています ({peak_ratio_means})"
+    )
 
 
 def test_conservation_respects_the_bound() -> None:
