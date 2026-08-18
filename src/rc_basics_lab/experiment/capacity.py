@@ -242,9 +242,18 @@ class CapacityProfileRow:
 
     **書くのはしきい値後の容量が厳密に正のセルだけ**である。全セルを書くと
     本番設定で約6万行になり、``results/`` はコミット対象なのでリポジトリが
-    その分だけ重くなる。正値だけに絞る規準は IPC の ``n_targets_kept``
-    (``np.count_nonzero(kept)``) の定義と同じで、「しきい値を超えた」ことと
-    「行が在る」ことが1対1に対応する。
+    その分だけ重くなる。正値だけに絞る条件 (``capacity > 0``) は IPC の
+    ``n_targets_kept`` (``np.count_nonzero(kept)``) が「しきい値を超えた」を
+    判定する条件と同じ ``> 0`` だが、**行数が n_targets_kept と一致するとは
+    限らない** (F-3b1-1-003)。長形式の行は (次数, 遅延) の**ヒートマップセル
+    単位**、``n_targets_kept`` は**目標単位**で単位が異なり、1セルに複数目標
+    が畳み込まれるため行数は ``n_targets_kept`` 以下にしかならない
+    (本番成果物の実測: 117行すべてで行数 != n_targets_kept、例: 81セル vs
+    297目標)。行数の代わりに成果物単体で検算できる不変条件は
+    ``capacity`` 列の**総和**が ``ipc_total`` / ``mc_total`` と一致すること
+    であり、これは本番成果物117行すべてで成立する
+    (``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
+    が両方 (行数の上限・総和の一致) を実測で固定する)。
 
     Attributes:
         experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。
@@ -466,9 +475,11 @@ def profile_rows(outcome: CapacityOutcome) -> tuple[CapacityProfileRow, ...]:
 
     **しきい値後の容量が厳密に正のセルだけ**を返す。全セルを書くと本番設定で
     約6万行になり、``results/`` はコミット対象なのでリポジトリがその分だけ
-    重くなる。正値だけに絞る規準は IPC の ``n_targets_kept``
-    (``np.count_nonzero(kept)``) と同じ ``> 0`` であり、「しきい値を超えた」と
-    「行が在る」が1対1に対応する。
+    重くなる。正値だけに絞る条件は IPC の ``n_targets_kept``
+    (``np.count_nonzero(kept)``) と同じ ``> 0`` だが、行数と ``n_targets_kept``
+    は単位が違う (セル単位 vs 目標単位) ため一致しない (F-3b1-1-003、詳しくは
+    ``CapacityProfileRow`` の docstring)。成果物単体で検算できる不変条件は
+    ``capacity`` 列の総和が ``ipc_total`` / ``mc_total`` と一致することである。
 
     MC は ``degree=1`` 固定・遅延は ``mc_profile`` の index+1、IPC は
     ``ipc_heatmap`` の (次数, 遅延) セルをそのまま行にする。しきい値は MC が
