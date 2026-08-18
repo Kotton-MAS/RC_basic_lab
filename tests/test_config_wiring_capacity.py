@@ -76,7 +76,15 @@ from rc_basics_lab.config import (
 from rc_basics_lab.experiment.capacity import (
     CAPACITY_EXPERIMENTS,
     EXPERIMENT_CONSERVATION,
+    EXPERIMENT_IPC_SWEEP,
+    EXPERIMENT_LENGTH_SWEEP,
+    EXPERIMENT_MC_SWEEP,
+    CapacityOutcome,
     CapacityRow,
+    run_conservation_sweep,
+    run_ipc_sweep,
+    run_length_sweep,
+    run_mc_sweep,
 )
 from rc_basics_lab.meta import collect_meta_for
 from rc_basics_lab.seeds import SeedStream, make_rng_for
