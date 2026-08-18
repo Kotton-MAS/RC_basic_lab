@@ -72,8 +72,6 @@ from rc_basics_lab.config import (
 from rc_basics_lab.experiment.capacity import (
     CAPACITY_EXPERIMENTS,
     EXPERIMENT_CONSERVATION,
-    EXPERIMENT_IPC_SWEEP,
-    EXPERIMENT_MC_SWEEP,
     CapacityRow,
 )
 from rc_basics_lab.meta import collect_meta_for
@@ -153,15 +151,51 @@ _N_BYTES = 32
 
 
 def base_config() -> Capacity03Config:
-    """秒未満で3条件を回せる縮小設定 (構造は本番と同じ)。
+    """秒未満で4実験 x 2条件を回せる縮小設定 (**構造は本番と同じ**)。
 
     ``drive.washout`` を最大遅延より大きく取ってあるので、
     ``t0 = max(washout, 最大遅延)`` (D-24) の binding side は washout である。
+
+    格子は各セクション2条件になるように削ってある。1条件だけにすると
+    「格子の**点数**を変えたら行が増える」ことしか測れず、点の**値**が届いて
+    いるかを分離できない (どちらも指紋を変えるので、値が無視される実装でも
+    通ってしまう)。セクションごとに ``n_units`` / ``n_steps`` / ``sigma_u`` を
+    別の値にしてあるのは、セクション間で値を取り違える配線を落とすためである。
     """
     return Capacity03Config(
         name="capacity-wiring",
         drive=CapacityDriveConfig(distribution="uniform", washout=40),
         reservoir=CapacityReservoirConfig(input_scale=1.0, density=0.3, n_replicates=1),
+        mc_sweep=McSweepConfig(
+            rho_grid=(0.5, 0.9),
+            leak_rate_grid=(1.0,),
+            sigma_u=0.3,
+            n_units=12,
+            n_steps=1200,
+        ),
+        ipc_sweep=IpcSweepConfig(
+            rho_grid=(0.8,),
+            leak_rate_grid=(0.6, 1.0),
+            sigma_u=0.35,
+            n_units=10,
+            n_steps=1100,
+        ),
+        conservation=ConservationConfig(
+            n_units_grid=(9,),
+            state_noise_grid=(0.0, 0.02),
+            rho=0.95,
+            leak_rate=1.0,
+            sigma_u=0.4,
+            n_steps=1100,
+            max_delay_by_degree=(8, 4),
+        ),
+        length_sweep=LengthSweepConfig(
+            n_steps_grid=(1000, 1300),
+            rho=0.85,
+            leak_rate=0.8,
+            sigma_u=0.45,
+            n_units=8,
+        ),
         mc=MemoryCapacityConfig(max_delay=20, n_surrogates=5),
         ipc=IpcConfig(
             max_delay_by_degree=(8, 4), n_surrogates=5, n_surrogate_targets=2
@@ -169,45 +203,23 @@ def base_config() -> Capacity03Config:
     )
 
 
-CASE_CONDITIONS: tuple[CapacityCondition, ...] = (
-    CapacityCondition(
-        experiment=EXPERIMENT_MC_SWEEP,
-        rho=0.9,
-        leak_rate=1.0,
-        n_units=12,
-        state_noise=0.0,
-        sigma_u=0.3,
-        n_steps=1200,
-        replicate=0,
-    ),
-    CapacityCondition(
-        experiment=EXPERIMENT_IPC_SWEEP,
-        rho=0.8,
-        leak_rate=0.6,
-        n_units=10,
-        state_noise=0.0,
-        sigma_u=0.3,
-        n_steps=1100,
-        replicate=0,
-    ),
-    CapacityCondition(
-        experiment=EXPERIMENT_CONSERVATION,
-        rho=0.95,
-        leak_rate=1.0,
-        n_units=10,
-        state_noise=0.02,
-        sigma_u=0.3,
-        n_steps=1100,
-        replicate=0,
-    ),
+SWEEPS: tuple[Callable[[Capacity03Config], tuple[CapacityOutcome, ...]], ...] = (
+    run_mc_sweep,
+    run_ipc_sweep,
+    run_conservation_sweep,
+    run_length_sweep,
 )
-"""指紋を取る条件。3実験を1本ずつ並べ、``scope`` 検査 (セクション固有の葉が
-他の実験の行を動かさないこと) を成立させる。
+"""指紋を取る掃引。**4実験すべて**を回す (``scope`` 検査の前提)。
 
-条件そのものは**設定から作らない**。T1 の時点では掃引 (条件の列挙) が存在
-しないため、ここで固定した条件を回して「1条件の配線が消費する葉」だけを
-測る。掃引が生えたら (T2) 条件は ``config`` から作られるようになり、
-``mc_sweep.*`` などの pending が実チャネルへ移る。
+T1 の時点では掃引が無かったため固定の条件を並べていたが、T2 で条件は
+``config`` から作られるようになった。セクション固有の葉 (``mc_sweep.*`` /
+``ipc_sweep.*`` / ``conservation.*`` / ``length_sweep.*``) は、これで初めて
+「値を変えたら**その実験の行だけ**が変わる」を実測できる (仕様 §5 有効性観点
+「セクション固有の葉は scope 検査つき (4セクション)」)。
+
+``3L_length_sweep`` は本番の成果物 (``capacity.csv``) に出ない実験だが、
+ここでは回す —— ``length_sweep.*`` を変えたときに 3-A の行まで動く配線を
+落とすには、両方の行が同じ指紋の中に無ければならない。
 """
 
 
@@ -303,9 +315,9 @@ def fingerprint(rows: Sequence[CapacityRow], experiment: str | None = None) -> s
 
 
 def run_config(config: Capacity03Config) -> tuple[CapacityRow, ...]:
-    """縮小条件を回して結果行を得る。"""
+    """縮小設定で4実験の掃引を回して結果行を得る。"""
     return tuple(
-        evaluate_capacity_condition(config, item).row for item in CASE_CONDITIONS
+        outcome.row for sweep in SWEEPS for outcome in sweep(config)
     )
 
 
