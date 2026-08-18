@@ -451,6 +451,40 @@ def _build_scalars(
     return scalars
 
 
+def _build_params(
+    cfg: IpcConfig,
+    *,
+    washout: int,
+    t0: int,
+    n_samples: int,
+    n_units: int,
+    seed: int | None,
+) -> dict[str, str]:
+    """``ipc()`` が返す ``params`` (成果物への再現用メタデータ) を組み立てる。
+
+    F-03-1-018 の一環 (集約ループ・scalars 組み立てに続き、この辞書も
+    ``ipc()`` 本体から切り出して 120 行未満に戻す)。
+    """
+    return {
+        "washout": str(washout),
+        "t0": str(t0),
+        "n_samples": str(n_samples),
+        "n_units": str(n_units),
+        "max_delay_by_degree": repr(cfg.max_delay_by_degree),
+        "max_variables": str(cfg.max_variables),
+        "basis": cfg.basis,
+        "input_distribution": cfg.input_distribution,
+        "alpha": repr(cfg.alpha),
+        "threshold_mode": cfg.threshold_mode,
+        "n_surrogates": str(cfg.n_surrogates),
+        "n_surrogate_targets": str(cfg.n_surrogate_targets),
+        "surrogate_quantile": repr(cfg.surrogate_quantile),
+        "chunk_size": str(cfg.chunk_size),
+        "max_targets": str(cfg.max_targets),
+        "seed": str(seed),
+    }
+
+
 def ipc(
     X: FloatArray,
     u: FloatArray | None = None,

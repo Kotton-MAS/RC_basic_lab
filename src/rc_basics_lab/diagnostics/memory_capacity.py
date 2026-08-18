@@ -33,6 +33,7 @@ from rc_basics_lab.diagnostics._capacity import (
     UNIFORM,
     CapacityProblem,
     capacity_of_chunks,
+    input_series,
     orthonormal_basis,
     surrogate_threshold,
 )
