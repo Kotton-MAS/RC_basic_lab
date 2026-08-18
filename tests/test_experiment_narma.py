@@ -33,7 +33,6 @@ from rc_basics_lab.config import (
     MemoryCapacityConfig,
     Narma10Config,
     RidgeConfig,
-    SeedConfig,
     SplitConfig,
     load_config,
     load_config_as,
@@ -41,7 +40,11 @@ from rc_basics_lab.config import (
 from rc_basics_lab.diagnostics.base import DiagnosticContext
 from rc_basics_lab.experiment import narma as narma_module
 from rc_basics_lab.experiment import runner
-from rc_basics_lab.experiment.capacity import EXPERIMENT_NARMA10, CapacityMeasurement
+from rc_basics_lab.experiment.capacity import (
+    EXPERIMENT_NARMA10,
+    CapacityMeasurement,
+    measure_capacity,
+)
 from rc_basics_lab.experiment.narma import (
     NARMA10_ESN_SECTION,
     NARMA10_REFERENCE_NMSE,
@@ -60,10 +63,13 @@ from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
     ResultRow,
     build_tasks,
+    plan_replicate,
     run_experiment,
+    run_task,
 )
 from rc_basics_lab.readout.ridge import AlphaSelection
 from rc_basics_lab.readout.ridge import select_alpha as real_select_alpha
+from rc_basics_lab.seeds import SeedConfig
 from rc_basics_lab.tasks.narma import NARMA10_INPUT_STD, TASK_NAME
 from rc_basics_lab.types import FloatArray
 
@@ -145,7 +151,7 @@ def test_narma10_reuses_run_task_and_shares_rows_across_methods(
     """
     config = tiny_config()
     calls: list[tuple[ExperimentConfig, runner.TaskEntry, ReplicatePlan | None]] = []
-    real_run_task = narma_module.run_task
+    real_run_task = run_task
 
     def spy(
         cfg: ExperimentConfig,
@@ -243,8 +249,8 @@ def test_narma10_capacity_uses_the_same_states_as_the_esn_run(
     seen_states: list[FloatArray] = []
     seen_inputs: list[FloatArray] = []
 
-    real_plan_replicate = narma_module.plan_replicate
-    real_measure = narma_module.measure_capacity
+    real_plan_replicate = plan_replicate
+    real_measure = measure_capacity
 
     def outer_plan(
         cfg: ExperimentConfig, task_entry: runner.TaskEntry, replicate: int

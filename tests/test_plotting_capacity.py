@@ -407,10 +407,13 @@ def test_narma10_figure_draws_the_reference_lines_with_the_note(
     assert len(captured) == 1
     axis = captured[0].axes[0]
 
+    horizontal = [
+        np.asarray(line.get_ydata(), dtype=np.float64) for line in axis.get_lines()
+    ]
     drawn = {
-        float(line.get_ydata()[0])
-        for line in axis.get_lines()
-        if len(set(np.asarray(line.get_ydata(), dtype=np.float64).tolist())) == 1
+        float(values[0])
+        for values in horizontal
+        if values.size > 0 and len(set(values.tolist())) == 1
     }
     for value in NARMA10_REFERENCE_NMSE.values():
         assert value in drawn, f"参照線 {value} が描かれていません: {sorted(drawn)}"
