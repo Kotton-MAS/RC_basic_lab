@@ -285,6 +285,44 @@ def test_surrogate_threshold_requires_ctx_seed_and_is_reproducible() -> None:
         assert result.params["threshold_mode"] == mode
 
 
+def test_surrogate_threshold_rejects_bare_ndarray_base_blocks() -> None:
+    """``base_blocks`` に ``ndarray`` を直接渡すと専用の ``TypeError``
+    (F-03-4-004)。
+
+    ``base_blocks`` の型は単一の ``FloatArray`` から ``Iterable[FloatArray]``
+    (ブロックの列) へ広がったが、``np.ndarray`` はイテレートすると行を返す
+    ため構造的に ``Iterable`` を満たしてしまい、mypy はこの誤用 (2次元配列を
+    直接渡す旧来の呼び方) を検出できない (実測: mypy exit 0。実行すると
+    ``ValueError: base_blocks の要素は (T, M) が必要です: (2,)`` という
+    分かりにくいメッセージになる)。境界で ``TypeError`` を出すことを固定する。
+    """
+    states, _ = _cached_states(0.9, 15, 200, 3)
+    problem = CapacityProblem.from_states(states, t0=20)
+    bare: FloatArray = np.random.default_rng(1).standard_normal((problem.n_samples, 2))
+    with pytest.raises(TypeError, match="ndarray"):
+        surrogate_threshold(
+            problem,
+            bare,  # 単一の (T, M) 配列を直接渡す誤用 (正しくは [bare])
+            1.0e-9,
+            n_surrogates=5,
+            quantile=0.9,
+            chunk_size=8,
+            rng=np.random.default_rng(0),
+        )
+    # 正しい呼び方 ([bare] のように包む) は通ることも合わせて固定する。
+    threshold, capacities = surrogate_threshold(
+        problem,
+        [bare],
+        1.0e-9,
+        n_surrogates=5,
+        quantile=0.9,
+        chunk_size=8,
+        rng=np.random.default_rng(0),
+    )
+    assert np.isfinite(threshold)
+    assert capacities.shape == (2 * 5,)
+
+
 def test_threshold_mode_changes_total_capacity() -> None:
     """3つのしきい値法で総容量が変わる (受け入れ条件3 の一次資料)。
 
@@ -851,6 +889,39 @@ def test_max_variables_bounds_the_combinatorial_blowup_in_count_targets() -> Non
     cfg = IpcConfig(max_delay_by_degree=(4000,), max_variables=4000)
     states, inputs = _cached_states(0.9, 5, 100, 5)
     with pytest.raises(ValueError, match="max_variables"):
+        ipc(
+            states,
+            inputs,
+            ctx=DiagnosticContext(washout=10, seed=CTX_SEED),
+            cfg=cfg,
+        )
+
+
+def test_max_delay_bit_length_bounds_combinatorial_blowup_in_count_targets() -> None:
+    """``max_delay_by_degree`` の要素は値ではなく**桁数**でも組合せ爆発しうる
+    (CWE-400、F-03-4-007、D-34 の4段目)。
+
+    ``math.comb`` のコストは値ではなく桁数に対しておよそ ``digits^1.6`` で
+    伸びる。既定の ``max_degrees<=32`` / ``max_variables<=20`` の下でも
+    ``max_delay`` の桁数だけを伸ばせば ``count_targets`` を無防備に長時間
+    走らせられていた (round4 レビュー実測: 10^60000 で 57.02秒)。
+    ``_validate_combinatorial_bounds`` が桁数 (``bit_length``) を確保・計算
+    より前に ``ValueError`` にすることを完了条件5として固定する。
+    """
+    huge_delay = 10**60000
+    cfg = IpcConfig(
+        max_delay_by_degree=(huge_delay,) * 32, max_variables=20, max_degrees=32
+    )
+    start = time.perf_counter()
+    with pytest.raises(ValueError, match="bit"):
+        count_targets(cfg)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, (
+        f"count_targets が確保・計算の前に落ちていません ({elapsed:.3f}s)"
+    )
+
+    states, inputs = _cached_states(0.9, 5, 100, 5)
+    with pytest.raises(ValueError, match="bit"):
         ipc(
             states,
             inputs,
