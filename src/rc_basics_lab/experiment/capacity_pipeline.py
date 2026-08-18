@@ -32,6 +32,7 @@ from rc_basics_lab.experiment.capacity import (
     CapacityProfileRow,
     CapacityResults,
     CapacityRow,
+    profile_rows,
     run_capacity_experiment,
     run_length_sweep,
 )
@@ -185,8 +186,26 @@ def _log_timings(timings: Sequence[SectionTiming]) -> None:
     )
 
 
+def _rows_of(outcomes: Sequence[CapacityOutcome]) -> tuple[CapacityRow, ...]:
+    """1実験ぶんの ``capacity.csv`` の行 (図はこの並びを読む)。"""
+    return tuple(outcome.row for outcome in outcomes)
+
+
+def _profile_of(
+    outcomes: Sequence[CapacityOutcome],
+) -> tuple[CapacityProfileRow, ...]:
+    """1実験ぶんの長形式の行 (``capacity_profile.csv`` と同じ、D-38)。
+
+    図は配列 (``CapacityOutcome.mc_profile`` / ``ipc_heatmap``) ではなく
+    **書き出したのと同じ長形式の行**を読む。成果物と図の食い違い (CSV には
+    正値セルしか無いのに図は配列の全セルを見ている、など) を構造で防ぐ。
+    診断はここでも図でも一切走らせない。
+    """
+    return tuple(row for outcome in outcomes for row in profile_rows(outcome))
+
+
 def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> CapacityOutputs:
-    """実験 3-A / 3-B / 3-B' を実行し、CSV2枚と meta.json を書き出す。
+    """実験 3-A / 3-B / 3-B' を実行し、CSV2枚・図4枚・meta.json を書き出す。
 
     Args:
         config: 03 の実験設定。
@@ -210,9 +229,32 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     )
     _log_timings(timings)
 
+    style = setup_style()
     paths = (
         write_capacity_csv(rows, out_dir / CAPACITY_CSV),
         write_capacity_profile_csv(profile, out_dir / CAPACITY_PROFILE_CSV),
+        plot_mc_sweep(
+            _rows_of(results.mc_sweep),
+            _profile_of(results.mc_sweep),
+            out_dir / FIG_MC_SWEEP,
+            style=style,
+        ),
+        plot_ipc_profile(
+            _rows_of(results.ipc_sweep),
+            _profile_of(results.ipc_sweep),
+            out_dir / FIG_IPC_PROFILE,
+            style=style,
+        ),
+        plot_memory_nonlinearity(
+            _rows_of(results.ipc_sweep),
+            out_dir / FIG_MEMORY_NONLINEARITY,
+            style=style,
+        ),
+        plot_ipc_conservation(
+            _rows_of(results.conservation),
+            out_dir / FIG_IPC_CONSERVATION,
+            style=style,
+        ),
         write_meta_for(
             config,
             config.seeds,
@@ -225,6 +267,10 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             extra={
                 "n_profile_rows": len(profile),
                 "wall_time_breakdown": [timing.to_summary() for timing in timings],
+                # 図のラベル言語を決めた要因 (02 の meta.json と同じ形)。
+                # 英語ラベルの図が出たときに「フォントが無い環境で生成した」と
+                # 成果物だけで判別できる。
+                "cjk_font": style.cjk_font,
             },
         ),
     )
@@ -267,6 +313,10 @@ __all__ = [
     "CAPACITY_CSV",
     "CAPACITY_LENGTH_CSV",
     "CAPACITY_PROFILE_CSV",
+    "FIG_IPC_CONSERVATION",
+    "FIG_IPC_PROFILE",
+    "FIG_MC_SWEEP",
+    "FIG_MEMORY_NONLINEARITY",
     "CapacityOutputs",
     "SectionTiming",
     "run_and_report_capacity",
