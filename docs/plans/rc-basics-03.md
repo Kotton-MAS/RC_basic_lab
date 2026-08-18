@@ -193,6 +193,8 @@
 - `test_all_capacity_config_fields_are_covered` + `test_each_capacity_parameter_changes_output`
 - `test_mc_and_ipc_share_the_same_state_matrix`: 参照軌道生成の呼び出し回数が条件数と一致
 - `test_reference_states_match_esp_simulate_condition`: 02 の `simulate_condition().states` と**バイト一致**
+- `CapacityProblem.from_states` に渡す `X` は、渡す前に呼び出し側 (`experiment/capacity.py`)
+  が読み取り専用にする (F-03-4-001。上記「3a から持ち越した設計課題」参照)
 - `uv run python main.py --experiment 03 --out <tmp>` で CSV2枚 + 図4枚 + meta.json
 - 縮小設定は 20 秒以内。本番は §5 の予算表を満たす
 
