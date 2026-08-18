@@ -102,6 +102,15 @@ def test_mc_total_does_not_exceed_n_units(rho: float) -> None:
     Dambre 2012 の保存則の次数1成分。上限は状態次元 N であり、これを超えたら
     基底の正規化か行合わせ (D-24) が壊れている。1.02 倍の余裕は有限標本の
     ゆらぎのぶん。
+
+    上限側だけでなく下限も検査する (F-03-1-023)。上限と ``> 0.0`` だけだと、
+    容量測定がほぼ意味を成さない状態 (深刻な回帰バグ) でも通ってしまう:
+    実測で ``capacity_of_chunks`` の戻り値を 0.02 倍に潰す変異を注入すると
+    ``mc_ratio`` は 0.011 まで落ちるが、上限チェックと ``> 0.0`` はどちらも
+    成立してこのテストを素通りした。IPC の同種テスト
+    (``test_ipc_total_does_not_exceed_n_units`` の ``saturation_ratio >=
+    0.5``) に相当する下限を、MC の実測ベースライン (rho=0.5/0.9/0.99 で
+    ``mc_ratio`` は 0.376/0.620/0.653) に合わせて ``0.2`` に置く。
     """
     n_units = 30
     states, inputs = _cached_states(rho, n_units, 5000, 7)
@@ -114,6 +123,10 @@ def test_mc_total_does_not_exceed_n_units(rho: float) -> None:
     )
     assert scalars["mc_ratio"] <= 1.02
     assert scalars["mc_total"] > 0.0
+    assert scalars["mc_ratio"] >= 0.2, (
+        f"rho={rho}: mc_ratio={scalars['mc_ratio']} が下限 0.2 を下回りました"
+        " (容量測定がほぼ意味を成さない状態を示唆、F-03-1-023)"
+    )
     assert scalars["n_delays"] == 400.0
     assert result.arrays["mc_profile"].shape == (400,)
 
@@ -127,8 +140,15 @@ def test_mc_profile_lengthens_with_spectral_radius() -> None:
     T は保存則テスト (T=5000) より長い 20000 を使う。有限標本による容量の
     かさ上げは ``F/T`` (ここでは 31/T) の桁で入り、T=5000 では 400 本の遅延に
     薄く散った偽陽性が重心を押し上げて rho の効果を覆い隠す (実測: T=5000 では
-    5 シード中 5 シードでこの assert が落ちる。T=20000 では 5 シードすべてで
-    通り、比の最小は 1.75)。3-A の本番設定も T=20000 (仕様 §4 T3)。
+    5 シード中 5 シードでこの assert が落ちる。T=20000 では元の5シードすべて
+    で通る)。3-A の本番設定も T=20000 (仕様 §4 T3)。
+
+    比の下限を 1.5 に固定した根拠 (F-03-1-024): 元の docstring は5シードの
+    観測から「比の最小は 1.75」としていたが、これは楽観的だった。より広い
+    62シード (任意シード12種 + seed=1000〜1049 の連番50個) で実測すると
+    比の最小は 1.559 (閾値 1.5 に対して約4%の余裕しかない) で、62シード中
+    失敗は0件。閾値自体を下げる必要はないが (実測で不安定ではない)、
+    「1.75」という数値は実際の余裕を過大に伝えていたので実測値に訂正する。
     """
     effective: list[float] = []
     for rho in (0.5, 0.9, 0.99):
