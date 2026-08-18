@@ -70,6 +70,19 @@ EXPERIMENT_IPC_SWEEP = "3B_ipc_sweep"
 EXPERIMENT_CONSERVATION = "3Bp_conservation"
 """実験 3-B': ノイズ下での保存則 IPC_total <= N (受け入れ条件2)。"""
 
+EXPERIMENT_NARMA10 = "3C_narma10"
+"""実験 3-C: 公平な対照下での NARMA10 (受け入れ条件5)。
+
+**条件は ``CapacityCondition`` で表現できない** —— 状態は 01 の
+``plan_replicate`` (課題の入力で駆動する ESN) が作るので、rho / leak_rate /
+sigma_u / n_steps を掃引の軸として持たない。それでも同じ実験ラベルの空間に
+載せるのは、3-C の ESN の容量 (MC / IPC) を ``capacity.csv`` に同じ列で
+書き、成績 (``narma10.csv``) と条件キーで join できるようにするためである
+(要件書「そのリザバーの IPC プロファイルと突き合わせ、NARMA10 の成績が容量の
+どの成分と相関するかを見る」)。行は ``experiment/narma.py`` が
+``measure_capacity`` -> ``capacity_row_from`` の2段で作る (F-3b1-1-004)。
+"""
+
 EXPERIMENT_LENGTH_SWEEP = "3L_length_sweep"
 """系列長 T に対する容量の飽和 (``make saturation-03``)。**本番には含めない**。
 
