@@ -9,15 +9,17 @@ YAML 化するため、キーのタイプミスが黙って無視されると「
 (ローダはフィールド型から再帰的に構築する)。
 
 **実験ごとに設定 dataclass を分ける** (D-13)。``ExperimentConfig`` は 01 専用で、
-02 は ``Esp02Config`` を使う。ローダ本体は ``load_config_as(path, cls)`` として
+02 は ``Esp02Config``、03 は ``Capacity03Config`` を使う。ローダ本体は
+``load_config_as(path, cls)`` として
 共有し、``load_config`` はその 01 向けの別名 (呼び出し互換のため署名を保つ)。
 02 のフィールドを ``ExperimentConfig`` に相乗りさせると
 ``tests/test_config_wiring.py::test_each_parameter_changes_output``
 (「全フィールドが 01 のパイプライン出力を変える」) を満たせないフィールドが
 生まれ、逃がすための例外チャネルを増やすと配線漏れの検出力そのものが落ちる。
 
-診断の設定 dataclass (``EspConfig`` / ``LyapunovConfig`` / ``TimescaleConfig``)
-は ``diagnostics/`` 側に定義し、ここが import する。``config -> diagnostics``
+診断の設定 dataclass (``EspConfig`` / ``LyapunovConfig`` / ``TimescaleConfig``
+/ ``MemoryCapacityConfig`` / ``IpcConfig``) は ``diagnostics/`` 側に定義し、
+ここが import する。``config -> diagnostics``
 は許可された向きで、逆向きは D-12 が禁じている。
 """
 
@@ -34,6 +36,8 @@ import numpy as np
 import yaml
 
 from rc_basics_lab.diagnostics.esp import EspConfig, LyapunovConfig
+from rc_basics_lab.diagnostics.ipc import IpcConfig
+from rc_basics_lab.diagnostics.memory_capacity import MemoryCapacityConfig
 from rc_basics_lab.diagnostics.timescale import TimescaleConfig
 from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.seeds import SeedConfig, SeedStream
@@ -375,6 +379,205 @@ class Esp02Config:
     timescale: TimescaleConfig = field(default_factory=TimescaleConfig)
 
 
+# --- 実験03 (容量: MC / IPC) の設定群 (D-13) ---------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CapacitySeedConfig:
+    """03 の実験 3-A / 3-B / 3-B' が使う基底シード (D-13 / D-14 と同じ流儀)。
+
+    01 の ``SeedConfig`` / 02 の ``EspSeedConfig`` とは別クラスにする。03 は
+    初期状態対 (``PROBE``) を引かない代わりに、しきい値のサロゲート用シードを
+    持つ。
+
+    Attributes:
+        reservoir: リザバー重みの基底シード (``SeedStream.RESERVOIR``)。
+        drive: 駆動入力の基底シード (``SeedStream.TASK``)。
+        surrogate: しきい値サロゲートの ``DiagnosticContext.seed`` (D-27 / D-37)。
+            **``SeedStream`` ではない**。``make_rng_for`` の ``spawn_key`` 経由
+            ではなく、診断へ ``ctx.seed`` としてそのまま渡る整数であり、
+            ``seeds.py`` の既存4ストリームの index を1つも動かさない。
+            全条件で1個を共有する (共通乱数法、D-37)。
+    """
+
+    reservoir: int = 0
+    drive: int = 1
+    surrogate: int = 4
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityDriveConfig:
+    """03 の駆動入力の共通条件 (系列長はセクションが持つ)。
+
+    02 の ``DriveConfig`` を**設定として**再利用しない (仕様 §3.2)。03 は
+    比較軌道を引かないので ``n_pairs`` が要らず、``n_steps`` はセクションごとに
+    2桁違う (3-A は 2e4、3-B' は 2e5)。**関数** (``simulate_reference_trajectory``)
+    は再利用し、値の組み立ては配線層 (``experiment/capacity.py``) が1か所で行う。
+
+    Attributes:
+        distribution: 駆動信号の分布。``"uniform"`` 以外は実験層が ``ValueError``
+            にする (黙って一様として扱わない)。
+        washout: 診断へ渡す ``DiagnosticContext.washout`` [ステップ]。
+            容量測定では ``t0 = max(washout, 最大遅延)`` の一方の項になる (D-24)。
+    """
+
+    distribution: str = "uniform"
+    washout: int = 200
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityReservoirConfig:
+    """3-A / 3-B / 3-B' がセクション横断で共有するリザバー構造 (D-32)。
+
+    02 の ``ReservoirSweepConfig`` と違い **``n_units`` を持たない**。03 は
+    MC (N=200) と IPC (N=50) で規模が2桁近く違い (D-32: IPC は目標数が
+    次数×遅延で増えるため小さいリザバーで回す)、3-B' に至っては ``n_units``
+    そのものが掃引軸である。横断で共有できるのはここにある3つだけで、
+    ``n_units`` は各セクションが名乗る。
+
+    Attributes:
+        input_scale: 入力重みの一様分布の幅 (掃引中は固定、D-17)。
+        density: 再帰行列の非零率。
+        n_replicates: 各条件のレプリケート数。
+    """
+
+    input_scale: float = 1.0
+    density: float = 0.1
+    n_replicates: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class McSweepConfig:
+    """実験 3-A: rho x リーク率 に対する線形メモリ容量 (受け入れ条件1)。
+
+    ``n_units`` はここが持つ (D-32)。MC の上限は N なので、上限線 y=N を
+    引ける規模 (サイクル1・2 と同じ N=200) で回す。
+    """
+
+    rho_grid: tuple[float, ...] = (0.5, 0.7, 0.9, 0.95, 1.0, 1.1)
+    leak_rate_grid: tuple[float, ...] = (0.3, 0.6, 1.0)
+    sigma_u: float = 0.1
+    n_units: int = 200
+    n_steps: int = 20_000
+
+
+@dataclass(frozen=True, slots=True)
+class IpcSweepConfig:
+    """実験 3-B: rho x リーク率 に対する IPC の次数・遅延分解 (受け入れ条件4)。
+
+    ``n_units=50`` は 3-A (N=200) より小さい (D-32)。IPC は目標数が次数と遅延の
+    積で増え、必要な系列長も N に対して伸びるため、同じ N では予算に収まらない。
+    ``sigma_u`` を 3-A と別に持つのは、次数分解には中程度の駆動が要る一方で
+    MC の rho 依存は準線形域を要し、最適な動作点が一致する保証が無いため
+    (仕様 §3.2。図をまたいだ絶対値比較はしない)。
+    """
+
+    rho_grid: tuple[float, ...] = (0.5, 0.8, 0.95, 1.1)
+    leak_rate_grid: tuple[float, ...] = (0.3, 0.6, 1.0)
+    sigma_u: float = 0.2
+    n_units: int = 50
+    n_steps: int = 100_000
+
+
+@dataclass(frozen=True, slots=True)
+class ConservationConfig:
+    """実験 3-B': ノイズ下での保存則 IPC_total <= N (受け入れ条件2)。
+
+    ``max_delay_by_degree`` は **3-B' でだけ** ``Capacity03Config.ipc`` を
+    ``dataclasses.replace`` で上書きする (片方向。3-A / 3-B は ``ipc`` を
+    素のまま使う)。保存則は「打ち切りの外に残った容量」が見えないと N に
+    届かないため、この実験だけ遅延を深く取る必要がある。逆向き (3-B' の値を
+    ``ipc`` の既定にする) にすると 3-B の掃引まで重くなる。
+
+    Attributes:
+        n_units_grid: 上限線 y=N と突き合わせるための N の掃引軸。
+        state_noise_grid: tanh 内部に加えるガウスノイズの標準偏差の掃引軸。
+            0 を含めるとノイズ無しの基準点が同じ図に乗る。
+        rho: スペクトル半径 (固定)。
+        leak_rate: リーク率 (固定)。
+        sigma_u: 駆動信号の標準偏差 (固定)。
+        n_steps: 系列長 [ステップ]。
+        max_delay_by_degree: 3-B' でだけ使う次数ごとの遅延の打ち切り。
+            既定 ``(200, 60, 20, 10)`` の目標数は 4,075 本 / heatmap 800 セル
+            (``count_targets`` で実測) で、``ipc.max_targets`` (200,000) に対し
+            49 倍・250 倍の余裕がある。
+    """
+
+    n_units_grid: tuple[int, ...] = (25, 50, 100)
+    state_noise_grid: tuple[float, ...] = (0.0, 0.01, 0.1)
+    rho: float = 0.95
+    leak_rate: float = 1.0
+    sigma_u: float = 0.2
+    n_steps: int = 200_000
+    max_delay_by_degree: tuple[int, ...] = (200, 60, 20, 10)
+
+
+@dataclass(frozen=True, slots=True)
+class LengthSweepConfig:
+    """系列長 T に対する容量の飽和 (``make saturation-03``、本番には含めない)。
+
+    「容量が足りないのか T が足りないのか」を分けるための補助実験であり、
+    ``make figures-03`` の予算 (900 秒) の外で手動実行する。
+    """
+
+    n_steps_grid: tuple[int, ...] = (100_000, 200_000, 500_000, 1_000_000)
+    rho: float = 0.95
+    leak_rate: float = 1.0
+    sigma_u: float = 0.2
+    n_units: int = 50
+
+
+@dataclass(frozen=True, slots=True)
+class Narma10Config:
+    """実験 3-C: 公平な対照下での NARMA10 (D-29 / D-31 / D-39)。
+
+    実体は ``base`` の課題を差し替えて 01 の ``run_task`` を回す経路なので、
+    公平性 (D-04 / D-05 / D-08) は既存経路が担保する。係数と入力分布は
+    ``tasks/narma.py`` のモジュール定数であり設定にしない (D-29) ので、
+    ここが持つのは系列長と 01 側の土台だけである
+    (``WashoutSweepConfig.base`` と同じ内包の形)。
+
+    Attributes:
+        length: NARMA10 系列の長さ [ステップ]。
+        base: 掃引の土台となる 01 の設定 (課題以外は差し替えない)。
+    """
+
+    length: int = 8000
+    base: ExperimentConfig = field(default_factory=ExperimentConfig)
+
+
+@dataclass(frozen=True, slots=True)
+class Capacity03Config:
+    """実験03 (メモリ容量・情報処理容量) 1本ぶんの設定 (D-13)。
+
+    ``ExperimentConfig`` / ``Esp02Config`` とはローダ (``load_config_as``) だけを
+    共有し、フィールドは一切共有しない。3-C だけは 01 のパイプラインを再利用
+    するため、``narma.base`` として ``ExperimentConfig`` をまるごと内包する
+    (``narma.base.*`` の配線は 01 側の ``tests/test_config_wiring.py`` が被覆する。
+    ``WashoutSweepConfig.base`` と同じ形)。
+
+    ``mc`` / ``ipc`` は診断層の設定 (D-15) をそのまま載せたもので、YAML から
+    容量測定の判定基準まで届くのはこの経路だけである。効きの実測は
+    ``tests/test_diagnostics_memory_capacity.py`` /
+    ``tests/test_diagnostics_ipc.py`` (3a) に委譲する。
+
+    ``reservoir`` が持つのはセクション横断で共有する3つだけで、``n_units`` は
+    セクションが名乗る (D-32。理由は ``CapacityReservoirConfig`` を参照)。
+    """
+
+    name: str = "03_capacity"
+    seeds: CapacitySeedConfig = field(default_factory=CapacitySeedConfig)
+    drive: CapacityDriveConfig = field(default_factory=CapacityDriveConfig)
+    reservoir: CapacityReservoirConfig = field(default_factory=CapacityReservoirConfig)
+    mc_sweep: McSweepConfig = field(default_factory=McSweepConfig)
+    ipc_sweep: IpcSweepConfig = field(default_factory=IpcSweepConfig)
+    conservation: ConservationConfig = field(default_factory=ConservationConfig)
+    length_sweep: LengthSweepConfig = field(default_factory=LengthSweepConfig)
+    mc: MemoryCapacityConfig = field(default_factory=MemoryCapacityConfig)
+    ipc: IpcConfig = field(default_factory=IpcConfig)
+    narma: Narma10Config = field(default_factory=Narma10Config)
+
+
 def _fail(location: str, message: str) -> ConfigError:
     return ConfigError(f"{location}: {message}")
 
@@ -493,7 +696,12 @@ __all__ = [
     "DEFAULT_ESP_MAP_RHO_GRID",
     "DEFAULT_ESP_MAP_SIGMA_GRID",
     "TASK_LENGTH_FIELDS",
+    "Capacity03Config",
+    "CapacityDriveConfig",
+    "CapacityReservoirConfig",
+    "CapacitySeedConfig",
     "ConfigError",
+    "ConservationConfig",
     "DelayParityConfig",
     "DriveConfig",
     "ESNConfig",
@@ -503,8 +711,14 @@ __all__ = [
     "EspMapConfig",
     "EspSeedConfig",
     "ExperimentConfig",
+    "IpcConfig",
+    "IpcSweepConfig",
+    "LengthSweepConfig",
     "LyapunovConfig",
     "MackeyGlassConfig",
+    "McSweepConfig",
+    "MemoryCapacityConfig",
+    "Narma10Config",
     "ReservoirSweepConfig",
     "RidgeConfig",
     "SplitConfig",
