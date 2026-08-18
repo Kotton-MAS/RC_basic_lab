@@ -718,14 +718,146 @@ def plot_ipc_conservation(
         return _save(figure, path)
 
 
+# --- 3-C: 公平な対照での NARMA10 -------------------------------------------
+
+
+def narma10_method_labels(
+    rows: Sequence[ResultRow], style: StyleContext
+) -> tuple[tuple[str, str], ...]:
+    """横軸の (手法名, 表示ラベル) を出現順で返す。
+
+    遅延線のラベルには**検証分割で選ばれたタップ数 k** を入れる (D-08 が
+    選ぶことを許した唯一の構造パラメータであり、対照の強さそのもの)。
+    レプリケートごとに違う k が選ばれたら全部並べる —— 代表値を1つ選ぶと
+    「ばらついている」という事実が図から消える。
+    """
+    methods = tuple(dict.fromkeys(row.method for row in rows))
+    labels: list[tuple[str, str]] = []
+    for method in methods:
+        pair = _METHOD_LABELS.get(method)
+        text = method if pair is None else style.label(*pair)
+        if method == DELAY_LINE:
+            lags = sorted({row.n_lags for row in rows if row.method == method})
+            text = f"{text}\n(k = {', '.join(str(value) for value in lags)})"
+        labels.append((method, text))
+    return tuple(labels)
+
+
+def _reference_lines(axis: Axes, style: StyleContext) -> None:
+    """参照線 NMSE = 0.16 / 0.107 を**注記つき**で引く (原典未特定)。
+
+    値は ``experiment/narma.py`` の ``NARMA10_REFERENCE_NMSE`` が単一の真実で、
+    ここは描くだけである (``meta.json`` も同じ定数を書く)。凡例の対応表に
+    無いキーが在れば描く前に落とす —— 参照点を足したのに図に出ない、を
+    黙って通さない。
+    """
+    missing = set(NARMA10_REFERENCE_NMSE) - set(_REFERENCE_LABELS)
+    if missing:
+        raise ValueError(f"参照線のラベルがありません: {sorted(missing)}")
+    for key, value in NARMA10_REFERENCE_NMSE.items():
+        japanese, english = _REFERENCE_LABELS[key]
+        axis.axhline(
+            value,
+            color=_REFERENCE_COLORS.get(key, "tab:gray"),
+            linestyle="--",
+            linewidth=1.0,
+            label=style.label(
+                japanese.format(value=value), english.format(value=value)
+            ),
+        )
+
+
+def plot_narma10_control(
+    rows: Sequence[ResultRow], path: Path, *, style: StyleContext
+) -> Path:
+    """実験 3-C: 探索予算をそろえた3手法の NARMA10 成績 (受け入れ条件5)。
+
+    横軸が手法 (線形 / 遅延線(選ばれた k) / ESN)、縦軸がテスト NMSE の
+    レプリケート平均±s.d.。参照線 (0.16 / 0.107) は**原典未特定**である旨を
+    図の注に書いて引く —— 数字だけを引くと、後から出典が違っていたときに
+    図の側から辿れない。
+
+    誤差指標を NMSE にするのは、参照値が NMSE で流通しているからである
+    (D-02 の主指標 NRMSE は ``narma10.csv`` の ``nrmse`` 列に併記されている)。
+
+    Raises:
+        ValueError: ``rows`` が空、または参照線のラベルが欠けている場合。
+    """
+    if not rows:
+        raise ValueError("rows が空です")
+    labels = narma10_method_labels(rows, style)
+    positions = np.arange(len(labels), dtype=np.float64)
+    stats = [
+        _mean_std([row.nmse for row in rows if row.method == method])
+        for method, _ in labels
+    ]
+    means = [mean for mean, _ in stats]
+    stds = [std for _, std in stats]
+
+    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+        figure = _new_figure(7.2, 5.0)
+        axis = figure.subplots(1, 1)
+        axis.errorbar(
+            positions,
+            means,
+            # 対数軸なので下側の誤差棒が 0 以下に落ちないよう抑える
+            yerr=np.vstack(
+                [
+                    np.minimum(stds, np.asarray(means, dtype=np.float64) * 0.999),
+                    np.asarray(stds, dtype=np.float64),
+                ]
+            ),
+            fmt="o",
+            capsize=5,
+            color="tab:blue",
+        )
+        _reference_lines(axis, style)
+        for position, mean in zip(positions, means, strict=True):
+            axis.annotate(
+                f"{mean:.4f}",
+                (position, mean),
+                textcoords="offset points",
+                xytext=(0, 10),
+                ha="center",
+                fontsize=8,
+            )
+        axis.set_yscale("log")
+        axis.set_xticks(positions)
+        axis.set_xticklabels([text for _, text in labels])
+        axis.set_xlim(-0.5, len(labels) - 0.5)
+        n_replicates = len({row.replicate for row in rows})
+        axis.set_ylabel(
+            style.label(
+                f"NMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
+                f"NMSE (test split, mean +- s.d. of {n_replicates} replicates)",
+            )
+        )
+        axis.legend(loc="best", fontsize=8)
+        figure.suptitle(
+            style.label(
+                "実験 3-C: NARMA10 (同一分割・同一 alpha 格子・"
+                f"N = {(rows[0].n_lags and '') or ''}探索予算は遅延線が大きい)",
+                "Experiment 3-C: NARMA10 (identical splits and alpha grid;"
+                " the delay line searches a larger budget)",
+            )
+        )
+        figure.supxlabel(
+            style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
+            fontsize=8,
+        )
+        return _save(figure, path)
+
+
 __all__ = [
     "BOUND_MARGIN",
     "conservation_bound",
     "ipc_heatmap_means",
     "mc_profile_means",
+    "narma10_method_labels",
     "plot_ipc_conservation",
     "plot_ipc_profile",
     "plot_mc_sweep",
     "plot_memory_nonlinearity",
+    "plot_narma10_control",
     "representative_leak_rate",
 ]
