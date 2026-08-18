@@ -300,14 +300,21 @@ def reservoir_config_for(
 
     03 は 02 の ``ReservoirSweepConfig`` を**設定として**再利用しない (仕様
     §3.2) が、``simulate_reference_trajectory`` の引数型としては再利用する。
-    横断共有の3つ (``input_scale`` / ``density`` / ``n_replicates``) は
-    ``config.reservoir`` から、``n_units`` は条件から取る (D-32)。
+    横断共有の2つ (``input_scale`` / ``density``) は ``config.reservoir`` から、
+    ``n_units`` は条件から取る (D-32)。``n_replicates`` は
+    ``n_replicates_for(config, condition.experiment)`` の**実効値**を渡す
+    (F-3b1-1-006)。``drive_config_for`` が『設定したのに効いていない
+    フィールドを作らない』ために ``n_pairs`` を外しているのと同じ規律で、
+    ``simulate_reference_trajectory`` は ``n_replicates`` を読まないため実害は
+    無かったが、3-B' で ``conservation.n_replicates`` が横断共有値を上書き
+    している場合に実効値と食い違った ``ReservoirSweepConfig`` が境界を越える
+    (実効1に対し3が渡る) 状態だった。
     """
     return ReservoirSweepConfig(
         input_scale=config.reservoir.input_scale,
         n_units=condition.n_units,
         density=config.reservoir.density,
-        n_replicates=config.reservoir.n_replicates,
+        n_replicates=n_replicates_for(config, condition.experiment),
     )
 
 
