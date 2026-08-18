@@ -96,6 +96,53 @@ DIAGNOSTIC_MC = "mc"
 DIAGNOSTIC_IPC = "ipc"
 """``CapacityProfileRow.diagnostic``: 情報処理容量 (次数 x 遅延)。"""
 
+_MAX_UNITS = 5_000
+"""``CapacityCondition.n_units`` の上書き不能な絶対上限 (F-3b1-1-017, CWE-789)。
+
+``ESN`` の重み生成は ``rng.random((N, N))`` (再帰行列) を確保するため、確保量は
+``N**2`` に比例する。3a の D-34 (IPC の確保・組合せ計算量の4段の上限) と同じ
+threat model —— 設定 YAML の1行変更 (``conservation.n_units_grid: [100000]``)
+だけで防御が無い状態だと数十GB の確保に到達しうる (実測: N=100000 で重み行列
+だけで約80GB)。本番設定の最大 ``n_units`` は 200 (3-A) で、``_MAX_UNITS=5000``
+は25倍の余裕を残しつつ、重み行列を ``8 * 5000**2`` ≈ 200MB に抑える。
+"""
+
+_MAX_STATE_ELEMENTS = 200_000_000
+"""``n_units * n_steps`` の上書き不能な絶対上限 (F-3b1-1-017, CWE-400/789)。
+
+状態行列 ``X`` は ``(n_steps, n_units)`` の ``float64`` を確保するため、
+確保量は ``n_units * n_steps`` に比例する (D-35 の rationale が言う 4GB 予算と
+同じ軸)。本番設定の最大は length_sweep (``n_units=50, n_steps=1_000_000`` =
+5e7) で、``_MAX_STATE_ELEMENTS=2e8`` は4倍の余裕を残しつつ状態行列を
+``8 * 2e8`` = 1.6GB に抑える。``n_steps`` 単体ではなく積で縛るのは、
+``n_units`` が小さければ ``n_steps`` を大きく取れる (length_sweep の実際の
+使い方) 一方で、両方を同時に大きくする設定変更は個別の軸の検査をすり抜ける
+ため (CWE-789 の threat model は D-34 の rationale と同型)。
+"""
+
+
+def _validate_condition_bounds(condition: CapacityCondition) -> None:
+    """状態行列・ESN の確保より前に、確保量に上書き不能な絶対上限をかける。
+
+    D-34 の規律 (「確保より前に落とす」) を実験層の確保軸 (``n_units`` /
+    ``n_steps``) にも適用する (F-3b1-1-017)。``CapacityCondition`` はこの
+    モジュールの全経路 (3-A / 3-B / 3-B' / length_sweep) が最終的に通る単一の
+    入口なので、ここ1か所の検査で4経路すべてが守られる。
+    """
+    if condition.n_units > _MAX_UNITS:
+        raise ValueError(
+            f"n_units が上限を超えています: {condition.n_units} > {_MAX_UNITS} "
+            "(ESN の重み行列の確保量は n_units**2 に比例するため、"
+            "確保する前に検査で落とす)"
+        )
+    n_state_elements = condition.n_units * condition.n_steps
+    if n_state_elements > _MAX_STATE_ELEMENTS:
+        raise ValueError(
+            f"n_units * n_steps が上限を超えています: {n_state_elements} > "
+            f"{_MAX_STATE_ELEMENTS} (状態行列の確保量は n_units * n_steps に"
+            "比例するため、確保する前に検査で落とす)"
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class CapacityCondition:
@@ -375,9 +422,12 @@ def evaluate_capacity_condition(
         ``capacity.csv`` の1行と、図が使う3本の配列。
 
     Raises:
-        ValueError: 駆動信号の分布が未対応 / 設定が範囲外 / 系列が短すぎる /
-            ``ctx.seed`` が要るのに無い場合 (いずれも診断層・ESN 層が投げる)。
+        ValueError: ``n_units`` / ``n_units * n_steps`` が上限を超える
+            (F-3b1-1-017、確保より前に検査する) / 駆動信号の分布が未対応 /
+            設定が範囲外 / 系列が短すぎる / ``ctx.seed`` が要るのに無い場合
+            (後半は診断層・ESN 層が投げる)。
     """
+    _validate_condition_bounds(condition)
     started = time.perf_counter()
     reference = simulate_reference_trajectory(
         reservoir_config_for(config, condition),
