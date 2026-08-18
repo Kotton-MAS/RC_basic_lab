@@ -681,6 +681,41 @@ def test_unknown_key_raises_for_capacity_config(
         load_config_as(path, Capacity03Config)
 
 
+@pytest.mark.parametrize(
+    ("yaml_text", "expected"),
+    [
+        pytest.param("", None, id="absent"),
+        pytest.param("conservation:\n  n_replicates: null\n", None, id="explicit_null"),
+        pytest.param("conservation:\n  n_replicates: 1\n", 1, id="overridden"),
+    ],
+)
+def test_optional_replicates_reaches_the_config_from_yaml(
+    tmp_path: Path, yaml_text: str, expected: int | None
+) -> None:
+    """``conservation.n_replicates`` (``int | None``) が YAML から届く。
+
+    ローダは元々 ``X | None`` を「未対応の Union 型」として弾いていた。
+    ``None`` を許すのは「セクション側が名乗らなければ横断共有の値を継承する」
+    片方向の上書き (``n_replicates_for``) を型で表すためで、既定値そのものを
+    こちら側に書かない (書くと二重定義になり、継承元を変えても効かなくなる)。
+    """
+    path = tmp_path / "optional.yaml"
+    path.write_text(yaml_text, encoding="utf-8")
+    assert load_config_as(path, Capacity03Config).conservation.n_replicates == expected
+
+
+def test_optional_replicates_still_rejects_loose_conversions(tmp_path: Path) -> None:
+    """``int | None`` でも中身の型検査は緩まない (D-09)。
+
+    ``None`` を素通しする分岐を足したときに「``None`` 以外は何でも通る」に
+    退行すると、``"3"`` のような数値らしい文字列が黙って通る。
+    """
+    path = tmp_path / "loose.yaml"
+    path.write_text('conservation:\n  n_replicates: "3"\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="整数が必要です"):
+        load_config_as(path, Capacity03Config)
+
+
 def test_capacity_config_does_not_leak_into_experiment_config() -> None:
     """01 の ``ExperimentConfig`` に 03 のフィールドが1つも増えていない (D-13)。
 
