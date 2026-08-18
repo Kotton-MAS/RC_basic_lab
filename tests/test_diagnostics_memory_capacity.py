@@ -1,0 +1,610 @@
+"""線形メモリ容量 (MC) と容量カーネルのテスト (仕様 rc-basics-03 T1)。
+
+状態系列はすべて**このパッケージの ``reservoir`` を通さず**テスト内で作る
+(受け入れ条件6)。``diagnostics`` が移植可能であることの実体はここにある。
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import functools
+from collections.abc import Sequence
+from typing import cast
+
+import numpy as np
+import pytest
+
+import rc_basics_lab.diagnostics._capacity as capacity_module
+from rc_basics_lab.diagnostics._capacity import (
+    HERMITE,
+    LEGENDRE,
+    NORMAL,
+    UNIFORM,
+    CapacityProblem,
+    capacity_of_targets,
+    orthonormal_basis,
+)
+from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
+from rc_basics_lab.diagnostics.memory_capacity import (
+    THRESHOLD_NONE,
+    THRESHOLD_SURROGATE,
+    MemoryCapacityConfig,
+    memory_capacity,
+)
+from rc_basics_lab.types import FloatArray
+
+CTX_SEED = 20240303
+"""サロゲート閾値に使う ``ctx.seed`` (D-27: 乱数源はこれだけ)。"""
+
+INPUT_SCALE = 0.1
+"""テスト用リザバーの入力スケール。
+
+小さくしてあるのは意図的で、``tanh`` を飽和させない準線形領域に置くため。
+飽和領域 (``input_scale=1``) では ``rho`` を上げても線形記憶が伸びず、
+「rho が上がると記憶が伸びる」という受け入れ条件1 の現象そのものが消える
+(実測: ``input_scale=1.0``, T=20000 で ``mc_effective_delay`` の
+rho=0.99 / rho=0.5 比は 5 シード中 4 シードで 1.5 を下回る)。
+"""
+
+
+def _external_reservoir_states(
+    rho: float,
+    *,
+    n_units: int,
+    n_steps: int,
+    seed: int,
+    input_scale: float = INPUT_SCALE,
+    state_noise: float = 0.0,
+) -> tuple[FloatArray, FloatArray]:
+    """``rc_basics_lab.reservoir`` を使わずに作る状態系列と入力 (受け入れ条件6)。
+
+    ``x[t] = tanh(W x[t-1] + w_in u[t])`` という素の ESN。診断が外部由来の
+    状態系列で動くことを示すのが目的なので、本体の ESN 実装は一切通さない。
+    """
+    rng = np.random.default_rng(seed)
+    weights: FloatArray = rng.standard_normal((n_units, n_units))
+    weights *= rho / max(abs(np.linalg.eigvals(weights)))
+    w_in: FloatArray = rng.uniform(-1.0, 1.0, size=n_units) * input_scale
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, size=(n_steps, 1))
+    states: FloatArray = np.empty((n_steps, n_units), dtype=np.float64)
+    state: FloatArray = np.zeros(n_units, dtype=np.float64)
+    for step in range(n_steps):
+        state = np.tanh(weights @ state + w_in * inputs[step, 0])
+        if state_noise > 0.0:
+            state = state + rng.normal(0.0, state_noise, size=n_units)
+        states[step] = state
+    return states, inputs
+
+
+@functools.cache
+def _cached_states(
+    rho: float, n_units: int, n_steps: int, seed: int
+) -> tuple[FloatArray, FloatArray]:
+    """状態生成は掃引テストで使い回す (1本 5 秒以内の予算を守るため)。"""
+    return _external_reservoir_states(rho, n_units=n_units, n_steps=n_steps, seed=seed)
+
+
+def _scalars(result: DiagnosticResult) -> dict[str, float]:
+    return {key: float(value) for key, value in result.scalars.items()}
+
+
+# --------------------------------------------------------------------------
+# 受け入れ基準1: 保存則 (MC <= N)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rho", [0.5, 0.9, 0.99])
+def test_mc_total_does_not_exceed_n_units(rho: float) -> None:
+    """N=30, T=5000 で総容量が N を (1.02 倍の余裕込みで) 超えない。
+
+    Dambre 2012 の保存則の次数1成分。上限は状態次元 N であり、これを超えたら
+    基底の正規化か行合わせ (D-24) が壊れている。1.02 倍の余裕は有限標本の
+    ゆらぎのぶん。
+    """
+    n_units = 30
+    states, inputs = _cached_states(rho, n_units, 5000, 7)
+    result = memory_capacity(
+        states, inputs, ctx=DiagnosticContext(washout=100, seed=CTX_SEED)
+    )
+    scalars = _scalars(result)
+    assert scalars["mc_total"] <= n_units * 1.02, (
+        f"rho={rho}: mc_total={scalars['mc_total']} が上限 N={n_units} を超えました"
+    )
+    assert scalars["mc_ratio"] <= 1.02
+    assert scalars["mc_total"] > 0.0
+    assert scalars["n_delays"] == 400.0
+    assert result.arrays["mc_profile"].shape == (400,)
+
+
+def test_mc_profile_lengthens_with_spectral_radius() -> None:
+    """rho を上げると記憶プロファイルが伸びる (受け入れ条件1)。
+
+    ``mc_effective_delay`` (容量重心) が rho について単調非減少で、
+    rho=0.99 は rho=0.5 の 1.5 倍以上であること。
+
+    T は保存則テスト (T=5000) より長い 20000 を使う。有限標本による容量の
+    かさ上げは ``F/T`` (ここでは 31/T) の桁で入り、T=5000 では 400 本の遅延に
+    薄く散った偽陽性が重心を押し上げて rho の効果を覆い隠す (実測: T=5000 では
+    5 シード中 5 シードでこの assert が落ちる。T=20000 では 5 シードすべてで
+    通り、比の最小は 1.75)。3-A の本番設定も T=20000 (仕様 §4 T3)。
+    """
+    effective: list[float] = []
+    for rho in (0.5, 0.9, 0.99):
+        states, inputs = _cached_states(rho, 30, 20000, 7)
+        result = memory_capacity(
+            states, inputs, ctx=DiagnosticContext(washout=100, seed=CTX_SEED)
+        )
+        effective.append(_scalars(result)["mc_effective_delay"])
+
+    assert effective == sorted(effective), (
+        f"mc_effective_delay が rho に対して単調非減少ではありません: {effective}"
+    )
+    assert effective[-1] >= 1.5 * effective[0], (
+        "rho=0.99 の実効遅延が rho=0.5 の 1.5 倍に届きません: "
+        f"{effective[-1]} vs {effective[0]}"
+    )
+
+
+# --------------------------------------------------------------------------
+# 受け入れ基準2: 基底の正規直交性 (D-28)
+# --------------------------------------------------------------------------
+
+
+def _basis_gram(values: FloatArray, distribution: str, basis: str) -> FloatArray:
+    columns = [
+        orthonormal_basis(values, degree, distribution, basis=basis)
+        for degree in range(5)
+    ]
+    matrix: FloatArray = np.column_stack(columns)
+    gram: FloatArray = matrix.T @ matrix / float(matrix.shape[0])
+    return gram
+
+
+def test_basis_is_orthonormal_under_declared_input_distribution() -> None:
+    """宣言された入力分布に対して基底が正規直交である (D-28)。
+
+    直交していない基底で目標を作ると容量が目標間で二重計上され、保存則が
+    「N をわずかに超える」という穏やかな形で破れる —— 図では正常に見えるので
+    ここで数値として固定する。
+    """
+    n_steps = 200_000
+    rng = np.random.default_rng(4649)
+    tolerance = 0.02
+    identity: FloatArray = np.eye(5)
+
+    half_width = np.sqrt(3.0) * 1.7  # sigma_u = 1.7 の一様分布 (D-17)
+    uniform_input: FloatArray = rng.uniform(-half_width, half_width, size=n_steps)
+    uniform_gram = _basis_gram(uniform_input, UNIFORM, LEGENDRE)
+    assert np.max(np.abs(uniform_gram - identity)) < tolerance, uniform_gram
+
+    normal_input: FloatArray = rng.normal(0.0, 0.4, size=n_steps)
+    normal_gram = _basis_gram(normal_input, NORMAL, HERMITE)
+    assert np.max(np.abs(normal_gram - identity)) < tolerance, normal_gram
+
+
+def test_mismatched_distribution_and_basis_raises() -> None:
+    """未対応の (input_distribution, basis) は ValueError (D-28)。
+
+    黙って Legendre として扱うと、正規入力に対して直交しない基底で目標が
+    作られ、容量が二重計上される。
+    """
+    values: FloatArray = np.linspace(-1.0, 1.0, 100)
+    with pytest.raises(ValueError, match="未対応"):
+        orthonormal_basis(values, 2, NORMAL, basis=LEGENDRE)
+    with pytest.raises(ValueError, match="未対応"):
+        orthonormal_basis(values, 2, UNIFORM, basis=HERMITE)
+
+
+def test_degree_one_basis_is_the_same_for_both_distributions() -> None:
+    """次数1は分布によらず ``(u - mean) / sigma`` に一致する。
+
+    MC が ``input_distribution`` を設定項目に持たないことの根拠
+    (``memory_capacity`` は次数1しか使わない)。
+    """
+    rng = np.random.default_rng(11)
+    values: FloatArray = rng.uniform(-2.0, 2.0, size=5000)
+    legendre = orthonormal_basis(values, 1, UNIFORM, basis=LEGENDRE)
+    hermite = orthonormal_basis(values, 1, NORMAL, basis=HERMITE)
+    standardized = (values - values.mean()) / values.std()
+    assert np.allclose(legendre, standardized, rtol=0.0, atol=1e-12)
+    assert np.allclose(hermite, standardized, rtol=0.0, atol=1e-12)
+
+
+# --------------------------------------------------------------------------
+# 受け入れ基準3: alpha 単調性 (D-25)
+# --------------------------------------------------------------------------
+
+
+def test_capacity_is_monotone_decreasing_in_alpha() -> None:
+    """容量は alpha に対して単調非増加で、大きな alpha では実際に減る (D-25)。
+
+    正則化は「線形読み出しで到達可能な最大の説明率」という容量の定義を
+    系統的に過小評価する。この向きが崩れていたら、容量測定に検証分割の
+    alpha 選択 (D-04) を持ち込んではいけないという D-25 の前提が壊れている。
+
+    D-25 の guard_test は IPC 側 (``tests/test_diagnostics_ipc.py``) に置く
+    予定だが、T2 が未着手なので当面ここで固定する。
+    """
+    states, inputs = _cached_states(0.9, 20, 4000, 31)
+    ctx = DiagnosticContext(washout=100, seed=CTX_SEED)
+    totals = [
+        _scalars(
+            memory_capacity(
+                states,
+                inputs,
+                ctx=ctx,
+                cfg=MemoryCapacityConfig(
+                    max_delay=60, alpha=alpha, threshold_mode=THRESHOLD_NONE
+                ),
+            )
+        )["mc_total_raw"]
+        for alpha in (1.0e-9, 1.0e-6, 1.0e-3, 1.0, 100.0)
+    ]
+    for smaller, larger in zip(totals, totals[1:], strict=True):
+        assert larger <= smaller + 1.0e-9, f"alpha に対して容量が増えました: {totals}"
+    assert totals[-1] < totals[0], f"alpha=100 で容量が減っていません: {totals}"
+
+
+# --------------------------------------------------------------------------
+# 受け入れ基準4: chunk_size は結果を変えない (仕様 §10-2)
+# --------------------------------------------------------------------------
+
+
+def test_chunk_size_does_not_change_results() -> None:
+    """``chunk_size`` は性能パラメータで、結果を1ビットも変えてはいけない。
+
+    他の設定フィールドは「変えたら出力が変わる」ことを要求されるが、これだけは
+    **逆向きの要求**である (仕様 §5・§10-2)。チャンク分割にバグ (列の取り違え、
+    サロゲート乱数のチャンク依存) があるとここが落ちる。
+    """
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    ctx = DiagnosticContext(washout=50, seed=CTX_SEED)
+    base_cfg = MemoryCapacityConfig(max_delay=120, n_surrogates=40, chunk_size=256)
+    reference = memory_capacity(states, inputs, ctx=ctx, cfg=base_cfg)
+
+    for chunk_size in (1, 7, 64, 1000):
+        other = memory_capacity(
+            states,
+            inputs,
+            ctx=ctx,
+            cfg=dataclasses.replace(base_cfg, chunk_size=chunk_size),
+        )
+        assert set(_scalars(other)) == set(_scalars(reference))
+        for key, value in _scalars(reference).items():
+            assert other.scalars[key] == pytest.approx(value, rel=1.0e-10), (
+                f"chunk_size={chunk_size} で {key} が変わりました"
+            )
+        np.testing.assert_allclose(
+            other.arrays["mc_profile"],
+            reference.arrays["mc_profile"],
+            rtol=1.0e-10,
+            atol=0.0,
+        )
+
+
+def test_memory_capacity_config_fields_change_output() -> None:
+    """``chunk_size`` 以外の全フィールドは出力を変える (「設定したのに効かない」除け)。
+
+    ``chunk_size`` だけは逆向きの要求を持つので
+    ``test_chunk_size_does_not_change_results`` が別に担当する。フィールドを
+    足したのに配線を忘れた場合、この完全性チェックが赤くなる。
+    """
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    ctx = DiagnosticContext(washout=50, seed=CTX_SEED)
+    base_cfg = MemoryCapacityConfig(max_delay=40, n_surrogates=20, chunk_size=16)
+    reference = _scalars(memory_capacity(states, inputs, ctx=ctx, cfg=base_cfg))
+
+    changed: dict[str, object] = {
+        "max_delay": 55,
+        "alpha": 10.0,
+        "threshold_mode": THRESHOLD_NONE,
+        "n_surrogates": 60,
+        "surrogate_quantile": 0.5,
+    }
+    covered = set(changed) | {"chunk_size"}
+    actual = {field.name for field in dataclasses.fields(MemoryCapacityConfig)}
+    assert covered == actual, (
+        "MemoryCapacityConfig のフィールドに対する検査が不足しています: "
+        f"{sorted(actual - covered)}"
+    )
+
+    for name, value in changed.items():
+        other = _scalars(
+            memory_capacity(
+                states,
+                inputs,
+                ctx=ctx,
+                cfg=dataclasses.replace(base_cfg, **{name: value}),
+            )
+        )
+        assert other != reference, f"{name} を変えても出力が変わりません"
+
+
+# --------------------------------------------------------------------------
+# 受け入れ基準5: 行集合の共有 (D-24) と入力要件
+# --------------------------------------------------------------------------
+
+
+def test_all_delays_share_identical_rows() -> None:
+    """行集合は ``t0 = max(washout, max_delay)`` で決まり、全遅延で同一 (D-24)。
+
+    ``washout`` が ``max_delay`` より小さい間は結果が一切変わらないことで
+    「基準点が単一である」ことを観測可能にする。遅延ごとに使える行を変える
+    実装 (深い遅延ほど標本が減る) では、washout を動かした瞬間に浅い遅延の
+    容量だけが変わるのでここが落ちる。
+    """
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    cfg = MemoryCapacityConfig(max_delay=100, n_surrogates=20, chunk_size=32)
+    results = [
+        memory_capacity(
+            states,
+            inputs,
+            ctx=DiagnosticContext(washout=washout, seed=CTX_SEED),
+            cfg=cfg,
+        )
+        for washout in (0, 37, 100)
+    ]
+    for result in results:
+        assert result.params["t0"] == "100"
+        assert result.params["n_samples"] == "1900"
+    for other in results[1:]:
+        np.testing.assert_array_equal(
+            other.arrays["mc_profile"], results[0].arrays["mc_profile"]
+        )
+
+    deeper = memory_capacity(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=300, seed=CTX_SEED),
+        cfg=cfg,
+    )
+    assert deeper.params["t0"] == "300", "washout が max_delay を超えたら t0 は washout"
+
+
+def test_memory_capacity_requires_single_channel_input() -> None:
+    """``u`` が無い / 多変数だと ValueError (安く緑にする逃げ道を塞ぐ)。"""
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    ctx = DiagnosticContext(seed=CTX_SEED)
+    cfg = MemoryCapacityConfig(max_delay=20, n_surrogates=5)
+    with pytest.raises(ValueError, match="入力系列 u"):
+        memory_capacity(states, None, ctx=ctx, cfg=cfg)
+    with pytest.raises(ValueError, match="1変数入力"):
+        memory_capacity(states, np.repeat(inputs, 2, axis=1), ctx=ctx, cfg=cfg)
+
+
+def test_series_shorter_than_max_delay_raises_instead_of_truncating() -> None:
+    """``max_delay`` が系列長を超えたら黙って切り詰めず ValueError。"""
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    with pytest.raises(ValueError, match="系列が短すぎます"):
+        memory_capacity(
+            states,
+            inputs,
+            ctx=DiagnosticContext(seed=CTX_SEED),
+            cfg=MemoryCapacityConfig(max_delay=2000),
+        )
+
+
+def test_unknown_threshold_mode_raises() -> None:
+    """未知の ``threshold_mode`` は既定へフォールバックせず ValueError。"""
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    with pytest.raises(ValueError, match="threshold_mode"):
+        memory_capacity(
+            states,
+            inputs,
+            ctx=DiagnosticContext(seed=CTX_SEED),
+            cfg=MemoryCapacityConfig(max_delay=20, threshold_mode="bonferroni"),
+        )
+
+
+def test_surrogate_threshold_requires_ctx_seed_and_is_reproducible() -> None:
+    """サロゲート閾値は ``ctx.seed`` を必須にし、同じ seed で再現する (D-27)。
+
+    閾値が黙って非再現になると、しきい値法の比較 (受け入れ条件3) の記録が
+    意味を失う。
+    """
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    cfg = MemoryCapacityConfig(max_delay=40, n_surrogates=25, chunk_size=8)
+    with pytest.raises(ValueError, match="ctx.seed"):
+        memory_capacity(states, inputs, ctx=DiagnosticContext(), cfg=cfg)
+
+    first = memory_capacity(
+        states, inputs, ctx=DiagnosticContext(seed=CTX_SEED), cfg=cfg
+    )
+    same = memory_capacity(
+        states, inputs, ctx=DiagnosticContext(seed=CTX_SEED), cfg=cfg
+    )
+    other = memory_capacity(
+        states, inputs, ctx=DiagnosticContext(seed=CTX_SEED + 1), cfg=cfg
+    )
+    assert first.scalars["mc_threshold"] == same.scalars["mc_threshold"]
+    assert first.scalars["mc_threshold"] != other.scalars["mc_threshold"]
+
+    none_mode = memory_capacity(
+        states,
+        inputs,
+        ctx=DiagnosticContext(),
+        cfg=dataclasses.replace(cfg, threshold_mode=THRESHOLD_NONE),
+    )
+    assert none_mode.scalars["mc_total"] == pytest.approx(
+        none_mode.scalars["mc_total_raw"]
+    )
+    assert first.scalars["mc_total"] < first.scalars["mc_total_raw"], (
+        "サロゲート閾値が1本も落としていません (閾値が効いていない疑い)"
+    )
+    assert first.params["threshold_mode"] == THRESHOLD_SURROGATE
+
+
+# --------------------------------------------------------------------------
+# 受け入れ基準6: 外部生成の状態系列で完走する
+# --------------------------------------------------------------------------
+
+
+def test_diagnostic_accepts_arbitrary_external_state_series() -> None:
+    """リザバーですらない任意の X (独立な乱数) でも完走する (受け入れ条件6)。
+
+    入力と無関係な状態なので容量はほぼ 0 になるはずで、サロゲート閾値が
+    効いていれば ``mc_total`` は生の総容量よりずっと小さくなる。
+    """
+    rng = np.random.default_rng(2718)
+    states: FloatArray = rng.standard_normal((1500, 12))
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, size=(1500, 1))
+    result = memory_capacity(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=10, seed=CTX_SEED),
+        cfg=MemoryCapacityConfig(max_delay=50, n_surrogates=50, chunk_size=16),
+    )
+    scalars = _scalars(result)
+    assert all(np.isfinite(value) for value in scalars.values())
+    assert scalars["mc_total"] < 0.05 * scalars["mc_total_raw"] + 0.5, (
+        "独立な乱数状態に対して容量が残っています: "
+        f"total={scalars['mc_total']}, raw={scalars['mc_total_raw']}"
+    )
+
+
+# --------------------------------------------------------------------------
+# 容量カーネルそのもの (D-26 の構造)
+# --------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class _CountingMatrix:
+    """``@`` の回数を数えるために ``CapacityProblem.phi`` へ差し込むプロキシ。
+
+    ``capacity_of_targets`` が使う ``phi`` の機能 (``shape`` / ``.T`` / ``@``)
+    だけを持つ。``Phi`` を2回走査する実装 (例: 予測 ``Phi @ W`` を実体化して
+    残差を取る) に変えると呼び出し回数が増える。
+    """
+
+    array: FloatArray
+    calls: list[str]
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return self.array.shape
+
+    @property
+    def T(self) -> _CountingMatrix:
+        return _CountingMatrix(self.array.T, self.calls)
+
+    def __matmul__(self, other: FloatArray) -> FloatArray:
+        self.calls.append("matmul")
+        product: FloatArray = self.array @ other
+        return product
+
+
+def test_capacity_of_targets_touches_phi_exactly_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """容量は Gram 量だけで閉じ、``Phi`` を1回しか走査しない (D-26)。
+
+    ``rhs = Phi.T @ Z`` の1回だけが許される。予測 ``Phi @ W`` を作って
+    ``Z - Phi W`` から残差を取る素直な実装だと2回になり、目標数 K に比例する
+    ``O(T F K)`` の走査がもう1本増える (IPC の 20 万目標で効く)。
+    ``fit_ridge_from_gram`` の呼び出しもチャンクあたり1回に固定する。
+    """
+    rng = np.random.default_rng(99)
+    states: FloatArray = rng.standard_normal((400, 6))
+    problem = CapacityProblem.from_states(states, t0=10)
+    targets: FloatArray = rng.standard_normal((problem.n_samples, 12))
+
+    solves: list[str] = []
+    original = capacity_module.fit_ridge_from_gram
+
+    def counting_solve(
+        gram: FloatArray, rhs: FloatArray, alpha: float, *, bias_column: int | None
+    ) -> FloatArray:
+        solves.append("solve")
+        return original(gram, rhs, alpha, bias_column=bias_column)
+
+    monkeypatch.setattr(capacity_module, "fit_ridge_from_gram", counting_solve)
+
+    calls: list[str] = []
+    proxied = dataclasses.replace(
+        problem, phi=cast(FloatArray, _CountingMatrix(problem.phi, calls))
+    )
+    capacities = capacity_of_targets(proxied, targets, 1.0e-9)
+
+    assert calls == ["matmul"], f"Phi の走査回数が1回ではありません: {len(calls)}"
+    assert solves == ["solve"], f"solve の回数が1回ではありません: {len(solves)}"
+    np.testing.assert_allclose(
+        capacities, capacity_of_targets(problem, targets, 1.0e-9)
+    )
+
+
+def test_capacity_matches_direct_least_squares_residual() -> None:
+    """Gram 展開の容量が、素直な残差計算と一致する (代数の裏取り)。
+
+    ``C = 1 - ||z - Phi w||^2 / ||z||^2`` を実際に予測を作って計算した値と
+    突き合わせる。Gram 展開の符号ミス (``-2 w.T rhs`` を ``+2`` にする等) は
+    値が「それらしく」出るためレビューでは気づけない。
+    """
+    rng = np.random.default_rng(1234)
+    states: FloatArray = rng.standard_normal((600, 8))
+    problem = CapacityProblem.from_states(states, t0=5)
+    targets: FloatArray = rng.standard_normal((problem.n_samples, 4))
+    alpha = 1.0e-8
+
+    capacities = capacity_of_targets(problem, targets, alpha)
+    weights = capacity_module.fit_ridge_from_gram(
+        problem.gram, problem.phi.T @ targets, alpha, bias_column=problem.bias_column
+    )
+    residual: FloatArray = targets - problem.phi @ weights
+    direct: FloatArray = 1.0 - np.sum(residual**2, axis=0) / np.sum(targets**2, axis=0)
+    np.testing.assert_allclose(capacities, direct, rtol=1.0e-8, atol=1.0e-10)
+
+
+def test_capacity_problem_rejects_short_series() -> None:
+    """行数が特徴数以下なら ValueError (見かけ上「完璧な」容量が出るのを防ぐ)。"""
+    rng = np.random.default_rng(5)
+    states: FloatArray = rng.standard_normal((20, 30))
+    with pytest.raises(ValueError, match="特徴数以下"):
+        CapacityProblem.from_states(states, t0=0)
+
+
+def test_capacity_of_targets_rejects_mismatched_rows() -> None:
+    """目標の行数が設計行列と違えば ValueError (D-24 の行合わせ)。"""
+    rng = np.random.default_rng(6)
+    states: FloatArray = rng.standard_normal((300, 5))
+    problem = CapacityProblem.from_states(states, t0=10)
+    bad: FloatArray = rng.standard_normal((problem.n_samples - 1, 3))
+    with pytest.raises(ValueError, match="D-24"):
+        capacity_of_targets(problem, bad, 1.0e-9)
+
+
+def _chunk_counts(sizes: Sequence[int], chunk_size: int) -> int:
+    return sum(-(-size // chunk_size) for size in sizes)
+
+
+def test_solve_count_is_driven_by_chunks_not_by_target_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """solve の回数はチャンク数で決まり、遅延本数には比例しない (D-26)。
+
+    遅延を 4 倍にしても、``chunk_size`` が同じなら solve はチャンク数ぶんしか
+    増えない。「(delay, degree) ごとに回帰し直す」構造に戻ると、この関係が
+    崩れて回数が目標数に比例する。
+    """
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    ctx = DiagnosticContext(washout=50, seed=CTX_SEED)
+    original = capacity_module.fit_ridge_from_gram
+
+    for max_delay in (40, 160):
+        solves: list[str] = []
+
+        def counting_solve(
+            gram: FloatArray,
+            rhs: FloatArray,
+            alpha: float,
+            *,
+            bias_column: int | None,
+            _sink: list[str] = solves,
+        ) -> FloatArray:
+            _sink.append("solve")
+            return original(gram, rhs, alpha, bias_column=bias_column)
+
+        monkeypatch.setattr(capacity_module, "fit_ridge_from_gram", counting_solve)
+        cfg = MemoryCapacityConfig(max_delay=max_delay, n_surrogates=20, chunk_size=16)
+        memory_capacity(states, inputs, ctx=ctx, cfg=cfg)
+        # 遅延 max_delay 本 + サロゲート 20 本を chunk_size=16 で切った枚数。
+        assert len(solves) == _chunk_counts((max_delay, 20), 16)
