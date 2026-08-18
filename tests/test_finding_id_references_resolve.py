@@ -108,14 +108,17 @@ def _record_doc_for_id(finding_id: str) -> Path:
     """finding ID の接頭辞から、対応する記録文書のパスを返す.
 
     サイクル修飾形式 (``F-02-1-004``) はサイクル番号セグメント (``02``) を
-    そのまま ``review-findings-<cycle>.md`` に対応付ける。レガシー形式
-    (``F-1-018`` のようにサイクル番号セグメントを持たない) は、サイクルと
-    いう概念が導入される前の ID なのでサイクル1の記録文書
+    そのまま ``review-findings-<cycle>.md`` に対応付ける。``_CYCLE_LABEL_TO_DOC_SUFFIX``
+    に載っているサイクルラベル (例: ``3b1``) は、一時集約フォルダの命名と
+    記録文書の命名規則が食い違うため、対応する文書名へ変換してから対応付ける。
+    レガシー形式 (``F-1-018`` のようにサイクル番号セグメントを持たない) は、
+    サイクルという概念が導入される前の ID なのでサイクル1の記録文書
     (``review-findings-01.md``) に対応付ける。
     """
     if _QUALIFIED_ID_PATTERN.fullmatch(finding_id):
         cycle = finding_id.split("-")[1]
-        return DOCS_DIR / f"review-findings-{cycle}.md"
+        suffix = _CYCLE_LABEL_TO_DOC_SUFFIX.get(cycle, cycle)
+        return DOCS_DIR / f"review-findings-{suffix}.md"
     return LEGACY_RECORD_DOC
 
 
