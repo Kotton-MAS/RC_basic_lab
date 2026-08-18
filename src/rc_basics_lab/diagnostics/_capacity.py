@@ -233,10 +233,13 @@ def capacity_of_targets(
 
         ``||z - Phi w||^2 = z.T z - 2 w.T (Phi.T z) + w.T (Phi.T Phi) w``
 
-    で評価するため、``Phi`` に触るのは ``rhs = Phi.T @ Z_chunk`` の**1回だけ**、
-    ``Z_chunk`` に触るのはその rhs と ``z.T z`` の2回だけで、予測を一度も
-    実体化しない (D-26)。``fit_ridge_from_gram`` の呼び出しも1回で、
-    ``(F, K)`` の多出力 rhs をそのまま1回の solve に畳む。
+    で評価する。``Phi`` は実体化しない (F-03-1-013)。``rhs = Phi.T @ Z_chunk``
+    はバイアス行 ``sum(Z_chunk, 0)`` と ``X`` 行 ``X.T @ Z_chunk`` の2段に
+    ブロック分解して求めるため、``X`` に触るのは ``x_rhs = problem.x.T @
+    Z_chunk`` の**1回だけ**、``Z_chunk`` に触るのは ``bias_rhs`` / ``x_rhs`` /
+    ``z.T z`` の計算だけで、予測を一度も実体化しない (D-26)。
+    ``fit_ridge_from_gram`` の呼び出しも1回で、``(F, K)`` の多出力 rhs を
+    そのまま1回の solve に畳む。
 
     Args:
         problem: ``CapacityProblem`` (Gram は構築済み)。
@@ -428,8 +431,26 @@ def bounded_chunk_size(configured: int, n_samples: int) -> int:
 
     ``chunk_size`` は結果を変えない純粋な性能パラメータ (呼び出し側の
     ``test_chunk_size_does_not_change_results`` が固定) なので、ここで値を
-    下げても数値は1ビットも変わらない。``configured`` より大きくはしない
-    (小さい chunk_size を明示的に指定した呼び出し側の意図を尊重する)。
+    下げても数値は1ビットも変わらない。``configured`` より**大きくはしない**
+    (小さい chunk_size を明示的に指定した呼び出し側の意図は尊重する)。ただし
+    逆方向 —— 性能チューニングのために大きい ``configured`` を明示指定した
+    意図 —— は保護されない: ``n_samples`` が大きい本番規模では
+    ``configured`` の値によらず必ず ``_MAX_CHUNK_BYTES`` 相当まで切り詰める
+    (D-29)。呼び出し側は実際に使われた値を ``CapacityProblem.
+    effective_chunk_size`` 経由で取得し、成果物の ``params`` に記録すること
+    (``chunk_size_effective``、F-03-2-001 / F-03-2-009)。
+
+    Args:
+        configured: 呼び出し側が指定した ``chunk_size`` (性能パラメータ)。
+        n_samples: 回帰に使う行数 ``T_eff``。1チャンクのバイト数はこれと
+            列数の積で決まる。
+
+    Returns:
+        実際に使う chunk_size。``n_samples <= 0`` ならバイト数を計算できない
+        ため ``configured`` をそのまま返す (呼び出し側の値域検証で弾かれる
+        前提の防御的分岐)。それ以外は
+        ``min(configured, max(1, _MAX_CHUNK_BYTES // (n_samples * 8)))``。
+        下限は常に 1 (0 列のチャンクは作らない)。
     """
     if n_samples <= 0:
         return configured

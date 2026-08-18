@@ -45,7 +45,6 @@ from rc_basics_lab.diagnostics._capacity import (
     SUPPORTED_BASIS_PAIRS,
     UNIFORM,
     CapacityProblem,
-    bounded_chunk_size,
     capacity_of_chunks,
     chi2_threshold,
     input_series,
