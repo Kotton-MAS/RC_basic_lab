@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import warnings
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -40,12 +41,18 @@ from rc_basics_lab.experiment.capacity import (
     CapacityProfileRow,
     CapacityRow,
 )
+from rc_basics_lab.experiment.narma import (
+    NARMA10_REFERENCE_NMSE,
+    NARMA10_REFERENCE_NOTE,
+    NARMA10_REFERENCE_NOTE_EN,
+)
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.plotting import figures_capacity, style
 from rc_basics_lab.plotting.figures_capacity import (
     conservation_bound,
     ipc_heatmap_means,
     mc_profile_means,
+    narma10_method_labels,
     plot_ipc_conservation,
     plot_ipc_profile,
     plot_mc_sweep,
@@ -379,6 +386,66 @@ def test_conservation_bound_spans_a_single_size_grid() -> None:
     assert np.array_equal(x, y)
     with pytest.raises(ValueError, match="units"):
         conservation_bound([])
+
+
+# --- 受け入れ条件5: 参照線と「原典未特定」の注が図に在る ---------------------
+
+
+def test_narma10_figure_draws_the_reference_lines_with_the_note(
+    tmp_path: Path, captured: list[Figure], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``fig_narma10_control`` に参照線 2本と原典未特定の注が実在する。
+
+    参照値 (0.16 / 0.107) は**原典が未特定**なので、数字だけを図に置くと後から
+    出典が違っていたときに図の側から辿れない。線と注の両方を固定する。
+    ラベルの対応表に無い参照点を足したら描く前に落ちることも見る (値だけ
+    増やして図には出ない、を通さない)。
+    """
+    rows = narma10_rows()
+    path = plot_narma10_control(rows, tmp_path / "narma.png", style=setup_style())
+    assert path.is_file()
+    assert len(captured) == 1
+    axis = captured[0].axes[0]
+
+    drawn = {
+        float(line.get_ydata()[0])
+        for line in axis.get_lines()
+        if len(set(np.asarray(line.get_ydata(), dtype=np.float64).tolist())) == 1
+    }
+    for value in NARMA10_REFERENCE_NMSE.values():
+        assert value in drawn, f"参照線 {value} が描かれていません: {sorted(drawn)}"
+
+    texts = _texts(captured[0])
+    assert any(
+        NARMA10_REFERENCE_NOTE in text or NARMA10_REFERENCE_NOTE_EN in text
+        for text in texts
+    ), "原典未特定の注が図にありません"
+    # 遅延線のラベルには検証分割で選ばれた k が入る (対照の強さそのもの)
+    assert any("k = 30" in text for text in texts)
+
+    # 参照点を足してラベルを足し忘れたら描く前に落ちる
+    monkeypatch.setattr(
+        figures_capacity,
+        "NARMA10_REFERENCE_NMSE",
+        {**NARMA10_REFERENCE_NMSE, "unlabelled": 0.5},
+    )
+    with pytest.raises(ValueError, match="参照線"):
+        plot_narma10_control(rows, tmp_path / "narma2.png", style=setup_style())
+
+
+def test_narma10_method_labels_list_every_selected_tap_count() -> None:
+    """レプリケートごとに違う k が選ばれたら**全部**ラベルに出る。
+
+    代表値を1つ選ぶと「ばらついている」という事実が図から消える。
+    """
+    rows = list(narma10_rows(replicates=(0, 1)))
+    rows[1] = dataclasses.replace(rows[1], n_lags=15)
+    labels = dict(narma10_method_labels(rows, StyleContext()))
+    assert "15" in labels[DELAY_LINE]
+    assert "30" in labels[DELAY_LINE]
+    # 遅延線以外に k は付かない
+    assert "k =" not in labels[LINEAR]
+    assert "k =" not in labels[ESN_METHOD]
 
 
 # --- D-10: ラベルが StyleContext を通っている --------------------------------
