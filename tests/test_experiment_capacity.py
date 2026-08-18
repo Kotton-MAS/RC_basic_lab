@@ -480,7 +480,7 @@ def test_oversized_n_units_is_rejected_before_any_allocation(
 def test_oversized_state_matrix_is_rejected_before_any_allocation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``n_units * n_steps`` の上限超過も確保の前に ``ValueError`` になる (F-3b1-1-017)。
+    """``n_units*n_steps`` の上限超過も確保の前に ``ValueError`` になる (F-3b1-1-017)。
 
     ``n_units`` 単体では上限内でも、``n_steps`` を巨大にすれば状態行列
     ``(n_steps, n_units)`` の確保量は同じだけ膨らむ。両方を独立した軸として
