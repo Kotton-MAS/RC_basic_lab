@@ -372,9 +372,14 @@ def test_profile_csv_columns_are_static_and_cells_are_positive(
 
     ``capacity <= 0`` の行が0件であることも同時に測る。全セルを書くと本番設定で
     約6万行になり、``results/`` はコミット対象なのでリポジトリが重くなる。
-    絞り込みの規準は IPC の ``n_targets_kept`` (``count_nonzero(kept)``) と同じ
-    ``> 0`` で、両者が一致することも確かめる (規準が別々にドリフトすると、
-    「しきい値を超えた目標の数」と「CSV に在る行」が食い違う)。
+    絞り込みの条件は IPC の ``n_targets_kept`` (``count_nonzero(kept)``) と
+    同じ ``> 0`` だが、**行数は n_targets_kept と一致しない** (F-3b1-1-003)。
+    長形式の行は (次数,遅延) のヒートマップセル単位、``n_targets_kept`` は
+    目標単位で単位が異なり、1セルに複数目標が畳み込まれるため行数は
+    ``n_targets_kept`` 以下にしかならない (assert は ``<=`` だけを要求する)。
+    成果物単体で検算できる不変条件は、``capacity`` 列の**総和**が
+    ``mc_total`` / ``ipc_total`` と一致することであり、これを直接固定する
+    (D-38)。
     """
     config = dataclasses.replace(
         tiny_config(),
@@ -397,7 +402,7 @@ def test_profile_csv_columns_are_static_and_cells_are_positive(
         assert int(row["delay"]) >= 1
         assert int(row["degree"]) == 1 or row["diagnostic"] == DIAGNOSTIC_IPC
 
-    # 「行が在る」= 「しきい値を超えた」であることを capacity.csv 側と突き合わせる。
+    # 行数は n_targets_kept の**上限**にしかならない (セル単位 vs 目標単位)。
     # IPC の heatmap は (次数, max(k_i)) のセルへ足し込むので、行数は
     # n_targets_kept 以下で、少なくとも1セルは埋まる。
     for outcome in results.outcomes:
@@ -412,8 +417,34 @@ def test_profile_csv_columns_are_static_and_cells_are_positive(
             and row.n_units == outcome.row.n_units
             and row.state_noise == outcome.row.state_noise
         ]
+        mc_cells = [
+            row
+            for row in results.profile_rows
+            if row.diagnostic == DIAGNOSTIC_MC
+            and row.replicate == outcome.row.replicate
+            and row.experiment == outcome.row.experiment
+            and row.rho == outcome.row.rho
+            and row.leak_rate == outcome.row.leak_rate
+            and row.n_units == outcome.row.n_units
+            and row.state_noise == outcome.row.state_noise
+        ]
         assert len(ipc_cells) <= outcome.row.n_targets_kept
         assert bool(ipc_cells) == (outcome.row.n_targets_kept > 0)
+
+        # D-38 の正本の不変条件: capacity 列の総和が ipc_total / mc_total と
+        # 一致する (行数の一致ではない)。
+        assert math.isclose(
+            sum(cell.capacity for cell in ipc_cells),
+            outcome.row.ipc_total,
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ), outcome.row.experiment
+        assert math.isclose(
+            sum(cell.capacity for cell in mc_cells),
+            outcome.row.mc_total,
+            rel_tol=1e-9,
+            abs_tol=1e-9,
+        ), outcome.row.experiment
 
 
 def test_capacity_csv_has_no_missing_values(tmp_path: Path) -> None:
