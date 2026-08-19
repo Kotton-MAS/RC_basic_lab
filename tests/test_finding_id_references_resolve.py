@@ -81,6 +81,11 @@ _CYCLE_LABEL_TO_DOC_SUFFIX = {
     # ため、ID 側はそのまま (fixer-input.json / triage.json との対応を保つ)
     # にし、文書名だけをここで正規化する方を選んだ。
     "3b1": "03b",
+    # サイクル 3b-2 (``.claude/tmp/findings/3b2-round-1/``) も同じ理由で
+    # "03b" (docs/review-findings-03b.md、3b-1 分と同じ文書に3b-2分を追記する)
+    # に対応付ける。3b-1・3b-2 は「サイクル3の後半 (03b)」という同じ記録文書を
+    # 共有する運用のため、別文書 (review-findings-3b2.md) を新設しない。
+    "3b2": "03b",
 }
 
 THIS_FILE = Path(__file__).resolve()
