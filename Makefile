@@ -60,9 +60,11 @@ figures-01:
 figures-02:
 	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics
 
-# 実験03の成果物 (capacity.csv / capacity_profile.csv / fig_mc_sweep.png /
-# fig_ipc_profile.png / fig_memory_nonlinearity.png / fig_ipc_conservation.png /
-# meta.json) を results/03_capacity/ に再生成する。
+# 実験03の成果物 (capacity.csv / capacity_profile.csv / narma10.csv /
+# fig_mc_sweep.png / fig_ipc_profile.png / fig_memory_nonlinearity.png /
+# fig_ipc_conservation.png / fig_narma10_control.png / meta.json) を
+# results/03_capacity/ に再生成する。成果物の一覧の単一の真実は
+# experiment/capacity_pipeline.py の CAPACITY_ARTIFACTS (テストが突き合わせる)。
 # 系列長掃引 (capacity_length.csv) は含めない —— T=1e6 まで回すので単独で
 # 900 秒予算を食い潰す。saturation-03 で明示的に再生成する
 # (threshold-02 と figures-02 の関係と同じ規律)。
