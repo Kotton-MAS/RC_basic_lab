@@ -41,6 +41,7 @@ from rc_basics_lab.experiment.capacity import (
     capacity_row_from,
     ipc_config_for,
     measure_capacity,
+    validate_n_units_bound,
 )
 from rc_basics_lab.experiment.runner import (
     DELAY_LINE,
@@ -240,6 +241,14 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
     started = time.perf_counter()
     base = config.narma.base
     entry = narma_task_entry(config)
+    # D-34 の規律 (「確保より前に落とす」) を 3-C の n_units 軸にも効かせる。
+    # 3-C は CapacityCondition を持たない (状態は 01 の run_task が作る) ため
+    # simulate_condition_trajectory の検査を通らない。tasks/narma.py の _validate は
+    # length と length * n_units (状態行列) を既に縛っているが、ESN の重み行列
+    # (n_units**2) を決める n_units 単体には上限が無かった (オーケストレータの実測:
+    # n_units=6000 で ESN が実際に構築されてから 14.58 秒後に無関係な形状エラーで
+    # 停止していた)。plan_replicate が重み行列を確保する前にここで落とす。
+    validate_n_units_bound(entry.esn.n_units)
 
     plan0 = plan_replicate(base, entry, 0)
     wall_time_state_s = time.perf_counter() - started

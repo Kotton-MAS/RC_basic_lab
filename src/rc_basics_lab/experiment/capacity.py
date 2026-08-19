@@ -165,18 +165,58 @@ def _validate_condition_bounds(condition: CapacityCondition) -> None:
     length_sweep のいずれでもない代表条件1本) の5経路が対象で、3-C
     (``run_narma10``) だけは ``CapacityCondition`` を持たない (状態は 01 の
     ``run_task`` が作る) ためここでは守れず、``tasks/narma.py`` の
-    ``_validate`` に別途上限を置く。以前は ``evaluate_capacity_condition`` が
+    ``_validate`` (``length`` 軸) と ``validate_state_matrix_bounds``
+    (``n_units`` 軸) の2本で塞ぐ。以前は ``evaluate_capacity_condition`` が
     直接この関数を呼んでおり、``run_threshold_comparison`` は
     ``CapacityCondition`` を組み立てながらここを1回も呼ばずに素通りしていた
     (3b-2 reviewer-security の実測)。
     """
-    if condition.n_units > _MAX_UNITS:
+    validate_state_matrix_bounds(condition.n_units, condition.n_steps)
+
+
+def validate_n_units_bound(n_units: int) -> None:
+    """``n_units`` 軸だけに絶対上限をかける (D-34)。
+
+    ESN の重み行列は ``n_units**2`` で伸びるので、系列長と無関係にこの軸だけで
+    確保が膨らむ。状態行列の軸 (``n_units * n_steps``) と**別の軸**なので、
+    片方だけを縛る呼び出し側 (3-C は ``tasks/narma.py`` の ``_validate`` が
+    ``length`` と ``length * n_units`` を既に縛っており、欠けていたのは
+    ``n_units`` 単体だった) から独立に呼べる形にしてある。
+
+    Args:
+        n_units: リザバーのユニット数。
+
+    Raises:
+        ValueError: 上限を超える場合 (**確保より前に**落とす)。
+    """
+    if n_units > _MAX_UNITS:
         raise ValueError(
-            f"n_units が上限を超えています: {condition.n_units} > {_MAX_UNITS} "
+            f"n_units が上限を超えています: {n_units} > {_MAX_UNITS} "
             "(ESN の重み行列の確保量は n_units**2 に比例するため、"
             "確保する前に検査で落とす)"
         )
-    n_state_elements = condition.n_units * condition.n_steps
+
+
+def validate_state_matrix_bounds(n_units: int, n_steps: int) -> None:
+    """確保軸 ``(n_units, n_steps)`` そのものに絶対上限をかける (D-34)。
+
+    ``CapacityCondition`` を持たない経路 (3-C の ``run_narma10``。状態は 01 の
+    ``run_task`` が作る) からも同じ上限を呼べるように、条件オブジェクトではなく
+    **軸の値そのもの**を引数に取る。以前は 3-C の ``n_units``
+    (``narma.base.esn_mackey_glass.n_units``) を縛るものが1つも無く、
+    ``tasks/narma.py`` の ``_validate`` が塞いでいたのは ``length`` 軸だけだった
+    (オーケストレータの実測: ``n_units=6000`` で ESN が実際に構築されてから
+    無関係な形状エラーで停止していた)。
+
+    Args:
+        n_units: リザバーのユニット数。重み行列は ``n_units**2`` で伸びる。
+        n_steps: 系列長。状態行列は ``n_units * n_steps`` で伸びる。
+
+    Raises:
+        ValueError: いずれかの上限を超える場合 (**確保より前に**落とす)。
+    """
+    validate_n_units_bound(n_units)
+    n_state_elements = n_units * n_steps
     if n_state_elements > _MAX_STATE_ELEMENTS:
         raise ValueError(
             f"n_units * n_steps が上限を超えています: {n_state_elements} > "
@@ -1101,4 +1141,6 @@ __all__ = [
     "run_ipc_sweep",
     "run_length_sweep",
     "run_mc_sweep",
+    "validate_n_units_bound",
+    "validate_state_matrix_bounds",
 ]

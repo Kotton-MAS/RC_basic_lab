@@ -465,6 +465,65 @@ def test_oversized_narma10_length_is_rejected_before_any_allocation(
     assert huge.narma.length > narma_task_module._MAX_LENGTH
 
 
+def test_oversized_narma10_n_units_is_rejected_before_any_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``narma.base`` の ESN の ``n_units`` 上限超過も ``ESN`` を作る前に落ちる。
+
+    3b-2 の fix 直後にオーケストレータが実測で見つけた残穴。``run_narma10`` は
+    ``CapacityCondition`` を持たないので ``simulate_condition_trajectory`` の
+    検査を通らず、``tasks/narma.py`` の ``_validate`` が縛るのは ``length`` 軸
+    だけだったため、``n_units`` 軸には上限が1つも無かった。実測では
+    ``n_units=6000`` (上限 5000) で **ESN が実際に構築されてから** 14.58 秒後に
+    無関係な形状エラー (``回帰に使える行数が特徴数以下です``) で停止しており、
+    D-34 の「確保より前に落とす」が守られていなかった。修正後は 4.0us / ESN 構築
+    0 回で落ちる。
+
+    ``length`` 側 (``test_oversized_narma10_length_is_rejected_before_any_allocation``)
+    と対にして、3-C の確保軸2本の両方が塞がれていることを固定する。
+    """
+    from rc_basics_lab.experiment.capacity import _MAX_UNITS
+
+    config = tiny_config()
+    base = config.narma.base
+    huge = replace(
+        config,
+        narma=replace(
+            config.narma,
+            base=replace(
+                base,
+                esn_mackey_glass=replace(base.esn_mackey_glass, n_units=_MAX_UNITS + 1),
+            ),
+        ),
+    )
+
+    called = False
+
+    class _FailIfConstructed:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            nonlocal called
+            called = True
+            raise AssertionError("ESN が確保より前に作られました")
+
+    monkeypatch.setattr("rc_basics_lab.experiment.runner.ESN", _FailIfConstructed)
+    with pytest.raises(ValueError, match="n_units"):
+        run_narma10(huge)
+    assert not called, "上限検査より前に ESN の重み行列の確保が始まっています"
+
+
+def test_narma10_n_units_boundary_is_accepted() -> None:
+    """境界値ちょうど (``n_units == _MAX_UNITS``) は拒否されない。
+
+    ``>`` が ``>=`` に書き換えられても検出できるようにする (3b-1 の
+    F-3b1-2-005 と同じ規律)。実際に確保が走ると重いので、検査関数を直接呼ぶ。
+    """
+    from rc_basics_lab.experiment.capacity import _MAX_UNITS, validate_n_units_bound
+
+    validate_n_units_bound(_MAX_UNITS)
+    with pytest.raises(ValueError, match="n_units"):
+        validate_n_units_bound(_MAX_UNITS + 1)
+
+
 def test_narma10_length_boundary_plus_one_over_n_units_product_is_rejected() -> None:
     """``narma.length * base.esn_mackey_glass.n_units`` の上限超過も塞がる。
 
