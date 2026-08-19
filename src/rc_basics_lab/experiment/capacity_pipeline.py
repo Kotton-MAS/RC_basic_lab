@@ -6,7 +6,9 @@
 「どのコマンドから走らせても同じ成果物が出る」を構造で保証する
 (01 の ``pipeline.py`` / 02 の ``esp_pipeline.py`` と同じ規律)。
 
-``meta.json`` には ``wall_time_breakdown`` (区間ごとの実測時間の内訳) を載せる。
+``meta.json`` には ``threshold_comparison`` (受け入れ条件3: しきい値処理の
+有無で総容量がどれだけ変わるか) と ``wall_time_breakdown`` (区間ごとの実測
+時間の内訳) を載せる。
 仕様 §5 が「**状態生成の合計** < 60 秒 / 内訳を ``meta.json`` に出す」を性能
 予算として要求しているためで、予算を割ったときに「診断が重いのか状態生成
 (素の tanh ESN、O(T*N^2) の Python ループ) が重いのか」を成果物だけで
@@ -145,6 +147,8 @@ class CapacityOutputs:
     Attributes:
         results: 掃引3本ぶんの条件別の結果 (行 + 図が使う配列)。
         narma: 実験 3-C の結果 (``narma10.csv`` の行 + 容量1条件)。
+        threshold: しきい値法の比較 (受け入れ条件3。``meta.json`` の
+            ``threshold_comparison``)。
         timings: 実験ごとの実測時間の内訳 (``FIGURE_EXPERIMENTS`` と同じ並び)。
         paths: 生成したファイル (``CAPACITY_ARTIFACTS`` と同じ並び)。
         wall_time_s: 計算部分の実測 wall time (書き出しは含まない)。

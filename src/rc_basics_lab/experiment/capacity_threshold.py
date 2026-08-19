@@ -306,7 +306,7 @@ def _ipc_row(
         ipc_total_raw=float(scalars["ipc_total_raw"]),
         ipc_linear=float(scalars["ipc_linear"]),
         ipc_nonlinear=float(scalars["ipc_nonlinear"]),
-        ipc_saturation_ratio=float(scalars["ipc_saturation_ratio"]),
+        ipc_saturation_ratio=float(scalars["saturation_ratio"]),
         n_targets_kept=int(scalars["n_targets_kept"]),
         ipc_threshold_degree1=float(thresholds[0]),
     )
