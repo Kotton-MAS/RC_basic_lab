@@ -1003,10 +1003,17 @@ pending の機構そのもの (`CHANNEL_PENDING` / `TASK_STAGE_CONSUMERS` / 信�
   01 の `n_lags_grid` 上端拡張 (docs/design.md §8.2) と同じ論点が 3-C にも在る。
   **T5 / 記事側での解釈が要る**。
 - 3-C の同じリザバーの容量は `capacity.csv` の `3C_narma10` 行にある:
-  `mc_total = 11.15` (N=50 の 22%)、`ipc_total = 30.25`、`ipc_linear = 22.46` / `ipc_nonlinear = 7.79`、
-  `mc_effective_delay = 22.46`。NARMA10 が要求する 10 ステップの記憶は届いているが、
-  ESN の非線形容量が対照を上回るほどには効いていない、という読み方ができる
+  `mc_total = 11.15` (N=50 の 22%)、`ipc_total = 30.25`、**`ipc_linear = 10.46` /
+  `ipc_nonlinear = 19.79`**、`mc_effective_delay = 22.46`。NARMA10 が要求する
+  10 ステップの記憶は届いているが、ESN の非線形容量が対照を上回るほどには
+  効いていない、という読み方ができる
   (2枚の CSV は `experiment` と ESN の条件キーで join できる)。
+  > **(T5 で訂正)** 本項は当初 `ipc_linear = 22.46` / `ipc_nonlinear = 7.79` と
+  > 書いていたが、22.46 は `mc_effective_delay` の値であり、線形/非線形が入れ替わって
+  > いた (一次資料の `capacity.csv` は `ipc_linear = 10.46` / `ipc_nonlinear = 19.79`)。
+  > 向きが逆だと「ESN は容量の大半を線形記憶に使っている」という**正反対の読み**に
+  > なるため、T5 の記録 (docs/design.md §11.5) は一次資料から生成した表だけを載せ、
+  > 散文には有効数字を書かない形にした。
 
 ### 13. D-30 が本番を止めないことの確認 (と将来の落とし穴)
 
