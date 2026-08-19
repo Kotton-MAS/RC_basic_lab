@@ -725,11 +725,12 @@ def evaluate_capacity_condition(
 
     手順は4つで、順序そのものが設計判断である。
 
-    1. ``simulate_reference_trajectory`` で ``X`` を**1条件につき1回だけ**作る
+    1. ``simulate_condition_trajectory`` が上限検査 (``_validate_condition_bounds``、
+       D-34/HIGH-1) をかけてから ``X`` を**1条件につき1回だけ**作る
        (仕様 §5 の禁止構造「条件ごとに X を2回作る」を避ける)。参照軌道の
        生成は 02 から切り出し済みの関数をそのまま呼び、03 側で書き直さない。
-    2. ``ctx`` を1個だけ作る (D-37: サロゲートのシードは全条件で共通)。
-       ``washout`` も同じ値を使い、``t0`` の違いは各診断が
+    2. ``capacity_context`` が ``ctx`` を1個だけ作る (D-37: サロゲートのシードは
+       全条件で共通)。``washout`` も同じ値を使い、``t0`` の違いは各診断が
        ``max(washout, 自分の最大遅延)`` として決める (D-24)。
     3. ``measure_capacity`` が ``X`` を読み取り専用にして (D-35) 2診断を呼ぶ。
     4. ``capacity_row_from`` が行を組む。
