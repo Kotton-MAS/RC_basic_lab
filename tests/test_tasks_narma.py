@@ -181,6 +181,53 @@ def test_shifted_index_would_not_match() -> None:
     assert abs(shifted[NARMA10_ORDER] - float(expected[0])) > RECURRENCE_TOLERANCE
 
 
+def test_matches_reference_recurrence_through_extended_window() -> None:
+    """先頭5ステップだけでなく ``y[21]`` まで手計算と ``1e-12`` 以内で一致する.
+
+    HIGH-2 (F-3b2-1-002): 窓を ``sum_{i=0}^{9}`` から ``sum_{i=0}^{10}``
+    (11項) に広げる変異は、``y[14]`` までしか照合しない従来の
+    ``test_matches_reference_recurrence`` では検出できなかった —— ``y[0..9]``
+    が 0 初期化のため、11項目 (``y[t-10]``) が非0の値を拾い始めるのは
+    ``t - 10 >= 10`` (= ``y[21]`` を計算する時点) からである。ここまで区間を
+    延ばして検出する (空虚でないことは ``test_wider_window_would_not_match``
+    が確認する)。
+    """
+    u = np.array([float(value) for value in REFERENCE_INPUT], dtype=np.float64)
+    y = narma10_series(u)
+
+    upto = len(REFERENCE_INPUT) - 1  # 21
+    expected = _hand_computed_window_reference(REFERENCE_INPUT, upto)
+    actual = y[NARMA10_ORDER : upto + 1]
+    assert len(actual) == len(expected)
+    for index, (value, reference) in enumerate(zip(actual, expected, strict=True)):
+        assert abs(float(value) - float(reference)) <= RECURRENCE_TOLERANCE, (
+            f"step {NARMA10_ORDER + index}: {value!r} != {float(reference)!r}"
+        )
+    # 手計算の値そのもの (定数を1つ書き換えたら気づけるように literal で置く)
+    assert abs(float(expected[-1]) - 0.5398125327224791) < RECURRENCE_TOLERANCE
+
+
+def test_wider_window_would_not_match() -> None:
+    """窓を11項に広げると ``y[21]`` で初めて食い違う (上のテストの空虚さ確認).
+
+    HIGH-2 (F-3b2-1-002)、``test_shifted_index_would_not_match`` と対。
+    ``y[0..9]`` が 0 初期化のため、``y[20]`` までは10項の正しい窓と
+    11項の変異が偶然一致する —— 短い区間だけを照合する guard_test では
+    この変異を検出できないことを、ここで実測して示す。
+    """
+    upto = len(REFERENCE_INPUT) - 1  # 21
+    correct = _hand_computed_window_reference(REFERENCE_INPUT, upto)
+    wide = _hand_computed_window_reference(
+        REFERENCE_INPUT, upto, window_width=NARMA10_ORDER + 1
+    )
+    assert len(correct) == len(wide)
+    # y[21] (最後の要素) より手前は偶然一致する。
+    for index in range(len(correct) - 1):
+        assert correct[index] == wide[index]
+    # y[21] で初めて食い違う。
+    assert abs(float(correct[-1]) - float(wide[-1])) > RECURRENCE_TOLERANCE
+
+
 def test_divergence_raises_instead_of_clipping() -> None:
     """発散は ``ValueError``。クリップも自動再抽選もしない (D-30)。
 
