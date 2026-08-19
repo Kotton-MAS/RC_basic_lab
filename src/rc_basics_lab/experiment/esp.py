@@ -444,6 +444,23 @@ class Trajectories:
     companions: tuple[FloatArray, ...]
 
 
+_NOISE_REJECTION_WHY = (
+    "(a) 比較軌道が『初期状態もノイズ実現値も違う』軌道になり、ESP 判定が測る"
+    "はずの『初期状態だけを振った差』に D-14 の3ストリーム分離の外側から"
+    "4本目の未制御な変動が混ざる (b) 各軌道が引く乱数の個数と位置が参照軌道の"
+    "消費量に依存するため、結果が**評価順**に依存する"
+)
+_NOISE_REJECTION_FORBIDDEN = (
+    "ノイズ実現値用に5本目の乱数ストリームを新設すること "
+    "(D-14 の3ストリームは 01・02・03 の成果物の再現性の土台で、"
+    "本数を増やす判断は 04a の範囲外です)"
+)
+_NOISE_REJECTION_REMEDY = (
+    "simulate_reference_trajectory(..., state_noise=...) を使う "
+    "(03 の 3-B' と同じ経路。比較軌道を作らないので上の2つが起きない)"
+)
+
+
 def simulate_condition(
     config: Esp02Config,
     *,
@@ -451,6 +468,7 @@ def simulate_condition(
     leak_rate: float,
     sigma_u: float,
     replicate: int,
+    state_noise: float = 0.0,
 ) -> Trajectories:
     """1条件 (rho, leak_rate, sigma_u, replicate) の軌道を作る。
 
@@ -460,7 +478,42 @@ def simulate_condition(
     リザバー重み ``RESERVOIR`` / 駆動信号 ``TASK`` / 初期状態対 ``PROBE`` が
     独立なので、「初期状態だけを振ったときに判定が変わるか」を重みを固定した
     まま測れる。
+
+    **この経路は ``state_noise > 0`` を受理しない** (D-47)。``state_noise`` を
+    **既定値つきキーワードで受けて拒否する**のは、``build_esn_config`` /
+    ``simulate_reference_trajectory`` の2つが同じ形で ``state_noise`` を受けて
+    いる (D-36) ため、次の実装者が「上の2つと同じように流せばいい」と考えて
+    必ずここへ手を伸ばすからである。**その手が触れる場所に停止標識を置く**のが
+    この決定の実体であり、引数が無いと guard_test が monkeypatch 依存の
+    間接的なものになる。
+
+    検査は二重に置く (経路非依存):
+
+    1. 引数 ``state_noise``。呼び出し側が明示的に渡した値をその場で拒否する
+    2. ``config`` から組んだ ESN の ``state_noise``。``build_esn_config`` に
+       ノイズを流す別経路 (monkeypatch / 将来の設定フィールド) が生えても、
+       比較軌道ループへ入る前に落ちる
+
+    Args:
+        config: 02 の実験設定。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        sigma_u: 駆動信号の標準偏差 (D-17)。
+        replicate: レプリケート番号 (0 始まり)。
+        state_noise: **0 以外を受理しない** (D-47)。既定値つきキーワードなので
+            既存の呼び出しは1つも書き換えない。
+
+    Raises:
+        ValueError: ``state_noise`` が 0 でない場合、または ``config`` から
+            組んだ ESN の ``state_noise`` が 0 でない場合 (D-47)。
     """
+    require_deterministic_esn(
+        state_noise,
+        what="simulate_condition は state_noise を受理しません (D-47)",
+        why=_NOISE_REJECTION_WHY,
+        forbidden=_NOISE_REJECTION_FORBIDDEN,
+        remedy=_NOISE_REJECTION_REMEDY,
+    )
     probe_rng = make_rng_for(
         esp_stream_seed(config.seeds, SeedStream.PROBE), SeedStream.PROBE, replicate
     )
@@ -478,18 +531,29 @@ def simulate_condition(
         replicate=replicate,
         x0=initial_states[0],
     )
+    # 経路非依存の検査 (副)。比較軌道ループの**直前**に置く —— ループへ入って
+    # からでは D-14 の外側の乱数消費が既に起きている。引数側の検査だけを消す
+    # 変異はここで、ここだけを消す変異は引数側で落ちる (二重化が空虚でない証明:
+    # test_simulate_condition_rejects_a_noisy_esn_from_any_route)。
+    require_deterministic_esn(
+        reference.esn.config.state_noise,
+        what=(
+            "simulate_condition の比較軌道は state_noise>0 の ESN では作れません "
+            "(D-47)"
+        ),
+        why=_NOISE_REJECTION_WHY,
+        forbidden=_NOISE_REJECTION_FORBIDDEN,
+        remedy=_NOISE_REJECTION_REMEDY,
+    )
     return Trajectories(
         esn=reference.esn,
         drive=reference.drive,
         states=reference.states,
-        # F-3b1-2-007: state_noise=0 の現状では比較軌道は乱数を1個も引かないので
-        # D-14 の3ストリーム分離 (RESERVOIR / TASK / PROBE) は保たれるが、04 で
-        # state_noise>0 を入れると (a) 比較軌道は「初期状態もノイズ実現値も違う」
-        # 軌道になり、ESP 判定が測っているはずの「初期状態だけを振った差」に
-        # 4本目の未制御な変動が混ざる、(b) 各軌道が引く乱数は参照軌道が消費した
-        # 個数に依存するため、結果が**評価順**に依存する。ノイズを入れる担当は
-        # ここで止まって、ノイズ実現値のストリームを分離する (4本目のストリームを
-        # 立てて軌道ごとに独立な rng を渡す) かどうかを先に決めること。
+        # F-3b1-2-007 / D-47: state_noise=0 では比較軌道は乱数を1個も引かないので
+        # D-14 の3ストリーム分離 (RESERVOIR / TASK / PROBE) が保たれる。
+        # state_noise>0 で何が壊れるか (4本目の未制御な変動 / 評価順依存) は
+        # 上の require_deterministic_esn のメッセージが説明しており、04a T2 で
+        # 「この経路は受理しない」と決めた (5本目のストリームは新設しない)。
         companions=tuple(
             reference.esn.run(reference.drive, x0=x0, rng=reference.rng)
             for x0 in initial_states[1:]
