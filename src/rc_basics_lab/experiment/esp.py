@@ -164,30 +164,97 @@ def make_initial_states(
     )
 
 
+def require_deterministic_esn(
+    state_noise: float,
+    *,
+    what: str,
+    why: str,
+    forbidden: str,
+    remedy: str,
+) -> None:
+    """``state_noise`` が 0 でなければ ``ValueError`` にする (D-47 / D-48 共有)。
+
+    ノイズを 02 経路へ入れると壊れ方が2種類あり、直し方も別々である
+    (伝播器: ADR 0001 §2 / 比較軌道: 同 §3)。共通なのは「**なぜ拒否するのか**を
+    メッセージが自分で説明できないと、次の実装者が最も安い手 (``rng`` を渡す /
+    5本目のストリームを立てる) で黙らせる」という失敗の形の方なので、
+    判定と**4点そろったメッセージの組み立て**をここ1本に集約し、
+    呼び出し側は4点の中身だけを渡す。
+
+    Args:
+        state_noise: 検査する値。呼び出し側の引数でも ``esn.config`` 由来でもよい。
+        what: 何を拒否したか。
+        why: なぜか (測っている量がどう変わるか)。
+        forbidden: やってはいけない直し方。
+        remedy: 正しい経路。
+
+    Raises:
+        ValueError: ``state_noise`` が 0 でない場合。
+
+    Note:
+        比較は ``> 0`` ではなく ``!= 0`` である。``ESNConfig`` を経た値は
+        ``ESN.__init__`` が負を弾いているので両者は同値だが、``simulate_condition``
+        の引数は ESN を通らずに拒否されるため、負の値も「受理しない」側に倒す。
+    """
+    if state_noise != 0.0:
+        raise ValueError(
+            f"{what}: {why} / "
+            f"やってはいけない直し方: {forbidden} / "
+            f"正しい経路: {remedy} "
+            f"(実際の state_noise={state_noise!r})"
+        )
+
+
 def esn_propagator(esn: ESN, u: FloatArray) -> StatePropagator:
-    """``X[t]`` から ``X[t+1]`` を返す伝播器を作る (D-18)。
+    """``X[t]`` から ``X[t+1]`` を返す伝播器を作る (D-18 / D-48)。
 
     ``ESN.run`` の規約により ``X[t]`` は ``u[t]`` を**処理した後**の状態なので、
     1ステップ進めるのに使う入力は ``u[t + 1]`` である。``u[t]`` を渡すと λ が
     "それらしい値" で出てレビューでは気づけないため、``conditional_lyapunov``
     は既定でこの一致を実行時に検査する (``check_propagator``)。
 
-    **``esn.step`` に ``rng`` を意図的に渡さない** (F-3b1-2-006)。D-36 は
-    ``ESN.run`` に「常に rng を渡す」と決めたが、それは**軌道**を作る呼び出しの
-    規律であり、伝播器はそこに含めない —— ``conditional_lyapunov`` は同じ写像を
-    2本の近接した状態に当てて摂動の成長率を測るので、**伝播器は決定的でなければ
-    ならない**。ノイズを入れると測っているのは「摂動の成長率」ではなく
-    「摂動 + ノイズ実現値の差の成長率」という別の量になる。
-    したがって 04 で 02 経路に ``state_noise>0`` を効かせるときは、単にここへ
-    ``rng`` を渡して D-36 の ``ValueError`` (``state_noise > 0`` のときは rng が
-    必要) を黙らせてはいけない。**「伝播器はノイズ無しで回す」ことを別の決定
-    として明文化し、guard_test を付ける**こと (``state_noise=0`` の ESN を
-    伝播器専用に作る、``ESN.step`` にノイズ無しの経路を明示的に持たせる、
-    などの選択肢がある)。
+    **``state_noise > 0`` の ESN は受理しない** (D-48)。``conditional_lyapunov``
+    は同じ写像を2本の近接した状態に当てて摂動の成長率を測るので、伝播器は
+    決定的でなければならない。ノイズを入れると測っているのは「摂動の成長率」
+    ではなく「摂動 + ノイズ実現値の差の成長率」という別の量になる。D-36 の
+    「``ESN.run`` には常に ``rng`` を渡す」は**軌道を作る**呼び出しの規律であり、
+    伝播器はそこに含めない —— したがって ``esn.step`` に ``rng`` を渡して
+    ``ValueError`` を黙らせるのは誤りである (F-3b1-2-006)。
+
+    判定は**伝播器を作る時点**で行う。伝播器は ``conditional_lyapunov`` の深部で
+    初めて呼ばれるため、ここで落とさないと失敗が D-18 の
+    ``check_propagator`` のメッセージ (「参照軌道と別の入力で伝播している疑い」)
+    として出て、次の実装者を**存在しないバグの捜索**へ送り込む
+    (``tests/test_experiment_esp.py::test_noise_free_clone_fails_the_propagator_check``
+    がその誤診を実測として残してある)。
+
+    Raises:
+        ValueError: ``esn`` の ``state_noise`` が 0 でない場合 (D-48)。
     """
+    require_deterministic_esn(
+        esn.config.state_noise,
+        what="state_noise>0 の ESN からは伝播器を作れません (D-48)",
+        why=(
+            "conditional_lyapunov は同じ写像を2本の近接した状態に当てて摂動の"
+            "成長率を測るので伝播器は決定的でなければならず、ノイズを入れると"
+            "測る量が『摂動 + ノイズ実現値の差の成長率』という別物になります"
+        ),
+        forbidden=(
+            "esn.step に rng を渡して黙らせること / "
+            "ノイズ無しの複製 ESN で伝播すること "
+            "(参照軌道はノイズ有りなので D-18 の check_propagator が "
+            "propagator_tol を桁で超えて必ず落ち、しかも誤った診断が出ます)"
+        ),
+        remedy=(
+            "state_noise=0 で ESN を構成して伝播器を作る。ノイズ下の条件付き "
+            "Lyapunov 指数が成果物の列として必要になったら、ノイズ実現値を"
+            "凍結する案 (ADR 0001 §2.4 の案C) を正面から検討する"
+        ),
+    )
 
     def propagate(x: FloatArray, t: int) -> FloatArray:
-        # rng を渡さないのは意図的 (上記 docstring / F-3b1-2-006)。
+        # rng を渡さないのは意図的 (上記 docstring / D-48)。ここへ rng を足す
+        # 変異は test_propagator_refuses_a_noisy_esn が落とす。
         return esn.step(x, u[t + 1])
 
     return propagate
@@ -790,6 +857,7 @@ __all__ = [
     "evaluate_condition",
     "make_drive",
     "make_initial_states",
+    "require_deterministic_esn",
     "run_decay_sweep",
     "run_esp_experiment",
     "run_esp_map",
