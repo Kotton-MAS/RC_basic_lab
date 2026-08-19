@@ -1,30 +1,55 @@
-"""案A の変異版 (遅延 __init__)。"""
+"""作図層 — 記事用の図をヘッドレス環境でも同じ手順で再生成する.
 
-from __future__ import annotations
+- ``style``: rcParams (savefig.dpi=200) と CJK フォント探索 (D-10)
+- ``labels``: 日本語 / 英語ラベルの切り替え (豆腐文字を出さない)
+- ``figures``: 記事01の図2枚 (``fig_comparison`` / ``fig_state_space``)
+- ``figures_esp``: 記事02の図4枚 (``fig_esp_decay`` / ``fig_leak_timescale`` /
+  ``fig_esp_map`` / ``fig_washout_sensitivity``)
+- ``figures_capacity``: 記事03の図5枚 (``fig_mc_sweep`` / ``fig_ipc_profile`` /
+  ``fig_memory_nonlinearity`` / ``fig_ipc_conservation`` /
+  ``fig_narma10_control``)
 
-import importlib
-from types import ModuleType
+pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI には
+ディスプレイが無いため、既定バックエンドに依存しない経路にそろえる。
+"""
 
-_SOURCE = {
-    "plot_comparison": "figures", "plot_state_space": "figures",
-    "plot_ipc_conservation": "figures_capacity", "plot_ipc_profile": "figures_capacity",
-    "plot_mc_sweep": "figures_capacity", "plot_memory_nonlinearity": "figures_capacity",
-    "plot_narma10_control": "figures_capacity",
-    "plot_esp_decay": "figures_esp", "plot_esp_map": "figures_esp",
-    "plot_leak_timescale": "figures_esp", "plot_washout_sensitivity": "figures_esp",
-    "label": "labels",
-    "StyleContext": "style", "find_cjk_font": "style", "rc_params_for": "style",
-    "setup_style": "style",
-}
+from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
+from rc_basics_lab.plotting.figures_capacity import (
+    plot_ipc_conservation,
+    plot_ipc_profile,
+    plot_mc_sweep,
+    plot_memory_nonlinearity,
+    plot_narma10_control,
+)
+from rc_basics_lab.plotting.figures_esp import (
+    plot_esp_decay,
+    plot_esp_map,
+    plot_leak_timescale,
+    plot_washout_sensitivity,
+)
+from rc_basics_lab.plotting.labels import label
+from rc_basics_lab.plotting.style import (
+    StyleContext,
+    find_cjk_font,
+    rc_params_for,
+    setup_style,
+)
 
-
-def __getattr__(name: str) -> object:
-    if name in _SOURCE:
-        module: ModuleType = importlib.import_module(
-            f"rc_basics_lab.plotting.{_SOURCE[name]}"
-        )
-        return getattr(module, name)
-    raise AttributeError(name)
-
-
-__all__ = sorted(_SOURCE)
+__all__ = [
+    "StyleContext",
+    "find_cjk_font",
+    "label",
+    "plot_comparison",
+    "plot_esp_decay",
+    "plot_esp_map",
+    "plot_ipc_conservation",
+    "plot_ipc_profile",
+    "plot_leak_timescale",
+    "plot_mc_sweep",
+    "plot_memory_nonlinearity",
+    "plot_narma10_control",
+    "plot_state_space",
+    "plot_washout_sensitivity",
+    "rc_params_for",
+    "setup_style",
+]
