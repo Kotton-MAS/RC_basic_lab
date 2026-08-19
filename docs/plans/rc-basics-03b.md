@@ -1190,3 +1190,71 @@ guard_test のパスは仕様の予約 (`tests/test_experiment_capacity.py::...`
 - `config.py` の package 化 (非空 615 行、着手条件 600 行に到達済み)。§11.5 に記録。
 - 3-C の `n_lags_grid` 上端 (k=30 に張り付き)。要件書の指定範囲なので 3b では動かさない。
 - `import rc_basics_lab.plotting` を最初に行うと循環 import (T3 メモ10、base-ref から同じ)。
+
+## 3b-2 round 1 (fixer) で直したこと (`F-3b2-1-xxx`)
+
+サイクル3を締める最終ラウンド。findings は `docs/review-findings-03b.md` の
+「サイクル 3b-2 round 1」に記録済み。**BLOCKER 0 / HIGH 2 / MEDIUM 4 / INFO 5**
+のうち HIGH 2件・MEDIUM 4件を修正し、`config.py` package 化 (M4 の代替として
+検討したが今回は選ばなかった) 以外はスコープどおり閉じた。
+
+- **HIGH 1 + M1 + M2 (`F-3b2-1-001`)**: 3-C (`run_narma10`) としきい値法比較
+  (`run_threshold_comparison`) が `experiment/capacity.py` の
+  `_validate_condition_bounds` (確保より前の上限検査、D-34) を1回も呼ばずに
+  素通りしていた (`CapacityCondition` を組み立てる経路が3-A/3-B/3-B'/
+  length_sweep の4本から、しきい値法比較を含めた5本目・6本目に増えていたのに
+  検査が個別追加式のままだった)。`simulate_condition_trajectory` (検査つきで
+  軌道を作る) と `capacity_context` (D-37 の ctx を1個作る) を `capacity.py` に
+  切り出し、`evaluate_capacity_condition` / `run_threshold_comparison` /
+  `run_narma10` の3か所を差し替えた。あわせて `tasks/narma.py` の `_validate`
+  に `length` 単体の絶対上限 (`_MAX_LENGTH`) と `length * n_units` の絶対上限
+  (`_MAX_STATE_ELEMENTS`) を追加し、3-C (`CapacityCondition` を持たないため
+  上の一本化では守れない経路) を課題層単体で塞いだ。
+- **HIGH 2 (`F-3b2-1-002`)**: D-29 の guard_test
+  (`test_matches_reference_recurrence`) が先頭5ステップ (`y[14]` まで) しか
+  照合しておらず、窓を `sum_{i=0}^{9}` から `sum_{i=0}^{10}` (11項) に広げる
+  変異を検出できなかった (`y[0..9]` が0初期化のため、11項目が非0を拾うのは
+  `t - 10 >= 10` すなわち `y[21]` を計算する時点から)。`REFERENCE_INPUT` を
+  22ステップに延ばし、`test_matches_reference_recurrence_through_extended_window`
+  で `y[21]` まで照合、`test_wider_window_would_not_match` で
+  「11項の変異は `y[21]` で初めて食い違う」ことをセルフテストとして固定した
+  (`test_shifted_index_would_not_match` と対になる形)。
+- **M3 (`F-3b2-1-003`)**: `docs/design.md` §11.5 の3表 (3-A の
+  `mc_effective_delay` 表、3-B の `ipc_total`/`ipc_linear`/`ipc_nonlinear` 表
+  12行、3-B' の `ipc_total`/`saturation_ratio` 表 9セル) が手書きのまま
+  `capacity.csv` と機械照合されていなかった。既存の `_table_after` +
+  `_assert_cell_matches` パターンで3本のテストを追加し (`groupby` で
+  rho/leak_rate または n_units/state_noise ごとにレプリケート平均を取って
+  照合)、表の1セルを書き換える変異で実際に落ちることを実測した。
+- **M4 (`F-3b2-1-004`)**: `SectionTiming.wall_time_s` が3-Cだけ
+  `run_task` を含む値 (`narma.wall_time_s`) に差し替わっており、
+  `CapacityRow.wall_time_s` (常に容量測定のみ) と同じ列名で意味が違っていた。
+  フィールド追加 (`wall_time_scope` 等) ではなく **docstring の訂正**を選んだ
+  (`SectionTiming.wall_time_s` と `capacity_row_from` の Args)。フィールドを
+  足すと `meta.json` のキーが増え、成果物の再生成と §11.5 の実行時間表の
+  機械照合を同時に更新する必要があったため。`results/03_capacity/` はコード
+  ロジック・出力キーとも変更していないのでバイト不変 (実測: base-ref との
+  diff が空)。
+
+### 04 への申し送り (reviewer-architecture 集約、8件・着手順)
+
+**後段ほど破壊的変更を含む**という理由での順序。上から着手すること。
+
+1. **`config.py` の package 化**: 非空615行、着手条件 (600行) に到達済み
+   (上の「残件」参照)。
+2. **ノイズ関連の決定の明文化**: `esn_propagator` (伝播器) が `esn.step` を
+   rng なしで呼んでおり、04 で 02 経路に `state_noise` を入れると D-36 が
+   防いだのと同じ `ValueError` が復活しうる (F-3b1-2-006)。比較軌道も
+   `state_noise=0` の間は乱数を引かないため 02 の軌道はバイト不変だが、
+   `state_noise>0` になると D-14 の3ストリーム分離に4本目の未制御な変動が
+   混ざりうる (F-3b1-2-007)。両方とも `decisions.yaml` に guard_test 付きで
+   記録すること。
+3. **`diagnostics/` の整理4件**: (a) F-03-1-006、(b) `max_targets` の単位が
+   ドキュメントと実装で揃っているかの整理、(c) `RowAlignment` の設計見直し、
+   (d) `chunk_size` の二重意味 (実効値と設定値が同じ名前を共有している) の
+   解消。**`diagnostics/` 配下は3b-2でも1行も変更していない**ため、04 の
+   architect が個別に設計判断 (`/design`) を通してから着手すること。
+4. **公開 API・レイヤ整理2件**: (a) `diagnostics.ipc` の名前隠蔽 (§10-1 の罠、
+   モジュールと再エクスポート関数が同じドット付き名前を共有する) の解消、
+   (b) `experiment` ⇄ `plotting` の相互依存 (循環 import、T3 メモ10) の解消。
+   いずれも公開シグネチャに触れるため、着手前に architect でのレビューを推奨。
