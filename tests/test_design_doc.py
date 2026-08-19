@@ -308,6 +308,12 @@ CAPACITY_CONFIG = ROOT / "experiments" / "03_capacity" / "config.yaml"
 CONFIG_PY = ROOT / "src" / _PACKAGE / "config.py"
 
 _MODE_CELL = re.compile(r"`(?P<mode>[a-z0-9_]+)`")
+_LPAREN = "\uff08"
+_RPAREN = "\uff09"
+"""全角括弧 (ruff の RUF001 がソース中の全角記号を弾くためエスケープで書く)。"""
+
+_DEFAULT_MARK = f"{_LPAREN}\u65e2\u5b9a{_RPAREN}"
+"""§11.2 の表で既定モードの行に付ける印 (全角括弧つきの「既定」)。"""
 _BACKTICKED = re.compile(r"^`(?P<name>[a-z0-9_]+)`$")
 
 
@@ -413,7 +419,9 @@ def test_threshold_table_marks_the_default_mode() -> None:
         ("ipc_total", "default_ipc_mode"),
     ):
         marked = [
-            cells[0] for cells in _threshold_table(table_key) if "（既定）" in cells[0]
+            cells[0]
+            for cells in _threshold_table(table_key)
+            if _DEFAULT_MARK in cells[0]
         ]
         assert len(marked) == 1, marked
         assert f"`{comparison[default_key]}`" in marked[0]
@@ -454,7 +462,9 @@ def test_threshold_degree_table_matches_the_profile_csv() -> None:
         if isinstance(entry, dict) and entry["threshold_mode"] == "chi2"
     )
     for cells in table:
-        expected = surrogate if "surrogate" in cells[0] else {d: chi2 for d in degrees}
+        expected = (
+            surrogate if "surrogate" in cells[0] else dict.fromkeys(degrees, chi2)
+        )
         for degree, cell in zip(degrees, cells[1:], strict=True):
             _assert_cell_matches(cell, expected[degree], f"次数{degree} ({cells[0]})")
 
@@ -515,7 +525,8 @@ def test_profile_row_counts_in_the_threshold_section_match_the_artifacts() -> No
     )
     text = _text()
     match = re.search(
-        r"本番の (?P<conditions>[\d,]+) 条件で (?P<kept>[\d,]+) 行 -> (?P<all>[\d,]+) 行",
+        r"本番の (?P<conditions>[\d,]+) 条件で (?P<kept>[\d,]+) 行 -> "
+        r"(?P<all>[\d,]+) 行",
         text,
     )
     assert match, "§11.2 に長形式の行数の記述が見つかりません"
@@ -603,7 +614,7 @@ def test_narma10_capacity_table_matches_the_capacity_csv() -> None:
     _, table = _table_after(re.compile(r"^\|\s*量\s*\|\s*値\s*\|"))
     assert table, "§11.5 に 3-C の容量表が見つかりません"
     for cells in table:
-        match = _BACKTICKED.match(cells[0].split("（")[0].strip())
+        match = _BACKTICKED.match(cells[0].split(_LPAREN)[0].strip())
         assert match is not None, cells
         _assert_cell_matches(cells[1], float(row[match["name"]]), match["name"])
 
@@ -677,7 +688,9 @@ def test_config_py_line_count_in_the_design_doc_is_current() -> None:
     """
     lines = CONFIG_PY.read_text(encoding="utf-8").splitlines()
     nonempty = sum(1 for line in lines if line.strip())
-    match = re.search(r"\*\*非空 (\d+) 行\*\*（総 (\d+) 行）", _text())
+    match = re.search(
+        r"\*\*非空 (\d+) 行\*\*" + _LPAREN + r"総 (\d+) 行" + _RPAREN, _text()
+    )
     assert match, "§11.5 に config.py の行数の記述が見つかりません"
     assert int(match[1]) == nonempty
     assert int(match[2]) == len(lines)
