@@ -34,9 +34,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from test_public_api_reexport import PACKAGE_NAMES
 
 import rc_basics_lab
-from tests.test_public_api_reexport import PACKAGE_NAMES
 
 SRC = Path(rc_basics_lab.__file__).parent
 
