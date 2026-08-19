@@ -183,7 +183,10 @@ make saturation-03
 
 ```
 src/rc_basics_lab/
-├── config.py / seeds.py / metrics.py / meta.py / types.py   # 土台
+├── seeds.py / metrics.py / meta.py / types.py   # 土台
+├── config/          # 設定 dataclass 群 (実験サイクル単位で分割、公開経路は
+│                   #   `rc_basics_lab.config` の1本のまま)
+│                   #   _common: ローダ / experiment01 / esp02 / capacity03
 ├── diagnostics/     # 状態系列 X だけを見る診断層 (reservoir に依存しない)
 │                   #   PCA / ESP 判定 / 条件付き Lyapunov / 実効時定数
 ├── reservoir/       # ESN (step / run / x0 / state_noise を公開)

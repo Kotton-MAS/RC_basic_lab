@@ -1,6 +1,6 @@
 """パッケージの ``__init__.py`` が全サブモジュールを再エクスポートしていることの検査.
 
-conventions.md は「既存6パッケージは全サブモジュールを再エクスポートしている」と
+conventions.md は「既存パッケージは全サブモジュールを再エクスポートしている」と
 慣習として記録しているが、これまで機械的に固定するテストが無かった (F-2-012)。
 02 で ``diagnostics/echo_state.py`` 等の新規モジュールを追加する際、
 ``__init__.py`` への配線 (import 文 / ``__all__`` 追加) を忘れると、公開 API から
@@ -21,6 +21,7 @@ import pytest
 import rc_basics_lab
 
 PACKAGE_NAMES = (
+    "config",
     "diagnostics",
     "reservoir",
     "readout",
@@ -28,7 +29,12 @@ PACKAGE_NAMES = (
     "experiment",
     "plotting",
 )
-"""慣習の対象6パッケージ (conventions.md §関連ファイルマップ)。
+"""慣習の対象パッケージ (conventions.md §関連ファイルマップ)。
+
+``config`` は 04 T1 で ``config.py`` から package 化した7つ目 (D-49)。
+公開シンボルは ``config/__init__.py`` が明示的に再エクスポートするので、
+サブモジュール (``experiment01`` / ``esp02`` / ``capacity03``) は
+``__init__`` の import 文の副作用として親の属性になる。
 
 ``_`` 始まりの private モジュールは意図的に公開したくない内部実装として
 許容し、対象から除外する (公開したくないモジュールは名前を ``_`` で始めれば
@@ -51,7 +57,7 @@ def test_package_names_matches_automatic_enumeration() -> None:
     機械的に突き合わせる完全性チェックが無かった。7つ目のトップレベル
     パッケージが増えても ``PACKAGE_NAMES`` への追記を忘れると黙って検査対象
     から漏れる。``pkgutil.iter_modules`` の ``ispkg`` でサブパッケージ
-    (``config.py`` 等の単一モジュールは除く) だけを列挙して突き合わせる。
+    (``seeds.py`` 等の単一モジュールは除く) だけを列挙して突き合わせる。
     """
     actual = {
         info.name
