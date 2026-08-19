@@ -156,9 +156,18 @@ def _validate_condition_bounds(condition: CapacityCondition) -> None:
     """状態行列・ESN の確保より前に、確保量に上書き不能な絶対上限をかける。
 
     D-34 の規律 (「確保より前に落とす」) を実験層の確保軸 (``n_units`` /
-    ``n_steps``) にも適用する (F-3b1-1-017)。``CapacityCondition`` はこの
-    モジュールの全経路 (3-A / 3-B / 3-B' / length_sweep) が最終的に通る単一の
-    入口なので、ここ1か所の検査で4経路すべてが守られる。
+    ``n_steps``) にも適用する (F-3b1-1-017)。**``CapacityCondition`` を組み立てる
+    経路すべてが ``simulate_condition_trajectory`` を通ることで守られる**
+    (F-3b2-1-001/HIGH-1)。3-A / 3-B / 3-B' / length_sweep
+    (``evaluate_capacity_condition`` 経由) としきい値法比較
+    (``run_threshold_comparison``、``CapacityCondition`` は組むが3-A/3-B/3-B'/
+    length_sweep のいずれでもない代表条件1本) の5経路が対象で、3-C
+    (``run_narma10``) だけは ``CapacityCondition`` を持たない (状態は 01 の
+    ``run_task`` が作る) ためここでは守れず、``tasks/narma.py`` の
+    ``_validate`` に別途上限を置く。以前は ``evaluate_capacity_condition`` が
+    直接この関数を呼んでおり、``run_threshold_comparison`` は
+    ``CapacityCondition`` を組み立てながらここを1回も呼ばずに素通りしていた
+    (3b-2 reviewer-security の実測)。
     """
     if condition.n_units > _MAX_UNITS:
         raise ValueError(
@@ -429,6 +438,59 @@ def ipc_config_for(config: Capacity03Config, experiment: str) -> IpcConfig:
     return config.ipc
 
 
+def simulate_condition_trajectory(
+    config: Capacity03Config, condition: CapacityCondition
+) -> ReferenceTrajectory:
+    """``CapacityCondition`` から参照軌道 ``X`` を作る (**確保より前に上限検査**、D-34/HIGH-1)。
+
+    ``evaluate_capacity_condition`` と ``run_threshold_comparison`` (しきい値法
+    比較) は、``CapacityCondition`` を組んでから ``simulate_reference_trajectory``
+    への9引数呼び出しをバイト一致で複製していた (F-3b2-1-001/M1)。かつ
+    ``_validate_condition_bounds`` を呼ぶのは前者だけで、後者は
+    ``CapacityCondition`` を組み立てながら上限検査を1回も呼ばずに素通り
+    していた (F-3b2-1-001/HIGH-1、3b-2 reviewer-security の実測)。ここへ
+    一本化することで、``CapacityCondition`` を組み立てる経路が増えても検査が
+    自動的に付いてくる (3-C はここを通らないので別途 ``tasks/narma.py`` の
+    ``_validate`` で塞ぐ)。
+
+    Args:
+        config: 03 の設定。
+        condition: 回す1条件。
+
+    Returns:
+        参照軌道 (``states`` / ``drive`` を持つ)。
+
+    Raises:
+        ValueError: ``n_units`` / ``n_units * n_steps`` が上限を超える
+            (確保より前に検査する) / 駆動信号の分布が未対応の場合。
+    """
+    _validate_condition_bounds(condition)
+    return simulate_reference_trajectory(
+        reservoir_config_for(config, condition),
+        drive_config_for(config, condition),
+        reservoir_seed=config.seeds.reservoir,
+        drive_seed=config.seeds.drive,
+        rho=condition.rho,
+        leak_rate=condition.leak_rate,
+        sigma_u=condition.sigma_u,
+        replicate=condition.replicate,
+        state_noise=condition.state_noise,
+    )
+
+
+def capacity_context(config: Capacity03Config) -> DiagnosticContext:
+    """全条件・両診断で共有する ``DiagnosticContext`` を1個作る (D-37 の実体)。
+
+    ``washout`` は ``config.drive.washout``、``seed`` は
+    ``config.seeds.surrogate`` (サロゲートのしきい値の共有シード、D-37)。
+    以前は ``evaluate_capacity_condition`` / ``run_threshold_comparison`` /
+    ``run_narma10`` の3か所が同じ2行 (``DiagnosticContext(washout=..., seed=...)``)
+    を複製していた (F-3b2-1-001/M2)。3-C のように ``CapacityCondition`` を
+    経由しない経路でも、この1関数を呼べば D-37 の共有規律から外れない。
+    """
+    return DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
+
+
 @dataclass(frozen=True, slots=True)
 class CapacityMeasurement:
     """**外部で作られた** ``X`` に対する MC / IPC の測定結果 (行にする前の素材)。
@@ -690,22 +752,11 @@ def evaluate_capacity_condition(
             設定が範囲外 / 系列が短すぎる / ``ctx.seed`` が要るのに無い場合
             (後半は診断層・ESN 層が投げる)。
     """
-    _validate_condition_bounds(condition)
     started = time.perf_counter()
-    reference = simulate_reference_trajectory(
-        reservoir_config_for(config, condition),
-        drive_config_for(config, condition),
-        reservoir_seed=config.seeds.reservoir,
-        drive_seed=config.seeds.drive,
-        rho=condition.rho,
-        leak_rate=condition.leak_rate,
-        sigma_u=condition.sigma_u,
-        replicate=condition.replicate,
-        state_noise=condition.state_noise,
-    )
+    reference = simulate_condition_trajectory(config, condition)
     wall_time_state_s = time.perf_counter() - started
 
-    ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
+    ctx = capacity_context(config)
     measurement = measure_capacity(
         reference.states,
         reference.drive,
