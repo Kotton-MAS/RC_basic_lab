@@ -35,7 +35,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from rc_basics_lab.config import Capacity03Config
-from rc_basics_lab.diagnostics.base import DiagnosticContext
 
 # §10-1 の罠: ``from rc_basics_lab.diagnostics import ipc`` は
 # ``diagnostics/__init__.py`` が再エクスポートしている**関数** ipc を返す
@@ -52,12 +51,11 @@ from rc_basics_lab.diagnostics.memory_capacity import (
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
     CapacityCondition,
-    drive_config_for,
+    capacity_context,
     ipc_config_for,
     measure_capacity,
-    reservoir_config_for,
+    simulate_condition_trajectory,
 )
-from rc_basics_lab.experiment.esp import simulate_reference_trajectory
 
 logger = logging.getLogger(__name__)
 
@@ -200,10 +198,13 @@ def comparison_condition(config: Capacity03Config) -> CapacityCondition:
 def run_threshold_comparison(config: Capacity03Config) -> ThresholdComparison:
     """代表条件を1回だけ回し、しきい値法だけを振り直して総容量を比べる。
 
-    ``measure_capacity`` を経由するので、read-only 化 (D-35) と ``ctx`` の共有
-    (D-37) は掃引とまったく同じ規律で効く。``ctx`` は掃引と同じ作り方の1個を
-    5回の診断すべてで共有する —— サロゲートのしきい値を別シードで引くと、
-    モード間の差にしきい値の推定ノイズが独立に乗る。
+    ``simulate_condition_trajectory`` (D-34/HIGH-1 の上限検査つき) と
+    ``capacity_context`` / ``measure_capacity`` を経由するので、確保より前の
+    上限検査 (``_validate_condition_bounds``)・read-only 化 (D-35)・``ctx`` の
+    共有 (D-37) は掃引とまったく同じ規律で効く (F-3b2-1-001/HIGH-1: 以前は
+    この関数だけ上限検査を1回も呼ばずに素通りしていた)。``ctx`` は掃引と同じ
+    作り方の1個を5回の診断すべてで共有する —— サロゲートのしきい値を別シード
+    で引くと、モード間の差にしきい値の推定ノイズが独立に乗る。
 
     MC と IPC のモード数が違う (MC は ``chi2`` 非対応) ため、両者を同時に振らず
     「MC を振る間 IPC は既定」「IPC を振る間 MC は既定」とはしない。**組み合わせ
@@ -218,22 +219,14 @@ def run_threshold_comparison(config: Capacity03Config) -> ThresholdComparison:
         代表条件と、しきい値法ごとの総容量。
 
     Raises:
-        ValueError: 診断層が投げるもの (系列が短すぎる / ``ctx.seed`` が無い等)。
+        ValueError: ``n_units`` / ``n_units * n_steps`` が上限を超える
+            (確保より前に検査する) / 診断層が投げるもの (系列が短すぎる /
+            ``ctx.seed`` が無い等)。
     """
     started = time.perf_counter()
     condition = comparison_condition(config)
-    reference = simulate_reference_trajectory(
-        reservoir_config_for(config, condition),
-        drive_config_for(config, condition),
-        reservoir_seed=config.seeds.reservoir,
-        drive_seed=config.seeds.drive,
-        rho=condition.rho,
-        leak_rate=condition.leak_rate,
-        sigma_u=condition.sigma_u,
-        replicate=condition.replicate,
-        state_noise=condition.state_noise,
-    )
-    ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
+    reference = simulate_condition_trajectory(config, condition)
+    ctx = capacity_context(config)
     base_ipc_cfg = ipc_config_for(config, condition.experiment)
 
     mc_rows: list[McThresholdRow] = []

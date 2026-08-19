@@ -33,7 +33,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from rc_basics_lab.config import Capacity03Config, ESNConfig, ExperimentConfig
-from rc_basics_lab.diagnostics.base import DiagnosticContext
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_NARMA10,
     CapacityOutcome,
