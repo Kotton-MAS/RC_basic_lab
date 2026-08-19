@@ -424,3 +424,60 @@ def test_capacity_row_shares_the_surrogate_seed_with_the_sweeps() -> None:
     assert row.seed_reservoir == config.narma.base.seeds.reservoir
     # 3-C のリザバーを駆動するのは課題の入力なので、駆動側は task ストリーム
     assert row.seed_drive == config.narma.base.seeds.task
+
+
+# --- 3-C は experiment/capacity.py の上限検査を通らない経路 (F-3b2-1-001/HIGH-1) -
+
+
+def test_oversized_narma10_length_is_rejected_before_any_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``narma.length`` の上限超過は ``ESN`` を作る前に ``ValueError``。
+
+    HIGH-1 (3b-2 reviewer-security): ``run_narma10`` は ``CapacityCondition``
+    を持たないため ``experiment/capacity.py`` の ``_validate_condition_bounds``
+    を通らず (0回)、``tasks/narma.py`` の ``_validate`` だけが3-C を守る。
+    ``Narma10Config(length=10**12)`` がかつて確保前検査なしで受理されていた
+    (実測: ``u`` / ``y`` の確保だけで数TB) ことの再発防止。``ESN`` の
+    ``__init__`` を差し替え、``plan_replicate`` が ``task_entry.generate``
+    (= ``generate_narma10`` -> ``_validate``) より先に ``ESN`` を作らない
+    (= 確保より前に落ちる) ことを実測する。
+    """
+    from rc_basics_lab.tasks import narma as narma_task_module
+
+    config = tiny_config()
+    huge = replace(config, narma=replace(config.narma, length=10**12))
+
+    called = False
+
+    class _FailIfConstructed:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            nonlocal called
+            called = True
+            raise AssertionError("ESN が確保より前に作られました")
+
+    monkeypatch.setattr("rc_basics_lab.experiment.runner.ESN", _FailIfConstructed)
+    with pytest.raises(ValueError, match="length"):
+        run_narma10(huge)
+    assert not called, "上限検査より前に ESN の重み行列の確保が始まっています"
+    # 確認: narma.length 単体で見ても同じ上限で落ちる (課題層単体の経路、F-3b2-1-001)。
+    assert huge.narma.length > narma_task_module._MAX_LENGTH
+
+
+def test_narma10_length_boundary_plus_one_over_n_units_product_is_rejected() -> None:
+    """``narma.length * base.esn_mackey_glass.n_units`` の上限超過も塞がる。
+
+    ``length`` 単体は上限内でも、``n_units`` を掛けた状態行列の確保量が
+    上限を超えれば確保より前に ``ValueError`` になる (``_MAX_STATE_ELEMENTS``、
+    F-3b2-1-001/HIGH-1)。
+    """
+    from rc_basics_lab.tasks.narma import _MAX_STATE_ELEMENTS, _validate
+
+    n_units = 200
+    over_limit_length = _MAX_STATE_ELEMENTS // n_units + 1
+    cfg = Narma10Config(
+        length=over_limit_length,
+        base=ExperimentConfig(esn_mackey_glass=ESNConfig(n_units=n_units)),
+    )
+    with pytest.raises(ValueError, match="n_units"):
+        _validate(cfg)
