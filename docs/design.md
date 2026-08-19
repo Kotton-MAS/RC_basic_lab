@@ -1205,3 +1205,84 @@ package 内の依存は**一方向**で、辺は3本しかない（`tests/test_c
 
 > サイクル01・02 と同じく、テストの**件数**は意図的に書かない（§7 / §10 の注記）。
 > 件数ではなく「受け入れ基準に対して桁で余裕があるか」を記録する。
+
+#### 公開 API の命名規約とレイヤ境界（04a T2、D-52 / D-53）
+
+*一次資料: `docs/adr/0001-t2-noise-propagator-and-public-api-boundaries.md`（Accepted）。
+`§12` は 04b の自由走行予測のために空けてある。*
+
+**レイヤの依存方向**（辺の種類を分けて読む）:
+
+```
+types -> config / seeds / metrics -> reservoir / readout / tasks / diagnostics
+      -> experiment ==(静的)==> plotting
+                    <-(動的)--
+```
+
+| 辺 | 種類 | 何を運ぶか | 書き方 |
+|---|---|---|---|
+| `plotting -> experiment` | **静的** | 行 dataclass の型・集計関数（`aggregate_nrmse` / `mean_nrmse_by_washout`）・記事メタの文言 | module-level import（**許可**） |
+| `experiment -> plotting` | **動的** | 図を描く関数の呼び出しだけ。型注釈にも定数にも現れない | **関数本体の中**で import（D-53） |
+
+両方を module-level で書くと
+`plotting/__init__ -> plotting.figures -> experiment.runner -> experiment/__init__
+-> experiment.pipeline -> plotting.figures`（部分初期化）で循環し、
+`import rc_basics_lab.plotting` **単独**が `ImportError` になる。動的な辺だけを
+関数本体へ落とせば、公開 import 経路を1つも変えずに循環が消える（3ファイル・6行）。
+
+受け入れ基準は仕様（`import` が通ること）より**強くしてある**: `plotting/__init__` を
+遅延化しただけでも `import` は通るが、`ImportError` は最初の属性アクセスへ
+1回ぶん移動するだけである。実測（案A を実装して D-53 を取り消した状態）:
+`test_plotting_can_be_imported_first` は**緑**、
+`test_every_package_resolves_all_of_its_public_names_when_imported_first[plotting]` は
+**赤のまま**。したがって guard は「単独 import 後に `__all__` の**全名前**が
+解決すること」を7パッケージすべてで測る。
+
+**命名規約（D-52）**: どのパッケージでも、**公開サブモジュール名と同名の公開
+シンボルを `__init__` で再エクスポートしない**。診断層の対応は以下で、
+モジュール名と関数名が衝突する2件だけが `__init__` から外れている。
+
+| モジュール | 公開する診断関数 | `diagnostics.<名前>` が指すもの | `__all__` に関数を載せるか |
+|---|---|---|---|
+| `dummy` | `state_mean_norm` | モジュール | 載せる（衝突なし） |
+| `state_space` | `state_pca` | モジュール | 載せる（衝突なし） |
+| `esp` | `esp_convergence` / `conditional_lyapunov` | モジュール | 載せる（衝突なし） |
+| `timescale` | `autocorrelation_time` | モジュール | 載せる（衝突なし） |
+| `memory_capacity` | `memory_capacity` | **モジュール** | **載せない**（同名） |
+| `ipc` | `ipc` | **モジュール** | **載せない**（同名） |
+| `lyapunov`（04b-1 で追加） | `lyapunov` は**禁止**（`max_lyapunov` 等にする） | モジュール | — |
+
+`from .ipc import ipc` と書くと、パッケージ属性 `diagnostics.ipc`（=モジュール）が
+**関数**で上書きされる。`import a.b.c as m` は `sys.modules` より先に親の属性を
+見るため `m` は関数になり、`monkeypatch.setattr(m, "...")` が関数オブジェクトへの
+属性設定として**成功**したまま何も差し替わらない —— 3a のレビューで実際に踏み、
+**変異試験が偽の緑になった**。関数の正規の入手経路はフルパス
+（`from rc_basics_lab.diagnostics.ipc import ipc`）1本に固定する。設定と既定値
+（`IpcConfig` / `DEFAULT_IPC` など）はモジュール名と衝突しないので従来どおり。
+
+**ノイズ経路の封鎖（D-47 / D-48）** も同じ ADR で決めた。02 の経路に
+`state_noise>0` を入れると壊れ方が2種類あり、どちらも `ValueError` で塞ぐ:
+
+| 場所 | 拒否する理由 | 正しい経路 |
+|---|---|---|
+| `esn_propagator`（D-48） | `conditional_lyapunov` は摂動の成長率を測るので伝播器は決定的でなければならない。ノイズを入れると「摂動 + ノイズ実現値の差の成長率」という別の量になる | `state_noise=0` で ESN を構成する |
+| `simulate_condition`（D-47） | 比較軌道に D-14 の3ストリームの外側から4本目の変動が混ざる／乱数消費が参照軌道に依存するので結果が**評価順**に依存する | `simulate_reference_trajectory(..., state_noise=...)`（3-B' と同じ） |
+
+「ノイズ無しの複製で伝播する」は安全に見えて**成立しない**。ノイズ有りの参照軌道に
+ノイズ無しの複製を当てたときの RMS/ユニット不一致量の実測（N=60 / ρ=0.9 /
+leak=0.3 / T=300）:
+
+| `state_noise` | 不一致量（最悪値） | `propagator_tol`=1e-10 に対して |
+|---|---|---|
+| 1e-4 | 2.741e-05 | **5.44 桁**超過 |
+| 1e-3 | 2.741e-04 | **6.44 桁**超過 |
+| 1e-2 | 2.742e-03 | **7.44 桁**超過 |
+
+つまり `check_propagator=True` では必ず落ち、しかもメッセージは「参照軌道と別の
+入力で伝播している疑い」という**誤った診断**になる。この実測は
+`test_noise_free_clone_fails_the_propagator_check` が保持していて、
+却下の理由が次のサイクルで失われないようにしてある。
+
+> 04a T2 は `results/` に1バイトも触れない（実測: 全 24 ファイルの SHA-256 が
+> 着手前と一致）。負債の整理と実験が混ざっていないことの証明である。
+
