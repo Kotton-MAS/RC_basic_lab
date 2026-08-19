@@ -41,6 +41,8 @@ from rc_basics_lab.experiment.state_space import (
     summarize,
 )
 from rc_basics_lab.experiment.summary import aggregate_nrmse
+from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
+from rc_basics_lab.plotting.style import setup_style
 
 logger = logging.getLogger(__name__)
 
@@ -115,16 +117,6 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     Returns:
         生成した行・PCA 比較・ファイルパス・実測 wall time。
     """
-    # 作図層の import を関数本体に置くのは D-53。合成層 (experiment) が
-    # plotting を module-level で import すると
-    # plotting/__init__ -> plotting.figures -> experiment.runner ->
-    # experiment/__init__ -> experiment.pipeline -> plotting.figures
-    # の循環になり ``import rc_basics_lab.plotting`` 単独が ImportError になる。
-    # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
-    # subprocess guard の両方が落ちる。
-    from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
-    from rc_basics_lab.plotting.style import setup_style
-
     started = time.perf_counter()
     plans0 = _plan_zero_by_task(config)
     rows = tuple(run_experiment(config, plans0=plans0))
