@@ -94,7 +94,20 @@ _MAX_STATE_ELEMENTS = 200_000_000
 def _validate(cfg: Narma10Config) -> None:
     if cfg.length < 1:
         raise ValueError(f"length は 1 以上である必要があります: {cfg.length}")
-    pass  # MUTATED: bound removed
+    if cfg.length > _MAX_LENGTH:
+        raise ValueError(
+            f"length が上限を超えています: {cfg.length} > {_MAX_LENGTH} "
+            "(u / y の確保量は length に比例するため、確保する前に検査で落とす)"
+        )
+    n_units = cfg.base.esn_mackey_glass.n_units
+    n_state_elements = cfg.length * n_units
+    if n_state_elements > _MAX_STATE_ELEMENTS:
+        raise ValueError(
+            "length * base.esn_mackey_glass.n_units が上限を超えています: "
+            f"{n_state_elements} > {_MAX_STATE_ELEMENTS} "
+            "(3-C の状態行列の確保量は length * n_units に比例するため、"
+            "確保する前に検査で落とす)"
+        )
 
 
 def narma10_series(u: FloatArray) -> FloatArray:
