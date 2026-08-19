@@ -36,6 +36,7 @@ from rc_basics_lab.config import Capacity03Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_NARMA10,
     CapacityOutcome,
+    capacity_context,
     capacity_outcome_from,
     capacity_row_from,
     ipc_config_for,
@@ -243,7 +244,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
     plan0 = plan_replicate(base, entry, 0)
     wall_time_state_s = time.perf_counter() - started
 
-    ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
+    ctx = capacity_context(config)
     measurement = measure_capacity(
         plan0.states,
         plan0.task.u,
