@@ -594,6 +594,113 @@ def test_truncation_table_matches_count_targets() -> None:
         assert documented == [counts[degree] for degree in sorted(counts)], cells
 
 
+def _capacity_rows_for(experiment: str) -> list[dict[str, str]]:
+    return [row for row in _capacity_csv_rows() if row["experiment"] == experiment]
+
+
+def test_mc_sweep_delay_table_matches_the_capacity_csv() -> None:
+    """§11.5 の3-A `mc_effective_delay` 表 (リーク率×ρ) が ``capacity.csv`` と一致する。
+
+    M3 (3b-2 reviewer-docs, F-3b2-1-003): §11.5 の3表 (3-A/3-B/3-B') は数値
+    自体は正確だが、成果物を再生成しても表が古いままだと赤くならない
+    (groupby 照合が0件だった)。他の §11.2/§11.5 の表と同じ規律
+    (``_table_after`` + ``_assert_cell_matches``) をここにも適用する。
+    """
+    rows = _capacity_rows_for("3A_mc_sweep")
+    assert rows, "3A_mc_sweep の行が capacity.csv に見つかりません"
+    header, table = _table_after(re.compile(r"^\|\s*リーク率\s*\\\s*ρ\s*\|"))
+    rho_grid = [float(cell) for cell in header[1:-1]]
+    assert len(table) == 3, table
+    for cells in table:
+        leak_rate = float(cells[0])
+        means: list[float] = []
+        for index, rho in enumerate(rho_grid, start=1):
+            subset = [
+                row
+                for row in rows
+                if float(row["leak_rate"]) == leak_rate and float(row["rho"]) == rho
+            ]
+            assert subset, (leak_rate, rho)
+            mean = statistics.fmean(float(row["mc_effective_delay"]) for row in subset)
+            means.append(mean)
+            _assert_cell_matches(
+                cells[index], mean, f"leak={leak_rate} rho={rho} mc_effective_delay"
+            )
+        # 表の見出しは「比（最大ρ/最小ρ）」で、rho_grid は昇順 (先頭=最小、末尾=最大)。
+        _assert_cell_matches(
+            cells[-1], means[-1] / means[0], f"leak={leak_rate} 比（最大ρ/最小ρ）"
+        )
+
+
+def test_ipc_sweep_table_matches_the_capacity_csv() -> None:
+    """§11.5 の3-B `ipc_total`/`ipc_linear`/`ipc_nonlinear` 表 (リーク率×ρ, 12行)。
+
+    M3 (F-3b2-1-003)。「非線形の割合」列も ``ipc_nonlinear / ipc_total`` の
+    再計算と照合する (散文の主張 (a)(b) を裏付ける列そのもの)。
+    """
+    rows = _capacity_rows_for("3B_ipc_sweep")
+    assert rows, "3B_ipc_sweep の行が capacity.csv に見つかりません"
+    _, table = _table_after(
+        re.compile(r"^\|\s*リーク率\s*\|\s*ρ\s*\|\s*`ipc_total`\s*\|")
+    )
+    assert len(table) == 12, table
+    for cells in table:
+        leak_rate = float(cells[0])
+        rho = float(cells[1])
+        subset = [
+            row
+            for row in rows
+            if float(row["leak_rate"]) == leak_rate and float(row["rho"]) == rho
+        ]
+        assert subset, (leak_rate, rho)
+        ipc_total = statistics.fmean(float(row["ipc_total"]) for row in subset)
+        ipc_linear = statistics.fmean(float(row["ipc_linear"]) for row in subset)
+        ipc_nonlinear = statistics.fmean(float(row["ipc_nonlinear"]) for row in subset)
+        label = f"leak={leak_rate} rho={rho}"
+        _assert_cell_matches(cells[2], ipc_total, f"{label} ipc_total")
+        _assert_cell_matches(cells[3], ipc_linear, f"{label} ipc_linear")
+        _assert_cell_matches(cells[4], ipc_nonlinear, f"{label} ipc_nonlinear")
+        _assert_cell_matches(
+            cells[5].removesuffix("%"),
+            100.0 * ipc_nonlinear / ipc_total,
+            f"{label} 非線形の割合",
+        )
+
+
+def test_conservation_table_matches_the_capacity_csv() -> None:
+    """§11.5 の3-B' `ipc_total`（`saturation_ratio`）表 (N×`state_noise`, 9セル)。
+
+    M3 (F-3b2-1-003)。セルは ``"16.91 (0.676)"`` の形 (総容量と括弧内の比) で、
+    両方を ``capacity.csv`` の ``ipc_total`` / ``ipc_saturation_ratio`` と照合する。
+    """
+    rows = _capacity_rows_for("3Bp_conservation")
+    assert rows, "3Bp_conservation の行が capacity.csv に見つかりません"
+    header, table = _table_after(re.compile(r"^\|\s*N\s*\\\s*`state_noise`\s*\|"))
+    noise_grid = [float(cell) for cell in header[1:]]
+    assert len(table) == 3, table
+    cell_pattern = re.compile(
+        r"^(?P<total>[0-9.]+)\s*" + r"\(" + r"\s*(?P<ratio>[0-9.]+)\s*" + r"\)$"
+    )
+    for cells in table:
+        n_units = int(cells[0])
+        for index, noise in enumerate(noise_grid, start=1):
+            subset = [
+                row
+                for row in rows
+                if int(row["n_units"]) == n_units and float(row["state_noise"]) == noise
+            ]
+            assert subset, (n_units, noise)
+            ipc_total = statistics.fmean(float(row["ipc_total"]) for row in subset)
+            ratio = statistics.fmean(
+                float(row["ipc_saturation_ratio"]) for row in subset
+            )
+            match = cell_pattern.match(cells[index])
+            assert match is not None, cells[index]
+            label = f"N={n_units} state_noise={noise}"
+            _assert_cell_matches(match["total"], ipc_total, f"{label} ipc_total")
+            _assert_cell_matches(match["ratio"], ratio, f"{label} saturation_ratio")
+
+
 def test_narma10_table_matches_the_committed_rows() -> None:
     """§11.5 の 3-C の成績表が ``narma10.csv`` / ``meta.json`` と一致する。"""
     with NARMA10_CSV.open(encoding="utf-8", newline="") as handle:
