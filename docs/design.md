@@ -1164,14 +1164,44 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 （`mc_total` 15.153 -> 15.138 / `ipc_total` 31.365 -> 31.203、T を10倍にして 0.1〜0.5% の
 低下）、本番 3-B（T = 1e5）の値は「T 不足による過小評価」ではない。
 
-#### `config.py` の行数（04 の package 化の着手条件）
+#### `config/` の分割方針と行数（04 T1 で package 化、D-49）
 
-`src/rc_basics_lab/config.py` は**非空 615 行**（総 771 行）。
+`src/rc_basics_lab/config.py` は 03 完了時点で**非空 615 行**（総 771 行）に達し、
 `docs/plans/rc-basics-03.md` が置いた着手条件「非空 600 行を超えたら package 化」に
-**到達済み**である。着手は 04 冒頭の独立タスクとする —— 03 の途中で分割すると、
-配線の diff に無関係な移動が混ざって reviewer が両方を見られなくなる。
-この行数も `tests/test_design_doc.py` が実ファイルから数え直して照合する
-（04 で分割した瞬間にこの記述が古くなるので、そのとき赤くなる）。
+到達していた。04 冒頭の独立タスク（T1）で `src/rc_basics_lab/config/` package へ
+**移動だけ**で割った —— 04 の設定（`Chaos04Config`）を足す前に割らないと、
+その diff が「移動なのか論理変更なのか」を切り分けられなくなるため。
+
+**分割単位は実験サイクル**。`_common` だけがサイクルに属さない読み込み規律を持つ:
+
+| モジュール | 持つもの | 非空行数 | 総行数 |
+|---|---|---|---|
+| `_common.py` | `ConfigError` / `_DataclassFactory` / `_coerce*` / `_build` / `load_config_as` | 125 | 154 |
+| `experiment01.py` | 01 の設定 dataclass 群 / `TASK_LENGTH_FIELDS` / `load_config` | 104 | 137 |
+| `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 191 | 245 |
+| `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 185 | 233 |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 99 | 106 |
+| **合計** | — | **704** | **875** |
+
+上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
+機械が要求する）。合計が分割前（615 行）より 89 行増えているのは、モジュール
+docstring 4本・import 文の再掲・`__init__.py` の再エクスポート 40 行ぶんであり、
+**設定 dataclass の定義とローダ本体は1行も変えていない**。
+
+package 内の依存は**一方向**で、辺は3本しかない（`tests/test_config_package_layout.py`
+が AST で固定する）:
+
+- `experiment01 -> _common`（`load_config` が `load_config_as` に委譲）。
+  `_common` は package 内の**葉**で、どのサイクルモジュールも import しない
+- `esp02 -> experiment01`（`WashoutSweepConfig.base: ExperimentConfig`、D-19）
+- `capacity03 -> experiment01`（`Narma10Config.base: ExperimentConfig`、D-31）
+
+`esp02` と `capacity03` は互いを import しない。公開シンボルの経路は package 化
+**前と同一**で、`__all__`（36 名）は差分 0（D-49）。04 の `Chaos04Config` は
+`config/chaos04.py` に置く（**T1 では作らない**。置き場所を決めただけ）。
+
+この表の行数も `tests/test_design_doc.py` が実ファイルから数え直して照合する
+（モジュールが増減したり上限を超えたりした瞬間に赤くなる）。
 
 > サイクル01・02 と同じく、テストの**件数**は意図的に書かない（§7 / §10 の注記）。
 > 件数ではなく「受け入れ基準に対して桁で余裕があるか」を記録する。
