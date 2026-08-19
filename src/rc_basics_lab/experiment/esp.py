@@ -451,7 +451,8 @@ _NOISE_REJECTION_WHY = (
     "消費量に依存するため、結果が**評価順**に依存する"
 )
 _NOISE_REJECTION_FORBIDDEN = (
-    "ノイズ実現値用に5本目の乱数ストリームを新設すること "
+    "ノイズ実現値用に"
+    "5本目の乱数ストリームを新設すること "
     "(D-14 の3ストリームは 01・02・03 の成果物の再現性の土台で、"
     "本数を増やす判断は 04a の範囲外です)"
 )
@@ -538,8 +539,7 @@ def simulate_condition(
     require_deterministic_esn(
         reference.esn.config.state_noise,
         what=(
-            "simulate_condition の比較軌道は state_noise>0 の ESN では作れません "
-            "(D-47)"
+            "simulate_condition の比較軌道は state_noise>0 の ESN では作れません (D-47)"
         ),
         why=_NOISE_REJECTION_WHY,
         forbidden=_NOISE_REJECTION_FORBIDDEN,
