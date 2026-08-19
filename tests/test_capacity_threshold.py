@@ -290,3 +290,67 @@ def test_default_mode_matches_the_committed_capacity_row() -> None:
     assert none_ipc["ipc_total"] == pytest.approx(
         float(row["ipc_total_raw"]), rel=1.0e-9
     )
+
+
+# --- 6. 確保より前の上限検査を素通りしない (F-3b2-1-001/HIGH-1) -------------
+
+
+def test_oversized_ipc_sweep_n_units_is_rejected_before_any_allocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """代表条件の ``n_units`` が上限超過なら、軌道を作る前に ``ValueError``。
+
+    HIGH-1 (3b-2 reviewer-security): ``run_threshold_comparison`` は
+    ``CapacityCondition`` (``comparison_condition``) を組み立てながら
+    ``experiment/capacity.py`` の ``_validate_condition_bounds`` を1回も
+    呼ばずに素通りしていた。``simulate_condition_trajectory`` に一本化した
+    後は掃引3経路とまったく同じ検査を通る。
+    """
+    capacity_module = importlib.import_module("rc_basics_lab.experiment.capacity")
+    called = False
+
+    def fail_if_called(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("simulate_reference_trajectory が呼ばれました")
+
+    monkeypatch.setattr(
+        "rc_basics_lab.experiment.capacity.simulate_reference_trajectory",
+        fail_if_called,
+    )
+    config = tiny_config()
+    huge = dataclasses.replace(
+        config,
+        ipc_sweep=dataclasses.replace(
+            config.ipc_sweep, n_units=capacity_module._MAX_UNITS + 1
+        ),
+    )
+    with pytest.raises(ValueError, match="n_units"):
+        run_threshold_comparison(huge)
+    assert not called, "上限検査より前に状態行列の確保が始まっています"
+
+
+def test_validate_condition_bounds_is_actually_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_validate_condition_bounds`` の呼び出し回数を直接数える (実測、完了条件3)。
+
+    ``ValueError`` が出ることだけを見るテストは「別の経路でたまたま落ちた」
+    可能性を排除できない。呼び出し回数そのものを固定する。
+    """
+    capacity_module = importlib.import_module("rc_basics_lab.experiment.capacity")
+    calls: list[object] = []
+    real = capacity_module._validate_condition_bounds
+
+    def counting(condition: object) -> None:
+        calls.append(condition)
+        real(condition)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        "rc_basics_lab.experiment.capacity._validate_condition_bounds", counting
+    )
+    run_threshold_comparison(tiny_config())
+    assert len(calls) == 1, (
+        f"_validate_condition_bounds の呼び出し回数={len(calls)} "
+        "(1回だけ CapacityCondition を組んで軌道を作るので1回のはず)"
+    )
