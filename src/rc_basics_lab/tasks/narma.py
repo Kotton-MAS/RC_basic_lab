@@ -64,10 +64,50 @@ NARMA10_INPUT_STD = (NARMA10_INPUT_HIGH - NARMA10_INPUT_LOW) / math.sqrt(12.0)
 DIVERGENCE_LIMIT = 1.0e3
 """発散と見なす ``|y|`` の閾値 (D-30)。"""
 
+_MAX_LENGTH = 200_000_000
+"""``length`` 単体の上書き不能な絶対上限 (F-3b2-1-001/HIGH-1, CWE-400/789)。
+
+3-C (実験 ``experiment/narma.py`` の ``run_narma10``) は ``CapacityCondition``
+を持たず ``experiment/capacity.py`` の ``_validate_condition_bounds``
+(確保より前に ``n_units`` / ``n_units * n_steps`` を落とす、D-34) を通らない
+ため、課題層 (ここ) 単体で呼ばれても塞がるようにする。``generate_narma10``
+は ``u`` / ``y`` を ``length`` 要素の ``float64`` で確保するので、
+``length=10**12`` のような値を検査なしで通すと確保だけで数TBに達する。
+``tasks/`` は ``experiment/`` に依存しない (レイヤ順序が逆) ので、
+``experiment/capacity.py`` の ``_MAX_STATE_ELEMENTS`` と同じ値
+(``2e8``、状態行列 ``8 * 2e8`` ≈ 1.6GB) をここに独立して定義する。
+"""
+
+_MAX_STATE_ELEMENTS = 200_000_000
+"""``length * base.esn_mackey_glass.n_units`` の絶対上限 (F-3b2-1-001/HIGH-1)。
+
+3-C のリザバー状態行列は ``(length, n_units)`` の ``float64`` を確保する
+(``ESN.run``)。``length`` 単体は ``_MAX_LENGTH`` の25倍まで許すが、
+``n_units`` (既定 200) を掛けると同じ確保が ``_MAX_LENGTH`` よりずっと手前で
+危険域に入る (実測: ``length=1e8`` x ``n_units=50`` で状態行列だけ 5e9 要素
+= 40GB、``_MAX_STATE_ELEMENTS=2e8`` の25倍)。``experiment/capacity.py`` の
+``_MAX_STATE_ELEMENTS`` と同じ値・同じ threat model (CWE-400/789) だが、
+レイヤ順序 (``tasks`` は ``experiment`` に依存しない) のため独立して定義する。
+"""
+
 
 def _validate(cfg: Narma10Config) -> None:
     if cfg.length < 1:
         raise ValueError(f"length は 1 以上である必要があります: {cfg.length}")
+    if cfg.length > _MAX_LENGTH:
+        raise ValueError(
+            f"length が上限を超えています: {cfg.length} > {_MAX_LENGTH} "
+            "(u / y の確保量は length に比例するため、確保する前に検査で落とす)"
+        )
+    n_units = cfg.base.esn_mackey_glass.n_units
+    n_state_elements = cfg.length * n_units
+    if n_state_elements > _MAX_STATE_ELEMENTS:
+        raise ValueError(
+            "length * base.esn_mackey_glass.n_units が上限を超えています: "
+            f"{n_state_elements} > {_MAX_STATE_ELEMENTS} "
+            "(3-C の状態行列の確保量は length * n_units に比例するため、"
+            "確保する前に検査で落とす)"
+        )
 
 
 def narma10_series(u: FloatArray) -> FloatArray:
