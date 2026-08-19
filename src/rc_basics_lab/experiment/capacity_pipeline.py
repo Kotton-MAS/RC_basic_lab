@@ -105,6 +105,20 @@ CAPACITY_ARTIFACTS: tuple[str, ...] = (
 class SectionTiming:
     """1実験ぶんの実測時間の内訳 (``meta.json`` の ``wall_time_breakdown``)。
 
+    **``wall_time_s`` は3-Cだけ意味が違う** (F-3b2-1-004/M4)。他の実験
+    (``CapacityRow.wall_time_s`` の合計 = 状態生成 + MC + IPC) と違い、3-C は
+    ``_narma_timing`` が ``narma.wall_time_s`` (``run_task``、3手法 x
+    全レプリケートを含む3-C全体) に差し替える。仕様 §5 の3-C予算 (< 120秒) が
+    成績の計算まで含めた区間に対する数字であり、容量測定ぶんだけでは予算判断に
+    使えないため (実測: 3-C の残差は 0.149秒 = 行の45%、他の実験は
+    0.002〜0.004秒の丸め)。``capacity.csv`` の行の ``wall_time_s`` (常に容量
+    測定のみ、``CapacityRow.wall_time_s`` の docstring参照) とは3-Cだけ値が
+    食い違うので、``meta.json`` の ``wall_time_breakdown`` を読む側は両者を
+    同一視しないこと。フィールドを足す (``wall_time_scope`` 等) 選択もあったが、
+    ``meta.json`` のキーが増えると成果物の再生成と `docs/design.md` §11.5 の
+    実行時間表の機械照合を同時に更新する必要があるため、この docstring の訂正
+    だけで塞ぐことにした。
+
     Attributes:
         experiment: 実験ラベル。
         n_conditions: 回した条件数。
@@ -112,19 +126,7 @@ class SectionTiming:
         wall_time_mc_s: MC 診断の合計 [秒]。
         wall_time_ipc_s: IPC 診断の合計 [秒]。
         wall_time_s: 条件の合計 [秒] (上記3つ + 行の組み立て)。**3-C だけ例外**
-            (F-3b2-1-004/M4): 他の実験は ``CapacityRow.wall_time_s`` (容量測定
-            = 状態生成 + MC + IPC) の合計と一致するが、3-C は ``_narma_timing``
-            が ``narma.wall_time_s`` (``run_task``、3手法 x 全レプリケートを
-            含む3-C全体) に差し替える。仕様 §5 の3-C予算 (< 120秒) が成績の
-            計算まで含めた区間に対する数字であり、容量測定ぶんだけでは予算判断
-            に使えないため (実測: 3-C の残差は 0.149秒 = 行の45%、他の実験は
-            0.002〜0.004秒の丸め)。``capacity.csv`` の行の ``wall_time_s``
-            (常に容量測定のみ) とは3-Cだけ意味が異なるので、``meta.json`` の
-            ``wall_time_breakdown`` を読む側は両者を同一視しないこと。
-        wall_time_scope: フィールドは追加していない —— この docstring の訂正
-            のみで塞ぐ選択をした (M4)。フィールドを足すと ``meta.json`` の
-            キーが増え、成果物の再生成と `docs/design.md` §11.5 の実行時間表の
-            機械照合を同時に更新する必要がある。
+            (上記参照)。
     """
 
     experiment: str
