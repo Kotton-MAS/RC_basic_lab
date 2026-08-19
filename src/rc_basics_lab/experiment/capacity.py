@@ -649,7 +649,15 @@ def capacity_row_from(
         washout: ``ctx.washout`` として渡した値 (実効基準点は ``t0_mc`` /
             ``t0_ipc`` に別途出る、D-24)。
         wall_time_state_s: 状態行列の生成にかかった時間 [秒]。
-        wall_time_s: 条件1本の合計時間 [秒]。
+        wall_time_s: **容量測定 (状態生成 + MC + IPC) の合計時間** [秒]。3-C
+            (``run_narma10``) を含む全経路で同じ意味であり、``run_task``
+            (3手法 x 全レプリケート) は含まない (F-3b2-1-004/M4)。区間単位の
+            ``capacity_pipeline.SectionTiming.wall_time_s`` は3-C だけこれとは
+            別の値 (``run_task`` を含む3-C全体) に差し替わる —— 同じ列名
+            ``wall_time_s`` が行単位 (ここ) と区間単位 (``SectionTiming``) で
+            指す量が3-Cだけ食い違うので、``meta.json`` を読む側は
+            ``capacity.csv`` の行の ``wall_time_s`` と
+            ``wall_time_breakdown`` の ``wall_time_s`` を同一視しないこと。
 
     Returns:
         ``capacity.csv`` の1行。
