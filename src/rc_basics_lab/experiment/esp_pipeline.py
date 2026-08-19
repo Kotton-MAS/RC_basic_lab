@@ -51,13 +51,6 @@ from rc_basics_lab.experiment.washout import (
     run_washout_sweep,
     summarize_washout_sensitivity,
 )
-from rc_basics_lab.plotting.figures_esp import (
-    plot_esp_decay,
-    plot_esp_map,
-    plot_leak_timescale,
-    plot_washout_sensitivity,
-)
-from rc_basics_lab.plotting.style import setup_style
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +221,17 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
     Returns:
         生成した結果・整合の要約・2-D の行と要約・ファイルパス・実測 wall time。
     """
+    # 作図層の import を関数本体に置くのは D-53 (循環 import の解消)。
+    # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
+    # subprocess guard の両方が落ちる。
+    from rc_basics_lab.plotting.figures_esp import (
+        plot_esp_decay,
+        plot_esp_map,
+        plot_leak_timescale,
+        plot_washout_sensitivity,
+    )
+    from rc_basics_lab.plotting.style import setup_style
+
     started = time.perf_counter()
     results = run_esp_experiment(config)
     washout_rows = run_washout_sweep(config)

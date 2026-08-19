@@ -53,14 +53,6 @@ from rc_basics_lab.experiment.report import (
     write_meta_for,
 )
 from rc_basics_lab.experiment.runner import ResultRow
-from rc_basics_lab.plotting.figures_capacity import (
-    plot_ipc_conservation,
-    plot_ipc_profile,
-    plot_mc_sweep,
-    plot_memory_nonlinearity,
-    plot_narma10_control,
-)
-from rc_basics_lab.plotting.style import setup_style
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +281,18 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     Returns:
         生成した結果・区間ごとの実測時間・ファイルパス・実測 wall time。
     """
+    # 作図層の import を関数本体に置くのは D-53 (循環 import の解消)。
+    # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
+    # subprocess guard の両方が落ちる。
+    from rc_basics_lab.plotting.figures_capacity import (
+        plot_ipc_conservation,
+        plot_ipc_profile,
+        plot_mc_sweep,
+        plot_memory_nonlinearity,
+        plot_narma10_control,
+    )
+    from rc_basics_lab.plotting.style import setup_style
+
     started = time.perf_counter()
     results = run_capacity_experiment(config)
     narma = run_narma10(config)
