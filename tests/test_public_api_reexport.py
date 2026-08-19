@@ -8,6 +8,12 @@ conventions.md は「既存パッケージは全サブモジュールを再エ�
 (``tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config``)
 は ``pkgutil.iter_modules`` でサブモジュールを直接列挙するため配線漏れの影響を
 受けないが、公開 API の一貫性はこの guard の対象外であり、本テストが別途守る。
+
+**D-52 (04a T2)**: ``test_package_init_reexports_all_public_submodules`` は
+``hasattr`` しか見ないため、``__init__`` が同名の**関数**でサブモジュールを
+隠していても緑で通していた —— この慣習テスト自身が隠蔽の共犯だった。
+``test_package_attributes_are_modules_not_shadowed`` が「属性が
+``ModuleType`` であること」まで測ってその穴を塞ぐ。
 """
 
 from __future__ import annotations
@@ -92,3 +98,106 @@ def test_package_init_reexports_all_public_submodules(package_name: str) -> None
         f"rc_basics_lab.{package_name}.__init__ が次のサブモジュールを "
         f"re-export していません: {missing}"
     )
+
+
+DIAGNOSTICS_ALL = (
+    "DEFAULT_ESP",
+    "DEFAULT_IPC",
+    "DEFAULT_LYAPUNOV",
+    "DEFAULT_MEMORY_CAPACITY",
+    "DEFAULT_TIMESCALE",
+    "Diagnostic",
+    "DiagnosticContext",
+    "DiagnosticResult",
+    "EspConfig",
+    "IpcConfig",
+    "LyapunovConfig",
+    "MemoryCapacityConfig",
+    "StatePropagator",
+    "TimescaleConfig",
+    "autocorrelation_time",
+    "conditional_lyapunov",
+    "esp_convergence",
+    "state_mean_norm",
+    "state_pca",
+    "validate_diagnostic_input",
+)
+"""``rc_basics_lab.diagnostics.__all__`` のスナップショット (D-52)。
+
+04a T2 で**関数** ``ipc`` / ``memory_capacity`` の2名を外した。増減の
+**両側**を固定するのは、「2名が消えたこと」だけを見ると他の名前を巻き添えで
+落としても緑になり、「他が動いていないこと」だけを見ると2名が戻っても
+気づけないため。
+"""
+
+DIAGNOSTIC_FUNCTIONS_BY_MODULE = {
+    "dummy": ("state_mean_norm",),
+    "esp": ("conditional_lyapunov", "esp_convergence"),
+    "ipc": ("ipc",),
+    "memory_capacity": ("memory_capacity",),
+    "state_space": ("state_pca",),
+    "timescale": ("autocorrelation_time",),
+}
+"""診断モジュール -> そのモジュールが定義する診断関数 (D-52 の「旧経路」)。
+
+D-52 は ``from rc_basics_lab.diagnostics import ipc`` が**関数**を返すことを
+やめただけで、**フルパスは正規の入手経路として残す**。本番3ファイルが現に
+使っている経路なので、ここで固定する。
+"""
+
+
+@pytest.mark.parametrize("package_name", PACKAGE_NAMES)
+def test_package_attributes_are_modules_not_shadowed(package_name: str) -> None:
+    """公開サブモジュール名と同名の公開シンボルを再エクスポートしない (D-52)。
+
+    ``from rc_basics_lab.diagnostics.ipc import ipc`` を ``__init__`` に書くと、
+    パッケージ属性 ``diagnostics.ipc`` (=モジュール) が**関数**で上書きされる。
+    ``import a.b.c as m`` は ``sys.modules`` より先に親の属性を見るため ``m`` は
+    関数になり、``monkeypatch.setattr(m, "...")`` が関数オブジェクトへの属性
+    設定として**成功**したまま何も差し替わらない (3a のレビューで実際に踏み、
+    変異試験が偽の緑になった)。
+
+    全7パッケージ x 全公開サブモジュールを回すので、04b-1 が
+    ``diagnostics/lyapunov.py`` を足したときに公開関数名を ``lyapunov`` に
+    すると**一覧への追記なしで自動的に赤くなる**。
+    """
+    package = importlib.import_module(f"rc_basics_lab.{package_name}")
+    shadowed = {
+        name: type(getattr(package, name)).__name__
+        for name in _public_submodule_names(package)
+        if not isinstance(getattr(package, name, None), ModuleType)
+    }
+    assert not shadowed, (
+        f"rc_basics_lab.{package_name} のサブモジュール名が同名の公開シンボルで "
+        f"隠されています (D-52。__init__ の再エクスポートを外してください): "
+        f"{shadowed}"
+    )
+
+
+def test_diagnostics_all_matches_the_recorded_snapshot() -> None:
+    """``diagnostics.__all__`` を増減の**両側**で固定する (D-52)。"""
+    package = importlib.import_module("rc_basics_lab.diagnostics")
+    actual = tuple(package.__all__)
+    assert actual == DIAGNOSTICS_ALL, (
+        "diagnostics.__all__ が記録と一致しません "
+        f"(増={sorted(set(actual) - set(DIAGNOSTICS_ALL))}, "
+        f"減={sorted(set(DIAGNOSTICS_ALL) - set(actual))})"
+    )
+    assert "ipc" not in actual and "memory_capacity" not in actual, (
+        "モジュール名と同名の関数が __all__ へ戻っています (D-52)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("module_name", "function_names"),
+    sorted(DIAGNOSTIC_FUNCTIONS_BY_MODULE.items()),
+)
+def test_diagnostic_functions_are_importable_from_their_modules(
+    module_name: str, function_names: tuple[str, ...]
+) -> None:
+    """関数の正規の入手経路 (フルパス) が全診断で通る (D-52 の「残す」側)。"""
+    module = importlib.import_module(f"rc_basics_lab.diagnostics.{module_name}")
+    for name in function_names:
+        assert callable(getattr(module, name)), (
+            f"rc_basics_lab.diagnostics.{module_name}.{name} が呼べません"
+        )

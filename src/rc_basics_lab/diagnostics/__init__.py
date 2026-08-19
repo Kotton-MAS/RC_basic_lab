@@ -24,6 +24,20 @@ memristor-rc-lab への移植性の実体であり、
 
 - ``lyapunov``     : 最大 Lyapunov 指数 (04。``ctx.dt`` で正規化)
 - ``criticality``  : エッジ・オブ・カオス指標 (05)
+
+命名規約 (D-52): **公開サブモジュール名と同名の公開シンボルをこの ``__init__``
+で再エクスポートしない**。``from .ipc import ipc`` と書くと、パッケージ属性
+``diagnostics.ipc`` (=モジュール) が**関数**で上書きされ、
+``import rc_basics_lab.diagnostics.ipc as m`` が関数を返す。
+``monkeypatch.setattr(m, ...)`` は関数オブジェクトの属性設定として**成功**し、
+何も差し替わらないまま変異試験が偽の緑になる (3a のレビューで実際に踏んだ)。
+したがって ``ipc`` / ``memory_capacity`` はここでは**モジュール**であり、
+関数の入手経路はフルパス (``from rc_basics_lab.diagnostics.ipc import ipc``)
+1本に固定する。設定と既定値 (``IpcConfig`` / ``DEFAULT_IPC`` など) は
+モジュール名と衝突しないのでこれまでどおり再エクスポートする。
+04 で足す ``lyapunov`` も、公開関数名を ``lyapunov`` にしてはいけない
+(``tests/test_public_api_reexport.py::test_package_attributes_are_modules_not_shadowed``
+が自動で赤くする)。
 """
 
 from rc_basics_lab.diagnostics.base import (
@@ -42,11 +56,10 @@ from rc_basics_lab.diagnostics.esp import (
     conditional_lyapunov,
     esp_convergence,
 )
-from rc_basics_lab.diagnostics.ipc import DEFAULT_IPC, IpcConfig, ipc
+from rc_basics_lab.diagnostics.ipc import DEFAULT_IPC, IpcConfig
 from rc_basics_lab.diagnostics.memory_capacity import (
     DEFAULT_MEMORY_CAPACITY,
     MemoryCapacityConfig,
-    memory_capacity,
 )
 from rc_basics_lab.diagnostics.state_space import state_pca
 from rc_basics_lab.diagnostics.timescale import (
@@ -73,8 +86,6 @@ __all__ = [
     "autocorrelation_time",
     "conditional_lyapunov",
     "esp_convergence",
-    "ipc",
-    "memory_capacity",
     "state_mean_norm",
     "state_pca",
     "validate_diagnostic_input",
