@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import ast
 import pkgutil
+import re
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,7 @@ import rc_basics_lab.config as config_pkg
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_DIR = ROOT / "src" / "rc_basics_lab" / "config"
+DESIGN_DOC = ROOT / "docs" / "design.md"
 PACKAGE_NAME = "rc_basics_lab.config"
 
 MAX_NONEMPTY_LINES_PER_MODULE = 300
