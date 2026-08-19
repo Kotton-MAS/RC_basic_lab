@@ -23,7 +23,6 @@
 from __future__ import annotations
 
 import ast
-import importlib
 import pkgutil
 from pathlib import Path
 
@@ -221,12 +220,14 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
 def test_each_public_symbol_resolves_through_the_import_statement(name: str) -> None:
     """``from rc_basics_lab.config import <名前>`` が1つずつ通る (D-49)。
 
-    ``hasattr`` だけだと、``__init__.py`` が実行時に属性を差し込む形
-    (``__getattr__`` 等) でも通ってしまう。import 文の形で1名ずつ確かめる。
+    ``__import__(pkg, fromlist=[name])`` は ``from pkg import name`` が実際に
+    生成するバイトコードそのもので、名前が解決できなければ ``AttributeError``
+    になる。``__all__`` を1件ずつ展開するのは、集合比較だけだと「どの名前が
+    落ちたか」がテスト名から分からず、次の実装者が経路を復元しにくいため。
     """
-    module = importlib.import_module(PACKAGE_NAME)
-    obj = getattr(module, name, None)
-    assert obj is not None, f"from {PACKAGE_NAME} import {name} が解決できません"
+    module = __import__(PACKAGE_NAME, fromlist=[name])
+    obj = getattr(module, name)
+    assert obj is not None, f"from {PACKAGE_NAME} import {name} が None を返します"
 
 
 def test_dir_only_names_changed_exactly_as_recorded() -> None:
@@ -294,10 +295,7 @@ def test_config_package_has_exactly_the_expected_modules() -> None:
     04 T4 が ``chaos04.py`` を足すときはここが赤くなる (置き場所は T1 で決めて
     あるが、**T1 では作らない**)。
     """
-    submodules = {
-        info.name
-        for info in pkgutil.iter_modules([str(PACKAGE_DIR)])
-    }
+    submodules = {info.name for info in pkgutil.iter_modules([str(PACKAGE_DIR)])}
     assert submodules == {"_common", *EXPECTED_SUBMODULES}
 
 
