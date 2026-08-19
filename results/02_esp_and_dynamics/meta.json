@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "971a439aec6c5e7d9d2cfc7805ce8453c7b79cd6",
+  "commit": "a6815f20ac2c9294722b98c5d9b804605f4d346f",
   "config": {
     "decay": {
       "leak_rate": 1.0,
@@ -219,7 +219,7 @@
     "probe": 3,
     "reservoir": 0
   },
-  "timestamp_utc": "2026-08-17T10:45:06.039487+00:00",
+  "timestamp_utc": "2026-08-19T11:48:57.096208+00:00",
   "verdict_lyapunov_agreement": {
     "boundary_lambda": 0.01,
     "disagreement_by_rho": [
@@ -276,7 +276,7 @@
     "n_rows": 369,
     "strong_drive_sigma": 0.5
   },
-  "wall_time_s": 87.68934320799599,
+  "wall_time_s": 87.8698666249984,
   "washout_sensitivity": {
     "by_method": [
       {
@@ -387,62 +387,146 @@
         "n_test": 2778,
         "n_train": 3968,
         "n_val": 1190,
+        "task": "delay_parity",
         "washout": 0
       },
       {
         "n_test": 2778,
         "n_train": 3968,
         "n_val": 1190,
+        "task": "delay_parity",
         "washout": 50
       },
       {
         "n_test": 2778,
         "n_train": 3968,
         "n_val": 1190,
+        "task": "delay_parity",
         "washout": 100
       },
       {
         "n_test": 2778,
         "n_train": 3968,
         "n_val": 1190,
+        "task": "delay_parity",
         "washout": 200
       },
       {
         "n_test": 2778,
         "n_train": 3968,
         "n_val": 1190,
+        "task": "delay_parity",
         "washout": 400
       },
       {
         "n_test": 2778,
         "n_train": 3968,
         "n_val": 1190,
+        "task": "delay_parity",
+        "washout": 800
+      },
+      {
+        "n_test": 2778,
+        "n_train": 3968,
+        "n_val": 1190,
+        "task": "mackey_glass",
+        "washout": 0
+      },
+      {
+        "n_test": 2778,
+        "n_train": 3968,
+        "n_val": 1190,
+        "task": "mackey_glass",
+        "washout": 50
+      },
+      {
+        "n_test": 2778,
+        "n_train": 3968,
+        "n_val": 1190,
+        "task": "mackey_glass",
+        "washout": 100
+      },
+      {
+        "n_test": 2778,
+        "n_train": 3968,
+        "n_val": 1190,
+        "task": "mackey_glass",
+        "washout": 200
+      },
+      {
+        "n_test": 2778,
+        "n_train": 3968,
+        "n_val": 1190,
+        "task": "mackey_glass",
+        "washout": 400
+      },
+      {
+        "n_test": 2778,
+        "n_train": 3968,
+        "n_val": 1190,
+        "task": "mackey_glass",
         "washout": 800
       }
     ],
     "t0_by_washout": [
       {
         "t0": 64,
+        "task": "delay_parity",
         "washout": 0
       },
       {
         "t0": 64,
+        "task": "delay_parity",
         "washout": 50
       },
       {
         "t0": 100,
+        "task": "delay_parity",
         "washout": 100
       },
       {
         "t0": 200,
+        "task": "delay_parity",
         "washout": 200
       },
       {
         "t0": 400,
+        "task": "delay_parity",
         "washout": 400
       },
       {
         "t0": 800,
+        "task": "delay_parity",
+        "washout": 800
+      },
+      {
+        "t0": 64,
+        "task": "mackey_glass",
+        "washout": 0
+      },
+      {
+        "t0": 64,
+        "task": "mackey_glass",
+        "washout": 50
+      },
+      {
+        "t0": 100,
+        "task": "mackey_glass",
+        "washout": 100
+      },
+      {
+        "t0": 200,
+        "task": "mackey_glass",
+        "washout": 200
+      },
+      {
+        "t0": 400,
+        "task": "mackey_glass",
+        "washout": 400
+      },
+      {
+        "t0": 800,
+        "task": "mackey_glass",
         "washout": 800
       }
     ],
