@@ -254,6 +254,17 @@
   rationale: "要件書 設計判断4。build_tasks に足すと 01 の comparison.csv に行が増えて 01 の成果物が変わり D-13 の分離も崩れる。run_task は task_entry を引数に取るので、公平性の3決定 (D-04 同一 alpha 格子 / D-05 同一分割 / D-08 構造 HP を検証分割で選ばない) を1行も書き写さずに 3-C へ効かせられる。plan0 を渡す形 (F-1-009 の前例: 01 の pipeline が collect_state_space に対してやっているのと同じ) にするのは、『NARMA10 を解いた ESN』と『容量 (MC/IPC) を測った ESN』が同一のリザバー・同一の状態行列であることを構造で保証するため —— plan_replicate を2回呼んでも同じシードなら同じ値になるが、それは偶然の一致であって片方の n_steps やシードを変えれば黙って別物になる。実測 (T4): 01 の本番設定を再生成して results/comparison.csv と突き合わせたところ wall_time_s 列を除いて完全一致 (test_01_artifacts_are_unchanged)。guard_test は run_task がちょうど1回 plan0 つきで呼ばれること・3手法 x 全レプリケートの行が出ること・同一レプリケート内で (t0, n_train, n_val, n_test) が全手法で一致すること (D-05)・build_tasks に narma10 が混ざっていないことを同時に固定する。状態行列の同一性 (同じオブジェクトであること、および run_task がレプリケート0 を作り直していないこと) は test_narma10_capacity_uses_the_same_states_as_the_esn_run が別途実測する"
   guard_test: "tests/test_experiment_narma.py::test_narma10_reuses_run_task_and_shares_rows_across_methods"
 
+# D-32 は docs/plans/rc-basics-03.md §6 が 3b 用に予約していた採番 (§8 Q1 で
+# ユーザーが (a) を選択済み)。guard_test に当たるテストは 3b-1 T1 で実装済み
+# だったが、decisions.yaml への記録だけが 3b-1 の3タスクを通して漏れていた
+# (3b-2 T5 で発見。仕様 §4 T5 が「D-29〜D-32 と D-35〜D-39」を要求している)。
+# rule は予約時の文言のまま、rationale に 3a / 3b-1 の実測を足した版が正本。
+
+- id: D-32
+  rule: "IPC 掃引のリザバーは N=50、MC 掃引は N=200 とし、実験ごとにリザバー規模を変える。n_units は横断共有の reservoir セクションではなく**各セクション** (mc_sweep / ipc_sweep / conservation / length_sweep) が持ち、reservoir が持つのは input_scale / density / n_replicates の3つだけにする"
+  rationale: "docs/plans/rc-basics-03.md §6 / §8 Q1 (ユーザー承認済み)。保存則 IPC_total <= N の飽和を有限の打ち切りで見せるには必要な目標数が N とともに急増する。N=200 で飽和させるには打ち切りを深くする必要があり実行時間が予算 (900秒) を超える。N=50 なら深い打ち切りでも saturation_ratio >= 0.5 に届く。MC は degree=1 のみなので N=200 のまま連載の連続性 (01・02 のリザバー規模) を保てる。実測: 3a の保存則テスト (N=25 / T=5e4 / rho=0.9 / input_scale=0.5、目標 601 本) で ipc_total = 17.076 (上限 25.5)、saturation_ratio = 0.683、1条件 0.83 秒。3b-1 の本番 3-B' (打ち切り (200,60,20,10) = 目標 4,075 本、T=2e5、3レプリケート平均) は noise=0 で saturation_ratio が N=25: 0.676 / N=50: 0.720 / N=100: 0.734 と N を上げても 0.5 を保つ一方、27 条件で 222.28 秒 (make figures-03 全体 325〜371 秒のうち 58%) を要しており、N=200 まで上げる余地は 900 秒予算には無い。MC 側 (3-A、N=200、T=2e4、54 条件) は 28.84 秒で収まる —— この非対称が『n_units をセクションが持つ』理由そのものであり、横断共有の reservoir に n_units を置くと片方に不利な値を押し付けることになる。guard_test は ipc_sweep.n_units < mc_sweep.n_units と両者の値 (50 / 200) に加えて、CapacityReservoirConfig に n_units フィールドが**無い**ことまで固定する (在れば食い違っても何も落ちない)"
+  guard_test: "tests/test_config_wiring_capacity.py::test_ipc_reservoir_is_smaller_than_mc_reservoir"
+
 - id: D-39
   rule: "実験3-C の ESN は N=50 とし、3-B (IPC 掃引) と同じリザバー規模にする。読む ESN セクションは narma.base.esn_mackey_glass の1本だけとし、その解決は experiment/narma.py の narma_esn_config に閉じる"
   rationale: "仕様 docs/plans/rc-basics-03b.md §6 / §8 (ユーザー承認済み、2026-08-18)。参照値 (NMSE 0.16 / 0.107) が N = 50 規模の報告であり、N=200 で回すと『先行より良い』が規模差なのか対照設計の差なのか分離できない。3-B (IPC 掃引 N=50) とそのまま突き合わせられる利点もある (3-C の容量行は experiment=3C_narma10 として同じ capacity.csv に出る)。D-08 により N は検証分割で選ばれないので、宣言した1点をそのまま報告する。読むセクションを1本に決めて narma_esn_config に閉じるのは、narma.base が 01 の ExperimentConfig をまるごと内包していて ESN セクションが2本あるためで、Mackey-Glass 側を選ぶのは NARMA10 が連続値入力の回帰課題で漏れ積分が効く点で MG と同型だからである (esn_delay_parity は ±1 の2値入力・leak=1.0 前提)。guard_test は宣言 (NARMA10_ESN_SECTION) と実際に TaskEntry へ載る ESN 設定が同じ1本であること・n_units == 50 であること・それが ipc_sweep.n_units と一致することを固定する —— 宣言だけを見ると『50 に直したセクションを誰も読んでいない』を通してしまう"
