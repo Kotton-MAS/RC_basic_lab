@@ -40,6 +40,10 @@ from rc_basics_lab.experiment.capacity import (
     run_capacity_experiment,
     run_length_sweep,
 )
+from rc_basics_lab.experiment.capacity_threshold import (
+    ThresholdComparison,
+    run_threshold_comparison,
+)
 from rc_basics_lab.experiment.narma import Narma10Results, run_narma10
 from rc_basics_lab.experiment.report import (
     META_JSON,
@@ -148,6 +152,7 @@ class CapacityOutputs:
 
     results: CapacityResults
     narma: Narma10Results
+    threshold: ThresholdComparison
     timings: tuple[SectionTiming, ...]
     paths: tuple[Path, ...]
     wall_time_s: float
@@ -268,6 +273,10 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     started = time.perf_counter()
     results = run_capacity_experiment(config)
     narma = run_narma10(config)
+    # 受け入れ条件3 の一次資料。掃引とは別の1条件を回すので
+    # wall_time_breakdown (実験ごとの内訳) には入らず、自分の wall_time_s を
+    # threshold_comparison の中に持つ (全体の wall_time_s には含まれる)。
+    threshold = run_threshold_comparison(config)
     wall_time_s = time.perf_counter() - started
     rows = (*results.rows, narma.capacity.row)
     profile = (*results.profile_rows, *profile_rows(narma.capacity))
@@ -337,6 +346,10 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
                 # **原典未特定**である旨も一緒に書く。
                 "narma10_verdict": narma.verdict.to_summary(),
                 "n_narma10_rows": len(narma.rows),
+                # 受け入れ条件3: しきい値処理の有無で総容量がどれだけ変わるか
+                # (docs/design.md §11.2 の表の一次資料)。既定 (D-27) が
+                # どの行かは default_mc_mode / default_ipc_mode が名乗る。
+                "threshold_comparison": threshold.to_summary(),
                 # 図のラベル言語を決めた要因 (02 の meta.json と同じ形)。
                 # 英語ラベルの図が出たときに「フォントが無い環境で生成した」と
                 # 成果物だけで判別できる。
@@ -356,6 +369,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     return CapacityOutputs(
         results=results,
         narma=narma,
+        threshold=threshold,
         timings=timings,
         paths=paths,
         wall_time_s=wall_time_s,

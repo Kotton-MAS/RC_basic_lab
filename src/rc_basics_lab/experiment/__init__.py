@@ -10,6 +10,7 @@
 - ``esp``: 実験 2-A / 2-B / 2-C の配線 (ESN と診断層をつなぐ場所)
 - ``capacity``: 実験 3-A / 3-B / 3-B' の配線 (MC / IPC を同じ X で測る)
 - ``capacity_pipeline``: 03 の成果物 (CSV3枚 + 図5枚 + meta.json) をそろえる経路
+- ``capacity_threshold``: しきい値法の比較 (受け入れ条件3、design.md §11.2 の一次資料)
 - ``narma``: 実験 3-C (NARMA10) の配線 (01 の ``run_task`` を再利用、D-31)
 - ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
@@ -41,6 +42,15 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     run_and_report_length_sweep,
     write_capacity_csv,
     write_capacity_profile_csv,
+)
+from rc_basics_lab.experiment.capacity_threshold import (
+    IPC_THRESHOLD_MODES,
+    MC_THRESHOLD_MODES,
+    IpcThresholdRow,
+    McThresholdRow,
+    ThresholdComparison,
+    comparison_condition,
+    run_threshold_comparison,
 )
 from rc_basics_lab.experiment.esp import (
     ESP_CSV_COLUMNS,
@@ -119,6 +129,8 @@ __all__ = [
     "CSV_COLUMNS",
     "ESP_ARTIFACTS",
     "ESP_CSV_COLUMNS",
+    "IPC_THRESHOLD_MODES",
+    "MC_THRESHOLD_MODES",
     "WASHOUT_CSV_COLUMNS",
     "Aggregate",
     "CapacityCondition",
@@ -132,6 +144,8 @@ __all__ = [
     "EspResults",
     "EspRow",
     "ExperimentOutputs",
+    "IpcThresholdRow",
+    "McThresholdRow",
     "Method",
     "MethodSensitivity",
     "Narma10Results",
@@ -141,6 +155,7 @@ __all__ = [
     "Split",
     "StateSpaceReport",
     "TaskEntry",
+    "ThresholdComparison",
     "VerdictAgreement",
     "WashoutRow",
     "WashoutSensitivity",
@@ -148,6 +163,7 @@ __all__ = [
     "build_methods",
     "build_tasks",
     "collect_state_space",
+    "comparison_condition",
     "compute_t0",
     "esn_propagator",
     "evaluate_capacity_condition",
@@ -175,6 +191,7 @@ __all__ = [
     "run_mc_sweep",
     "run_narma10",
     "run_task",
+    "run_threshold_comparison",
     "run_washout_sweep",
     "summarize_narma10",
     "summarize_verdict_agreement",
