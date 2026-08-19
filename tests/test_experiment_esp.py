@@ -15,14 +15,17 @@ N=200, T=3000) は 77 秒かかるのでテストには載せられないが、�
 from __future__ import annotations
 
 import dataclasses
+import inspect
 import math
 from functools import lru_cache
 
 import numpy as np
 import pytest
 
+import rc_basics_lab.experiment.esp as esp_module
 from rc_basics_lab.config import (
     DriveConfig,
+    ESNConfig,
     Esp02Config,
     EspConfig,
     EspDecayConfig,
@@ -33,7 +36,7 @@ from rc_basics_lab.config import (
     TimescaleSweepConfig,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext
-from rc_basics_lab.diagnostics.esp import conditional_lyapunov
+from rc_basics_lab.diagnostics.esp import DEFAULT_LYAPUNOV, conditional_lyapunov
 from rc_basics_lab.experiment.esp import (
     BIAS_SCALE,
     ESP_CSV_COLUMNS,
@@ -649,7 +652,11 @@ def test_rows_carry_the_reservoir_and_drive_conditions() -> None:
 # --- D-48: 伝播器は決定的でなければならない ---------------------------------
 
 NOISE_SIGMA = 1.0e-4
-"""D-48 / D-47 の拒否テストで使う状態ノイズ (04 の格子 {0, 1e-4, 1e-3, 1e-2} の下端)。"""
+"""D-48 / D-47 の拒否テストで使う状態ノイズ。
+
+04 の格子 {0, 1e-4, 1e-3, 1e-2} の下端。**最も効きの弱い値でも拒否される**
+ことを固定するため、格子の中で一番小さい非ゼロを選んである。
+"""
 
 
 def _noisy_esn(state_noise: float = NOISE_SIGMA) -> ESN:
@@ -766,9 +773,7 @@ def test_noise_free_clone_fails_the_propagator_check() -> None:
     with pytest.raises(ValueError) as excinfo:
         conditional_lyapunov(
             states,
-            ctx=DiagnosticContext(
-                washout=100, propagator=esn_propagator(clone, drive)
-            ),
+            ctx=DiagnosticContext(washout=100, propagator=esn_propagator(clone, drive)),
         )
     message = str(excinfo.value)
     assert "参照軌道と別の入力で伝播している疑い" in message, (
