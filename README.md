@@ -123,13 +123,14 @@ make threshold-02
   `exceeds_replicate_noise = false`）。補償を入れないと同じ曲線が
   **完全に単調増加**（比 1.01151）に見えるが、それは訓練データ量の効果である
 
-## 実験03: 記憶容量 (MC / IPC)
+## 実験03: 記憶容量 (MC / IPC) と情報処理容量
 
 ```bash
-# 5成果物 (2 CSV + 4 図 + meta.json) を results/03_capacity/ に再生成する (予算 900 秒)
+# 9成果物 (CSV3枚 + 図5枚 + meta.json) を results/03_capacity/ に再生成する
+# (実測 wall_time_s = 326.98 秒 / 予算 900 秒)
 make figures-03
 
-# 系列長 T の掃引 CSV だけを再生成する (予算外・手動、~30分)
+# 系列長 T の掃引 CSV だけを再生成する (予算外・手動、実測 174.58 秒)
 make saturation-03
 ```
 
@@ -138,15 +139,45 @@ make saturation-03
 
 | ファイル | 内容 |
 |---|---|
-| `capacity.csv` | 117行。条件 (3-A/3-B/3-B') ごとの MC/IPC 総容量・実効遅延など |
-| `capacity_profile.csv` | 21,636行。次数・遅延ごとの長形式プロファイル (D-38) |
-| `fig_mc_sweep.png` | 記憶容量プロファイルの ρ 依存性 |
-| `fig_ipc_profile.png` | IPC の (次数, 遅延) ヒートマップ |
-| `fig_memory_nonlinearity.png` | 線形/非線形容量の分解 |
-| `fig_ipc_conservation.png` | 3-B' (状態ノイズ下) の保存則 |
-| `meta.json` | commit / 設定全体 / 実測 wall time |
+| `capacity.csv` | 118行。条件 (3-A/3-B/3-B'/3-C) ごとの MC/IPC 総容量・実効遅延など |
+| `capacity_profile.csv` | 21,812行。次数・遅延ごとの長形式プロファイル (D-38) |
+| `narma10.csv` | 15行。3-C の成績 (3手法 × 5レプリケート。列は 01 と同一) |
+| `fig_mc_sweep.png` | 3-A: 記憶容量プロファイルの ρ 依存性 (上限線 y=N つき) |
+| `fig_ipc_profile.png` | 3-B: IPC の (次数, 遅延) ヒートマップ |
+| `fig_memory_nonlinearity.png` | 3-B: 線形/非線形容量の分解 |
+| `fig_ipc_conservation.png` | 3-B': 状態ノイズ下の保存則 (対角線 y=N) |
+| `fig_narma10_control.png` | 3-C: 公平な対照での NARMA10 (参照線つき) |
+| `meta.json` | commit / 設定全体 / 実測 wall time / `threshold_comparison` / `narma10_verdict` |
+| `capacity_length.csv` | 系列長 T の掃引 (`make saturation-03` でのみ更新) |
 
-数値の考察 (何が分かるか) は 3b-2 (T5) で `docs/design.md` §11 に追記する。
+### 何が分かるか（実測値）
+
+**記憶容量は上限 N には遠く届かず、ρ とともに伸びる**。本番設定 (N=200) で
+`mc_total / N` が到達する最大は 18.9%。図の上限線 y=N は**スケールの参照**で
+あって到達目標ではない (`docs/design.md` §11.5)。
+
+**ρ を上げると非線形容量が減り、線形容量が増える**。IPC の次数分解
+(`fig_ipc_profile.png` / `fig_memory_nonlinearity.png`) で配分の移動が読める。
+状態ノイズを入れると総容量は N を厳密に下回る (`fig_ipc_conservation.png`)。
+
+**NARMA10 では遅延線が ESN を上回った** (テスト NMSE のレプリケート平均、
+`narma10.csv` から機械照合):
+
+| 手法 | 線形 | 遅延線 | ESN |
+|---|---|---|---|
+| NMSE | 1.0181 | **0.1538** | 0.2673 |
+
+- 結果の向きは問わない設計にしてあり (`meta.json` の `narma10_verdict` は勝敗を
+  両方向とも同じ形で書く)、**このまま記録している**
+- **容量がこの成績を説明する**。同じ ESN (N=50) の線形メモリ容量は
+  `mc_total = 11.15` しかないのに対し、遅延線は選ばれた k=30 ぶんの
+  **完全なタップ**を持つ。さらに ESN は総容量 `ipc_total = 30.25` の大半
+  (`ipc_nonlinear = 19.79`) を、この課題があまり必要としない非線形性に使っている
+- ただし遅延線は 5回中4回で格子の**上端 k=30** を選んでおり真の最適は測れていない。
+  探索予算も非対称 (遅延線は alpha × k、ESN は alpha のみ)。詳しくは
+  `docs/design.md` §11.5
+- しきい値法 (`none` / `surrogate` / `chi2`) の比較と既定の根拠は
+  `docs/design.md` §11.2 (一次資料は `meta.json` の `threshold_comparison`)
 
 ## リポジトリ構成
 
@@ -182,6 +213,8 @@ make test         # uv run pytest -q
 make figures-01   # 実験01 の results/ を再生成
 make figures-02   # 実験02 の results/02_esp_and_dynamics/ を再生成
 make threshold-02 # 実験02 の閾値感度 CSV だけを再生成
+make figures-03   # 実験03 の results/03_capacity/ を再生成
+make saturation-03 # 実験03 の系列長掃引 CSV だけを再生成 (予算外・手動)
 ```
 
 - Python 3.12+ / 依存は **numpy・scipy・matplotlib・pyyaml のみ**
