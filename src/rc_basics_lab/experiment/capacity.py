@@ -442,7 +442,9 @@ def ipc_config_for(config: Capacity03Config, experiment: str) -> IpcConfig:
 def simulate_condition_trajectory(
     config: Capacity03Config, condition: CapacityCondition
 ) -> ReferenceTrajectory:
-    """``CapacityCondition`` から参照軌道 ``X`` を作る (**確保より前に上限検査**、D-34/HIGH-1)。
+    """``CapacityCondition`` から参照軌道 ``X`` を作る (**確保より前に上限検査**)。
+
+    D-34/HIGH-1 (F-3b2-1-001)。
 
     ``evaluate_capacity_condition`` と ``run_threshold_comparison`` (しきい値法
     比較) は、``CapacityCondition`` を組んでから ``simulate_reference_trajectory``
