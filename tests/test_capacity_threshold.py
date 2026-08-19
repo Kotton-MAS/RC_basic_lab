@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import importlib
 import json
 from pathlib import Path
@@ -26,7 +27,6 @@ import pytest
 from test_capacity_pipeline import tiny_config
 
 from rc_basics_lab.config import Capacity03Config, load_config_as
-from rc_basics_lab.experiment import capacity_threshold
 from rc_basics_lab.experiment.capacity import EXPERIMENT_IPC_SWEEP
 from rc_basics_lab.experiment.capacity_threshold import (
     IPC_THRESHOLD_MODES,
@@ -40,6 +40,9 @@ from rc_basics_lab.experiment.report import META_JSON
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results" / "03_capacity"
 PRODUCTION_CONFIG = ROOT / "experiments" / "03_capacity" / "config.yaml"
+
+THRESHOLD_MODULE = "rc_basics_lab.experiment.capacity_threshold"
+"""差し替え対象のモジュール名 (文字列で持つ理由は §10-1 の罠と同じ)。"""
 
 THRESHOLD_NONE = "none"
 """しきい値を課さないモードの名前 (表の「上限」の行)。"""
@@ -114,8 +117,6 @@ def test_comparison_condition_follows_the_grid_when_the_grid_moves() -> None:
     上のテストは通ってしまう (どちらも格子の中に在るため)。中央を選ぶ規則が
     実際に効いていることは、格子を差し替えて確かめるしかない。
     """
-    import dataclasses
-
     config = production_config()
     moved = dataclasses.replace(
         config,
@@ -163,14 +164,15 @@ def test_states_are_generated_once_for_all_modes(
     差し替えるのは**呼び出し側のモジュール属性** (``capacity_threshold`` の
     名前空間) で、定義元を差し替えると 03 の他の経路まで巻き込む (§10-1)。
     """
+    module = importlib.import_module(THRESHOLD_MODULE)
     calls: list[object] = []
-    original = capacity_threshold.simulate_reference_trajectory
+    real = module.simulate_reference_trajectory
 
     def counting(*args: object, **kwargs: object) -> object:
         calls.append(args)
-        return original(*args, **kwargs)  # type: ignore[arg-type]
+        return real(*args, **kwargs)
 
-    monkeypatch.setattr(capacity_threshold, "simulate_reference_trajectory", counting)
+    monkeypatch.setattr(f"{THRESHOLD_MODULE}.simulate_reference_trajectory", counting)
     comparison = run_threshold_comparison(tiny_config())
     assert len(calls) == 1
     assert len(comparison.memory_capacity) == len(MC_THRESHOLD_MODES)
