@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 
 from rc_basics_lab.experiment.threshold import sigma_column
+from tests.test_config_package_layout import MAX_NONEMPTY_LINES_PER_MODULE
 
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN = ROOT / "docs" / "design.md"
@@ -309,7 +310,11 @@ CAPACITY_CSV = CAPACITY_RESULTS / "capacity.csv"
 CAPACITY_PROFILE_CSV = CAPACITY_RESULTS / "capacity_profile.csv"
 NARMA10_CSV = CAPACITY_RESULTS / "narma10.csv"
 CAPACITY_CONFIG = ROOT / "experiments" / "03_capacity" / "config.yaml"
-CONFIG_PY = ROOT / "src" / _PACKAGE / "config.py"
+CONFIG_DIR = ROOT / "src" / _PACKAGE / "config"
+_CONFIG_TABLE_HEADER = re.compile(
+    r"^\|\s*モジュール\s*\|\s*持つもの\s*\|\s*非空行数\s*\|\s*総行数\s*\|"
+)
+"""§11.5 の ``config/`` 行数表のヘッダ (04 T1 で package 化、D-49)。"""
 
 _MODE_CELL = re.compile(r"`(?P<mode>[a-z0-9_]+)`")
 _LPAREN = "\uff08"
@@ -816,21 +821,54 @@ def test_artifact_size_table_matches_the_files() -> None:
     assert int(documented_total.strip("*").removesuffix(" B").replace(",", "")) == total
 
 
-def test_config_py_line_count_in_the_design_doc_is_current() -> None:
-    """§11.5 に書いた ``config.py`` の行数が実ファイルと一致する。
+def test_config_package_line_counts_in_the_design_doc_are_current() -> None:
+    """§11.5 の ``config/`` 行数表が実ファイルと一致する (04 T1 / D-49)。
 
-    04 冒頭の package 化の着手条件 (非空 600 行) の根拠なので、分割した瞬間に
-    この記述が古くなる —— そのとき赤くする。
+    04 T1 で ``config.py`` (非空 615 行) を package 化するまでは、この検査は
+    「単一ファイルの行数が着手条件 600 行を超えているか」を見ていた。分割後は
+    見るべきものが2つに変わる:
+
+    1. **モジュールごとの行数**が表のとおりであること (分割方針の記録が
+       ドリフトすると、次に割るときの判断材料が嘘になる)
+    2. **1モジュールあたりの上限**を超えていないこと。上限そのものは
+       ``tests/test_config_package_layout.py`` が持ち、ここはその値を参照する
+       (2か所に別々の数字を書くと片方だけ更新されて食い違う)
+
+    表の行が実在するモジュール集合と過不足なく一致することも同時に見るので、
+    ``chaos04.py`` (04 T4) を足して表に書き忘れれば赤くなる。
     """
-    lines = CONFIG_PY.read_text(encoding="utf-8").splitlines()
-    nonempty = sum(1 for line in lines if line.strip())
-    match = re.search(
-        r"\*\*非空 (\d+) 行\*\*" + _LPAREN + r"総 (\d+) 行" + _RPAREN, _text()
+    actual = {
+        path.name: path.read_text(encoding="utf-8").splitlines()
+        for path in sorted(CONFIG_DIR.glob("*.py"))
+    }
+    documented: dict[str, tuple[int, int]] = {}
+    _, table = _table_after(_CONFIG_TABLE_HEADER)
+    for cells in table:
+        if "合計" in cells[0]:
+            continue
+        name = cells[0].strip("`")
+        documented[name] = (int(cells[2]), int(cells[3]))
+    assert set(documented) == set(actual), (
+        f"§11.5 の表と config/ の実ファイルが一致しません "
+        f"(不足={sorted(set(actual) - set(documented))}, "
+        f"余剰={sorted(set(documented) - set(actual))})"
     )
-    assert match, "§11.5 に config.py の行数の記述が見つかりません"
-    assert int(match[1]) == nonempty
-    assert int(match[2]) == len(lines)
-    assert nonempty > 600, "着手条件 (非空600行) の記述を見直してください"
+
+    for name, (doc_nonempty, doc_total) in documented.items():
+        lines = actual[name]
+        nonempty = sum(1 for line in lines if line.strip())
+        assert doc_nonempty == nonempty, f"{name}: 非空行数が表と違います ({nonempty})"
+        assert doc_total == len(lines), f"{name}: 総行数が表と違います ({len(lines)})"
+        assert nonempty <= MAX_NONEMPTY_LINES_PER_MODULE, (
+            f"{name}: 非空 {nonempty} 行が上限 "
+            f"{MAX_NONEMPTY_LINES_PER_MODULE} 行を超えています"
+        )
+
+    totals = next(cells for cells in table if "合計" in cells[0])
+    assert int(totals[2].strip("*")) == sum(
+        sum(1 for line in lines if line.strip()) for lines in actual.values()
+    )
+    assert int(totals[3].strip("*")) == sum(len(lines) for lines in actual.values())
 
 
 def test_design_doc_points_at_the_capacity_regeneration_command() -> None:
