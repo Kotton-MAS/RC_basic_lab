@@ -56,7 +56,7 @@ from rc_basics_lab.diagnostics.esp import (
     conditional_lyapunov,
     esp_convergence,
 )
-from rc_basics_lab.diagnostics.ipc import DEFAULT_IPC, IpcConfig, ipc
+from rc_basics_lab.diagnostics.ipc import DEFAULT_IPC, IpcConfig
 from rc_basics_lab.diagnostics.memory_capacity import (
     DEFAULT_MEMORY_CAPACITY,
     MemoryCapacityConfig,
@@ -86,7 +86,6 @@ __all__ = [
     "autocorrelation_time",
     "conditional_lyapunov",
     "esp_convergence",
-    "ipc",
     "state_mean_norm",
     "state_pca",
     "validate_diagnostic_input",
