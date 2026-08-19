@@ -362,3 +362,135 @@
    「予測が当たっている」ように見える壊れ方をし、**図でも有効予測時間でも検出できない**
 3. **`import rc_basics_lab.diagnostics.ipc as m` はモジュールではなく関数を返す** (T2 で解消するまで)。
    3a のレビューで実際に踏み**変異試験が偽の緑になった**
+
+---
+
+## T1 実装時に決めたこと
+
+> 仕様 §4 T1 に書かれていなかった選択と、仕様の記述と食い違った点の記録。
+> 次周の reviewer / fixer が読むのはこの節であり、実装のコメントではない。
+
+### 1. `load_config` の置き場所は `_common.py` ではなく `experiment01.py` (**仕様との相違**)
+
+§4 T1 の配置図は `_common.py : ConfigError / _coerce* / _build / load_config_as / load_config`
+と書いていたが、`load_config` は `experiment01.py` に置いた。
+
+理由: `load_config` は `ExperimentConfig` を返すので `_common` に置くと
+`_common -> experiment01` の辺ができる。一方 `load_config` 本体は
+`load_config_as` に委譲するため `experiment01 -> _common` の辺も要る。
+**これは循環である**。実測 (変異注入): `_common.py` に
+`from rc_basics_lab.config.experiment01 import ExperimentConfig` を足すと
+`ImportError: cannot import name 'load_config_as' from partially initialized module`
+でテスト収集そのものが落ちる。
+
+受け入れ基準4 (「依存は `_common` への一方向のみ」) を満たすには `_common` を
+package 内の**葉**にするしかなく、`load_config` は `ExperimentConfig` と同じ
+モジュールに置くのが唯一の解。公開経路 (`from rc_basics_lab.config import load_config`)
+は `__init__.py` の再エクスポートで変わらないので D-49 は満たす。
+
+### 2. 許可する辺は 1 本ではなく 2 本 (**仕様との相違**)
+
+§4 T1 は許可辺として `capacity03 -> experiment01` (`Narma10Config.base`) の1本だけを
+挙げていたが、**`esp02 -> experiment01` も必要**である
+(`WashoutSweepConfig.base: ExperimentConfig`、2-D が 01 の `run_experiment` を
+再利用するための内包、D-19)。2本はどちらも「01 をまるごと内包する」同じ形の辺で、
+向きは揃っており循環しない。`tests/test_config_package_layout.py` の
+`ALLOWED_INTERNAL_EDGES` に、`experiment01 -> _common` を含めて計3本を明示した。
+
+### 3. 「公開シンボルの差分0」の運用上の定義
+
+`__all__` は**差分0** (36 名、リテラルのスナップショットと突き合わせ)。
+`dir()` にしか出ない公開名 17 名の扱いは以下に決めた:
+
+- 16 名 (`Mapping` / `Path` / `Protocol` / `SeedConfig` / `SeedStream` / `Sequence` /
+  `UnionType` / `cast` / `dataclass` / `dataclasses` / `field` / `get_args` /
+  `get_origin` / `get_type_hints` / `np` / `yaml`) は**消える**。すべて `config.py` の
+  実装 import の副作用で、`__all__` に無く `import *` にも乗らない。
+  これらを `__init__.py` で再エクスポートすると、numpy や yaml が config の API に
+  見える状態を新たに作ることになり、整理の目的と逆行する
+- `annotations` (`from __future__ import annotations`) だけは `__init__.py` にも書くので残る
+- サブモジュール名 3 つ (`experiment01` / `esp02` / `capacity03`) が**増える**。
+  package 化で不可避
+
+「16 名が API でなかった」は主張ではなく**実測**にした:
+`test_no_module_imported_the_dir_only_names_from_config` がリポジトリ全体の
+`from rc_basics_lab.config import ...` を AST で走査し、`__all__` の外の名前の
+使用が **0 件**であることを確認する。増減の**両側**を
+`test_dir_only_names_changed_exactly_as_recorded` が固定するので、
+`__init__.py` が実装 import を公開名に漏らしても落ちる。
+
+### 4. `results/` の複合ハッシュ `47bcd302de7a7366...` は再現できなかった
+
+着手前の `results/` に対し、以下の 6 通りの定義すべてで `47bcd302` にならなかった
+(hex 連結 / 改行あり連結 / `shasum` 出力そのまま / ファイル内容の連結 /
+シェルの `sort` と Python の `sorted` の両方 / basename ソート)。
+
+判定は**全 24 ファイルの個別 SHA-256 の突き合わせ**で行った (そちらが本来の基準)。
+以後のサイクルのために複合ハッシュの定義を1つに固定する:
+
+```
+find results -type f | LC_ALL=C sort | xargs shasum -a 256 | awk '{print $1}' \
+  | tr -d '\n' | shasum -a 256
+```
+
+この定義での T1 着手前 (= 復元後) の値: **`0f7558efc418242f...`**
+
+### 5. 実測: `results/` は 24 ファイル中 24 ファイルが不変
+
+再生成 (`make figures-01` / `figures-02` / `figures-03`) の結果、
+**PNG 9 枚はバイト一致**、CSV の差分は**実測時間列だけ**だった:
+
+| ファイル | 差分のある列 |
+|---|---|
+| `comparison.csv` (30 行) | `wall_time_s` のみ |
+| `esp_diagnostics.csv` (369 行) | `wall_time_s` のみ |
+| `washout_sensitivity.csv` (180 行) | `wall_time_s` のみ |
+| `capacity.csv` (118 行) | `wall_time_state_s` / `wall_time_mc_s` / `wall_time_ipc_s` / `wall_time_s` のみ |
+| `narma10.csv` (15 行) | `wall_time_s` のみ |
+| `capacity_profile.csv` (21,812 行) / `capacity_length.csv` / `comparison_summary.csv` / `esp_threshold_sensitivity.csv` / `washout_sensitivity_unpadded.csv` | **バイト一致** |
+
+確認後、`results/` は着手前のバイト列へ戻してある (個別 SHA-256 が 24/24 一致)。
+
+### 6. `results/02_esp_and_dynamics/meta.json` の構造差は **T1 とは無関係な既存ドリフト**
+
+再生成した 02 の `meta.json` は `washout_sensitivity.sizes_by_washout` /
+`t0_by_washout` が 6 要素から 12 要素になり `task` キーが増えた。§7 リスク2 に従い
+先へ進まず原因を特定した:
+
+- コミット済みの `results/02_esp_and_dynamics/meta.json` は `commit: 971a439a` 時点の生成物で、
+  その後 `experiment/washout.py` の `to_summary` が `task` キーを持つ形に変わった際に
+  **再生成されていない**
+- **base-ref (8810d4e、分割前の `config.py`) を worktree に取り出して `figures-02` を回し**、
+  分割後の再生成結果と突き合わせたところ、PNG 4 枚はバイト一致、CSV の差は
+  `wall_time_s` のみ、`meta.json` の差は `commit` / `timestamp_utc` / `wall_time_s` のみだった。
+  **`task` キーは分割前の再生成にも出る** = T1 の変更とは無関係
+
+対応はしていない (`results/` を1バイトも変えない、が T1 の制約のため)。
+02 の成果物を再生成する回で自然に解消する。
+
+### 7. 移動だけであることのソースレベルの実測
+
+原本 771 行のうち、移動した本体 (8 ブロック・735 行) は**すべてバイト一致**。
+どのブロックにも入らない非空行は **16 行**で、内訳は import 文 15 行
+(各モジュールへ配り直した) と、`# --- 実験03 (容量: MC / IPC) の設定群 ---` の
+区切りコメント 1 行だけである。**この区切りコメントは削除した** ——
+「どこから 03 の設定か」を示す役目はファイル境界 (`capacity03.py`) が果たすため。
+
+### 8. その他の付随変更 (いずれも package 化で赤くなるものへの対応)
+
+- `tests/test_public_api_reexport.py`: `PACKAGE_NAMES` に `"config"` を追加。
+  package が 6 個から 7 個に増えたので、既存の完全性検査
+  (`test_package_names_matches_automatic_enumeration`) がそのままでは赤くなる。
+  docstring の「`config.py` 等の単一モジュールは除く」という例示も `seeds.py` に差し替えた
+- `README.md` のリポジトリ構成: `config.py` を `config/` へ
+- 1 モジュールあたりの上限 (非空 300 行) の**正本は
+  `tests/test_config_package_layout.py::MAX_NONEMPTY_LINES_PER_MODULE`** とし、
+  `docs/design.md` §11.5 はその写しとして機械照合する
+  (同じ数字を 2 か所に書くと片方だけ更新されて食い違うため)
+
+### 9. `chaos04.py` は作っていない
+
+仕様どおり置き場所を決めただけ。`config/chaos04.py` を足すと
+`test_config_package_has_exactly_the_expected_modules` と
+`test_config_package_line_counts_in_the_design_doc_are_current` が赤くなるので、
+T4 の担当者は design.md §11.5 の表と `EXPECTED_SUBMODULES` を同時に更新すること。
