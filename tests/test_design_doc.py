@@ -23,6 +23,7 @@ import ast
 import csv
 import dataclasses
 import importlib
+import json
 import math
 import re
 import statistics
@@ -289,3 +290,404 @@ def test_design_doc_points_at_the_unpadded_regeneration_command() -> None:
     assert "washout_sensitivity_unpadded.csv" in text
     assert "pad_series" in text
     assert "false" in text
+
+
+# --- §11.2〜§11.5 (サイクル03) vs 一次資料 ------------------------------------
+#
+# 03 の節は「散文の数値が一次資料とずれる」事故を最初から潰す方針で書いてある:
+# **表に書いた有効数字はすべて成果物 (meta.json / capacity*.csv / narma10.csv)
+# かコード (count_targets / config.py) から機械照合される**。§9.2 / §9.6 と
+# 同じ役割を §11 に対して果たす。
+
+CAPACITY_RESULTS = ROOT / "results" / "03_capacity"
+CAPACITY_META = CAPACITY_RESULTS / "meta.json"
+CAPACITY_CSV = CAPACITY_RESULTS / "capacity.csv"
+CAPACITY_PROFILE_CSV = CAPACITY_RESULTS / "capacity_profile.csv"
+NARMA10_CSV = CAPACITY_RESULTS / "narma10.csv"
+CAPACITY_CONFIG = ROOT / "experiments" / "03_capacity" / "config.yaml"
+CONFIG_PY = ROOT / "src" / _PACKAGE / "config.py"
+
+_MODE_CELL = re.compile(r"`(?P<mode>[a-z0-9_]+)`")
+_BACKTICKED = re.compile(r"^`(?P<name>[a-z0-9_]+)`$")
+
+
+def _capacity_meta() -> dict[str, object]:
+    loaded: dict[str, object] = json.loads(CAPACITY_META.read_text(encoding="utf-8"))
+    return loaded
+
+
+def _capacity_csv_rows() -> list[dict[str, str]]:
+    with CAPACITY_CSV.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _table_after(pattern: re.Pattern[str]) -> tuple[list[str], list[list[str]]]:
+    """``pattern`` に最初に一致するヘッダ行の表を (ヘッダ, データ行) で返す。"""
+    lines = _text().splitlines()
+    for index, line in enumerate(lines):
+        if not pattern.match(line):
+            continue
+        header = [cell.strip() for cell in line.strip("|").split("|")]
+        rows: list[list[str]] = []
+        for body in lines[index + 2 :]:
+            if not body.startswith("|"):
+                break
+            rows.append([cell.strip() for cell in body.strip("|").split("|")])
+        return header, rows
+    raise AssertionError(f"docs/design.md に表が見つかりません: {pattern.pattern}")
+
+
+def _decimals(cell: str) -> int:
+    """セルに書かれた小数点以下の桁数 (整数セルは 0)。"""
+    _, _, fraction = cell.partition(".")
+    return len(fraction)
+
+
+def _assert_cell_matches(cell: str, actual: float, label: str) -> None:
+    """セルの表記を**その桁数に丸めた実測値**と厳密に比較する。
+
+    丸め桁数をセルから読むので、表の見やすさ (有効数字) と厳密さを両立できる。
+    1桁でも書き換えれば落ちる。
+    """
+    assert float(cell) == round(actual, _decimals(cell)), (
+        f"{label}: design.md は {cell} / 一次資料は {actual!r}"
+    )
+
+
+def _threshold_table(name: str) -> list[list[str]]:
+    """§11.2 の MC / IPC 比較表 (``name`` は ``mc_total`` / ``ipc_total``)。"""
+    header, rows = _table_after(
+        re.compile(r"^\|\s*`threshold_mode`\s*\|\s*`" + name + r"`\s*\|")
+    )
+    return [[*row] for row in rows] if header else rows
+
+
+def _threshold_header(name: str) -> list[str]:
+    header, _ = _table_after(
+        re.compile(r"^\|\s*`threshold_mode`\s*\|\s*`" + name + r"`\s*\|")
+    )
+    return header
+
+
+@pytest.mark.parametrize(
+    ("table_key", "meta_key"),
+    [("mc_total", "memory_capacity"), ("ipc_total", "ipc")],
+    ids=["mc", "ipc"],
+)
+def test_threshold_table_matches_meta_json(table_key: str, meta_key: str) -> None:
+    """§11.2 のしきい値比較表が ``meta.json`` の ``threshold_comparison`` と一致する。
+
+    受け入れ条件3 の要。列の対応はヘッダのバッククォート付きキー名がそのまま
+    JSON のキーで、行の対応は1列目の ``threshold_mode``。**表の数値を1つでも
+    書き換えたら落ちる** (セルの桁数に丸めた実測値と厳密比較する)。
+    """
+    comparison = _capacity_meta()["threshold_comparison"]
+    assert isinstance(comparison, dict)
+    entries = comparison[meta_key]
+    assert isinstance(entries, list)
+    header = _threshold_header(table_key)
+    table = _threshold_table(table_key)
+    assert len(table) == len(entries), (table, entries)
+
+    keys = [
+        match["name"]
+        for cell in header
+        if (match := _BACKTICKED.match(cell)) is not None
+    ]
+    assert keys[0] == "threshold_mode"
+    for cells, entry in zip(table, entries, strict=True):
+        assert isinstance(entry, dict)
+        mode = _MODE_CELL.match(cells[0])
+        assert mode is not None, cells
+        assert mode["mode"] == entry["threshold_mode"], cells
+        for index, key in enumerate(keys[1:], start=1):
+            _assert_cell_matches(cells[index], float(entry[key]), f"{meta_key}.{key}")
+
+
+def test_threshold_table_marks_the_default_mode() -> None:
+    """既定 (D-27) の行に印が付いており、その印が ``meta.json`` と一致する。"""
+    comparison = _capacity_meta()["threshold_comparison"]
+    assert isinstance(comparison, dict)
+    for table_key, default_key in (
+        ("mc_total", "default_mc_mode"),
+        ("ipc_total", "default_ipc_mode"),
+    ):
+        marked = [
+            cells[0] for cells in _threshold_table(table_key) if "（既定）" in cells[0]
+        ]
+        assert len(marked) == 1, marked
+        assert f"`{comparison[default_key]}`" in marked[0]
+
+
+def test_threshold_degree_table_matches_the_profile_csv() -> None:
+    """§11.2 の次数別しきい値表が ``capacity_profile.csv`` / ``meta.json`` と一致する。
+
+    サロゲートの行は長形式 CSV の ``threshold`` 列 (D-38)、``chi2`` の行は
+    次数によらず ``meta.json`` の ``ipc_threshold_degree1`` と同じ値である
+    (chi2 は次数に依存しない近似なので、全次数で同じ値になる)。
+    """
+    comparison = _capacity_meta()["threshold_comparison"]
+    assert isinstance(comparison, dict)
+    condition = comparison["condition"]
+    assert isinstance(condition, dict)
+    header, table = _table_after(re.compile(r"^\|\s*次数\s*\|"))
+    degrees = [int(cell) for cell in header[1:]]
+
+    with CAPACITY_PROFILE_CSV.open(encoding="utf-8", newline="") as handle:
+        surrogate: dict[int, float] = {}
+        for record in csv.DictReader(handle):
+            if (
+                record["experiment"] == condition["experiment"]
+                and float(record["rho"]) == condition["rho"]
+                and float(record["leak_rate"]) == condition["leak_rate"]
+                and int(record["replicate"]) == condition["replicate"]
+                and record["diagnostic"] == "ipc"
+            ):
+                surrogate.setdefault(int(record["degree"]), float(record["threshold"]))
+    assert set(surrogate) == set(degrees), (surrogate, degrees)
+
+    ipc_entries = comparison["ipc"]
+    assert isinstance(ipc_entries, list)
+    chi2 = next(
+        float(entry["ipc_threshold_degree1"])
+        for entry in ipc_entries
+        if isinstance(entry, dict) and entry["threshold_mode"] == "chi2"
+    )
+    for cells in table:
+        expected = surrogate if "surrogate" in cells[0] else {d: chi2 for d in degrees}
+        for degree, cell in zip(degrees, cells[1:], strict=True):
+            _assert_cell_matches(cell, expected[degree], f"次数{degree} ({cells[0]})")
+
+
+def test_threshold_section_claims_hold_in_the_data() -> None:
+    """§11.2 の散文が主張する大小関係が一次資料でも成り立つ。
+
+    表には有効数字が載っているが、散文は「1% と違わず」「約1.3倍」のように
+    幅で書いてある。**その幅が実測と食い違ったら落とす** (数値を書かない代わりに
+    主張が緩くなる、を防ぐ)。
+    """
+    comparison = _capacity_meta()["threshold_comparison"]
+    assert isinstance(comparison, dict)
+    ipc = {
+        str(entry["threshold_mode"]): entry
+        for entry in comparison["ipc"]  # type: ignore[union-attr]
+        if isinstance(entry, dict)
+    }
+    mc = {
+        str(entry["threshold_mode"]): entry
+        for entry in comparison["memory_capacity"]  # type: ignore[union-attr]
+        if isinstance(entry, dict)
+    }
+    none_ipc = float(ipc["none"]["ipc_total"])
+    assert abs(float(ipc["surrogate"]["ipc_total"]) - none_ipc) / none_ipc < 0.01
+    none_mc = float(mc["none"]["mc_total"])
+    assert abs(float(mc["surrogate"]["mc_total"]) - none_mc) / none_mc < 0.01
+    # 「`surrogate` との差は 0.1% にも満たない」(chi2 の採否)
+    surrogate_ipc = float(ipc["surrogate"]["ipc_total"])
+    assert abs(float(ipc["chi2"]["ipc_total"]) - surrogate_ipc) / surrogate_ipc < 0.001
+    # 「`none` では目標が1本も落ちない」
+    row = next(
+        record
+        for record in _capacity_csv_rows()
+        if record["experiment"] == comparison["condition"]["experiment"]  # type: ignore[index]
+        and float(record["rho"]) == comparison["condition"]["rho"]  # type: ignore[index]
+        and float(record["leak_rate"]) == comparison["condition"]["leak_rate"]  # type: ignore[index]
+        and int(record["replicate"]) == comparison["condition"]["replicate"]  # type: ignore[index]
+    )
+    assert int(ipc["none"]["n_targets_kept"]) == int(row["n_targets"])
+    # 「`mc_effective_delay` は `surrogate` の約1.3倍に伸びる」
+    ratio = float(mc["none"]["mc_effective_delay"]) / float(
+        mc["surrogate"]["mc_effective_delay"]
+    )
+    assert round(ratio, 1) == 1.3, ratio
+
+
+def test_profile_row_counts_in_the_threshold_section_match_the_artifacts() -> None:
+    """§11.2 の「118 条件で 21,812 行 -> 211,916 行」が成果物と一致する。
+
+    `none` にすると全セルが正になるので、長形式の行数は
+    ``Σ (n_delays + n_targets)`` になる (D-38 は正値セルだけを書く)。
+    """
+    meta = _capacity_meta()
+    rows = _capacity_csv_rows()
+    all_cells = sum(
+        int(float(row["n_delays"])) + int(float(row["n_targets"])) for row in rows
+    )
+    text = _text()
+    match = re.search(
+        r"本番の (?P<conditions>[\d,]+) 条件で (?P<kept>[\d,]+) 行 -> (?P<all>[\d,]+) 行",
+        text,
+    )
+    assert match, "§11.2 に長形式の行数の記述が見つかりません"
+    assert int(match["conditions"].replace(",", "")) == meta["n_rows"]
+    assert int(match["kept"].replace(",", "")) == meta["n_profile_rows"]
+    assert int(match["all"].replace(",", "")) == all_cells
+
+
+def test_truncation_table_matches_count_targets() -> None:
+    """§11.3 の打ち切り表が ``count_targets`` / 本番 YAML と一致する。
+
+    目標数と heatmap セル数は閉形式で数えられる (3a で公開済み) ので、
+    表の数値は**実行しなくても**検証できる。打ち切りを変えた瞬間に落ちる。
+    """
+    ipc_module = importlib.import_module(f"{_PACKAGE}.diagnostics.ipc")
+    config_module = importlib.import_module(f"{_PACKAGE}.config")
+    config = config_module.load_config_as(
+        CAPACITY_CONFIG, config_module.Capacity03Config
+    )
+    expected = {
+        tuple(config.ipc.max_delay_by_degree): config.ipc,
+        tuple(config.conservation.max_delay_by_degree): dataclasses.replace(
+            config.ipc, max_delay_by_degree=config.conservation.max_delay_by_degree
+        ),
+    }
+    _, table = _table_after(re.compile(r"^\|\s*実験\s*\|\s*`max_delay_by_degree`\s*\|"))
+    assert len(table) == len(expected), table
+    for cells in table:
+        truncation = ast.literal_eval(cells[1].strip("`"))
+        assert truncation in expected, cells
+        cfg = expected[truncation]
+        assert int(cells[2].replace(",", "")) == ipc_module.count_targets(cfg)
+        assert int(cells[3].replace(",", "")) == len(cfg.max_delay_by_degree) * max(
+            cfg.max_delay_by_degree
+        )
+        counts: dict[int, int] = {}
+        for target in ipc_module.enumerate_targets(cfg):
+            degree = sum(order for _, order in target)
+            counts[degree] = counts.get(degree, 0) + 1
+        documented = [
+            int(part.strip().replace(",", "")) for part in cells[4].split("/")
+        ]
+        assert documented == [counts[degree] for degree in sorted(counts)], cells
+
+
+def test_narma10_table_matches_the_committed_rows() -> None:
+    """§11.5 の 3-C の成績表が ``narma10.csv`` / ``meta.json`` と一致する。"""
+    with NARMA10_CSV.open(encoding="utf-8", newline="") as handle:
+        records = list(csv.DictReader(handle))
+    verdict = _capacity_meta()["narma10_verdict"]
+    assert isinstance(verdict, dict)
+    labels = {"線形": "linear", "遅延線": "delay_line", "ESN": "esn"}
+    _, table = _table_after(re.compile(r"^\|\s*手法\s*\|\s*NMSE\s*\|\s*NRMSE\s*\|"))
+    assert len(table) == len(labels), table
+    for cells in table:
+        method = labels[cells[0]]
+        subset = [record for record in records if record["method"] == method]
+        _assert_cell_matches(
+            cells[1],
+            statistics.fmean(float(record["nmse"]) for record in subset),
+            f"{method}.nmse",
+        )
+        _assert_cell_matches(
+            cells[2],
+            statistics.fmean(float(record["nrmse"]) for record in subset),
+            f"{method}.nrmse",
+        )
+        # meta.json の verdict とも突き合わせる (2つの一次資料が食い違ったら落ちる)
+        nmse_mean = verdict["nmse_mean"]
+        assert isinstance(nmse_mean, dict)
+        _assert_cell_matches(cells[1], float(nmse_mean[method]), f"verdict.{method}")
+
+
+def test_narma10_capacity_table_matches_the_capacity_csv() -> None:
+    """§11.5 の 3-C の容量表が ``capacity.csv`` の ``3C_narma10`` 行と一致する。
+
+    「容量が成績を説明する」という §11.5 の読みの根拠そのものなので、
+    ここが手書きだと連載の主張が成果物から外れる。
+    """
+    row = next(
+        record
+        for record in _capacity_csv_rows()
+        if record["experiment"] == "3C_narma10"
+    )
+    _, table = _table_after(re.compile(r"^\|\s*量\s*\|\s*値\s*\|"))
+    assert table, "§11.5 に 3-C の容量表が見つかりません"
+    for cells in table:
+        match = _BACKTICKED.match(cells[0].split("（")[0].strip())
+        assert match is not None, cells
+        _assert_cell_matches(cells[1], float(row[match["name"]]), match["name"])
+
+
+def test_wall_time_table_matches_the_meta_json() -> None:
+    """§11.5 の実行時間表が ``meta.json`` の ``wall_time_breakdown`` と一致する。
+
+    実行時間は再生成のたびに動くので、表を更新せずに成果物だけ差し替えると
+    ここが落ちる (§10 の 02 の表は手書きのままだが、03 は一次資料がある)。
+    """
+    meta = _capacity_meta()
+    breakdown = meta["wall_time_breakdown"]
+    assert isinstance(breakdown, list)
+    comparison = meta["threshold_comparison"]
+    assert isinstance(comparison, dict)
+    _, table = _table_after(re.compile(r"^\|\s*区間\s*\|\s*条件数\s*\|"))
+    labels = {"3-A": 0, "3-B": 1, "3-B'": 2, "3-C": 3}
+    seen = 0
+    for cells in table:
+        if cells[0] in labels:
+            entry = breakdown[labels[cells[0]]]
+            assert isinstance(entry, dict)
+            assert int(cells[1]) == entry["n_conditions"], cells
+            for index, key in enumerate(
+                ("wall_time_state_s", "wall_time_mc_s", "wall_time_ipc_s"), start=2
+            ):
+                _assert_cell_matches(cells[index], float(entry[key]), key)
+            _assert_cell_matches(
+                cells[5].strip("*"), float(entry["wall_time_s"]), "wall_time_s"
+            )
+            seen += 1
+        elif "しきい値比較" in cells[0]:
+            _assert_cell_matches(
+                cells[5].strip("*"),
+                float(comparison["wall_time_s"]),  # type: ignore[arg-type]
+                "threshold_comparison.wall_time_s",
+            )
+            seen += 1
+        elif "合計" in cells[0]:
+            assert int(cells[1].strip("*")) == meta["n_rows"], cells
+            _assert_cell_matches(
+                cells[5].strip("*"), float(meta["wall_time_s"]), "meta.wall_time_s"
+            )
+            seen += 1
+    assert seen == len(labels) + 2, table
+
+
+def test_artifact_size_table_matches_the_files() -> None:
+    """§11.5 の成果物サイズ表が実ファイルと一致する (CSV 予算 5 MB の根拠)。"""
+    _, table = _table_after(re.compile(r"^\|\s*ファイル\s*\|\s*行数\s*\|"))
+    total = 0
+    for cells in table:
+        if not cells[0].startswith("`"):
+            continue
+        name = cells[0].strip("`")
+        path = CAPACITY_RESULTS / name
+        size = path.stat().st_size
+        n_rows = sum(1 for _ in path.open(encoding="utf-8")) - 1
+        assert int(cells[1]) == n_rows, cells
+        assert int(cells[2].removesuffix(" B").replace(",", "")) == size, cells
+        total += size
+    documented_total = next(cells for cells in table if "CSV 合計" in cells[0])[2]
+    assert int(documented_total.strip("*").removesuffix(" B").replace(",", "")) == total
+
+
+def test_config_py_line_count_in_the_design_doc_is_current() -> None:
+    """§11.5 に書いた ``config.py`` の行数が実ファイルと一致する。
+
+    04 冒頭の package 化の着手条件 (非空 600 行) の根拠なので、分割した瞬間に
+    この記述が古くなる —— そのとき赤くする。
+    """
+    lines = CONFIG_PY.read_text(encoding="utf-8").splitlines()
+    nonempty = sum(1 for line in lines if line.strip())
+    match = re.search(r"\*\*非空 (\d+) 行\*\*（総 (\d+) 行）", _text())
+    assert match, "§11.5 に config.py の行数の記述が見つかりません"
+    assert int(match[1]) == nonempty
+    assert int(match[2]) == len(lines)
+    assert nonempty > 600, "着手条件 (非空600行) の記述を見直してください"
+
+
+def test_design_doc_points_at_the_capacity_regeneration_command() -> None:
+    """03 の数値の出どころ (成果物と再生成コマンド) が §11 に書いてある。"""
+    text = _text()
+    assert "make figures-03" in text
+    assert "make saturation-03" in text
+    assert "threshold_comparison" in text
+    assert "capacity_profile.csv" in text
