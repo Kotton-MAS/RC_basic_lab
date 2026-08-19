@@ -212,3 +212,149 @@ def test_readme_experiment_02_numbers_match_meta_json() -> None:
     assert found["n_false_esp"] == agreement["n_false_esp"]
     assert found["n_local_but_not_global"] == agreement["n_local_but_not_global"]
     assert found["ratio"] == round(headline["ratio"], 5)
+
+
+# --- 実験03 (README の 03 節) vs results/03_capacity/ -------------------------
+#
+# 02 の ``test_readme_experiment_02_numbers_match_meta_json`` と同じ役割を 03 に
+# 対して果たす。03 の節には成果物の行数・実行時間・3-C の成績・容量の3値という
+# 「回し直すと動く数値」が並ぶので、README が古いまま取り残されたら落とす。
+
+CAPACITY_RESULTS = ROOT / "results" / "03_capacity"
+CAPACITY_META = CAPACITY_RESULTS / "meta.json"
+CAPACITY_CSV = CAPACITY_RESULTS / "capacity.csv"
+NARMA10_CSV = CAPACITY_RESULTS / "narma10.csv"
+
+_ARTIFACT_ROWS_RE = re.compile(
+    r"^\|\s*`(?P<name>[\w.]+\.csv)`\s*\|\s*(?P<rows>[\d,]+)行"
+)
+_CAPACITY_META_KEYS: dict[str, str] = {
+    "capacity.csv": "n_rows",
+    "capacity_profile.csv": "n_profile_rows",
+    "narma10.csv": "n_narma10_rows",
+}
+_NMSE_ROW_RE = re.compile(
+    r"^\|\s*NMSE\s*\|\s*\*{0,2}([\d.]+)\*{0,2}\s*\|\s*\*{0,2}([\d.]+)\*{0,2}"
+    r"\s*\|\s*\*{0,2}([\d.]+)\*{0,2}\s*\|"
+)
+_MC_RATIO_RE = re.compile(r"到達する最大は (?P<ratio>[\d.]+)%")
+_CAPACITY_VALUE_RE = re.compile(
+    r"`(?P<name>mc_total|ipc_total|ipc_nonlinear) = (?P<value>[\d.]+)`"
+)
+_DELAY_LINE_LAGS_RE = re.compile(r"選ばれた k=(?P<lags>\d+)")
+_STICKY_RE = re.compile(
+    r"(?P<count>\d+)回中(?P<hits>\d+)回で格子の\*\*上端 k=(?P<lags>\d+)"
+)
+
+
+def _experiment_03_section() -> str:
+    """README の 03 節だけを切り出す (02 節と数値の書式が同じなので混ざる)。"""
+    text = README.read_text(encoding="utf-8")
+    start = text.index("## 実験03")
+    end = text.index("\n## ", start)
+    return text[start:end]
+
+
+def _capacity_meta_json() -> dict[str, object]:
+    loaded: dict[str, object] = json.loads(CAPACITY_META.read_text(encoding="utf-8"))
+    return loaded
+
+
+def _narma10_rows() -> list[dict[str, str]]:
+    with NARMA10_CSV.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _capacity_3c_row() -> dict[str, str]:
+    with CAPACITY_CSV.open(encoding="utf-8", newline="") as handle:
+        return next(
+            row for row in csv.DictReader(handle) if row["experiment"] == "3C_narma10"
+        )
+
+
+def test_readme_mentions_the_experiment_03_artifacts_as_the_source() -> None:
+    """03 の数値の出どころ (生成物と再生成コマンド) が README にある。"""
+    text = README.read_text(encoding="utf-8")
+    assert "make figures-03" in text
+    assert "make saturation-03" in text
+    assert "narma10.csv" in text
+    assert "threshold_comparison" in text
+
+
+def test_readme_experiment_03_artifact_rows_match_meta_json() -> None:
+    """README の成果物表の行数が ``meta.json`` と一致する。"""
+    meta = _capacity_meta_json()
+    found: dict[str, int] = {}
+    for line in _experiment_03_section().splitlines():
+        match = _ARTIFACT_ROWS_RE.match(line)
+        if match and match["name"] in _CAPACITY_META_KEYS:
+            found[match["name"]] = int(match["rows"].replace(",", ""))
+    assert set(found) == set(_CAPACITY_META_KEYS), found
+    for name, key in _CAPACITY_META_KEYS.items():
+        assert found[name] == meta[key], name
+
+
+def test_readme_experiment_03_wall_time_matches_meta_json() -> None:
+    """README に書いた `make figures-03` の実測時間が ``meta.json`` と一致する。"""
+    meta = _capacity_meta_json()
+    match = re.search(r"wall_time_s = ([\d.]+) 秒", _experiment_03_section())
+    assert match, "README に 03 の wall_time_s の記述が見つかりません"
+    wall_time = meta["wall_time_s"]
+    assert isinstance(wall_time, float)
+    assert float(match.group(1)) == round(wall_time, 2)
+
+
+def test_readme_narma10_table_matches_the_committed_rows() -> None:
+    """README の NARMA10 の NMSE 表が ``narma10.csv`` と一致する。"""
+    rows = _narma10_rows()
+    for line in _experiment_03_section().splitlines():
+        match = _NMSE_ROW_RE.match(line)
+        if not match:
+            continue
+        for method, cell in zip(
+            ("linear", "delay_line", "esn"), match.groups(), strict=True
+        ):
+            subset = [row for row in rows if row["method"] == method]
+            assert subset, method
+            expected = sum(float(row["nmse"]) for row in subset) / len(subset)
+            assert float(cell) == round(expected, len(cell.partition(".")[2])), method
+        return
+    raise AssertionError("README に NARMA10 の NMSE 表が見つかりません")
+
+
+def test_readme_experiment_03_capacity_numbers_match_the_csv() -> None:
+    """README の 03 節の容量の値・到達率・遅延線の張り付きが一次資料と一致する。
+
+    「容量が成績を説明する」という README の主張の数値そのものなので、
+    ここが手書きのまま古くなると記事の根拠が崩れる。
+    """
+    text = _experiment_03_section()
+    row = _capacity_3c_row()
+    documented = {
+        match["name"]: match["value"] for match in _CAPACITY_VALUE_RE.finditer(text)
+    }
+    assert set(documented) == {"mc_total", "ipc_total", "ipc_nonlinear"}, documented
+    for name, cell in documented.items():
+        decimals = len(cell.partition(".")[2])
+        assert float(cell) == round(float(row[name]), decimals), name
+
+    with CAPACITY_CSV.open(encoding="utf-8", newline="") as handle:
+        ratios = [
+            float(record["mc_ratio"])
+            for record in csv.DictReader(handle)
+            if record["experiment"] == "3A_mc_sweep"
+        ]
+    ratio_match = _MC_RATIO_RE.search(text)
+    assert ratio_match, "README に mc_ratio の到達率が見つかりません"
+    assert float(ratio_match["ratio"]) == round(100.0 * max(ratios), 1)
+
+    rows = [row for row in _narma10_rows() if row["method"] == "delay_line"]
+    selected = [int(row["n_lags"]) for row in rows]
+    top = max(set(selected), key=selected.count)
+    lags_match = _DELAY_LINE_LAGS_RE.search(text)
+    sticky_match = _STICKY_RE.search(text)
+    assert lags_match and sticky_match, "README に遅延線の k の記述が見つかりません"
+    assert int(lags_match["lags"]) == top
+    assert int(sticky_match["lags"]) == top
+    assert int(sticky_match["count"]) == len(selected)
+    assert int(sticky_match["hits"]) == selected.count(top)
