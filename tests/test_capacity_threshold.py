@@ -159,20 +159,23 @@ def test_threshold_modes_cover_every_mode_the_diagnostics_accept() -> None:
 def test_states_are_generated_once_for_all_modes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """しきい値法を3通り試しても ``simulate_reference_trajectory`` は1回。
+    """しきい値法を3通り試しても ``simulate_condition_trajectory`` は1回。
 
     差し替えるのは**呼び出し側のモジュール属性** (``capacity_threshold`` の
     名前空間) で、定義元を差し替えると 03 の他の経路まで巻き込む (§10-1)。
+    F-3b2-1-001 (M1) で ``simulate_reference_trajectory`` への9引数呼び出しは
+    ``capacity.py`` の ``simulate_condition_trajectory`` に一本化された
+    (``_validate_condition_bounds`` を呼ぶのもここ)。
     """
     module = importlib.import_module(THRESHOLD_MODULE)
     calls: list[object] = []
-    real = module.simulate_reference_trajectory
+    real = module.simulate_condition_trajectory
 
     def counting(*args: object, **kwargs: object) -> object:
         calls.append(args)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(f"{THRESHOLD_MODULE}.simulate_reference_trajectory", counting)
+    monkeypatch.setattr(f"{THRESHOLD_MODULE}.simulate_condition_trajectory", counting)
     comparison = run_threshold_comparison(tiny_config())
     assert len(calls) == 1
     assert len(comparison.memory_capacity) == len(MC_THRESHOLD_MODES)
