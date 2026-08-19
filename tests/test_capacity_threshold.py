@@ -344,7 +344,7 @@ def test_validate_condition_bounds_is_actually_called(
 
     def counting(condition: object) -> None:
         calls.append(condition)
-        real(condition)  # type: ignore[arg-type]
+        real(condition)
 
     monkeypatch.setattr(
         "rc_basics_lab.experiment.capacity._validate_condition_bounds", counting
