@@ -58,6 +58,10 @@ ruff の RUF001/RUF002 がソース中のギリシャ文字を弾くため、エ
 (``docs/plans/rc-basics-02.md`` T2 の実装メモ17 と同じ制約)。
 """
 
+_RHO = "\u03c1"
+"""ギリシャ文字 rho (スペクトル半径)。``_SIGMA_HEAD`` と同じ理由 (ruff の
+RUF001/RUF002 対策) でエスケープで書く (F-3b2-1-003)。"""
+
 MIN_SENSITIVITY_ROWS = 9
 """仕様 T5 の受け入れ基準。``abs_tol`` 3点 x ``window`` 3点。"""
 
