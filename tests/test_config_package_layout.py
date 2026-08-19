@@ -289,6 +289,19 @@ def test_each_config_module_stays_under_the_line_budget(path: Path) -> None:
     )
 
 
+def test_design_doc_records_the_same_line_budget() -> None:
+    """``docs/design.md`` §11.5 に書いた上限が ``MAX_NONEMPTY_LINES_PER_MODULE``。
+
+    上限の正本はこの定数1つで、design.md はその写しである。両方に数字を書く
+    以上、片方だけ更新される事故は必ず起きるので機械で潰す (§11.5 の行数表
+    そのものの照合は ``tests/test_design_doc.py`` が行う)。
+    """
+    text = DESIGN_DOC.read_text(encoding="utf-8")
+    match = re.search(r"1モジュールあたり非空 (\d+) 行", text)
+    assert match, "docs/design.md §11.5 に1モジュールあたりの上限の記述がありません"
+    assert int(match[1]) == MAX_NONEMPTY_LINES_PER_MODULE
+
+
 def test_config_package_has_exactly_the_expected_modules() -> None:
     """``config/`` の中身が ``_common`` + 実験サイクル3本 + ``__init__`` だけ。
 

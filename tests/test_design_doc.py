@@ -32,7 +32,6 @@ from pathlib import Path
 import pytest
 
 from rc_basics_lab.experiment.threshold import sigma_column
-from tests.test_config_package_layout import MAX_NONEMPTY_LINES_PER_MODULE
 
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN = ROOT / "docs" / "design.md"
@@ -825,17 +824,17 @@ def test_config_package_line_counts_in_the_design_doc_are_current() -> None:
     """§11.5 の ``config/`` 行数表が実ファイルと一致する (04 T1 / D-49)。
 
     04 T1 で ``config.py`` (非空 615 行) を package 化するまでは、この検査は
-    「単一ファイルの行数が着手条件 600 行を超えているか」を見ていた。分割後は
-    見るべきものが2つに変わる:
+    「単一ファイルの行数が着手条件 600 行を超えているか」を見ていた。分割後に
+    見るのは表と実ファイルの一致である:
 
-    1. **モジュールごとの行数**が表のとおりであること (分割方針の記録が
-       ドリフトすると、次に割るときの判断材料が嘘になる)
-    2. **1モジュールあたりの上限**を超えていないこと。上限そのものは
-       ``tests/test_config_package_layout.py`` が持ち、ここはその値を参照する
-       (2か所に別々の数字を書くと片方だけ更新されて食い違う)
-
+    **モジュールごとの行数**が表のとおりであること (分割方針の記録がドリフト
+    すると、次に割るときの判断材料が嘘になる)。
     表の行が実在するモジュール集合と過不足なく一致することも同時に見るので、
     ``chaos04.py`` (04 T4) を足して表に書き忘れれば赤くなる。
+
+    上限 (非空 300 行) そのものは ``tests/test_config_package_layout.py`` が
+    持つ —— 同じ数字を2か所に書くと片方だけ更新されて食い違うため、ここは
+    表と実ファイルの一致だけを見る。
     """
     actual = {
         path.name: path.read_text(encoding="utf-8").splitlines()
@@ -859,10 +858,6 @@ def test_config_package_line_counts_in_the_design_doc_are_current() -> None:
         nonempty = sum(1 for line in lines if line.strip())
         assert doc_nonempty == nonempty, f"{name}: 非空行数が表と違います ({nonempty})"
         assert doc_total == len(lines), f"{name}: 総行数が表と違います ({len(lines)})"
-        assert nonempty <= MAX_NONEMPTY_LINES_PER_MODULE, (
-            f"{name}: 非空 {nonempty} 行が上限 "
-            f"{MAX_NONEMPTY_LINES_PER_MODULE} 行を超えています"
-        )
 
     totals = next(cells for cells in table if "合計" in cells[0])
     assert int(totals[2].strip("*")) == sum(
