@@ -1048,3 +1048,145 @@ pending の機構そのもの (`CHANNEL_PENDING` / `TASK_STAGE_CONSUMERS` / 信�
   前回の 21,636 行が**そのまま先頭にあり** 3-C の 176 行が末尾に増えただけ。
 - `docs/design.md` / `README.md` は **T5 の担当**なので触っていない
   (§11.4 の「NARMA10 の採用式と先行との差分」に上記 12 の実測表がそのまま使える)。
+
+---
+
+## T5 実装時に決めたこと (3b-2 T5 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+これでサイクル3 (3a / 3b-1 / 3b-2) が完結する。
+
+### 1. D-32 は 3b-1 で記録が漏れていた (T5 で追記。決定そのものは変えていない)
+
+仕様が「確定済み」として何度も参照している D-32 (**IPC 掃引は N=50、MC 掃引は N=200**) が
+`.claude/decisions.yaml` に**存在しなかった**。guard_test に当たる
+`test_ipc_reservoir_is_smaller_than_mc_reservoir` は 3b-1 T1 で実装済みで、
+**記録だけが3タスクを通して抜けていた**。rule は `docs/plans/rc-basics-03.md` §6 の
+予約時の文言のまま、rationale に 3a の実測 (N=25 / T=5e4 / rho=0.9 / `input_scale`=0.5 で
+`saturation_ratio` 0.683) と 3b-1 の本番実測 (3-B' の noise=0 で N=25 / 50 / 100 が
+0.676 / 0.720 / 0.734、ただし 27 条件で 222 秒 = 全体の 58%) を足した。
+guard_test のパスは仕様の予約 (`tests/test_experiment_capacity.py::...`) ではなく
+**実在する場所** (`tests/test_config_wiring_capacity.py::...`) を書いた。
+これで decisions は 40 件、`check_decisions.py` は OK。
+
+### 2. しきい値法の比較は `experiment/capacity_threshold.py` を新設して測る
+
+受け入れ条件3 の一次資料 (`meta.json.threshold_comparison`) が無かったので T5 で作った。
+02 の閾値感度 (`experiment/threshold.py` + `make threshold-02`) と同じ「判定基準だけを
+振り直す」形だが、**別ターゲットにはせず `figures-03` の中で回す**。02 の閾値感度は
+9通り × 336 条件で 60 秒かかるが、こちらは代表1条件 × 5回の診断で 2.66 秒であり、
+成果物 (`meta.json`) の中に置いた方が「本番の設定でどうだったか」を1か所で読める。
+
+**決めたこと (仕様が指定していない箇所):**
+
+1. **代表条件は 3-B (IPC 掃引) の格子の中央点** (`grid[len(grid) // 2]`、本番は
+   rho=0.95 / leak=0.6)。値そのものに主張は無いが、**掃引の格子の点であること**が
+   設計判断である —— `capacity.csv` に同じ条件の行が必ず在るので、既定モードの
+   数値が本番成果物と一致することまで機械照合できる
+   (`test_default_mode_matches_the_committed_capacity_row`)。比較専用の条件を作ると
+   この突合ができず、「比較表の数字が本番と無関係」を検出できない。
+   中央を選ぶ規則が効いていること (定数の書き写しでないこと) は格子を差し替える
+   テストで別途固定した。
+2. **MC は `chi2` を持たない**ので、比較は**診断ごとに受理するモードだけ**を回す
+   (MC 2通り / IPC 3通り)。仕様は「3通りで走らせる」としか書いていないが、
+   MC の `SUPPORTED_THRESHOLD_MODES` は `(surrogate, none)` の2つである
+   (次数1しか評価せず周辺分布が1種類なのでサロゲートで足りる)。片方に無いモードを
+   `None` / 0.0 で埋めると、成果物を読む側が「chi2 を課したら MC が 0 になった」と
+   読める形になる。`meta.json` は `{condition, default_mc_mode, default_ipc_mode,
+   memory_capacity: [...], ipc: [...], wall_time_s}` の形。
+3. **軌道は1回だけ作る** (仕様 §5 の禁止構造)。MC 2通り × IPC 3通りを直積で回さず、
+   `max(2, 3) = 3` 回の `measure_capacity` で両方を賄い、使うのは振っている側の
+   結果だけにした (診断2本は独立なので片方のモードがもう片方を変えない)。
+   `ctx` も1個を5回すべてで共有する (D-37)。
+4. **`wall_time_breakdown` には入れない**。内訳の並びは `FIGURE_EXPERIMENTS` が
+   単一の真実 (T4 の決定4) なので、掃引でない区間を混ぜると `ValueError` になる。
+   比較の実測時間は `threshold_comparison.wall_time_s` として自分の中に持ち、
+   全体の `wall_time_s` には含まれる (§11.5 の実行時間表がその関係を明記)。
+
+**実測 (受け入れ条件3 の答え)**: 代表条件で IPC の総容量は `none` 28.0817 /
+`surrogate` 27.9179 / `chi2` 27.9233、MC は `none` 11.7138 / `surrogate` 11.5439。
+**総容量では3法をほとんど区別できない** (IPC は 1% 未満、MC でも 2% 未満)。
+効くのは `n_targets_kept` (601 → 324) と `mc_effective_delay` (13.63 → 10.53、1.29 倍) で、
+既定を `surrogate` のままにする根拠は「総容量の差」ではなく
+「次数分解を歪めないこと」「重心を偽らないこと」「長形式 CSV が10倍にならないこと」
+(21,812 行 → 211,916 行) である。詳細は `docs/design.md` §11.2。
+
+### 3. `docs/design.md` §11.2〜§11.5 は**表を成果物から生成**し、散文に有効数字を書かない
+
+「散文の数値が原典とずれる」事故 (T4 メモ12 の `ipc_linear` / `ipc_nonlinear` 取り違え、
+テスト件数の3回のずれ) を構造で潰すため、**§11 の表はすべて一次資料から生成し、
+`tests/test_design_doc.py` が機械照合する**。照合の対象は9件:
+
+| 節 | 表 | 一次資料 |
+|---|---|---|
+| §11.2 | MC / IPC のしきい値比較 | `meta.json.threshold_comparison` |
+| §11.2 | 次数別しきい値 | `capacity_profile.csv` + `meta.json` |
+| §11.2 | 既定モードの印 | `meta.json.default_*_mode` |
+| §11.2 | 長形式の行数 (118 条件 / 21,812 / 211,916) | `meta.json` + `capacity.csv` |
+| §11.3 | 打ち切りと目標数 | `count_targets` / `enumerate_targets` (コード) |
+| §11.5 | 3-C の成績 | `narma10.csv` + `meta.json.narma10_verdict` |
+| §11.5 | 3-C の容量 | `capacity.csv` の `3C_narma10` 行 |
+| §11.5 | 実行時間 | `meta.json.wall_time_breakdown` |
+| §11.5 | 成果物サイズ | 実ファイル |
+| §11.5 | `config.py` の行数 | 実ファイル |
+
+照合は**セルに書かれた桁数に丸めた実測値との厳密比較**にした (`_assert_cell_matches`)。
+`approx` にすると「表を読みやすく丸める」と「1桁書き間違える」が区別できない。
+**変異試験**: `27.9179` → `27.9178` / `13.6280` → `13.6281` / 次数4 の chi2 を
+`0.000764` に、の3通りでそれぞれ**該当する1件だけ**が落ちることを実測した
+(48 passed / 1 failed)。
+
+散文の側は幅でしか書かない (「1% と違わず」「約1.3倍」) が、**その幅も検査する**
+(`test_threshold_section_claims_hold_in_the_data`) —— 数値を書かない代わりに主張が
+緩くなる、を防ぐため。
+
+**機械照合できない数値が1つだけ残っている**: 駆動強度 σ_u の較正表 (§11.5) は
+3b-1 T2 が本番格子を4通り回した**一回性の実測**で、コミット済みの成果物には残らない。
+節の中でその旨を明記し、再現手順 (本書 T2 メモ 4・6) を指してある。採用値
+(`mc_sweep.sigma_u`) 自体は本番 YAML から機械照合される。
+
+### 4. `README.md` の 03 節も機械照合の対象にした
+
+02 節に `test_readme_experiment_02_numbers_match_meta_json` があるのと同じ形で、
+03 節の成果物の行数 / `wall_time_s` / NARMA10 の NMSE 表 / 容量の3値 / `mc_ratio` の
+到達率 (18.9%) / 遅延線の張り付き (5回中4回、k=30) を一次資料と突き合わせる
+(`test_readme_experiment_03_*`)。README の 02 節と 03 節は数値の書式が同じなので、
+**節を切り出してから**照合する (切り出さないと 02 の `wall_time_s` を拾う。実際に踏んだ)。
+
+### 5. §11.1 の古くなった記述を1段落だけ直した
+
+「`capacity.csv` (117行) / `capacity_profile.csv` (21,636行) / 図4枚」は 3b-1 時点の値で、
+3-C の追加後は 118 行 / 21,812 行 / 図5枚である。行数を書き直す代わりに**行数の記述を
+§11.5 の機械照合される表へ寄せた** (同じ数字が2か所にあると必ず片方が古くなる)。
+「数値の考察は 3b-2 (T5) で追記する」という将来形も現在形に直した。
+
+### 6. 実測 (本番 `make figures-03`、Darwin 25.3.0 / Python 3.12)
+
+| 区間 | 実測 | 予算 |
+|---|---|---|
+| `make figures-03` 全体 | **328.19s** (計算 326.98s。3-A 29.00s / 3-B 74.49s / 3-B' 220.49s / 3-C 0.33s / しきい値比較 2.66s) | < 900s |
+| 状態生成の合計 | **35.80s** | < 60s |
+| ピーク RSS | **1.01 GB** | < 4 GB |
+| `results/03_capacity/*.csv` | **1,846,204 B** (1.76 MB) | < 5 MB |
+| `make ci` | 682 passed / 30.99s | 03 の追加ぶん < 60s |
+
+しきい値比較の追加は 2.66 秒 (全体の 0.8%) で、`make figures-03` の機械側の変動
+(2山の差 約44秒) より2桁小さい。全体時間 328.19s は既知の観測 (324.57 / 326.71 /
+330.06 / 352.98 / 368.73 / 370.42) の **fast 側の山**に入る。
+
+### 7. 触っていないもの
+
+- `diagnostics/` は**差分 0 行** (`git diff <base-ref> -- src/rc_basics_lab/diagnostics/` が空)。
+- 01・02 の成果物は base-ref からの差分が空 (`results/comparison*.csv` / `results/meta.json` /
+  `results/02_esp_and_dynamics/`)。
+- `experiment/capacity.py` / `narma.py` / `runner.py` / `config.py` / `seeds.py` は無変更。
+  T5 が触った実装は **`capacity_threshold.py` の新設**と、`capacity_pipeline.py` への
+  4行の配線 (呼び出し・`CapacityOutputs` のフィールド・`meta.json` の1キー) だけ。
+- 仕様 §4 T5 が挙げた成果物のうち **D-29〜D-31 / D-35〜D-39 は既に記録済み**だったので
+  触っていない (追記したのは D-32 のみ)。
+
+### 8. 残件 (04 へ)
+
+- `config.py` の package 化 (非空 615 行、着手条件 600 行に到達済み)。§11.5 に記録。
+- 3-C の `n_lags_grid` 上端 (k=30 に張り付き)。要件書の指定範囲なので 3b では動かさない。
+- `import rc_basics_lab.plotting` を最初に行うと循環 import (T3 メモ10、base-ref から同じ)。
