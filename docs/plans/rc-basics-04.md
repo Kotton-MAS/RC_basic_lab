@@ -494,3 +494,175 @@ find results -type f | LC_ALL=C sort | xargs shasum -a 256 | awk '{print $1}' \
 `test_config_package_has_exactly_the_expected_modules` と
 `test_config_package_line_counts_in_the_design_doc_are_current` が赤くなるので、
 T4 の担当者は design.md §11.5 の表と `EXPECTED_SUBMODULES` を同時に更新すること。
+
+---
+
+## T2 実装時に決めたこと
+
+> 仕様 §4 T2 と ADR 0001 に書かれていなかった選択、および両者の記述と食い違った点の記録。
+> 次周の reviewer / fixer が読むのはこの節であり、実装のコメントではない。
+> 決定そのものは `.claude/decisions.yaml` の D-47 / D-48 / D-52 / D-53（+ D-36 の改訂）が正本。
+
+### 1. `require_deterministic_esn` の比較は `> 0` ではなく `!= 0`（**ADR との相違**）
+
+ADR §2.2 は `esn.config.state_noise > 0`、§3.3 は引数側を `!= 0.0` と書き分けていたが、
+共有ヘルパ1本に集約するため**両方を `!= 0.0`** に統一した。
+
+理由: `ESNConfig` を経た値は `ESN.__init__` の `_validate_config` が負を弾いている
+（`reservoir/esn.py:87`）ので、ESN 由来の値では `> 0` と `!= 0` は**同値**である。
+一方 `simulate_condition(state_noise=-1.0)` は ESN を通らずに拒否されるため、
+負も「受理しない」側へ倒すのが正しい。比較を2種類持つと、次の実装者が
+「どちらが本物か」を判断する必要が生まれる。
+
+### 2. 共有したのは判定だけでなく「4点メッセージの組み立て」
+
+ADR §3.3 は「共有ヘルパ1本（`require_deterministic_esn`）に集約」とだけ書いていた。
+実装では**4点（何を / なぜ / やってはいけない直し方 / 正しい経路）を組み立てる責任**まで
+ヘルパに持たせ、呼び出し側は4点の中身だけを渡す形にした。
+
+理由: D-47 と D-48 は拒否理由も正しい経路も違うので、共通なのは判定式ではなく
+**「メッセージが自分で説明できないと次の実装者が最も安い手で黙らせる」という失敗の形**の方。
+テンプレートを1本にしておくと、3点しか書かない実装が構造的に書けない。
+
+### 3. `require_deterministic_esn` は `experiment/esp.py` の `__all__` にだけ載せた
+
+`experiment/__init__.py` の再エクスポート一覧には**足していない**。
+04b が呼ぶ想定が無く（04b は `esn_propagator` / `simulate_condition` を通る）、
+`experiment` の公開 API を必要のないところで広げないため。
+必要になったら `__init__.py` へ1行足せばよい（可逆）。
+
+### 4. AST ガードは `if TYPE_CHECKING:` の中も module-level として数える
+
+`tests/test_layer_boundaries.py::_module_level_imported_roots` は関数本体
+（`FunctionDef` / `AsyncFunctionDef` / `Lambda`）の**外**にある import をすべて拾う。
+`if TYPE_CHECKING:` の下は実行時には走らないが、そこへ逃がすと循環の解消が
+型検査の設定に依存する形になり、D-53 の「関数本体の中で import する」という
+規律が実装から読めなくなる。
+
+### 5. 逆向きの辺（D-53 で許可した側）はファイル名の一覧では固定しない
+
+`test_plotting_may_import_experiment_at_module_level` は「どのファイルが辺を持つか」の
+スナップショットではなく、**`plotting/figures.py` が実験層の関数
+`aggregate_nrmse` を import していること**を固定する。
+
+理由: ファイル名の一覧にすると 04b-2 が `plotting/figures_freerun.py` を足すたびに
+更新が要る（ADR §7.2 はこの追加を明示的に許可している）。一方 `aggregate_nrmse` は
+**記事メタを `article/` へ移す案（ADR §5.4 案D）が循環の解決策にならない理由そのもの**
+なので、そこが消えたら決定を先に見直すべきという意味で、固定する価値が一覧より高い。
+
+### 6. ADR §2.6 の `test_propagator_is_deterministic` は正常系と1本にまとめた
+
+`test_propagator_accepts_a_noise_free_esn_and_is_deterministic` として、
+「`state_noise=0` なら通る」と「同じ `(x, t)` の2回の呼び出しがビット一致」を
+同じテストで測る。拒否テストだけだと**すべての ESN を拒否する実装**でも緑になるため、
+正常系を独立させずに決定性と同じ場所に置いた。
+
+### 7. 既定値が動かないことを別テストで固定した（仕様・ADR に無い追加）
+
+`test_simulate_condition_defaults_to_zero_state_noise` は
+`state_noise` が**キーワード専用**で既定が `0.0` であることを `inspect.signature` で見る。
+既定が動くと `experiment/threshold.py` を含む既存の呼び出し全部の意味が変わり、
+02・03 の成果物が黙って変わる（拒否テストはこの壊れ方を検出しない）。
+
+### 8. 「§10-1 の罠」を現在形で書いていた記述を過去形へ直した（3ファイル）
+
+`src/rc_basics_lab/experiment/capacity_threshold.py` / `tests/test_capacity_threshold.py` /
+`tests/test_experiment_capacity.py` の docstring・コメントは
+「`from rc_basics_lab.diagnostics import ipc` は**関数**を返す」と現在形で書かれていた。
+D-52 でそれが事実でなくなったので、「04a T2 以前は〜だった」に直した上で、
+**フルパス / 呼び出し側属性の monkeypatch を続ける理由**（前者は「モジュールが欲しい」ことが
+読める、後者は名前の隠蔽とは独立に、配線層が import 時に束縛した参照は定義元を
+差し替えても変わらないため）を残した。理由を消すと次の fixer が「もう罠は無い」で
+`from rc_basics_lab.diagnostics import ipc` へ戻し、D-52 の `__init__` の状態と
+食い違う書き方が本番へ入る。
+
+### 9. `docs/design.md` は §12 を取らず §11.5 配下の `####` に置いた
+
+仕様 §4 T5 が `docs/design.md` §12 を 04b-2 のために予約しているため、
+T2 の記録は T1 の前例（`#### config/ の分割方針と行数`）に倣って
+`#### 公開 API の命名規約とレイヤ境界（04a T2、D-52 / D-53）` として末尾に足した。
+
+### 10. `conventions.md` は `.claude/tmp/` にあり **gitignore 済み**（**仕様との相違**）
+
+指示は「`conventions.md`（存在すれば）に追記」だったが、実体は
+`.claude/tmp/conventions.md` で `.gitignore:184` により追跡対象外である。
+追記は行った（D-52 / D-53 の2行 + `config.py -> config/` の更新）が、
+**コミットには乗らない**。`tests/test_public_api_reexport.py` の docstring が
+「conventions.md は〜と記録している」と参照しているので、慣習の正本を
+リポジトリ内に置くべきかは 04b 以降の判断に残す（今回はスコープ外）。
+
+### 11. `results/` の複合ハッシュは `47bcd302…` ではなく `0f7558ef…`（**仕様との相違**）
+
+指示の完了条件5 は `47bcd302de7a7366…` との一致を求めていたが、これは T1 の
+実装メモ §4 が「6通りの定義すべてで再現できなかった」と記録済みの値である。
+T1 が固定した定義
+
+```
+find results -type f | LC_ALL=C sort | xargs shasum -a 256 | awk '{print $1}' \
+  | tr -d '\n' | shasum -a 256
+```
+
+での実測値は着手前・完了後とも **`0f7558efc418242f…`**（一致）。加えて
+**全 24 ファイルの個別 SHA-256 を base-ref `8810d4e` と突き合わせて 24/24 一致**、
+`git diff <base-ref> -- results/` も**空**であることを確認した（そちらが本来の基準）。
+
+### 12. RUF001 回避のため文字列リテラルを分割した1箇所
+
+`experiment/esp.py` の `_NOISE_REJECTION_FORBIDDEN` は
+`"ノイズ実現値用に5本目の乱数ストリームを新設すること "` を1つの文字列に
+書くと ruff の RUF001（ambiguous `ノ`）で落ちる（ASCII の `5` と混在する語だと
+発火する）。`"ノイズ実現値用に"` と `"5本目の…"` の2リテラルに分けてある。
+**意味のある分割ではないので、整形時に結合しないこと**。
+
+### 13. 変異注入の実測（6件 + 却下案A の追加1件）
+
+| # | 決定 | 変異 | 結果 |
+|---|---|---|---|
+| 1 | D-48 | 検査を消し `esn.step(x, u, rng)` に差し替え | `test_propagator_refuses_a_noisy_esn` **1件赤** |
+| 2 | D-48 | 却下案A（ノイズ無し複製を返す）に差し替え | 同上 **1件赤** |
+| 3 | D-47 | 入口（引数側）の検査を消す | `test_simulate_condition_rejects_state_noise` **1件赤** |
+| 4 | D-47 | ESN 側の検査だけを消す | `test_simulate_condition_rejects_a_noisy_esn_from_any_route` **1件赤** |
+| 5 | D-52 | `__init__` に `from ....ipc import ipc` を戻す | **3件赤**（`test_package_attributes_are_modules_not_shadowed[diagnostics]` / `test_diagnostics_all_matches_the_recorded_snapshot` / `test_diagnostics_ipc_module_resolves_to_a_module`） |
+| 6 | D-53 | import を module-level へ戻す | **3件赤**（AST 1件 + subprocess 2件） |
+| 追加 | D-53 | 却下案A（`plotting/__init__` を遅延化）+ D-53 取り消し | `test_plotting_can_be_imported_first` は**緑**、`test_every_package_resolves_all_of_its_public_names_when_imported_first[plotting]` は**赤**（2 failed / 8 passed）。**受け入れ基準を仕様より強くした理由の実測** |
+
+3 と 4 が**別々のテストを1件ずつ落とす**ことが、D-47 の二重化が空虚でないことの証明である
+（片方しか無ければ、その半分を消しても1件も落ちない）。
+
+### 14. 却下案A（ノイズ無し複製で伝播）の不一致量の実測
+
+N=60 / ρ=0.9 / leak=0.3 / T=300、`t ∈ {100, 150, 200, 250}` の最悪値:
+
+| `state_noise` | RMS/ユニット不一致量 | `propagator_tol`=1e-10 に対する超過 |
+|---|---|---|
+| 1e-4 | 2.741222e-05 | **5.44 桁** |
+| 1e-3 | 2.741342e-04 | **6.44 桁** |
+| 1e-2 | 2.742325e-03 | **7.44 桁** |
+
+ADR §2.3 の推定（`a·σ` のオーダー、leak=0.3・σ=1e-4 で 1e-5 台、5〜6桁超過）と一致した。
+`conditional_lyapunov` はこの状態で「参照軌道と別の入力で伝播している疑い」という
+**誤った診断**を出す（`test_noise_free_clone_fails_the_propagator_check` がメッセージ本文まで固定）。
+
+### 15. ADR §8 の落とし穴3件の処理
+
+1. **`experiment.threshold` は `esp_pipeline` の import 副作用でだけパッケージ属性**:
+   触っていない。`esp_pipeline.py` から外へ出したのは `plotting.*` の2文だけで、
+   `from rc_basics_lab.experiment.threshold import ...` は module-level のまま。
+   新設した `test_package_attributes_are_modules_not_shadowed[experiment]` は
+   `pkgutil` で列挙した `threshold` も回るので、**この副作用が今後は明示的にテストされる**
+2. **`tests/test_diagnostics_base.py` のドット文字列**: 解決は
+   `importlib.import_module(f"rc_basics_lab.diagnostics.{info.name}")` +
+   `vars(module)` で行われており、`getattr(package, "ipc")` に依存していない
+   （`_iter_diagnostic_callables` が qualname を `f"{module.__name__}.{attr_name}"` で組む）。
+   したがって D-52 の影響を受けない。**実測: 変更前後とも全件緑**
+3. **`experiment/threshold.py` の `simulate_condition` 呼び出し**: 既定値のまま
+   （`state_noise` を渡さない）で無変更で通った。`threshold.py` の diff は 0 行
+
+### 16. D-52 の旧テストは「削除」ではなく「反転」
+
+`tests/test_experiment_capacity.py::test_diagnostics_ipc_module_and_function_are_both_reachable`
+（`assert not isinstance(diagnostics_package.ipc, ModuleType)` で**現在の隠蔽を固定**していた）を
+`test_diagnostics_ipc_module_resolves_to_a_module` へ置き換えた。
+新テストは型の確認に加えて **`monkeypatch` が実際に効くこと**まで測る
+（型だけを見ると、`getattr` が別経路で関数を返す実装に戻したときに気づけない）。
+
