@@ -44,8 +44,23 @@ REFERENCE_INPUT: tuple[Fraction, ...] = (
     Fraction(2, 10),
     Fraction(1, 10),
     Fraction(5, 100),
+    Fraction(1, 10),
+    Fraction(2, 10),
+    Fraction(3, 10),
+    Fraction(4, 10),
+    Fraction(45, 100),
+    Fraction(35, 100),
+    Fraction(25, 100),
 )
-"""手計算に使う入力列 (15 ステップ)。値はすべて有理数で表せるものを選ぶ。"""
+"""手計算に使う入力列 (22 ステップ)。値はすべて有理数で表せるものを選ぶ。
+
+先頭15ステップ (~ ``y[14]``) だけでは足りない (F-3b2-1-002/HIGH-2)。
+``y[0..9]`` が 0 初期化のため、窓を ``sum_{i=0}^{9}`` から
+``sum_{i=0}^{10}`` に広げる変異は、11項目 (``y[t-10]``) が非0の値を
+拾い始める ``t - 10 >= 10`` (= ``y[21]`` を計算する時点) まで検出できない。
+それより手前では11項目が常に ``y[<10] == 0`` を拾うだけなので、10項の
+正しい実装と偶然一致してしまう。22ステップまで延ばすのはこの点に届かせるため。
+"""
 
 RECURRENCE_TOLERANCE = 1.0e-12
 """手計算との許容差 (仕様 §4 T4 の受け入れ基準)。"""
@@ -91,6 +106,34 @@ def _hand_computed_first_five_steps() -> tuple[Fraction, ...]:
         + offset
     )
     return (y10, y11, y12, y13, y14)
+
+
+def _hand_computed_window_reference(
+    u: tuple[Fraction, ...], upto: int, *, window_width: int = NARMA10_ORDER
+) -> tuple[Fraction, ...]:
+    """独立実装 (Fraction) で ``y[NARMA10_ORDER] .. y[upto]`` を計算する。
+
+    ``narma10_series`` のコードは一切参照しない (係数はリテラルの Fraction、
+    ループもここに独立して書く)。``_hand_computed_first_five_steps`` と同じ
+    数値をこのループでも再現することは ``test_matches_reference_recurrence``
+    で確認済み。``window_width`` を変えると窓の項数を実装と違えられる ——
+    HIGH-2 (D-29 のセルフテスト、F-3b2-1-002) が使う。
+    """
+    leak = Fraction(3, 10)
+    quadratic = Fraction(1, 20)
+    product = Fraction(3, 2)
+    offset = Fraction(1, 10)
+    y: list[Fraction] = [Fraction(0)] * NARMA10_ORDER
+    for t in range(NARMA10_ORDER - 1, upto):
+        lo = max(t - window_width + 1, 0)
+        window = sum(y[lo : t + 1], Fraction(0))
+        y.append(
+            leak * y[t]
+            + quadratic * y[t] * window
+            + product * u[t - NARMA10_ORDER + 1] * u[t]
+            + offset
+        )
+    return tuple(y[NARMA10_ORDER : upto + 1])
 
 
 def test_matches_reference_recurrence() -> None:
