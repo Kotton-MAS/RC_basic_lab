@@ -644,3 +644,232 @@ def test_rows_carry_the_reservoir_and_drive_conditions() -> None:
         assert row.seed_drive == config.seeds.drive
         assert row.seed_probe == config.seeds.probe
         assert row.wall_time_s > 0.0
+
+
+# --- D-48: 伝播器は決定的でなければならない ---------------------------------
+
+NOISE_SIGMA = 1.0e-4
+"""D-48 / D-47 の拒否テストで使う状態ノイズ (04 の格子 {0, 1e-4, 1e-3, 1e-2} の下端)。"""
+
+
+def _noisy_esn(state_noise: float = NOISE_SIGMA) -> ESN:
+    """``state_noise>0`` の ESN。重みは ``small_config`` の条件と同じ乱数列から。"""
+    return ESN(
+        build_esn_config(small_config().reservoir, 0.9, 0.3, state_noise=state_noise),
+        make_rng_for(0, SeedStream.RESERVOIR, 0),
+        n_inputs=1,
+    )
+
+
+def test_propagator_refuses_a_noisy_esn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``esn_propagator`` は ``state_noise>0`` の ESN を受理しない (D-48)。
+
+    ``ESN.step`` が**1回も呼ばれない**ことまで測る —— 検査を消して
+    ``esn.step(x, u, rng)`` に差し替える変異 (最も安い直し方) は、
+    「``ValueError`` にならない」だけでなく「``step`` が呼ばれる」形で入るため。
+
+    メッセージには4点 (何を / なぜ / やってはいけない直し方2つ / 正しい経路) が
+    そろっている必要がある。ここが薄いと、次の実装者はメッセージではなく
+    「一番安く緑にする手」を読んで ``rng`` を渡す。
+    """
+    esn = _noisy_esn()
+    drive = make_drive(0.5, 50, make_rng_for(1, SeedStream.TASK, 0))
+
+    calls: list[object] = []
+    original_step = ESN.step
+
+    def recording_step(
+        self: ESN,
+        x: FloatArray,
+        u: FloatArray,
+        rng: np.random.Generator | None = None,
+    ) -> FloatArray:
+        calls.append(rng)
+        return original_step(self, x, u, rng)
+
+    monkeypatch.setattr(ESN, "step", recording_step)
+
+    with pytest.raises(ValueError) as excinfo:
+        esn_propagator(esn, drive)
+
+    message = str(excinfo.value)
+    assert not calls, "拒否する前に ESN.step が呼ばれています (D-48)"
+    assert "D-48" in message
+    assert "摂動" in message and "ノイズ実現値" in message  # なぜ
+    assert "rng を渡して黙らせる" in message  # やってはいけない直し方 1
+    assert "ノイズ無しの複製" in message  # やってはいけない直し方 2
+    assert "state_noise=0" in message  # 正しい経路
+    assert repr(NOISE_SIGMA) in message  # 実際の値
+
+
+def test_propagator_accepts_a_noise_free_esn_and_is_deterministic() -> None:
+    """``state_noise=0`` なら通り、同じ ``(x, t)`` の2回の呼び出しがビット一致 (D-48)。
+
+    拒否テストだけだと「全部の ESN を拒否する」実装でも緑になる。決定的である
+    ことと、正常系が通ることを同じ場所で固定する。
+    """
+    esn = ESN(
+        build_esn_config(small_config().reservoir, 0.9, 0.3),
+        make_rng_for(0, SeedStream.RESERVOIR, 0),
+        n_inputs=1,
+    )
+    drive = make_drive(0.5, 50, make_rng_for(1, SeedStream.TASK, 0))
+    propagate = esn_propagator(esn, drive)
+    x = esn.run(drive)[10]
+    assert np.array_equal(propagate(x, 10), propagate(x, 10))
+
+
+def test_noise_free_clone_fails_the_propagator_check() -> None:
+    """却下案A (ノイズ無しの複製で伝播する) が成立しないことの実測記録 (D-48)。
+
+    ADR 0001 §2.3: ノイズ有りの参照軌道 ``X`` にノイズ無しの複製を当てると
+    ``propagator(X[t], t) != X[t+1]`` になり、差は ``a·[tanh(pre) -
+    tanh(pre + σξ)]`` のオーダー。``propagator_tol=1e-10`` を桁で超えるので
+    ``check_propagator=True`` では**必ず** ``ValueError`` になり、しかも
+    メッセージは「参照軌道と別の入力で伝播している疑い」という**誤った診断**で、
+    次の実装者を存在しないバグの捜索へ送り込む。
+
+    このテストが無いと、案A を却下した理由 (「安全に見えて成立しない」) が
+    次のサイクルで失われ、同じ検討が最初からやり直しになる。
+    """
+    reservoir = small_config().reservoir
+    drive = make_drive(0.5, 300, make_rng_for(1, SeedStream.TASK, 0))
+    noisy = _noisy_esn()
+    states = noisy.run(drive, rng=make_rng_for(0, SeedStream.RESERVOIR, 0))
+
+    # ノイズ無しの複製 (重みは同じ乱数列から作るので W / W_in はビット一致)。
+    clone = ESN(
+        build_esn_config(reservoir, 0.9, 0.3),
+        make_rng_for(0, SeedStream.RESERVOIR, 0),
+        n_inputs=1,
+    )
+    assert np.array_equal(clone.W, noisy.W)
+    assert clone.config.state_noise == 0.0
+
+    # 1. 不一致量そのものが propagator_tol を桁で超える。
+    tol = DEFAULT_LYAPUNOV.propagator_tol
+    mismatches = [
+        float(
+            np.linalg.norm(clone.step(states[t], drive[t + 1]) - states[t + 1])
+            / math.sqrt(clone.n_units)
+        )
+        for t in (100, 150, 200, 250)
+    ]
+    worst = max(mismatches)
+    assert worst > tol * 1.0e3, (
+        "ノイズ無し複製の不一致量が propagator_tol を桁で超えていません "
+        f"(worst={worst!r}, tol={tol!r})。この前提が崩れたなら ADR 0001 §2.5 の "
+        "見直し条件 (ノイズが tanh の外側へ移った) に該当します"
+    )
+
+    # 2. D-18 の検査が**誤った診断メッセージ**で落ちる (案A の本当の害)。
+    with pytest.raises(ValueError) as excinfo:
+        conditional_lyapunov(
+            states,
+            ctx=DiagnosticContext(
+                washout=100, propagator=esn_propagator(clone, drive)
+            ),
+        )
+    message = str(excinfo.value)
+    assert "参照軌道と別の入力で伝播している疑い" in message, (
+        "案A の失敗が D-18 の誤診として出ることを固定できていません: " + message
+    )
+
+
+# --- D-47: 比較軌道の経路は state_noise>0 を受理しない -----------------------
+
+
+def test_simulate_condition_rejects_state_noise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``simulate_condition(state_noise=...)`` は 0 以外を拒否する (D-47。主)。
+
+    ``ESN.run`` が**1回も呼ばれない**ことまで測る。引数で受けて拒否する形に
+    してあるので、guard は monkeypatch 依存の間接的なものにならない
+    (ADR 0001 §3.3-1: 次の実装者の手が触れる場所に停止標識を置く)。
+    """
+    calls: list[object] = []
+    original_run = ESN.run
+
+    def recording_run(
+        self: ESN,
+        u: FloatArray,
+        x0: FloatArray | None = None,
+        rng: np.random.Generator | None = None,
+    ) -> FloatArray:
+        calls.append(rng)
+        return original_run(self, u, x0=x0, rng=rng)
+
+    monkeypatch.setattr(ESN, "run", recording_run)
+
+    with pytest.raises(ValueError) as excinfo:
+        simulate_condition(
+            small_config(),
+            rho=0.9,
+            leak_rate=0.3,
+            sigma_u=0.5,
+            replicate=0,
+            state_noise=NOISE_SIGMA,
+        )
+
+    message = str(excinfo.value)
+    assert not calls, "拒否する前に ESN.run が呼ばれています (D-47)"
+    assert "D-47" in message
+    assert "評価順" in message  # なぜ (2つめ)
+    assert "4本目" in message  # なぜ (1つめ)
+    assert "5本目の乱数ストリームを新設" in message  # やってはいけない直し方
+    assert "simulate_reference_trajectory" in message  # 正しい経路
+
+
+def test_simulate_condition_rejects_a_noisy_esn_from_any_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """引数を通らない経路でノイズが入っても比較軌道ループ前に落ちる (D-47。副)。
+
+    **二重化が空虚でないことの証明**: 入口の引数検査だけを消す変異はこのテストで、
+    ESN 側の検査だけを消す変異は ``test_simulate_condition_rejects_state_noise``
+    で落ちる。どちらか片方しか無いと、片方を消しても1件も落ちない。
+
+    ここでは ``build_esn_config`` を差し替えて「設定にノイズのフィールドが
+    生えた」状況を作る —— 04 の 4-C が ``state_noise`` を掃引軸にするので、
+    この経路は仮想的な話ではない。
+    """
+    original = esp_module.build_esn_config
+
+    def noisy_build(
+        reservoir: ReservoirSweepConfig,
+        rho: float,
+        leak_rate: float,
+        *,
+        state_noise: float = 0.0,
+    ) -> ESNConfig:
+        return original(reservoir, rho, leak_rate, state_noise=NOISE_SIGMA)
+
+    monkeypatch.setattr(esp_module, "build_esn_config", noisy_build)
+
+    with pytest.raises(ValueError) as excinfo:
+        simulate_condition(
+            small_config(), rho=0.9, leak_rate=0.3, sigma_u=0.5, replicate=0
+        )
+
+    message = str(excinfo.value)
+    assert "D-47" in message
+    assert "比較軌道" in message
+    assert "5本目の乱数ストリームを新設" in message
+    assert "simulate_reference_trajectory" in message
+
+
+def test_simulate_condition_defaults_to_zero_state_noise() -> None:
+    """既定値のままなら 02 の経路は1つも書き換わらない (D-47)。
+
+    ``experiment/threshold.py`` を含む既存の呼び出しは ``state_noise`` を
+    渡さない。既定が 0 でなくなると 02・03 の成果物が黙って変わる。
+    """
+    signature = inspect.signature(simulate_condition)
+    parameter = signature.parameters["state_noise"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default == 0.0
+    trajectories = simulate_condition(
+        small_config(), rho=0.9, leak_rate=0.3, sigma_u=0.5, replicate=0
+    )
+    assert trajectories.esn.config.state_noise == 0.0
