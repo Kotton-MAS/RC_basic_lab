@@ -36,9 +36,12 @@ from dataclasses import dataclass
 
 from rc_basics_lab.config import Capacity03Config
 
-# §10-1 の罠: ``from rc_basics_lab.diagnostics import ipc`` は
-# ``diagnostics/__init__.py`` が再エクスポートしている**関数** ipc を返す
-# (モジュールではない)。定数はモジュールのフルパスから直接引く。
+# 定数はモジュールのフルパスから直接引く (D-52 の「正規の入手経路」)。
+# 04a T2 以前は ``from rc_basics_lab.diagnostics import ipc`` が
+# ``diagnostics/__init__.py`` の再エクスポートした**関数** ipc を返しており、
+# フルパスで書くのはその罠を避けるためでもあった (仕様 §10-1)。D-52 で
+# 再エクスポートを外したので ``diagnostics.ipc`` はモジュールを指すが、
+# 関数・定数の入手経路はフルパス1本のままにする。
 from rc_basics_lab.diagnostics.ipc import THRESHOLD_CHI2 as IPC_THRESHOLD_CHI2
 from rc_basics_lab.diagnostics.ipc import THRESHOLD_NONE as IPC_THRESHOLD_NONE
 from rc_basics_lab.diagnostics.ipc import THRESHOLD_SURROGATE as IPC_THRESHOLD_SURROGATE

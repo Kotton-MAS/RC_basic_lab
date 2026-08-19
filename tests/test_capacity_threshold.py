@@ -137,9 +137,11 @@ def test_threshold_modes_cover_every_mode_the_diagnostics_accept() -> None:
     診断側にモードが増えたのに比較表が古いままだと、「既定を根拠つきで選ぶ」
     (受け入れ条件3) の根拠が選択肢の一部しか見ていないものになる。
 
-    モジュールは ``importlib.import_module`` で引く —— ``from
-    rc_basics_lab.diagnostics import ipc`` は ``diagnostics/__init__.py`` が
-    再エクスポートしている**関数** ``ipc`` を返す (仕様 §10-1 の罠)。
+    モジュールは ``importlib.import_module`` で引く。04a T2 以前は ``from
+    rc_basics_lab.diagnostics import ipc`` が ``diagnostics/__init__.py`` の
+    再エクスポートした**関数** ``ipc`` を返していた (仕様 §10-1 の罠)。
+    D-52 で再エクスポートを外したので今はモジュールを指すが、
+    ``import_module`` で引く形は「モジュールが欲しい」ことが読めるので残す。
     """
     mc_module = importlib.import_module("rc_basics_lab.diagnostics.memory_capacity")
     ipc_module = importlib.import_module("rc_basics_lab.diagnostics.ipc")

@@ -13,11 +13,16 @@
   常に ``rng`` を渡す。``state_noise=0`` では乱数を1個も引かないので、02 の
   成果物はバイト単位で不変である —— それを実測で固定する。
 - **D-37**: サロゲートの ``ctx.seed`` は1個を全条件で共有する (共通乱数法)。
-- **§10-1**: ``import rc_basics_lab.diagnostics.ipc as m`` は**モジュールでは
-  なく関数**を返す (``diagnostics/__init__.py`` が関数 ``ipc`` を再エクスポート
-  しているため)。3a のレビュー中に実際に踏み、変異試験が偽の緑になった。
-  monkeypatch は**呼び出し側のモジュール属性**
-  (``rc_basics_lab.experiment.capacity.ipc``) を差し替えて行う。
+- **§10-1 / D-52**: 04a T2 以前は
+  ``import rc_basics_lab.diagnostics.ipc as m`` が**モジュールではなく関数**を
+  返していた (``diagnostics/__init__.py`` が関数 ``ipc`` を再エクスポートして
+  いたため)。3a のレビュー中に実際に踏み、変異試験が偽の緑になった。D-52 で
+  再エクスポートを外したので ``m`` はモジュールになった
+  (``test_diagnostics_ipc_module_resolves_to_a_module``)。
+  それでも monkeypatch は**呼び出し側のモジュール属性**
+  (``rc_basics_lab.experiment.capacity.ipc``) を差し替えて行う —— 配線層が
+  import 時に束縛した参照は、定義元を差し替えても変わらないため
+  (こちらは名前の隠蔽とは独立の理由である)。
 """
 
 from __future__ import annotations
@@ -173,8 +178,9 @@ def _install_spies(
     """MC / IPC を**呼び出し側のモジュール属性**でスパイに差し替える (§10-1)。
 
     ``rc_basics_lab.diagnostics.ipc`` を差し替えても配線層が既に束縛した参照は
-    変わらないうえ、その名前は**関数**を指す (§10-1 の罠)。差し替える先は
-    常に呼び出し側 (``rc_basics_lab.experiment.capacity``) の属性である。
+    変わらない。差し替える先は常に呼び出し側
+    (``rc_basics_lab.experiment.capacity``) の属性である。
+    (D-52 以前はさらに、その名前が**関数**を指すという第2の罠もあった。)
     """
     mc_spy: _StateSpy[MemoryCapacityConfig] = _StateSpy(memory_capacity)
     ipc_spy: _StateSpy[IpcConfig] = _StateSpy(ipc)
@@ -183,30 +189,45 @@ def _install_spies(
     return mc_spy, ipc_spy
 
 
-def test_diagnostics_ipc_module_and_function_are_both_reachable() -> None:
-    """``rc_basics_lab.diagnostics.ipc`` はモジュールでも関数でもある (§10-1)。
+def test_diagnostics_ipc_module_resolves_to_a_module(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``rc_basics_lab.diagnostics.ipc`` は**モジュール**である (D-52)。
 
-    ``diagnostics/__init__.py`` が関数 ``ipc`` を再エクスポートしているため、
-    ``import rc_basics_lab.diagnostics.ipc as m`` で束縛されるのは**関数**で
-    あり、``m.ipc`` を monkeypatch しても何も差し替わらない (3a のレビューで
-    実際に踏み、変異試験が偽の緑になった)。この隠蔽は公開 API を壊さないため
-    3b では直さない (仕様 §3.3-7) ので、代わりに両方が到達可能であることを
-    ここで固定する。壊れたら、この罠を前提に書かれた monkeypatch がすべて
-    無言で効かなくなる。
+    04a T2 以前は ``diagnostics/__init__.py`` が関数 ``ipc`` を再エクスポート
+    しており、``import rc_basics_lab.diagnostics.ipc as m`` で束縛されるのは
+    **関数**だった。``monkeypatch.setattr(m, "ipc", ...)`` は関数オブジェクトへの
+    属性設定として**成功**するので、何も差し替わらないまま変異試験が偽の緑に
+    なる (3a のレビューで実際に踏んだ)。
+
+    このテストは**その隠蔽を固定していた旧テスト**
+    (``test_diagnostics_ipc_module_and_function_are_both_reachable``) の
+    置き換えである。削除ではなく反転にしてあるのは、「モジュールと関数の
+    両方に到達できる」という当時の記述が、D-52 の下では
+    「パッケージ属性はモジュール / 関数はフルパス」に変わったことを
+    差分として残すため。
+
+    monkeypatch が**実際に効く**ことまで測る —— 属性の型だけを見ると、
+    ``getattr`` が別の経路で関数を返す実装に戻したときに気づけない。
     """
     module = importlib.import_module("rc_basics_lab.diagnostics.ipc")
     assert isinstance(module, ModuleType)
     assert module.__name__ == "rc_basics_lab.diagnostics.ipc"
     assert sys.modules["rc_basics_lab.diagnostics.ipc"] is module
 
-    # 同じドット付き名前が、パッケージの属性としては**関数**を指す。
-    # ``import rc_basics_lab.diagnostics.ipc as m`` で束縛されるのはこちら。
-    assert callable(diagnostics_package.ipc)
-    assert not isinstance(diagnostics_package.ipc, ModuleType)
-    assert diagnostics_package.ipc is ipc
+    # パッケージ属性も**同じモジュール**を指す (関数で隠されていない)。
+    assert isinstance(diagnostics_package.ipc, ModuleType)
+    assert diagnostics_package.ipc is module
+    # 関数の正規の入手経路はフルパス1本 (D-52 の「残す」側)。
     # module は ModuleType 型なので mypy が module.ipc を解決できず、
     # getattr が要る (module.ipc だと attr-defined で型検査が落ちる)。
     assert getattr(module, "ipc") is ipc  # noqa: B009
+
+    # monkeypatch がモジュール属性として実際に効く (旧状態では効かなかった)。
+    sentinel = object()
+    monkeypatch.setattr(module, "ipc", sentinel)
+    assert getattr(module, "ipc") is sentinel  # noqa: B009
+    assert getattr(diagnostics_package.ipc, "ipc") is sentinel  # noqa: B009
 
 
 def test_states_are_read_only_before_capacity_problem(
