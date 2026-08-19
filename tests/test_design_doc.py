@@ -315,6 +315,7 @@ _RPAREN = "\uff09"
 _DEFAULT_MARK = f"{_LPAREN}\u65e2\u5b9a{_RPAREN}"
 """§11.2 の表で既定モードの行に付ける印 (全角括弧つきの「既定」)。"""
 _BACKTICKED = re.compile(r"^`(?P<name>[a-z0-9_]+)`$")
+_FIRST_BACKTICKED = re.compile(r"`(?P<name>[a-z0-9_]+)`")
 
 
 def _capacity_meta() -> dict[str, object]:
@@ -325,6 +326,29 @@ def _capacity_meta() -> dict[str, object]:
 def _capacity_csv_rows() -> list[dict[str, str]]:
     with CAPACITY_CSV.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def _entries(mapping: dict[str, object], key: str) -> list[dict[str, object]]:
+    """JSON の配列を ``list[dict[str, object]]`` に絞り込む (mypy strict 対応)。"""
+    value = mapping[key]
+    assert isinstance(value, list), (key, value)
+    entries: list[dict[str, object]] = []
+    for item in value:
+        assert isinstance(item, dict), item
+        entries.append(item)
+    return entries
+
+
+def _mapping(mapping: dict[str, object], key: str) -> dict[str, object]:
+    value = mapping[key]
+    assert isinstance(value, dict), (key, value)
+    return value
+
+
+def _number(mapping: dict[str, object], key: str) -> float:
+    value = mapping[key]
+    assert isinstance(value, int | float) and not isinstance(value, bool), (key, value)
+    return float(value)
 
 
 def _table_after(pattern: re.Pattern[str]) -> tuple[list[str], list[list[str]]]:
@@ -472,42 +496,40 @@ def test_threshold_degree_table_matches_the_profile_csv() -> None:
 def test_threshold_section_claims_hold_in_the_data() -> None:
     """§11.2 の散文が主張する大小関係が一次資料でも成り立つ。
 
-    表には有効数字が載っているが、散文は「1% と違わず」「約1.3倍」のように
+    表には有効数字が載っているが、散文は「1% と違わず」「2% に満たない」
+    「約1.3倍」のように
     幅で書いてある。**その幅が実測と食い違ったら落とす** (数値を書かない代わりに
     主張が緩くなる、を防ぐ)。
     """
-    comparison = _capacity_meta()["threshold_comparison"]
-    assert isinstance(comparison, dict)
-    ipc = {
-        str(entry["threshold_mode"]): entry
-        for entry in comparison["ipc"]  # type: ignore[union-attr]
-        if isinstance(entry, dict)
-    }
+    comparison = _mapping(_capacity_meta(), "threshold_comparison")
+    ipc = {str(entry["threshold_mode"]): entry for entry in _entries(comparison, "ipc")}
     mc = {
         str(entry["threshold_mode"]): entry
-        for entry in comparison["memory_capacity"]  # type: ignore[union-attr]
-        if isinstance(entry, dict)
+        for entry in _entries(comparison, "memory_capacity")
     }
-    none_ipc = float(ipc["none"]["ipc_total"])
-    assert abs(float(ipc["surrogate"]["ipc_total"]) - none_ipc) / none_ipc < 0.01
-    none_mc = float(mc["none"]["mc_total"])
-    assert abs(float(mc["surrogate"]["mc_total"]) - none_mc) / none_mc < 0.01
+    none_ipc = _number(ipc["none"], "ipc_total")
+    assert abs(_number(ipc["surrogate"], "ipc_total") - none_ipc) / none_ipc < 0.01
+    none_mc = _number(mc["none"], "mc_total")
+    assert abs(_number(mc["surrogate"], "mc_total") - none_mc) / none_mc < 0.02
     # 「`surrogate` との差は 0.1% にも満たない」(chi2 の採否)
-    surrogate_ipc = float(ipc["surrogate"]["ipc_total"])
-    assert abs(float(ipc["chi2"]["ipc_total"]) - surrogate_ipc) / surrogate_ipc < 0.001
+    surrogate_ipc = _number(ipc["surrogate"], "ipc_total")
+    assert (
+        abs(_number(ipc["chi2"], "ipc_total") - surrogate_ipc) / surrogate_ipc < 0.001
+    )
     # 「`none` では目標が1本も落ちない」
+    condition = _mapping(comparison, "condition")
     row = next(
         record
         for record in _capacity_csv_rows()
-        if record["experiment"] == comparison["condition"]["experiment"]  # type: ignore[index]
-        and float(record["rho"]) == comparison["condition"]["rho"]  # type: ignore[index]
-        and float(record["leak_rate"]) == comparison["condition"]["leak_rate"]  # type: ignore[index]
-        and int(record["replicate"]) == comparison["condition"]["replicate"]  # type: ignore[index]
+        if record["experiment"] == condition["experiment"]
+        and float(record["rho"]) == condition["rho"]
+        and float(record["leak_rate"]) == condition["leak_rate"]
+        and int(record["replicate"]) == condition["replicate"]
     )
-    assert int(ipc["none"]["n_targets_kept"]) == int(row["n_targets"])
+    assert int(_number(ipc["none"], "n_targets_kept")) == int(row["n_targets"])
     # 「`mc_effective_delay` は `surrogate` の約1.3倍に伸びる」
-    ratio = float(mc["none"]["mc_effective_delay"]) / float(
-        mc["surrogate"]["mc_effective_delay"]
+    ratio = _number(mc["none"], "mc_effective_delay") / _number(
+        mc["surrogate"], "mc_effective_delay"
     )
     assert round(ratio, 1) == 1.3, ratio
 
@@ -614,7 +636,7 @@ def test_narma10_capacity_table_matches_the_capacity_csv() -> None:
     _, table = _table_after(re.compile(r"^\|\s*量\s*\|\s*値\s*\|"))
     assert table, "§11.5 に 3-C の容量表が見つかりません"
     for cells in table:
-        match = _BACKTICKED.match(cells[0].split(_LPAREN)[0].strip())
+        match = _FIRST_BACKTICKED.search(cells[0])
         assert match is not None, cells
         _assert_cell_matches(cells[1], float(row[match["name"]]), match["name"])
 
@@ -649,14 +671,14 @@ def test_wall_time_table_matches_the_meta_json() -> None:
         elif "しきい値比較" in cells[0]:
             _assert_cell_matches(
                 cells[5].strip("*"),
-                float(comparison["wall_time_s"]),  # type: ignore[arg-type]
+                _number(comparison, "wall_time_s"),
                 "threshold_comparison.wall_time_s",
             )
             seen += 1
         elif "合計" in cells[0]:
             assert int(cells[1].strip("*")) == meta["n_rows"], cells
             _assert_cell_matches(
-                cells[5].strip("*"), float(meta["wall_time_s"]), "meta.wall_time_s"
+                cells[5].strip("*"), _number(meta, "wall_time_s"), "meta.wall_time_s"
             )
             seen += 1
     assert seen == len(labels) + 2, table
