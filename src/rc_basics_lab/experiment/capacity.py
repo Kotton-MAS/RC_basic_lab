@@ -57,6 +57,7 @@ from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.ipc import ipc
 from rc_basics_lab.diagnostics.memory_capacity import memory_capacity
 from rc_basics_lab.experiment.esp import (
+    ReferenceTrajectory,
     simulate_reference_trajectory,
 )
 from rc_basics_lab.types import FloatArray

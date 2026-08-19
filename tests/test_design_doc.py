@@ -603,7 +603,7 @@ def _capacity_rows_for(experiment: str) -> list[dict[str, str]]:
 
 
 def test_mc_sweep_delay_table_matches_the_capacity_csv() -> None:
-    """§11.5 の3-A `mc_effective_delay` 表 (リーク率 x rho) が ``capacity.csv`` と一致する。
+    """§11.5 の3-A `mc_effective_delay` 表 (リーク率 x rho) が ``capacity.csv`` と一致.
 
     M3 (3b-2 reviewer-docs, F-3b2-1-003): §11.5 の3表 (3-A/3-B/3-B') は数値
     自体は正確だが、成果物を再生成しても表が古いままだと赤くならない
