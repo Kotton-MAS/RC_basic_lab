@@ -18,11 +18,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.experiment.state_space import (
@@ -32,7 +29,9 @@ from rc_basics_lab.experiment.state_space import (
     StateSpaceReport,
 )
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import new_figure as _new_figure
+from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.types import FloatArray
 
 REFERENCE_NRMSE = 1.0
@@ -81,21 +80,6 @@ def _lookup(table: dict[str, tuple[str, str]], key: str, style: StyleContext) ->
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
     """出現順を保った重複除去 (図の並び順を入力の順に従わせる)。"""
     return tuple(dict.fromkeys(values))
-
-
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (軸ラベルとタイトルの重なりを防ぐ)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
 
 
 def _compute_errorbars(
@@ -224,16 +208,12 @@ def plot_comparison(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     tasks = _unique(row.task for row in rows)
     methods = _unique(row.method for row in rows)
     stats = aggregate_nrmse(rows)
 
-    # matplotlib の rc_context 型スタブは rcParams キーの閉じた Literal 集合を
-    # 要求するが、rc_params_for は動的に決まる部分集合の dict[str, object] を
-    # 返す。キー自体は既定の rcParams から取った有効なものなので実行時は安全。
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(4.2 * len(tasks), 4.0)
         axes = figure.subplots(1, len(tasks), squeeze=False)
         positions = np.arange(len(methods), dtype=np.float64)
@@ -348,7 +328,7 @@ def plot_state_space(
     """
     if not reports:
         raise ValueError("reports が空です")
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(12.0, 4.0 * len(reports))
         axes = figure.subplots(len(reports), 3, squeeze=False)
         for index, report in enumerate(reports):
