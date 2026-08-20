@@ -59,6 +59,7 @@ from rc_basics_lab.experiment.freerun import (
     task_length,
 )
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
+from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.chaotic import sampling_interval
 from rc_basics_lab.types import FloatArray
 
@@ -507,10 +508,18 @@ def run_stability_experiment(
     ctx = capacity_context(config)
     dt = sampling_interval(config.lorenz)
     lyapunov_time = lyapunov.scalars["lyapunov_time"]
+    # 真の軌道は replicate だけで決まるので、全条件で1個の replicate ->
+    # TaskData キャッシュを共有する (仕様 §5 禁止する構造3)。
+    trajectory_cache: dict[int, TaskData] = {}
 
     outcomes = tuple(
         evaluate_stability_condition(
-            config, condition, dt=dt, lyapunov_time=lyapunov_time, ctx=ctx
+            config,
+            condition,
+            dt=dt,
+            lyapunov_time=lyapunov_time,
+            ctx=ctx,
+            trajectory_cache=trajectory_cache,
         )
         for condition in conditions
     )
