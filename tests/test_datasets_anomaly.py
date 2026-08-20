@@ -13,6 +13,7 @@ import ast
 import hashlib
 import os
 import zipfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import IO
 
@@ -202,65 +203,320 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     assert list(tmp_path.glob("*.part")) == []
 
 
-def test_os_replace_is_confined_to_the_staged_write_commit_method() -> None:
-    """``os.replace`` は ``_StagedSink.commit`` からしか呼ばれない (全称)。
+# --- guard: ファイルへ書く経路の在り処 (F-3-004 / F-3-013 / F-3-019) -------
+#
+# round3 で reviewer-architecture / reviewer-security / reviewer-test の
+# 3者から独立に指摘された穴: 旧2テストは「``os.replace`` の在り処」を
+# ``ast.FunctionDef`` (async 不可) だけを名前一致で除外して測っていたため、
+# (a) staging を使わず ``target.open("wb")`` で直接書く関数、
+# (b) モジュールレベルの ``os.replace``、
+# (c) ``from os import replace`` / ``import os as X`` 経由、
+# (d) ``_StagedSink`` 以外のクラスの ``commit`` という名のメソッド、
+# (e) ``async def`` 内の ``os.replace``
+# のいずれもすり抜けた。ここでは「``os.replace`` の在り処」ではなく
+# 「fetch.py 内でファイルへ書く経路の在り処」を全称で固定し、除外は名前一致
+# ではなく ``_StagedSink`` クラス直下への所属で行う。
 
-    旧テスト (``download``/``_extract_member`` という関数名を列挙するだけの
-    存在確認) は、T3〜T5 で datasets/ に3本目の書き込み経路が増えても素通り
-    することが reviewer-architecture / reviewer-test の双方から指摘された。
-    関数名の列挙ではなく fetch.py の**全関数**を対象にすることで、新しい
-    経路が ``_staged_write`` を経由しない限り機械的に落ちる。
+
+_WRITE_CAPABLE_MODULE_ATTRS = {
+    ("os", "open"),
+    ("os", "write"),
+    ("os", "replace"),
+    ("os", "rename"),
+    ("shutil", "move"),
+}
+"""``<module>.<attr>(...)`` の形でファイルへ書ける危険な組。"""
+
+_WRITE_CAPABLE_BARE_ATTRS = {"write_bytes"}
+"""受け手を問わず危険な属性呼び出し (``anything.write_bytes(...)``)。"""
+
+_ALLOWED_WRITE_FUNCTION_NAMES = {"_staged_write", "_open_unique_temp_file"}
+"""``_StagedSink`` のメソッド以外で、ファイル書き込み系呼び出しを許す関数名。
+
+``_staged_write`` 自身 (``dir_fd`` の取得) と、その内部からしか呼ばれない
+``_open_unique_temp_file`` (``os.open`` での一時ファイル作成) の2つだけ。
+"""
+
+
+def _is_write_mode_arg(value: ast.expr | None) -> bool:
+    """``"wb"`` のような書き込み系モード文字列か (``"rb"`` は False)。"""
+    if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+        return False
+    return bool(set(value.value) & {"w", "a", "x", "+"})
+
+
+def _module_import_aliases(tree: ast.Module) -> dict[str, str]:
+    """``import os as o`` / ``import shutil as s`` の局所名 -> 実モジュール名。"""
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in {"os", "shutil"}:
+                    aliases[alias.asname or alias.name] = alias.name
+    return aliases
+
+
+def _from_import_targets(tree: ast.Module) -> dict[str, tuple[str, str]]:
+    """``from os import replace as r`` の局所名 -> (モジュール名, 元の属性名)。"""
+    targets: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in {"os", "shutil"}:
+            for alias in node.names:
+                targets[alias.asname or alias.name] = (node.module, alias.name)
+    return targets
+
+
+def _write_capable_calls(
+    node: ast.AST,
+    module_aliases: dict[str, str],
+    from_targets: dict[str, tuple[str, str]],
+) -> list[str]:
+    """``node`` 自身の中 (ネストした関数定義の内部も含む) にある、ファイルへ
+    書き込める可能性のある呼び出しの説明を返す (空なら安全)。
+    """
+    found: list[str] = []
+    for call in ast.walk(node):
+        if not isinstance(call, ast.Call):
+            continue
+        func = call.func
+        if isinstance(func, ast.Attribute):
+            if func.attr in _WRITE_CAPABLE_BARE_ATTRS:
+                found.append(f".{func.attr}(")
+                continue
+            if func.attr == "open":
+                mode_arg = call.args[0] if call.args else None
+                for keyword in call.keywords:
+                    if keyword.arg == "mode":
+                        mode_arg = keyword.value
+                if _is_write_mode_arg(mode_arg):
+                    found.append(".open(書き込みモード)")
+                continue
+            if isinstance(func.value, ast.Name):
+                receiver = module_aliases.get(func.value.id, func.value.id)
+                if (receiver, func.attr) in _WRITE_CAPABLE_MODULE_ATTRS:
+                    found.append(f"{receiver}.{func.attr}(")
+        elif isinstance(func, ast.Name):
+            target = from_targets.get(func.id)
+            if target is not None and target in _WRITE_CAPABLE_MODULE_ATTRS:
+                found.append(f"{target[0]}.{target[1]}( (direct import)")
+    return found
+
+
+def _iter_functions_with_allowance(
+    tree: ast.Module,
+) -> Iterator[tuple[str, ast.AST, bool]]:
+    """(関数名, ノード, 除外してよいか) を全 ``def``/``async def`` について返す。
+
+    除外は名前一致ではなく **``_StagedSink`` クラス直下への所属**、または
+    ``_ALLOWED_WRITE_FUNCTION_NAMES`` にある専用ヘルパー関数かどうかで決める
+    (F-3-013/F-3-019: 名前一致による除外は同名の別関数・別クラスで回避できる)。
+    """
+
+    def walk(
+        node: ast.AST, in_staged_sink: bool
+    ) -> Iterator[tuple[str, ast.AST, bool]]:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                nested = in_staged_sink or child.name == "_StagedSink"
+                yield from walk(child, nested)
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                allowed = in_staged_sink or child.name in _ALLOWED_WRITE_FUNCTION_NAMES
+                yield (child.name, child, allowed)
+                yield from walk(child, in_staged_sink)
+            else:
+                yield from walk(child, in_staged_sink)
+
+    yield from walk(tree, False)
+
+
+def _module_level_statements(tree: ast.Module) -> list[ast.stmt]:
+    """どの関数・クラスにも属さないモジュールレベルの文 (import 文を除く)。"""
+    return [
+        stmt
+        for stmt in tree.body
+        if not isinstance(
+            stmt,
+            (
+                ast.FunctionDef,
+                ast.AsyncFunctionDef,
+                ast.ClassDef,
+                ast.Import,
+                ast.ImportFrom,
+            ),
+        )
+    ]
+
+
+def _offending_write_paths(tree: ast.Module) -> list[str]:
+    """``tree`` 内で、許可されていない場所にあるファイル書き込み系呼び出しの
+    在り処 (関数名。モジュールレベルは ``"<module>"``) を返す。
+    """
+    module_aliases = _module_import_aliases(tree)
+    from_targets = _from_import_targets(tree)
+    offenders: list[str] = []
+    for stmt in _module_level_statements(tree):
+        if _write_capable_calls(stmt, module_aliases, from_targets):
+            offenders.append("<module>")
+    for name, node, allowed in _iter_functions_with_allowance(tree):
+        if allowed:
+            continue
+        if _write_capable_calls(node, module_aliases, from_targets):
+            offenders.append(name)
+    return offenders
+
+
+def test_every_write_capable_path_in_fetch_goes_through_staged_write() -> None:
+    """fetch.py 内でファイルへ書く経路の在り処を全称で固定する。
+
+    (reviewer-architecture F-3-004 / reviewer-security F-3-013 / reviewer-test
+    F-3-019 指摘) 「``os.replace`` の在り処」ではなく「ファイルへ書く経路の
+    在り処」を測ることで、``target.open("wb")`` のような staging を経由しない
+    直接書き込み・モジュールレベルの呼び出し・``from os import replace`` /
+    ``import os as X`` 経由・``async def`` 内・``_StagedSink`` 以外のクラスの
+    同名メソッド、のいずれが増えても機械的に落ちる
+    (``test_the_write_path_guard_detects_known_bypasses`` がこの主張自体を
+    固定する)。
     """
     tree = ast.parse(
         Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
     )
-    offenders = [
-        node.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name != "commit"
-        for call in ast.walk(node)
-        if isinstance(call, ast.Call)
-        and isinstance(call.func, ast.Attribute)
-        and call.func.attr == "replace"
-        and isinstance(call.func.value, ast.Name)
-        and call.func.value.id == "os"
-    ]
+    offenders = _offending_write_paths(tree)
     assert offenders == [], (
-        f"os.replace が _StagedSink.commit の外で呼ばれています: {offenders}"
+        "_StagedSink のメソッド (write/commit) と _staged_write/"
+        f"_open_unique_temp_file 以外でファイルへ書く経路があります: {offenders}"
     )
 
 
-def test_every_function_that_stages_a_write_also_commits_it() -> None:
-    """``_staged_write`` を呼ぶ関数は必ず ``.commit(`` も呼ぶ (全称)。
+_WRITE_PATH_BYPASS_SOURCES = {
+    "direct_open_write_mode": (
+        "def sneaky(path):\n"
+        '    with path.open("wb") as handle:\n'
+        '        handle.write(b"data")\n'
+    ),
+    "write_bytes": ('def sneaky(path):\n    path.write_bytes(b"data")\n'),
+    "module_level_replace": ('import os\nos.replace("a", "b")\n'),
+    "aliased_import_module": (
+        "import os as o\ndef sneaky():\n    o.replace('a', 'b')\n"
+    ),
+    "from_import_direct": (
+        "from os import replace\ndef sneaky():\n    replace('a', 'b')\n"
+    ),
+    "method_named_commit_outside_staged_sink": (
+        "class NotStagedSink:\n    def commit(self):\n        os.replace('a', 'b')\n"
+    ),
+    "async_function": ("async def sneaky():\n    os.replace('a', 'b')\n"),
+    "shutil_move": ("def sneaky():\n    shutil.move('a', 'b')\n"),
+    "os_rename": ("def sneaky():\n    os.rename('a', 'b')\n"),
+}
+"""round3 で reviewer が実測した回避クラス (M1/M3/M4/M5/M8 系) をソース文字列
+として与え、``_offending_write_paths`` がそれぞれを実際に検出できることを
+固定する (guard の guard)。"""
 
-    片方だけ直して他方を「一貫性のため」据え置く事故 (reviewer-security 指摘)
-    を、関数名を列挙する閉じたテストではなく検出する。
+
+@pytest.mark.parametrize("label", sorted(_WRITE_PATH_BYPASS_SOURCES))
+def test_the_write_path_guard_detects_known_bypasses(label: str) -> None:
+    """この guard 自体が回避形を検出できることを固定する (guard の guard)。
+
+    guard の述語をそのまま合成ソースへ適用して検出できることを確認しない
+    限り、「全称」を名乗る docstring は主張だけで裏付けが無い
+    (F-3-013 の指摘そのもの)。
+    """
+    tree = ast.parse(_WRITE_PATH_BYPASS_SOURCES[label])
+    offenders = _offending_write_paths(tree)
+    assert offenders != [], f"{label} の回避形が検出されませんでした"
+
+
+def test_every_function_that_stages_a_write_also_commits_it() -> None:
+    """``_staged_write`` を呼ぶ関数は、その ``with ... as X`` の ``X`` に対して
+    必ず ``.commit(`` を呼ぶ (全称)。
+
+    (reviewer-test F-3-019 指摘) 旧版は「本文中のどこかに ``.commit(`` が
+    1つでもあれば真」という判定だったため、``_staged_write`` の結果とは無関係
+    な decoy オブジェクトへの ``.commit()`` 呼び出しを1つ足すだけですり抜け
+    られた。``with _staged_write(...) as X:`` の ``X`` と、``.commit(`` の
+    呼び出し元 (``Call.func.value``) が同一識別子であることまで確認する。
     """
     tree = ast.parse(
         Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
     )
     offenders = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        calls_staged_write = any(
-            isinstance(call, ast.Call)
-            and isinstance(call.func, ast.Name)
-            and call.func.id == "_staged_write"
-            for call in ast.walk(node)
-        )
-        if not calls_staged_write:
+        staged_names: set[str] = set()
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.With):
+                continue
+            for item in sub.items:
+                call = item.context_expr
+                if (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Name)
+                    and call.func.id == "_staged_write"
+                    and isinstance(item.optional_vars, ast.Name)
+                ):
+                    staged_names.add(item.optional_vars.id)
+        if not staged_names:
             continue
-        commits = any(
+        committed = any(
             isinstance(call, ast.Call)
             and isinstance(call.func, ast.Attribute)
             and call.func.attr == "commit"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id in staged_names
             for call in ast.walk(node)
         )
-        if not commits:
+        if not committed:
             offenders.append(node.name)
     assert offenders == [], (
-        f"_staged_write を呼ぶが commit() を呼ばない関数: {offenders}"
+        f"_staged_write を呼ぶが、その sink に対して commit() を呼ばない関数: {offenders}"
+    )
+
+
+def test_decoy_commit_call_does_not_satisfy_the_staged_write_guard() -> None:
+    """``_staged_write`` の sink とは無関係な ``.commit()`` を decoy として
+    持つ関数は、``test_every_function_that_stages_a_write_also_commits_it``
+    と同じ述語で検出されることを固定する (F-3-019 の実測シナリオそのもの)。
+    """
+    source = (
+        "def sneaky(target, other):\n"
+        "    with _staged_write(target) as sink:\n"
+        "        sink.write(b'data')\n"
+        "        other.commit()\n"  # decoy: sink ではなく other への呼び出し
+        "        os.replace(sink.partial, target)\n"
+    )
+    tree = ast.parse(source)
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        staged_names: set[str] = set()
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.With):
+                continue
+            for item in sub.items:
+                call = item.context_expr
+                if (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Name)
+                    and call.func.id == "_staged_write"
+                    and isinstance(item.optional_vars, ast.Name)
+                ):
+                    staged_names.add(item.optional_vars.id)
+        if not staged_names:
+            continue
+        committed = any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "commit"
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id in staged_names
+            for call in ast.walk(node)
+        )
+        if not committed:
+            offenders.append(node.name)
+    assert offenders == ["sneaky"], (
+        f"decoy の .commit() 呼び出しで真の commit 無しがすり抜けています: {offenders}"
     )
 
 
