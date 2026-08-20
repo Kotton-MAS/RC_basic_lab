@@ -503,3 +503,38 @@ def test_synthetic_source_needs_no_config_from_the_datasets_layer() -> None:
     """課題層が ``datasets`` を知らない (依存の向きは ``datasets -> tasks``、D-59)。"""
     source = MODULE_PATH.read_text(encoding="utf-8")
     assert "rc_basics_lab.datasets" not in source
+
+
+def test_find_cut_never_recomputes_np_std_internally() -> None:
+    """``_find_cut`` の本体に ``np.std`` の呼び出しが無いことを固定する (D-65 後半)。
+
+    D-65 の rule は2つの約束を束ねている: (1) 確保軸の上限
+    (``_MAX_RAW_SAMPLES`` / ``_MAX_FIND_CUT_CELLS``、既存 guard がこちらを
+    測る)、(2) ``value_scale``/``slope_scale`` は ``generate_synthetic_anomalies``
+    側で1回だけ計算し ``_find_cut`` 本体では再計算しないこと。既存の
+    guard_test (``test_synthetic_source_rejects_a_segment_length_that_would_
+    allocate_too_much``) は前半しか測っておらず、``_find_cut`` を『渡された
+    スケールを無視して本体で ``np.std`` を再計算する』版に差し替えても
+    (reviewer-architecture が実測済み) 全テストが green のままだった。
+    ``_find_cut`` の関数本体を AST で走査し ``np.std`` 呼び出しが無いことを
+    直接固定することで、この退行クラスを機械的に検出する。
+    """
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"), filename=str(MODULE_PATH))
+    (find_cut,) = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_find_cut"
+    ]
+    std_calls = [
+        call
+        for call in ast.walk(find_cut)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "std"
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "np"
+    ]
+    assert std_calls == [], (
+        "_find_cut の本体が np.std を呼んでいます (value_scale/slope_scale の "
+        "再計算が紛れ込んでいる可能性があります。D-65 後半)。"
+    )
