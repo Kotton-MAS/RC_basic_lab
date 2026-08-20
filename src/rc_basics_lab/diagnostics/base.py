@@ -5,29 +5,22 @@
 位置引数を増やすと診断ごとに署名が割れ、移植性が失われる。
 
 診断の設定 dataclass (例: 02 の ``EspConfig``) は ``diagnostics/`` 側に置き、
-``config.py`` からは import しない。``config.py`` は
-``rc_basics_lab.reservoir.esn.ESNConfig`` を import しているため、
-``tasks/`` の前例 (自分の設定 dataclass を ``config.py`` から import する) を
-``diagnostics/`` が真似ると、``reservoir`` が推移的に引き込まれ、この
-パッケージの移植性の前提 (``reservoir`` 非依存) が崩れる。これは
+``config.py`` からは import しない (D-12)。これは
 ``tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config``
-で機械的に検査する (``.claude/decisions.yaml`` D-12 / D-23)。03 以降は
-``readout.ridge`` / ``readout.design`` の import だけを例外的に許可する (D-23)。
+で機械的に検査する。03 以降は ``readout.ridge`` / ``readout.design`` の
+import だけを例外的に許可する (D-23)。
 
 禁止しているのは ``diagnostics -> config`` の向きだけである。02 の ESP 判定の
 閾値・窓のように、YAML 経由で設定できる必要がある値は、``config.py`` 側が
 ``diagnostics`` の設定 dataclass を import する向き (``config -> diagnostics``)
-で配線する。これは ``config.py`` が既に ``reservoir.esn.ESNConfig`` を import
-しているのと同じ向きであり、この向きは許可される。
+で配線する。
 
 ``DiagnosticContext`` に足してよいのは **データの素性** (``washout`` /
 ``dt`` / ``seed`` / ``companion_states`` / ``propagator``) のみであり、
 診断固有のパラメータ (例: 02 の ESP 判定の閾値・窓、03 の IPC の
 サロゲート本数・最大遅延/次数) は ``ctx`` に足さない。境界は
 **「系そのものを表すか (``ctx``) / 判定基準を表すか (``cfg``)」** である
-(D-15)。全診断固有パラメータを ``ctx`` に集約すると、05 まで進んだ時点で
-``DiagnosticContext`` が全診断の設定の union になり、「どのフィールドを
-どの診断が読むか」が型から読み取れなくなる (F-1-006)。
+(D-15)。
 
 診断固有パラメータの渡し方は次の2形のいずれか。どちらも D-01 の署名契約
 (X/u/y/ctx 以外に**必須**引数を作らない) を一切変えない。

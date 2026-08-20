@@ -5,8 +5,7 @@
 ``config.ridge.alpha_grid`` という単一の格子を読む (D-04)。
 
 ``autoregressive`` は自由走行 (closed-loop) の実行系で、**``reservoir`` を
-import しない** (D-50)。状態更新器を ``StateUpdater`` プロトコルで受けるので、
-ESN 以外の生成器 (外部シミュレータ・実素子) でも同じ関数がそのまま動く。
+import しない** (D-50)。
 """
 
 from rc_basics_lab.readout import autoregressive, design, ridge
