@@ -10,13 +10,20 @@
 - ``manifest``: ``manifests/*.csv`` (出典 URL / ライセンス / SHA256) の読み取り
 - ``mgab``: MGAB (CC0-1.0)。既定の実データ源
 - ``ucr``: UCR Anomaly Archive (**ライセンス未指定**。本体は同梱しない)
-- ``cli``: ``make data-05`` の実体
+
+**``cli`` はここに載せない** (D-72)。``cli.py`` は
+``from rc_basics_lab.datasets import mgab, ucr`` でこのパッケージへ戻るので、
+``__init__`` が ``cli`` を import すると ``__init__ -> cli -> __init__`` の辺が
+できる。現状は submodule import 機構のおかげで動いているだけで、``cli`` が
+``__init__`` の**再エクスポートを1つでも使い始めた瞬間に ``ImportError``**
+になる。CLI は ``python -m rc_basics_lab.datasets``
+(``__main__.py``) か ``rc_basics_lab.datasets.cli`` から直接呼ぶ。
 
 データ本体はリポジトリに入れない (D-58)。``data/`` は ``.gitignore`` 済みで、
 **pytest はキャッシュが無ければ skip する** (D-60)。
 """
 
-from rc_basics_lab.datasets import cli, fetch, manifest, mgab, ucr
+from rc_basics_lab.datasets import fetch, manifest, mgab, ucr
 from rc_basics_lab.datasets.fetch import (
     DEFAULT_DATA_DIR,
     ChecksumMismatchError,
@@ -41,7 +48,6 @@ __all__ = [
     "Manifest",
     "RemoteFile",
     "UnsafeArchiveMemberError",
-    "cli",
     "download",
     "ensure_file",
     "extract_members",
