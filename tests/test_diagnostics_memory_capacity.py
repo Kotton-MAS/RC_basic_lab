@@ -26,11 +26,13 @@ from rc_basics_lab.diagnostics._capacity import (
     UNIFORM_LEGENDRE,
     CapacityProblem,
     InputMeasure,
+    RowAlignment,
     bounded_chunk_size,
     capacity_of_targets,
     orthonormal_basis,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
+from rc_basics_lab.diagnostics.ipc import IpcConfig, ipc
 from rc_basics_lab.diagnostics.memory_capacity import (
     THRESHOLD_NONE,
     THRESHOLD_SURROGATE,
@@ -657,9 +659,9 @@ def test_iter_delay_chunks_matches_expected_offset() -> None:
     ramp: FloatArray = np.arange(n_steps, dtype=np.float64)
     t0 = 42
     n_samples = n_steps - t0
-    problem = CapacityProblem.from_states(np.zeros((n_steps, 3)), t0=t0)
+    rows = RowAlignment(t0=t0, n_samples=n_samples)
     delays = (1, 5, 20)
-    chunks = list(_iter_delay_chunks(problem, ramp, delays, chunk_size=2))
+    chunks = list(_iter_delay_chunks(rows, ramp, delays, chunk_size=2))
     columns: FloatArray = np.concatenate(chunks, axis=1)
     assert columns.shape == (n_samples, len(delays))
     for index, delay in enumerate(delays):
@@ -821,7 +823,9 @@ def test_capacity_of_targets_touches_x_exactly_once(
     """
     rng = np.random.default_rng(99)
     states: FloatArray = rng.standard_normal((400, 6))
-    problem = CapacityProblem.from_states(states, t0=10)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=10, n_samples=390)
+    )
     targets: FloatArray = rng.standard_normal((problem.n_samples, 12))
 
     solves: list[str] = []
@@ -859,7 +863,9 @@ def test_capacity_matches_direct_least_squares_residual() -> None:
     """
     rng = np.random.default_rng(1234)
     states: FloatArray = rng.standard_normal((600, 8))
-    problem = CapacityProblem.from_states(states, t0=5)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=5, n_samples=595)
+    )
     targets: FloatArray = rng.standard_normal((problem.n_samples, 4))
     alpha = 1.0e-8
 
@@ -880,7 +886,7 @@ def test_capacity_problem_rejects_short_series() -> None:
     rng = np.random.default_rng(5)
     states: FloatArray = rng.standard_normal((20, 30))
     with pytest.raises(ValueError, match="特徴数以下"):
-        CapacityProblem.from_states(states, t0=0)
+        CapacityProblem.from_states(states, rows=RowAlignment(t0=0, n_samples=20))
 
 
 def test_capacity_problem_x_is_read_only() -> None:
@@ -895,7 +901,9 @@ def test_capacity_problem_x_is_read_only() -> None:
     """
     rng = np.random.default_rng(9)
     states: FloatArray = rng.standard_normal((300, 5))
-    problem = CapacityProblem.from_states(states, t0=10)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=10, n_samples=290)
+    )
     with pytest.raises(ValueError, match="read-only"):
         problem.x[0, 0] = 1.0
 
@@ -904,7 +912,9 @@ def test_capacity_of_targets_rejects_mismatched_rows() -> None:
     """目標の行数が設計行列と違えば ValueError (D-24 の行合わせ)。"""
     rng = np.random.default_rng(6)
     states: FloatArray = rng.standard_normal((300, 5))
-    problem = CapacityProblem.from_states(states, t0=10)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=10, n_samples=290)
+    )
     bad: FloatArray = rng.standard_normal((problem.n_samples - 1, 3))
     with pytest.raises(ValueError, match="D-24"):
         capacity_of_targets(problem, bad, 1.0e-9)
@@ -983,11 +993,9 @@ def test_bounded_chunk_size_never_returns_less_than_one() -> None:
     assert bounded_chunk_size(1, 1_000_000_000) == 1
 
 
-def test_capacity_problem_effective_chunk_size_delegates_to_bounded_chunk_size() -> (
-    None
-):
-    """``CapacityProblem.effective_chunk_size`` は自身の ``n_samples`` で
-    ``bounded_chunk_size`` を呼ぶだけ (F-03-2-001)。
+def test_row_alignment_solve_width_delegates_to_bounded_chunk_size() -> None:
+    """``RowAlignment.solve_width`` は自身の ``n_samples`` で
+    ``bounded_chunk_size`` を呼ぶだけ (F-03-2-001、D-33 の**性能軸**)。
 
     呼び出し側 (``ipc.py`` / ``memory_capacity.py``) が ``n_samples`` を
     取り出して個別に ``bounded_chunk_size`` を呼ぶ形の複製をこのメソッドが
@@ -995,19 +1003,23 @@ def test_capacity_problem_effective_chunk_size_delegates_to_bounded_chunk_size()
     """
     rng = np.random.default_rng(42)
     states: FloatArray = rng.standard_normal((5_000, 4))
-    problem = CapacityProblem.from_states(states, t0=10)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=10, n_samples=4_990)
+    )
     for configured in (1, 256, 100_000):
-        assert problem.effective_chunk_size(configured) == bounded_chunk_size(
+        assert problem.rows.solve_width(configured) == bounded_chunk_size(
             configured, problem.n_samples
         )
 
 
-def test_capacity_problem_lagged_rejects_multi_dimensional_series() -> None:
+def test_row_alignment_lagged_rejects_multi_dimensional_series() -> None:
     """``series`` が1次元でなければ ``ValueError`` (F-03-2-020、coverage で
     Missing だった分岐)。"""
     rng = np.random.default_rng(7)
     states: FloatArray = rng.standard_normal((300, 5))
-    problem = CapacityProblem.from_states(states, t0=10)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=10, n_samples=290)
+    )
     series_2d: FloatArray = rng.standard_normal((300, 2))
     with pytest.raises(ValueError, match="1次元"):
-        problem.lagged(series_2d, 1)
+        problem.rows.lagged(series_2d, 1)
