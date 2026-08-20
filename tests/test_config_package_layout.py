@@ -128,8 +128,9 @@ CHAOS04_ADDITIONS = (
     "LorenzConfig",
     "MackeyGlassStandardizeConfig",
     "MaxLyapunovConfig",
+    "StabilityConfig",
 )
-"""04 T4 が ``config.__all__`` へ**足した**公開名 (6 名)。
+"""04 (T4 / T5) が ``config.__all__`` へ**足した**公開名。
 
 D-49 が守るのは「package 化**前と同一**の経路で引ける」ことであって、
 「以後どの実験も公開シンボルを増やせない」ことではない —— 増やせないなら 04 の
@@ -138,6 +139,7 @@ D-13 と正面から衝突する。したがって**減る側は差分0**を要�
 **増える側はここに列挙したぶんだけ**を許す。列挙を忘れて増やせば落ちるので、
 「package 化のついでに実装 import が公開名として増えた」は従来どおり検出できる。
 
+``StabilityConfig`` は T5 が足した 4-C の掃引軸 (D-45)。
 ``MaxLyapunovConfig`` は ``diagnostics/lyapunov.py`` の設定 (D-15) で、
 ``EspConfig`` / ``IpcConfig`` などと同じく ``config -> diagnostics`` の許可された
 向きで再エクスポートしている。

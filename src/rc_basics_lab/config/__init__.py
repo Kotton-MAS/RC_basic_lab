@@ -43,6 +43,7 @@ from rc_basics_lab.config.chaos04 import (
     FreeRunConfig,
     LorenzConfig,
     MackeyGlassStandardizeConfig,
+    StabilityConfig,
 )
 from rc_basics_lab.config.esp02 import (
     DEFAULT_ESP_MAP_RHO_GRID,
@@ -111,6 +112,7 @@ __all__ = [
     "ReservoirSweepConfig",
     "RidgeConfig",
     "SplitConfig",
+    "StabilityConfig",
     "TimescaleConfig",
     "TimescaleSweepConfig",
     "WashoutSweepConfig",
