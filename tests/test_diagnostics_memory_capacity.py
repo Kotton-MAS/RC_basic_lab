@@ -306,6 +306,9 @@ def test_orthonormal_basis_requires_an_explicit_measure() -> None:
     # 測度を渡さない呼び出しは実行時にも通らない (署名検査だけで緑にしない)。
     values: FloatArray = np.linspace(-1.0, 1.0, 100)
     with pytest.raises(TypeError):
+        # 測度なしの呼び出しは mypy が拒否するので ignore を付ける。この
+        # ignore を消せる (= 型検査が通る) 状態になったら既定値が復活した
+        # サインであり、上の assert が先に落ちる。
         orthonormal_basis(values, 2)  # type: ignore[call-arg]
 
 
@@ -478,27 +481,40 @@ def test_all_delays_share_identical_rows() -> None:
     assert deeper.params["t0"] == "300", "washout が max_delay を超えたら t0 は washout"
 
 
-def test_capacity_problem_lagged_matches_expected_offset() -> None:
-    """``CapacityProblem.lagged`` の値レベルの guard (F-03-1-001)。
+def test_row_alignment_needs_no_state_matrix() -> None:
+    """行合わせの検査は**状態行列を経由せずに書ける** (D-24、案C の採用条件)。
 
-    D-24 の窓計算 ``series[t0 - delay : t0 - delay + n_samples]`` は、かつて
+    このテストは ``RowAlignment`` が無いと書けない。04a T3 以前、窓計算
+    ``series[t0 - delay : t0 - delay + n_samples]`` は
+    ``CapacityProblem.lagged`` にあり、``CapacityProblem`` は状態行列と
+    その Gram を必ず伴う。そのため窓計算だけを見たいテストは、値を一切
+    使わないダミーの状態行列 (``np.zeros``、特異な Gram) を構築していた
+    (IPC 側の ``_dummy_problem``)。行合わせを ``t0`` と ``n_samples`` だけの
+    値に切り出したので、その必要が消えた ——
+    ``RowAlignment(t0=42, n_samples=458)`` を直接構築すればよい。
+    ``RowAlignment`` を消して ``lagged`` を ``CapacityProblem`` へ戻す変異は、
+    実行時ではなく**収集時**にこのテストを落とす (import が解決しない)。
+
+    値そのものの guard は F-03-1-001 の再発防止でもある: 窓の式は かつて
     MC (2箇所) と IPC (1箇所) が共有カーネルの外でそれぞれ書いており、
-    行数が一致してさえいれば任意のオフセットを通す弱いチェックしか無かった
-    (実測: MC の窓を1ステップずらしても ``test_all_delays_share_identical_
-    rows`` を含む22テストが全て緑のまま通った)。窓計算を
-    ``CapacityProblem.lagged`` 1本に集約したので、ここを直接固定すれば
-    MC・IPC のどちらの複製ぶんの穴も同時に閉じる。
-
-    ``u[t] = t`` の単調系列にすると、返された窓の値から入力の index を
-    逆算できる。
+    行数さえ合えば任意のオフセットを通した (実測: MC の窓を1ステップ
+    ずらしても ``test_all_delays_share_identical_rows`` を含む22テストが
+    全て緑のまま通った)。``u[t] = t`` の単調系列なら、返った窓の値から
+    入力の index を逆算できる。
     """
+    # 状態行列も Gram も作らない。持っているのは2つの整数だけである。
+    assert [field.name for field in dataclasses.fields(RowAlignment)] == [
+        "t0",
+        "n_samples",
+    ], "RowAlignment が行合わせ以外のものを持ち始めています (責務が混ざったサイン)"
+
     n_steps = 500
     ramp: FloatArray = np.arange(n_steps, dtype=np.float64)
     t0 = 42
     n_samples = n_steps - t0
-    problem = CapacityProblem.from_states(np.zeros((n_steps, 3)), t0=t0)
+    rows = RowAlignment(t0=t0, n_samples=n_samples)
     for delay in (0, 1, 5, 20, t0):
-        window = problem.lagged(ramp, delay)
+        window = rows.lagged(ramp, delay)
         assert window.shape == (n_samples,)
         expected: FloatArray = np.arange(
             t0 - delay, t0 - delay + n_samples, dtype=np.float64
@@ -506,13 +522,123 @@ def test_capacity_problem_lagged_matches_expected_offset() -> None:
         np.testing.assert_array_equal(window, expected)
 
     # 1ステップずらした変異は D-24 の guard で確実に落ちる (完了条件4)。
-    mutated = problem.lagged(ramp, 5 - 1)
-    assert not np.array_equal(mutated, problem.lagged(ramp, 5))
+    mutated = rows.lagged(ramp, 5 - 1)
+    assert not np.array_equal(mutated, rows.lagged(ramp, 5))
 
     with pytest.raises(ValueError, match="D-24"):
-        problem.lagged(ramp, t0 + 1)  # 範囲外 (窓の先頭が負になる)。
+        rows.lagged(ramp, t0 + 1)  # 範囲外 (窓の先頭が負になる)。
     with pytest.raises(ValueError, match="0 以上"):
-        problem.lagged(ramp, -1)
+        rows.lagged(ramp, -1)
+
+
+def test_row_alignment_from_series_is_the_only_base_point_calculation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """基準点 ``t0`` の算出は MC / IPC が**同じ1本**を呼ぶ (D-24)。
+
+    F-03-1-001 が潰したのは窓の式だけで、``t0 = max(washout, 最大遅延)`` と
+    「系列が短すぎます」の拒否は ``memory_capacity`` と ``ipc`` に2箇所
+    複製されたまま残っていた。片方だけを手書きへ戻す変異 (例: MC 側だけ
+    ``max(...)`` を直接書く) は、両診断の出力が一致している限り既存の
+    テストでは検出できない。ここでは ``from_series`` が実際に呼ばれたことを
+    数えるので、複製が復活した瞬間に落ちる。
+    """
+    calls: list[tuple[int, int, int]] = []
+    original = RowAlignment.from_series
+
+    def spy(*, n_steps: int, washout: int, max_delay: int) -> RowAlignment:
+        calls.append((n_steps, washout, max_delay))
+        return original(n_steps=n_steps, washout=washout, max_delay=max_delay)
+
+    monkeypatch.setattr(RowAlignment, "from_series", staticmethod(spy))
+
+    states, inputs = _cached_states(0.9, 15, 2000, 5)
+    memory_capacity(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=50, seed=CTX_SEED),
+        cfg=MemoryCapacityConfig(max_delay=30, n_surrogates=5, chunk_size=16),
+    )
+    assert calls == [(2000, 50, 30)], (
+        f"MC が RowAlignment.from_series を1度だけ呼んでいません: {calls}"
+    )
+
+    calls.clear()
+    ipc(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=50, seed=CTX_SEED),
+        cfg=IpcConfig(
+            max_delay_by_degree=(20, 8), max_variables=2, n_surrogates=5, chunk_size=16
+        ),
+    )
+    assert calls == [(2000, 50, 20)], (
+        f"IPC が RowAlignment.from_series を1度だけ呼んでいません: {calls}"
+    )
+
+
+def test_capacity_problem_rejects_inconsistent_row_alignment() -> None:
+    """``RowAlignment`` の行数と状態から切り出した行数が違えば ``ValueError``。
+
+    ``CapacityProblem`` は行合わせを内包するが、目標側は ``rows.n_samples``
+    行で作られ、設計行列は ``X[t0:]`` の行数で組まれる。両者が食い違ったまま
+    進むと「どちらが本物か」が実行時に決まってしまうので、構築時に一致を
+    要求する (D-24 の担い手を1つに保つための構造ガード)。
+    """
+    rng = np.random.default_rng(31)
+    states: FloatArray = rng.standard_normal((300, 5))
+    with pytest.raises(ValueError, match="D-24"):
+        CapacityProblem.from_states(states, rows=RowAlignment(t0=10, n_samples=289))
+    with pytest.raises(ValueError, match="D-24"):
+        CapacityProblem.from_states(states, rows=RowAlignment(t0=10, n_samples=291))
+    # 一致していれば通る (すべて拒否する実装で緑にしない)。
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=10, n_samples=290)
+    )
+    assert problem.n_samples == 290
+    assert problem.rows.t0 == 10
+
+
+def test_solve_and_block_widths_share_one_budget_function() -> None:
+    """性能軸と確保軸は ``bounded_chunk_size`` **1本**へ委譲する (D-33)。
+
+    128 MiB の予算を2箇所に持つと、片方だけを動かしても誰も気づけない。
+    ``solve_width`` は「運用者が指定した列数」を、``block_width`` は
+    「実体化したい列数」を入力に取るという違いしか無く、予算による切り詰めは
+    同一の純関数が行う。
+    """
+    rows = RowAlignment(t0=200, n_samples=999_800)
+    budget = bounded_chunk_size(10**9, rows.n_samples)
+    for configured in (1, 7, 16, 256, 20_000):
+        assert rows.solve_width(configured) == bounded_chunk_size(
+            configured, rows.n_samples
+        )
+    for n_columns in (1, 4, 16, 4096):
+        assert rows.block_width(n_columns) == bounded_chunk_size(
+            n_columns, rows.n_samples
+        )
+    # 同じ入力なら同じ値になる (= 予算が1本である) ことを直接示す。
+    for width in (1, 16, 1000):
+        assert rows.solve_width(width) == rows.block_width(width)
+    assert budget == 16, f"128 MiB 予算の実効列数が変わりました: {budget}"
+
+
+def test_block_width_is_capped_by_the_memory_budget() -> None:
+    """確保軸も 128 MiB 予算で切り詰まる (D-33、キャップを外す変異で赤)。
+
+    ``block_width`` は ``cfg.chunk_size`` を読まないが、**予算を読まない**
+    わけではない。代表目標が大量にある設定 (``n_surrogate_targets`` に上限は
+    無い) で予算を無視すると、F-03-2-015 の一括確保 (実測 peak RSS 3.23GB)
+    がそのまま復活する。
+    """
+    rows = RowAlignment(t0=200, n_samples=999_800)
+    assert rows.block_width(400) == 16, "128 MiB 予算で切り詰まっていません"
+    # 予算より少ない列数はそのまま (必要以上に確保も分割もしない)。
+    assert rows.block_width(4) == 4
+    assert rows.block_width(1) == 1
+    # 小さい T_eff では予算が効かない (切り詰めが常時発動する実装ではない)。
+    small = RowAlignment(t0=50, n_samples=1_950)
+    assert small.block_width(400) == 400
 
 
 def test_iter_delay_chunks_matches_expected_offset() -> None:
