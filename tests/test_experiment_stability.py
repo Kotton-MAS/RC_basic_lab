@@ -148,7 +148,7 @@ def test_condition_count_is_the_product_of_the_grids_and_replicates() -> None:
 # --- 確保軸5 x 軸4 の積 (reviewer-security 実測) ---------------------------------
 
 
-def test_stability_conditions_rejects_the_product_of_condition_count_and_stats_steps() -> (
+def test_stability_conditions_rejects_the_condition_count_by_stats_steps_product() -> (
     None
 ):
     """条件数 x ``stats_steps`` の積が上限を超えると**条件を1つも作る前に**落ちる。
