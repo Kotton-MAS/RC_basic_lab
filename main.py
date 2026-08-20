@@ -31,7 +31,7 @@ from rc_basics_lab.config import (
 )
 from rc_basics_lab.experiment.capacity_pipeline import run_and_report_capacity
 from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
-from rc_basics_lab.experiment.freerun import run_and_report_onestep
+from rc_basics_lab.experiment.freerun_pipeline import run_and_report_freerun
 from rc_basics_lab.experiment.pipeline import run_and_report
 
 logger = logging.getLogger("rc_basics_lab.main")
@@ -97,7 +97,7 @@ def _run_03(config_path: Path, out_dir: Path) -> None:
 
 
 def _run_04(config_path: Path, out_dir: Path) -> None:
-    """実験04 (カオス時系列の自由走行予測。T4 時点では 4-A のみ)。"""
+    """実験04 (カオス時系列の自由走行予測。4-A / 4-B / 4-C / 4-D)。"""
     config = load_config_as(config_path, Chaos04Config)
     logger.info(
         "実験04 を実行します: %s (Lorenz T=%d dt=%g / n_replicates=%d)",
@@ -106,7 +106,7 @@ def _run_04(config_path: Path, out_dir: Path) -> None:
         config.lorenz.rk4_step * config.lorenz.sample_interval,
         config.base.n_replicates,
     )
-    run_and_report_onestep(config, out_dir)
+    run_and_report_freerun(config, out_dir)
 
 
 EXPERIMENTS: dict[str, ExperimentSpec] = {
