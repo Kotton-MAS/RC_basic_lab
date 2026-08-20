@@ -1238,8 +1238,8 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 185 | 233 |
 | `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 176 | 213 |
 | `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` | 292 | 359 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 139 | 146 |
-| **合計** | — | **1212** | **1487** |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 132 | 139 |
+| **合計** | — | **1205** | **1480** |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
 機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は
