@@ -438,11 +438,14 @@ def test_estimate_lorenz_lyapunov_reports_the_sampling_interval() -> None:
 def test_committed_onestep_csv_shares_the_split_across_methods() -> None:
     """**コミット済みの** ``onestep.csv`` でも D-05 が成り立っている。
 
-    縮小設定での検査 (``test_onestep_shares_the_split_across_methods_within_a_replicate``)
-    は経路を守るが、成果物そのものは見ていない。本番設定を再生成せずに
-    ``results/`` だけ差し替えると、公平性が崩れた行が入り込みうる。
+    縮小設定での検査 (同ファイルの
+    ``test_onestep_shares_the_split_across_methods_within_a_replicate``) は経路を
+    守るが、成果物そのものは見ていない。本番設定を再生成せずに ``results/`` だけ
+    差し替えると、公平性が崩れた行が入り込みうる。
     """
-    path = Path(__file__).resolve().parents[1] / "results/04_chaotic_freerun/onestep.csv"
+    path = (
+        Path(__file__).resolve().parents[1] / "results/04_chaotic_freerun/onestep.csv"
+    )
     with path.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert rows, "onestep.csv が空です"
