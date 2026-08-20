@@ -14,6 +14,7 @@ import hashlib
 import os
 import zipfile
 from pathlib import Path
+from typing import IO
 
 import numpy as np
 import pytest
@@ -305,6 +306,59 @@ def test_download_is_rejected_when_the_part_file_is_swapped_mid_write(
             remote, data_dir=tmp_path, opener=lambda url, timeout: _RacingResponse()
         )
     assert not (tmp_path / "probe.bin").exists()
+    assert list(tmp_path.rglob("*.part")) == []
+
+
+def test_extract_members_is_rejected_when_the_part_file_is_swapped_mid_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``extract_members`` も、書き込み完了直後の ``.part`` 差し替えを検出する。
+
+    ``download()`` 側にしか存在しなかった振る舞いテストの対 (reviewer-test
+    指摘: F-2-021)。AST の存在確認テストだけでは、確定直前の再照合を無力化
+    する変異を ``_extract_member`` に注入しても全テストが green のまま通る
+    ことが実測されている —— この振る舞いテストがその回帰検知の穴を塞ぐ。
+    """
+    legit = b"LEGIT-" * 200_000
+    evil = b"EVIL-" * 200_000
+    archive = tmp_path / "bundle.zip"
+    _make_zip(archive, {"series.bin": legit})
+    swapped = tmp_path / ".attacker-payload.bin"
+    real_open = zipfile.ZipFile.open
+
+    class _RacingMemberFile:
+        def __init__(self, inner: IO[bytes]) -> None:
+            self._inner = inner
+            self._swapped = False
+
+        def read(self, amt: int = -1) -> bytes:
+            chunk = self._inner.read(amt)
+            if chunk and not self._swapped:
+                self._swapped = True
+                # ``download`` 側の攻撃 (os.replace で inode ごと差し替え) と同型。
+                for part in tmp_path.rglob("*.part"):
+                    swapped.write_bytes(evil)
+                    os.replace(swapped, part)
+            return chunk
+
+        def __enter__(self) -> _RacingMemberFile:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            self._inner.close()
+
+    def racing_open(
+        self: zipfile.ZipFile, *args: object, **kwargs: object
+    ) -> _RacingMemberFile:
+        return _RacingMemberFile(real_open(self, *args, **kwargs))
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", racing_open)
+
+    with pytest.raises(UnsafeArchiveMemberError, match="差し替え"):
+        fetch.extract_members(
+            archive, ["series.bin"], tmp_path / "out", data_dir=tmp_path
+        )
+    assert not (tmp_path / "out" / "series.bin").exists()
     assert list(tmp_path.rglob("*.part")) == []
 
 
