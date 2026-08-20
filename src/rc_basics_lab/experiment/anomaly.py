@@ -19,7 +19,9 @@
 
 系列源は ``Mapping[str, SeriesSource]`` の1辞書で渡す (D-71)。実験ループは
 Protocol にしか触れないので、合成源・MGAB・UCR のどれであっても同じコードを
-通る。**源の具象名で分岐してよいのは ``build_sources`` 1箇所だけ**である。
+通る。**源の具象名で分岐してよいのは ``anomaly_sources.build_sources``
+1箇所だけ**で、``datasets`` を import する ``experiment/`` のモジュールも
+あちら1本だけである。
 """
 
 from __future__ import annotations
@@ -38,7 +40,6 @@ from rc_basics_lab.config import (
     SplitConfig,
     anomaly_stream_seed,
 )
-from rc_basics_lab.datasets import mgab, ucr
 from rc_basics_lab.experiment.anomaly_rows import (
     AnomalyRow,
     ThresholdSweepRow,
@@ -75,21 +76,10 @@ from rc_basics_lab.tasks.anomaly import (
     AnomalyPreprocessor,
     AnomalySeries,
     SeriesSource,
-    SyntheticSeriesSource,
 )
 from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
-
-SYNTHETIC_SOURCE = "synthetic"
-MGAB_SOURCE = "mgab"
-UCR_SOURCE = "ucr"
-
-ANOMALY_SOURCES: tuple[str, ...] = (SYNTHETIC_SOURCE, MGAB_SOURCE, UCR_SOURCE)
-"""``dataset.source`` に書ける値。
-
-既定は合成 (D-60: pytest はネットワークに触れない)。
-"""
 
 SPLIT_OFFSET_DIVISOR = 100
 """分割オフセットの上限を系列長の何分の1にするか (``max_start_offset``)。
@@ -97,39 +87,6 @@ SPLIT_OFFSET_DIVISOR = 100
 **設定の葉にしない** —— ``seeds.split`` が効く (分割境界が動く) ために正の値が
 要るだけで、値そのものは結論を動かさない (D-69 と同じ判断)。
 """
-
-
-def build_sources(config: Anomaly05Config) -> Mapping[str, SeriesSource]:
-    """``dataset.source`` から系列源の辞書を作る (**具象名で分岐する唯一の場所**)。
-
-    実験ループはここが返した ``Mapping[str, SeriesSource]`` にしか触れない
-    ので、源が合成でも MGAB でも UCR でも同じコードを通る (D-71)。分岐が
-    2箇所目に生えると ``datasets -> tasks`` の一方向依存 (D-59) が崩れる。
-
-    Args:
-        config: 実験設定。``dataset.series`` の各要素が鍵になる。
-
-    Raises:
-        ValueError: ``dataset.source`` が未対応、または ``dataset.series`` が空。
-    """
-    names = config.dataset.series
-    if not names:
-        raise ValueError("dataset.series が空です")
-    match config.dataset.source:
-        case "synthetic":
-            # 合成源は系列名によらず同一の設定を使う (系列の違いは task
-            # ストリームの draw だけで作る)。1インスタンスを配ることで
-            # 「系列ごとに少し違う合成源」が生まれる経路も消える。
-            return dict.fromkeys(names, SyntheticSeriesSource(cfg=config.synthetic))
-        case "mgab":
-            return {name: mgab.MgabSeriesSource(series=name) for name in names}
-        case "ucr":
-            return {name: ucr.UcrSeriesSource(filename=name) for name in names}
-        case _:
-            raise ValueError(
-                f"dataset.source は {ANOMALY_SOURCES} のいずれかです: "
-                f"{config.dataset.source!r}"
-            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,16 +537,11 @@ def run_anomaly_headline(
 
 
 __all__ = [
-    "ANOMALY_SOURCES",
-    "MGAB_SOURCE",
     "SPLIT_OFFSET_DIVISOR",
-    "SYNTHETIC_SOURCE",
-    "UCR_SOURCE",
     "AnomalyCondition",
     "AnomalyOutcome",
     "AnomalyPlan",
     "AnomalyResults",
-    "build_sources",
     "plan_replicate",
     "preprocessor_id",
     "run_anomaly_headline",
