@@ -68,27 +68,27 @@ from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
 from rc_basics_lab.types import FloatArray
 
 
-def small_config(**overrides: object) -> Chaos04Config:
-    """秒未満で 4-A と自走を回せる縮小設定 (**構造は本番と同じ**)。"""
-    base = ExperimentConfig(
+def small_config() -> Chaos04Config:
+    """秒未満で 4-A と自走を回せる縮小設定 (**構造は本番と同じ**)。
+
+    個々のテストは ``dataclasses.replace`` で必要な軸だけを動かす。
+    """
+    return Chaos04Config(
         name="chaos-freerun-test",
-        n_replicates=2,
-        split=SplitConfig(washout=30, max_start_offset=10),
-        ridge=RidgeConfig(alpha_grid=(1.0e-6, 1.0e-3), n_lags_grid=(2, 4)),
-        mackey_glass=MackeyGlassConfig(length=600, integration_burn_in=100),
-        esn_mackey_glass=ESNConfig(
-            n_units=20, leak_rate=0.5, input_scale=0.5, density=0.5
+        base=ExperimentConfig(
+            name="chaos-freerun-test-base",
+            n_replicates=2,
+            split=SplitConfig(washout=30, max_start_offset=10),
+            ridge=RidgeConfig(alpha_grid=(1.0e-6, 1.0e-3), n_lags_grid=(2, 4)),
+            mackey_glass=MackeyGlassConfig(length=600, integration_burn_in=100),
+            esn_mackey_glass=ESNConfig(
+                n_units=20, leak_rate=0.5, input_scale=0.5, density=0.5
+            ),
         ),
+        lorenz=LorenzConfig(length=600, integration_burn_in=100, standardize_steps=150),
+        mackey_glass=MackeyGlassStandardizeConfig(standardize_steps=150),
+        freerun=FreeRunConfig(warmup_steps=10, free_run_steps=40),
     )
-    defaults: dict[str, object] = {
-        "base": base,
-        "lorenz": LorenzConfig(
-            length=600, integration_burn_in=100, standardize_steps=150
-        ),
-        "mackey_glass": MackeyGlassStandardizeConfig(standardize_steps=150),
-        "freerun": FreeRunConfig(warmup_steps=10, free_run_steps=40),
-    }
-    return Chaos04Config(**{**defaults, **overrides})  # type: ignore[arg-type]
 
 
 # --- 1. 01 の経路をそのまま通す (D-31) ---------------------------------------
@@ -303,7 +303,9 @@ def test_free_run_bounds_are_checked_before_allocation() -> None:
     with pytest.raises(ValueError, match="free_run_steps"):
         validate_free_run_bounds(0, 10)
 
-    config = small_config(freerun=FreeRunConfig(warmup_steps=10, free_run_steps=10**8))
+    config = dataclasses.replace(
+        small_config(), freerun=FreeRunConfig(warmup_steps=10, free_run_steps=10**8)
+    )
     with pytest.raises(ValueError, match="上限"):
         run_free_run(config, lorenz_task_entry(config), 0)
 
@@ -333,8 +335,9 @@ def test_standardization_window_must_stay_inside_training() -> None:
     with pytest.raises(ValueError, match="標準化係数の推定区間"):
         validate_standardization_window(split.train.stop + 1, split)
 
-    config = small_config(
-        lorenz=LorenzConfig(length=600, integration_burn_in=100, standardize_steps=600)
+    config = dataclasses.replace(
+        small_config(),
+        lorenz=LorenzConfig(length=600, integration_burn_in=100, standardize_steps=600),
     )
     with pytest.raises(ValueError, match="標準化係数の推定区間"):
         run_free_run(config, lorenz_task_entry(config), 0)
@@ -342,8 +345,8 @@ def test_standardization_window_must_stay_inside_training() -> None:
 
 def test_run_free_run_rejects_a_window_that_runs_past_the_series() -> None:
     """自走に必要な行が系列の外へ出る設定は ``ValueError``。"""
-    config = small_config(
-        freerun=FreeRunConfig(warmup_steps=10, free_run_steps=100_000)
+    config = dataclasses.replace(
+        small_config(), freerun=FreeRunConfig(warmup_steps=10, free_run_steps=100_000)
     )
     with pytest.raises(ValueError, match=r"上限|テスト区間の先"):
         run_free_run(config, lorenz_task_entry(config), 0)

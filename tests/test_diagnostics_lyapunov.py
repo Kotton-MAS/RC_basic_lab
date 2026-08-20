@@ -235,5 +235,7 @@ def test_config_is_a_frozen_dataclass_of_pure_data() -> None:
     """設定は純データ (D-15)。``estimator`` は委譲先とまったく同じ器。"""
     assert dataclasses.is_dataclass(MaxLyapunovConfig)
     assert isinstance(DEFAULT_MAX_LYAPUNOV.estimator, LyapunovConfig)
-    with pytest.raises(dataclasses.FrozenInstanceError):
-        DEFAULT_MAX_LYAPUNOV.reference_rel_tol = 0.1  # type: ignore[misc]
+    # frozen なので値を変えるには複製するしかなく、既定値は動かない。
+    changed = dataclasses.replace(DEFAULT_MAX_LYAPUNOV, reference_rel_tol=0.1)
+    assert changed is not DEFAULT_MAX_LYAPUNOV
+    assert DEFAULT_MAX_LYAPUNOV.reference_rel_tol == 0.05

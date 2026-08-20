@@ -57,17 +57,16 @@ def _reference_rhs(t: float, state: FloatArray) -> list[float]:
     ]
 
 
-def _short_config(**overrides: object) -> LorenzConfig:
-    """短時間区間の突き合わせ用の設定 (バーンインなし)。"""
-    base = {
-        "rk4_step": 0.002,
-        "sample_interval": 5,
-        "integration_burn_in": 0,
-        "length": 200,
-        "horizon": 1,
-        "standardize_steps": 100,
-    }
-    return LorenzConfig(**{**base, **overrides})  # type: ignore[arg-type]
+SHORT_CONFIG = LorenzConfig(
+    rk4_step=0.002,
+    sample_interval=5,
+    integration_burn_in=0,
+    length=200,
+    horizon=1,
+    standardize_steps=100,
+)
+"""短時間区間の突き合わせ用の設定 (バーンインなし)。個々のテストは
+``dataclasses.replace`` で必要な軸だけを動かす。"""
 
 
 def test_lorenz_matches_reference_trajectory() -> None:
@@ -76,7 +75,7 @@ def test_lorenz_matches_reference_trajectory() -> None:
     比較は「差の最大値 / 軌道のスケール」で取る。成分ごとの相対誤差にすると
     x・y がゼロを横切る点で分母が消え、実装の正しさと無関係な位置で落ちる。
     """
-    cfg = _short_config()
+    cfg = SHORT_CONFIG
     n_samples = cfg.length
     dt = sampling_interval(cfg)
     x0 = np.array(REFERENCE_X0, dtype=np.float64)
@@ -108,7 +107,7 @@ def test_lorenz_sample_step_reproduces_the_sampled_trajectory() -> None:
     実行時に検査する。ここが近似一致でしかないと、伝播器の整合検査が
     ``propagator_tol`` の設定次第で通ったり落ちたりする。
     """
-    cfg = _short_config(length=50, standardize_steps=50)
+    cfg = dataclasses.replace(SHORT_CONFIG, length=50, standardize_steps=50)
     trajectory = integrate_lorenz(cfg, np.array(REFERENCE_X0), 50)
     for index in (0, 17, 48):
         stepped = lorenz_sample_step(cfg, trajectory[index])
@@ -143,7 +142,7 @@ def test_standardization_uses_the_training_prefix_coefficients_everywhere() -> N
     3. ``u`` と ``y`` が**同じ**係数で標準化されている (自走は出力を入力へ
        戻すので、片方だけ別の係数だと単位が食い違う)
     """
-    cfg = _short_config(length=400, standardize_steps=100)
+    cfg = dataclasses.replace(SHORT_CONFIG, length=400, standardize_steps=100)
     seed = 20240401
     raw = integrate_lorenz(
         cfg, initial_state(np.random.default_rng(seed)), cfg.length + cfg.horizon
@@ -175,7 +174,7 @@ def test_standardized_series_is_not_standardized_again_outside_the_prefix() -> N
     そちらは「予測が当たっているように見える」壊れ方 (仕様 §10-2) の温床なので、
     末尾区間が 0/1 からずれていることを積極的に確かめる。
     """
-    cfg = _short_config(length=400, standardize_steps=100)
+    cfg = dataclasses.replace(SHORT_CONFIG, length=400, standardize_steps=100)
     task = generate_lorenz(cfg, np.random.default_rng(20240402))
     head = task.u[: cfg.standardize_steps]
     tail = task.u[cfg.standardize_steps :]
@@ -212,7 +211,7 @@ def test_standardizer_round_trips() -> None:
 
 def test_lorenz_rejects_a_standardization_window_longer_than_the_series() -> None:
     """``standardize_steps > length`` は生成前に ``ValueError`` (D-41)。"""
-    cfg = _short_config(length=100, standardize_steps=101)
+    cfg = dataclasses.replace(SHORT_CONFIG, length=100, standardize_steps=101)
     with pytest.raises(ValueError, match="standardize_steps"):
         generate_lorenz(cfg, np.random.default_rng(0))
 
@@ -224,7 +223,9 @@ def test_lorenz_generation_rejects_the_integration_step_axis() -> None:
     半分以下なので、軸2 (``length * 3``) はまったく余裕がある —— この設定で
     落ちることが「軸1 が独立に効いている」ことの実測である。
     """
-    cfg = _short_config(length=3_000_000, sample_interval=10, integration_burn_in=0)
+    cfg = dataclasses.replace(
+        SHORT_CONFIG, length=3_000_000, sample_interval=10, integration_burn_in=0
+    )
     assert cfg.length * LORENZ_STATE_DIM < chaotic._MAX_TRAJECTORY_ELEMENTS
     with pytest.raises(ValueError, match="積分ステップ数が上限"):
         integrate_lorenz(cfg, np.array(REFERENCE_X0), cfg.length)
@@ -238,7 +239,9 @@ def test_lorenz_generation_rejects_the_trajectory_element_axis() -> None:
     「軸2 が軸1 と別の軸である」ことの実測である。**軸1 だけを塞いだ実装は
     このテストで落ちる** (3b-2 の「軸が2本あるのに1本だけ塞いだ」事故の再発防止)。
     """
-    cfg = _short_config(length=18_000_000, sample_interval=1, integration_burn_in=0)
+    cfg = dataclasses.replace(
+        SHORT_CONFIG, length=18_000_000, sample_interval=1, integration_burn_in=0
+    )
     n_integration_steps = (cfg.length + cfg.horizon) * cfg.sample_interval
     assert n_integration_steps <= chaotic._MAX_INTEGRATION_STEPS
     with pytest.raises(ValueError, match="真の軌道の配列要素数が上限"):
@@ -255,7 +258,7 @@ def test_allocation_bounds_cannot_be_raised_from_the_config() -> None:
 
 def test_generate_lorenz_produces_a_horizon_one_prediction_task() -> None:
     """``u[t] = x[t]`` / ``y[t] = x[t + horizon]`` の形と名前・params。"""
-    cfg = _short_config(length=120, standardize_steps=60)
+    cfg = dataclasses.replace(SHORT_CONFIG, length=120, standardize_steps=60)
     task = generate_lorenz(cfg, np.random.default_rng(20240404))
     assert task.name == TASK_NAME_LORENZ
     assert task.u.shape == (cfg.length, LORENZ_STATE_DIM)
