@@ -5,23 +5,29 @@
 が AST で機械検査する)。実データの取得と読み取りは ``datasets/`` にあり、
 依存の向きは ``datasets -> tasks`` の一方向。
 
-置くものは3つ:
+置くものは5つ:
 
 - ``AnomalySeries``: ラベル付き単変量系列の器。``TaskData`` を継承・拡張せず
   別の dataclass にしてある —— ``TaskData`` は ``(u, y)`` の対で、異常検知には
   ``y`` が無くラベルとマスクが要る。継承すると 01〜04 の全実験が読む器に
   異常検知専用のフィールドが生える
+- ``SeriesSource``: 系列源の共通型 (Protocol)。**実験層が依存してよい唯一の面**
+  で、合成源・MGAB・UCR の3実装がこれを満たす (D-71)。純関数層のこちら側に
+  置き ``datasets/`` が実装することで、依存の向き ``datasets -> tasks``
+  (D-59) を保ったまま実験層が源を1つの辞書で切り替えられる
 - ``AnomalyPreprocessor``: 手法間で共通の前処理 (D-57)。係数を作れる場所を
   ``from_training_prefix`` **1本**に閉じる (``tasks/chaotic.py`` の
   ``Standardizer`` = D-41 と同じ形)
 - ``generate_synthetic_anomalies``: MGAB と同じ手続きの合成源。Mackey-Glass の
   生成は ``tasks/mackey_glass.py`` へ**委譲**する (再実装しない)
+- ``SyntheticSeriesSource``: 合成源を ``SeriesSource`` として渡すための束縛
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 
@@ -160,6 +166,51 @@ class AnomalySeries:
     def anomaly_rate(self) -> float:
         """異常**点**の割合 (AUPRC の乱数対照が張り付く値)。"""
         return float(np.count_nonzero(self.labels)) / float(self.n_steps)
+
+
+@runtime_checkable
+class SeriesSource(Protocol):
+    """``AnomalySeries`` を1本返す呼び出し可能オブジェクト (系列源の共通型、D-71)。
+
+    実験層 (T3) が依存してよい**唯一の面**であり、源の具象名で分岐しないための
+    型である。合成源・MGAB・UCR の3実装がこれを満たすので、実験は
+    ``Mapping[str, SeriesSource]`` の1辞書で源を切り替えられる。
+
+    **最小の共通面**にしてある。既存3源の実装 (``generate_synthetic_anomalies``
+    は ``(cfg, rng)``、``mgab.load_series`` / ``ucr.load_series`` は
+    ``(name, *, data_dir)``) は引数がそもそも噛み合わないので、揃えるために
+    既存関数の署名を変えるのではなく、**束縛済みの呼び出し可能オブジェクト**
+    (源1本ぶんの設定を構築時に受け取った frozen dataclass) を各層に置く形にした
+    —— D-01 が診断で採った「固有パラメータは ``__call__`` を持つ frozen
+    dataclass の構築時に渡す」のと同じ形である。
+
+    系列名は ``Mapping`` の鍵と ``AnomalySeries.name`` が持つので、この型には
+    持たせない。
+
+    Note:
+        Protocol をこちら (純関数層) に置き ``datasets/`` が実装するのは、
+        依存の向き ``datasets -> tasks`` (D-59) を保つため。逆向きに置くと、
+        実験層が Protocol を引くために ``datasets`` を import することになり、
+        合成源しか使わない経路にまで I/O 層が乗る。
+    """
+
+    def is_available(self) -> bool:
+        """呼べば系列が得られるか。**ネットワークに触れずに**判定する (D-60)。
+
+        合成源は常に ``True``。実データ源はキャッシュの有無と SHA256 の一致で
+        決まる。これが無いと実験層が「MGAB のときだけキャッシュを確認する」
+        分岐を持つことになり、源の具象名が実験層へ漏れる。
+        """
+        ...
+
+    def __call__(self, rng: np.random.Generator) -> AnomalySeries:
+        """系列を1本返す。
+
+        Args:
+            rng: **task ストリーム**の Generator (D-06)。実データ源は乱数を
+                使わないが、呼び出し口を1つに保つために受け取る。
+        """
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,11 +498,36 @@ def generate_synthetic_anomalies(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class SyntheticSeriesSource:
+    """合成源を ``SeriesSource`` として渡すための束縛 (D-71)。
+
+    設定を構築時に受け取り、``__call__`` では ``generate_synthetic_anomalies``
+    へそのまま委譲する。生成の実体をここに書かないのが要点で、書けば
+    「実験層から呼ぶと少し違う合成源」を作れてしまう。
+
+    Attributes:
+        cfg: 合成源の設定 (既定は ``SyntheticAnomalyConfig()`` の既定値)。
+    """
+
+    cfg: SyntheticAnomalyConfig = field(default_factory=SyntheticAnomalyConfig)
+
+    def is_available(self) -> bool:
+        """合成源は**常に**使える (ネットワークもキャッシュも要らない、D-60)。"""
+        return True
+
+    def __call__(self, rng: np.random.Generator) -> AnomalySeries:
+        """設定どおりの合成系列を1本返す。"""
+        return generate_synthetic_anomalies(self.cfg, rng)
+
+
 __all__ = [
     "FIRST_ANOMALY_FRACTION",
     "NORMALIZE_METHODS",
     "TASK_NAME",
     "AnomalyPreprocessor",
     "AnomalySeries",
+    "SeriesSource",
+    "SyntheticSeriesSource",
     "generate_synthetic_anomalies",
 ]
