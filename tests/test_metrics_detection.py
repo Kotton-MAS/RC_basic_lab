@@ -53,7 +53,7 @@ def _random_case(rng: np.random.Generator) -> tuple[BoolArray, FloatArray]:
     """
     n = int(rng.integers(50, 501))
     rate = float(rng.uniform(0.01, 0.20))
-    n_positive = max(1, int(round(rate * n)))
+    n_positive = max(1, round(rate * n))
     labels = np.zeros(n, dtype=np.bool_)
     labels[rng.choice(n, size=n_positive, replace=False)] = True
     n_levels = max(2, n // 10)
@@ -141,7 +141,7 @@ def test_uniform_random_scores_have_average_precision_at_the_anomaly_rate() -> N
 
 def _segmented_labels(n_segments: int, segment_length: int, rate: float) -> BoolArray:
     """等間隔に ``n_segments`` 本の異常区間を置いたラベル列を作る。"""
-    total = int(round(n_segments * segment_length / rate))
+    total = round(n_segments * segment_length / rate)
     labels = np.zeros(total, dtype=np.bool_)
     stride = total // n_segments
     for index in range(n_segments):
