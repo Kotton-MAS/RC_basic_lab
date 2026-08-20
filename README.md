@@ -179,20 +179,21 @@ make saturation-03
 - しきい値法 (`none` / `surrogate` / `chi2`) の比較と既定の根拠は
   `docs/design.md` §11.2 (一次資料は `meta.json` の `threshold_comparison`)
 
-## 実験04: カオス時系列の自由走行予測 (4-A のみ)
+## 実験04: カオス時系列の自由走行予測
 
 ```bash
-# 4-A の成果物 (onestep.csv + meta.json) を results/04_chaotic_freerun/ に
-# 再生成する (実測 wall_time_s = 1.54 秒 / 予算 120 秒)
-make onestep-04
+# 04 の成果物 (CSV5枚 + 図5枚 + meta.json) を results/04_chaotic_freerun/ に
+# 再生成する (実測 wall_time_s = 223.4 秒 / 予算 900 秒)
+make figures-04
 ```
 
-`make onestep-04` は `python main.py --experiment 04` と同じ経路。
-自走の成果物 (`freerun.csv` / `stability.csv`) と図5枚は次サイクルで足す。
+`make figures-04` は `python main.py --experiment 04` と同じ経路。
+4-A (教師強制の1ステップ先予測) / 4-B (自走) / 4-C (3態マップ) /
+4-D (同じ状態行列への MC・IPC) を1回の実行でそろえる。
 
 - **Lorenz (10, 28, 8/3) を RK4 (刻み 0.002) で積分し 5 ステップごとにサンプル**
   する (Delta t = 0.01)。この Delta t は較正で選んだ値で、落選値の実測は
-  `docs/design.md` にある (D-41)
+  `docs/design.md` §11 にある (D-41)
 - **最大 Lyapunov 指数は数値推定が正本** (Benettin 法)。実測 **0.9161 [1/時間]**
   で、文献値 0.9056 (Viswanath 1998) との相対差は **1.16%** (D-42)。
   文献値は照合にしか使わない
@@ -200,9 +201,29 @@ make onestep-04
   条件3 の片側)。10 レプリケートの NRMSE 平均は Lorenz で
   遅延線 1.8e-05 / ESN 5.1e-05、Mackey-Glass で 遅延線 6.2e-04 / ESN 4.3e-04。
   対して線形 (`[1, u[t]]`) は 0.060 / 0.145 で、課題自体は自明ではない
+- **自走にすると対照が成立しない** (受け入れ条件3 のもう片側)。有効予測時間
+  (誤差の NRMSE 比が 0.4 を超えるまで、**Lyapunov 時間で正規化**) の中央値は
+  Lorenz で **ESN 4.83 / 遅延線 0.179 / 線形 0.069 [1/lambda_max]** ——
+  **27〜70 倍**の差がつく (D-43)。対照も同じ経路で自走させて測っている
+  (遅延線の閉ループはシフトレジスタ、線形は状態を持たない恒等写像)
+- **アトラクタ再現は視覚評価で結論しない** (D-46)。リターンマップの点集合距離と
+  パワースペクトルの全変動距離の**2本**を、**真の軌道のシャッフル代替**と
+  比べる。ESN は 2課題とも **10/10 のシードで代替より近い** (片側符号検定
+  p = 0.00098)。対照は 0/10
+- **自走の3態 (発散 / 周期軌道 / アトラクタ再現) は純関数 + 数値基準で分類する**
+  (D-45)。`float64` の範囲内で 1e200 まで伸びる破綻は `isfinite` では捕まらない
+  ので、分類器は振幅そのものを見る。**状態ノイズを増やすと発散が単調に減る**
+  (80 条件中 31 -> 21、要件書 設計判断3)
+- **容量 (MC / IPC) は自走の成否を単調には説明しない** (4-D)。MC が最大の条件は
+  ほとんど発散側にある。駆動が i.i.d. でないため容量の絶対値は 03 の掃引と
+  比較できない (`meta.json` の `capacity_note`、`docs/design.md` §12.5)
 - **自走は外部生成の状態系列生成器でも動く** (要件書 受け入れ条件7、D-50)。
   `readout/autoregressive.py` は `reservoir` を import せず、状態更新器を
   `StateUpdater` プロトコルで受ける
+
+図5枚 (`fig_onestep` / `fig_freerun_attractor` / `fig_valid_time` /
+`fig_stability_map` / `fig_freerun_stats`) と各指標の定義・閾値感度・実行時間は
+`docs/design.md` §12。
 
 ## リポジトリ構成
 
@@ -223,7 +244,8 @@ src/rc_basics_lab/
 ├── experiment/      # 分割・ランナー・PCA 比較・書き出し・1コマンド経路
 │                   #   02: esp / washout / threshold と esp_pipeline
 │                   #   03: capacity (MC/IPC) と capacity_pipeline
-│                   #   04: freerun (1ステップ先予測と自走の入口)
+│                   #   04: attractor (自走の評価) / freerun (4-A・4-B)
+│                   #       / stability (4-C・4-D) / freerun_pipeline
 └── plotting/        # スタイル (CJK フォント探索) と図
 experiments/01_what_is_rc/{config.yaml,run.py}         # 実験1の設定と CLI
 experiments/02_esp_and_dynamics/{config.yaml,run_02.py}  # 実験2の設定と CLI
@@ -250,7 +272,7 @@ make figures-02   # 実験02 の results/02_esp_and_dynamics/ を再生成
 make threshold-02 # 実験02 の閾値感度 CSV だけを再生成
 make figures-03   # 実験03 の results/03_capacity/ を再生成
 make saturation-03 # 実験03 の系列長掃引 CSV だけを再生成 (予算外・手動)
-make onestep-04   # 実験4-A の results/04_chaotic_freerun/ を再生成
+make figures-04   # 実験04 の results/04_chaotic_freerun/ を再生成
 ```
 
 - Python 3.12+ / 依存は **numpy・scipy・matplotlib・pyyaml のみ**
