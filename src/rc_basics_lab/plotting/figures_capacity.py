@@ -52,7 +52,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
-from rc_basics_lab.plotting.style import StyleContext
+from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
@@ -175,8 +175,7 @@ def representative_leak_rate(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     totals: dict[float, list[float]] = {}
     for row in rows:
         totals.setdefault(row.leak_rate, []).append(float(value_of(row)))
@@ -385,10 +384,9 @@ def plot_mc_sweep(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     leak_rate = representative_leak_rate(rows, lambda row: row.mc_total)
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(12.0, 4.8)
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_mc_total_panel(axes[0][0], rows, style)
@@ -455,15 +453,14 @@ def plot_ipc_profile(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     leak_rate = representative_leak_rate(rows, lambda row: row.ipc_total)
     means = ipc_heatmap_means(rows, profile, leak_rate)
     rhos = tuple(means)
     ceiling = max((float(cells.max()) for cells in means.values()), default=0.0)
     norm = PowerNorm(gamma=_HEATMAP_GAMMA, vmin=0.0, vmax=max(ceiling, _MIN_COLOR_MAX))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(3.4 * len(rhos) + 1.2, 3.6)
         axes = figure.subplots(1, len(rhos), squeeze=False)
         meshes = [
@@ -593,10 +590,9 @@ def plot_memory_nonlinearity(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     leaks = _unique_sorted([row.leak_rate for row in rows])
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(4.0 * len(leaks) + 1.0, 4.4)
         axes = figure.subplots(1, len(leaks), squeeze=False, sharey=True)
         ceiling = max(
@@ -653,13 +649,12 @@ def plot_ipc_conservation(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     units = sorted({row.n_units for row in rows})
     noises = _unique_sorted([row.state_noise for row in rows])
     colors = matplotlib.colormaps["plasma"](np.linspace(0.0, 0.75, len(noises)))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(7.2, 5.0)
         axis = figure.subplots(1, 1)
         for index, noise in enumerate(noises):
@@ -770,8 +765,7 @@ def plot_narma10_control(
     Raises:
         ValueError: ``rows`` が空、または参照線のラベルが欠けている場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     labels = narma10_method_labels(rows, style)
     positions = np.arange(len(labels), dtype=np.float64)
     stats = [
@@ -781,7 +775,7 @@ def plot_narma10_control(
     means = [mean for mean, _ in stats]
     stds = [std for _, std in stats]
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(7.2, 5.0)
         axis = figure.subplots(1, 1)
         axis.errorbar(
