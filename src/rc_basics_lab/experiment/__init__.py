@@ -22,6 +22,72 @@
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
 """
 
+from rc_basics_lab.experiment.anomaly import (
+    SPLIT_OFFSET_DIVISOR,
+    AnomalyCondition,
+    AnomalyOutcome,
+    AnomalyPlan,
+    AnomalyResults,
+    plan_replicate,
+    preprocessor_id,
+    run_anomaly_headline,
+    run_anomaly_replicate,
+    split_config_for,
+    truncate_series,
+)
+from rc_basics_lab.experiment.anomaly_rows import (
+    ANOMALY_CSV,
+    ANOMALY_SCALAR_COLUMNS,
+    ANOMALY_THRESHOLD_CSV,
+    ANOMALY_THRESHOLD_CSV_COLUMNS,
+    F1_TEST_OPTIMAL_COLUMN,
+    PA_F1_PREFIX,
+    PA_F1_RANDOM_PREFIX,
+    AnomalyRow,
+    ThresholdSweepRow,
+    anomaly_csv_columns,
+    anomaly_row_as_dict,
+    pa_columns,
+    rows_as_dicts,
+)
+from rc_basics_lab.experiment.anomaly_score import (
+    ANOMALY_METHODS,
+    CONTROL_METHODS,
+    DELAY_LINE_RESIDUAL,
+    ESN_RESIDUAL,
+    INPUT_NORM_CONTROL,
+    MOVING_STATISTICS,
+    PERSISTENCE_RESIDUAL,
+    RANDOM_CONTROL,
+    AnomalyScore,
+    InputNormControlSpec,
+    MovingStatisticsSpec,
+    PersistenceSpec,
+    RandomControlSpec,
+    RidgeResidualSpec,
+    ScoreInputs,
+    ScoreSpec,
+    build_score,
+    build_score_specs,
+    score_first_valid,
+    smooth_score,
+    smoothing_shift,
+)
+from rc_basics_lab.experiment.anomaly_sources import (
+    ANOMALY_SOURCES,
+    MGAB_SOURCE,
+    SYNTHETIC_SOURCE,
+    UCR_SOURCE,
+    build_sources,
+)
+from rc_basics_lab.experiment.anomaly_threshold import (
+    OperatingPoint,
+    alarms_at,
+    best_test_f1,
+    calibrate_threshold,
+    evaluate_at_threshold,
+    sweep_thresholds,
+)
 from rc_basics_lab.experiment.attractor import (
     REGIMES,
     AttractorDistance,
@@ -193,6 +259,12 @@ from rc_basics_lab.experiment.washout import (
 )
 
 __all__ = [
+    "ANOMALY_CSV",
+    "ANOMALY_METHODS",
+    "ANOMALY_SCALAR_COLUMNS",
+    "ANOMALY_SOURCES",
+    "ANOMALY_THRESHOLD_CSV",
+    "ANOMALY_THRESHOLD_CSV_COLUMNS",
     "ARTIFACTS",
     "CAPACITY_ARTIFACTS",
     "CAPACITY_CSV_COLUMNS",
