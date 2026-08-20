@@ -6,7 +6,8 @@
   重ね描き (Lorenz は (x, z)、1変数系は遅延座標埋め込み)。
 - ``plot_valid_time``: 有効予測時間 (Lyapunov 時間で正規化) のシード分布。
   対照 (線形・遅延線) も同じ軸に載せる (受け入れ条件3 の後半)。
-- ``plot_stability_map``: (rho x リーク率) の3態マップをノイズ量ごとに並べ、
+- ``plot_stability_map``: (rho x リーク率) の3態マップを状態ノイズ量ごとに
+  並べ、
   右端に 4-D の容量 (MC) と有効予測時間の関係を置く (受け入れ条件4)。
 - ``plot_freerun_stats``: 長時間自走後のリターンマップとパワースペクトルの
   比較 (受け入れ条件5)。
@@ -29,6 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Protocol
 
 import matplotlib
 import numpy as np
@@ -96,6 +98,13 @@ _SOURCE_LABELS_EN: dict[str, str] = {
 }
 
 
+class _HasTask(Protocol):
+    """``task`` 列を持つ行 (課題の並びを取り出すためだけの構造的型)。"""
+
+    @property
+    def task(self) -> str: ...
+
+
 def _new_figure(width: float, height: float) -> Figure:
     """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
     figure = Figure(figsize=(width, height))
@@ -131,7 +140,7 @@ def _mean_std(values: Sequence[float]) -> tuple[float, float]:
     return float(np.mean(array)), float(np.std(array))
 
 
-def _tasks_of(rows: Sequence[FreeRunProfileRow] | Sequence[FreeRunRow]) -> list[str]:
+def _tasks_of(rows: Sequence[_HasTask]) -> list[str]:
     """行に現れる課題名 (出現順を保つ)。"""
     seen: list[str] = []
     for row in rows:
@@ -175,7 +184,7 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
     if not rows:
         raise ValueError("rows が空です")
     tasks = _tasks_of(rows)
-    methods = [name for name in (LINEAR, DELAY_LINE, ESN_METHOD)]
+    methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     positions = np.arange(len(methods), dtype=np.float64)
     with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
         figure = _new_figure(7.6, 5.0)
@@ -426,7 +435,7 @@ def plot_stability_map(
 def _regime_panel(
     axis: Axes, rows: Sequence[StabilityRow], noise: float, style: StyleContext
 ) -> None:
-    """1ノイズ量ぶんの3態マップ (格子点を色で塗る)。"""
+    """状態ノイズ1点ぶんの3態マップ (格子点を色で塗る)。"""
     mapping = regime_map(rows, noise)
     rhos = sorted({key[0] for key in mapping})
     leaks = sorted({key[1] for key in mapping})
