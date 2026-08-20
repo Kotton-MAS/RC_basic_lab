@@ -51,6 +51,7 @@ from rc_basics_lab.experiment.capacity import (
     capacity_row_from,
     measure_capacity,
     validate_state_matrix_bounds,
+    validate_total_step_count,
 )
 from rc_basics_lab.experiment.freerun import (
     chaos_esn_config,
@@ -164,13 +165,14 @@ class StabilityCondition:
 
 
 def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...]:
-    """掃引の全条件を作る (**作る前に確保軸5 を検査する**)。
+    """掃引の全条件を作る (**作る前に確保軸5・積の軸を検査する**)。
 
     並びは (rho, leak_rate, state_noise, replicate) の入れ子順で、
     ``stability.csv`` の行順もこれに一致する。
 
     Raises:
-        ValueError: 格子が空、または確保軸5 を超える場合。
+        ValueError: 格子が空、確保軸5 を超える、または条件数 x ``stats_steps``
+            の積が上限を超える場合。
     """
     stability = config.stability
     if not (
@@ -183,12 +185,17 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         raise ValueError(
             f"n_replicates は 1 以上である必要があります: {stability.n_replicates}"
         )
-    validate_condition_count(
+    n_conditions = (
         len(stability.spectral_radius_grid)
         * len(stability.leak_rate_grid)
         * len(stability.state_noise_grid)
         * stability.n_replicates
     )
+    validate_condition_count(n_conditions)
+    # 軸5 (条件数) と軸4 (``stats_steps``、``attractor.validate_stats_bounds``
+    # が別途検査する) はどちらも単独では上限内でも、**積**(逐次シミュレーションの
+    # 総ステップ数) が両方の軸検査をすり抜けて膨らみうる (reviewer-security 実測)。
+    validate_total_step_count(n_conditions * config.freerun.stats_steps)
     return tuple(
         StabilityCondition(
             rho=rho, leak_rate=leak, state_noise=noise, replicate=replicate
