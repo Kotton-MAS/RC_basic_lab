@@ -184,7 +184,7 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
   - 実測 (2026-08-20): 新規テスト **42 件**、`uv run pytest -q` = **1006 passed / 37.9 秒**
     (ベースライン 964 から 42 増、既存の減少なし)。sklearn 照合 1000 ケースの最悪相対差 **5.50e-16**
 
-- [ ] **T2: データ層 `datasets/` + `tasks/anomaly.py` + ライセンス文書** — 想定所要 **L**
+- [x] **T2: データ層 `datasets/` + `tasks/anomaly.py` + ライセンス文書** — 想定所要 **L** (完了 2026-08-20)
   - 何をするか: (a) `AnomalySeries` dataclass (`values (T,1)` / `labels (T,)` bool / `ignore (T,)` bool /
     `train_end: int` / `name` / `params`) と `AnomalyPreprocessor` を `tasks/anomaly.py` に。
     (b) 合成源 `generate_synthetic_anomalies(cfg, rng)` — 既存 `generate_mackey_glass` に委譲し、
@@ -210,6 +210,70 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
        `datasets/manifests/*.csv` のライセンス文字列と一致することをテストで固定
   - 実装メモ: UCR ZIP は 184 MB。マニフェストには**サブセットのファイル名と個別 SHA256 のみ**を書き、
     ZIP 全体の SHA256 も併記する
+  - **T2 実装時に決めたこと** (仕様に書かれていなかった選択。次周の reviewer / fixer はここを読む):
+    1. **合成源の設定 `SyntheticAnomalyConfig` を `config/anomaly05.py` に新設した**
+       (T3 が `Anomaly05Config` を足す予定のファイルを先に作った形)。課題層に置けないのは
+       import の向きのためで、既存の課題層は `tasks -> config` の一方向
+       (`tasks/mackey_glass.py:21` など5モジュール)。逆向きの辺を1本でも引くと
+       `config/__init__` の初期化中に `tasks` が `rc_basics_lab.config` を import し直す循環になる
+       (`diagnostics` / `reservoir` が自分の設定を持てるのは、その2つが `config` を import しないから)。
+       付随して `tests/test_config_package_layout.py` に `ANOMALY05_ADDITIONS` /
+       `EXPECTED_SUBMODULES` / `ALLOWED_INTERNAL_EDGES` / `CYCLE_MODULES` を、
+       `docs/design.md` §11.5 の行数表に `anomaly05.py` (非空 46 / 総 59) の行を足した
+       (どちらも機械照合されているスナップショットで、足さないと赤になる)。
+       **T3 は同じファイルに `Anomaly05Config` を足し、`ANOMALY05_ADDITIONS` に名前を追記すること**
+    2. **`BoolArray` は `types.py` に新設し、`metrics_detection.py` 側の定義は残した**。
+       T1 のメモ4 は「T2 で `types.py` へ昇格させる」としていたが、T2 の作業指示で
+       `metrics_detection.py` の変更が禁止されたため、同じ構造的別名
+       (`npt.NDArray[np.bool_]`) が2箇所にある状態になっている。型検査上は等価で、
+       公開名 `metrics_detection.BoolArray` の経路も不変。**統合は次サイクルで
+       `metrics_detection` 側を `types` からの再エクスポートに寄せる**
+    3. **UCR の index 解釈を「1-indexed・`anomaly_end` は排他」に固定した**
+       (0-based で `labels[start-1 : end-1]`、異常長 = `end - start`)。実装は
+       `datasets/ucr.py` の `anomaly_slice` 1関数だけが持ち、
+       `::test_ucr_filename_index_convention_is_pinned` が値で固定する。
+       根拠は `.claude/tmp/dataset-manifest-source.md` の実測表で、記録された8系列の
+       異常長・異常率がすべて `end - start` で計算されているため、マニフェストと
+       読み取り実装が同じ数を指すのはこの読み方だけである。**もう一方の読み
+       (両端とも閉区間、異常長 = `end - start + 1`) との差は1点**で、AUPRC には
+       実質的な影響が無いが、固定しておかないと後から静かに揺れる
+    4. **`AnomalySeries` に2つの不変条件を器の側で実装した**: (a) `labels[:train_end]` が全て False
+       (b) 異常が1点以上ある。受け入れ基準5 の「`train_end` より手前に異常が1つも無い」を
+       源ごとのテストで確かめる形にすると、次に足した源が静かに破る。(b) は
+       `metrics_detection.average_precision` が陽性0件で `ValueError` を出す規律 (T1 の決定5) に揃えた
+    5. **MGAB の `is_ignored` は異常の近傍ではなく系列の先頭 257 点**だった (実測、10系列すべて同じ)。
+       過渡区間を評価から外すマスクであり、合成源が立てる ignore (縫合点の前後) とは**意味が違う**。
+       仕様の受け入れ基準5 は合成源についての要求なのでそのまま実装したが、
+       「ignore は異常の近傍にしか付かない」と決め打つコードを実験層に書かないこと
+    6. **MGAB の `train_end` は「最初の異常が始まる index」**とした (CSV に列が無いため)。
+       実測では系列ごとに 29,068〜44,944 で、UCR のファイル名にある `train_end`
+       (= 正常が保証された前半の終端) と同じ意味になる
+    7. **除去するセグメント長を独立の設定軸にしなかった**。`segment_length` の 1〜3 倍を
+       探索範囲とする (`_REMOVED_SPAN_FACTORS`)。独立させると「標識する幅は変えたが
+       除去する幅は変えていない」条件が作れ、異常の強さと評価の甘さが別々に動く
+    8. **§5 の配線表の観測点を1行訂正する**: `synthetic.segment_length` が変えるのは
+       「`ignore` の点数」ではなく**異常率と異常区間の位置** (`auprc` / `anomaly_rate`) である。
+       `ignore` の点数は `2 * ignore_margin * n_anomalies` で決まる。
+       また合成源には `synthetic.ignore_margin` という葉が増えているので、
+       T3 の `test_all_anomaly_config_fields_are_covered` は 4 葉 + `synthetic.mackey_glass.*` を数えること
+    9. **UCR の `ignore` は全て False** にした。ファイル名からは過渡区間が分からないため。
+       T3 の `evaluation.ignore_transition` は系列側ではなく実験層で立てる
+    10. **禁止する I/O の根を仕様の5つ (`urllib` / `requests` / `socket` / `open` / `pathlib`) から広げた** ——
+        `os` / `io` / `shutil` / `zipfile` / `tarfile` / `tempfile` / `subprocess` / `sqlite3` /
+        `csv` / `json` と、numpy 経由のファイル I/O (`np.loadtxt` / `np.load` / `np.savetxt` など) まで。
+        名指しの5つだけだと「`pathlib` は使っていない (`os.path` を使った)」「`open` は呼んでいない
+        (`np.loadtxt` を呼んだ)」が通る (D-59 の rationale)
+    11. **`make data-05` の実体を `datasets/cli.py` に置いた** (`experiments/05_anomaly_detection/` は
+        T5 の担当なので作っていない)。`uv run python -m rc_basics_lab.datasets.cli --dataset {mgab,ucr,all}`
+    12. `AnomalyPreprocessor` は係数のほかに `normalize` と `n_steps` を**来歴として**持つ。
+        5-C の格子点と 5-A の条件が同じ前処理を通っていることを、実験層が値で照合できるようにするため
+  - 実測 (2026-08-20): 新規テスト **80 件** (`test_tasks_anomaly.py` 29 / `test_datasets_anomaly.py` 36 /
+    `test_layer_boundaries.py` +15)、`uv run pytest -q` = **1086 passed / 38.9 秒**
+    (T1 完了時点のベースライン 1006 から 80 増、既存の減少なし)。
+    **`data/05_anomaly` を退避した状態でも 1077 passed / 9 skipped** で赤は0件 (D-60 の実測)。
+    マニフェストに載せた 18 ファイル + ZIP の SHA256 は `shasum -a 256` の実測値と完全一致し、
+    読み取り実装が返す点数・異常点数・異常率もマニフェストの値と一致する。
+    `results/01..04/` はバイト不変 (`git diff <base-ref> -- results/` が空)
 
 - [ ] **T3: 実験5-A / 5-B (対照込みの検知性能比較と閾値)** — 想定所要 **L**
   - 何をするか: `config/anomaly05.py` (`Anomaly05Config`)、`experiment/anomaly_score.py` (6スコア構成器)、
