@@ -39,6 +39,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import QuadMesh
 from matplotlib.colors import Normalize, PowerNorm
+from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.capacity import (
     DIAGNOSTIC_IPC,
@@ -56,6 +57,7 @@ from rc_basics_lab.plotting.style import (
     StyleContext,
     rc_context_for,
     require_rows,
+    save_png,
 )
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
@@ -117,6 +119,18 @@ _REFERENCE_COLORS: dict[str, str] = {
     "linear_ceiling": "tab:red",
     "nonlinear_rc": "tab:green",
 }
+
+
+def _save(figure: Figure, path: Path) -> Path:
+    """PNG を書く (``style.save_png`` への薄い委譲)。
+
+    ``tests/test_plotting_capacity.py::captured`` がこの名前を monkeypatch して
+    保存直前の ``Figure`` を捕まえるため、ローカル関数として定義する
+    (``save_png as _save`` の import エイリアスのままだと、mypy strict の
+    implicit-reexport 検査がテストからの ``figures_capacity._save`` 参照を
+    "does not explicitly export" として拒否する)。
+    """
+    return save_png(figure, path)
 
 
 def _mean_std(values: Sequence[float]) -> tuple[float, float]:
