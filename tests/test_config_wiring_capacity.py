@@ -276,25 +276,15 @@ T1 の時点では掃引が無かったため固定の条件を並べていた�
 """
 
 
-def _seeds_case(field: str, value: int, stream: SeedStream) -> WiringCase:
-    """基底シード1本ぶんのケース。``scope`` に変化してよいストリームを書く。"""
-    return case(field, value, channel=CHANNEL_SEEDS, scope=stream.value)
-
-
 def _pending_case(field: str, value: object, task: str, note: str) -> WiringCase:
     return case(field, value, channel=CHANNEL_PENDING, task=task, note=note)
-
-
-def _section_case(field: str, value: object, scope: str) -> WiringCase:
-    """セクション固有の葉。**その実験の行だけ**が変わることまで測る。"""
-    return case(field, value, scope=scope)
 
 
 CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     # name は結果行に出ない純粋なメタ情報。meta.json に載ることを確かめる。
     case("name", "03-renamed", channel=CHANNEL_META),
-    _seeds_case("seeds.reservoir", 100, SeedStream.RESERVOIR),
-    _seeds_case("seeds.drive", 101, SeedStream.TASK),
+    seeds_case("seeds.reservoir", 100, SeedStream.RESERVOIR),
+    seeds_case("seeds.drive", 101, SeedStream.TASK),
     # サロゲートのシードは SeedStream ではなく ctx.seed へ直接渡る (D-37)。
     # 効きは「しきい値が動く = 行が変わる」で測る。
     case("seeds.surrogate", 777),
@@ -308,38 +298,38 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("reservoir.density", 0.6),
     case("reservoir.n_replicates", 2),
     # --- 3-A: 線形メモリ容量の掃引軸 ---
-    _section_case("mc_sweep.rho_grid", (0.6, 1.0), EXPERIMENT_MC_SWEEP),
-    _section_case("mc_sweep.leak_rate_grid", (0.4,), EXPERIMENT_MC_SWEEP),
-    _section_case("mc_sweep.sigma_u", 0.5, EXPERIMENT_MC_SWEEP),
-    _section_case("mc_sweep.n_units", 14, EXPERIMENT_MC_SWEEP),
-    _section_case("mc_sweep.n_steps", 1400, EXPERIMENT_MC_SWEEP),
+    section_case("mc_sweep.rho_grid", (0.6, 1.0), EXPERIMENT_MC_SWEEP),
+    section_case("mc_sweep.leak_rate_grid", (0.4,), EXPERIMENT_MC_SWEEP),
+    section_case("mc_sweep.sigma_u", 0.5, EXPERIMENT_MC_SWEEP),
+    section_case("mc_sweep.n_units", 14, EXPERIMENT_MC_SWEEP),
+    section_case("mc_sweep.n_steps", 1400, EXPERIMENT_MC_SWEEP),
     # --- 3-B: IPC の掃引軸 ---
-    _section_case("ipc_sweep.rho_grid", (0.7,), EXPERIMENT_IPC_SWEEP),
-    _section_case("ipc_sweep.leak_rate_grid", (0.5, 1.0), EXPERIMENT_IPC_SWEEP),
-    _section_case("ipc_sweep.sigma_u", 0.5, EXPERIMENT_IPC_SWEEP),
-    _section_case("ipc_sweep.n_units", 16, EXPERIMENT_IPC_SWEEP),
-    _section_case("ipc_sweep.n_steps", 1300, EXPERIMENT_IPC_SWEEP),
+    section_case("ipc_sweep.rho_grid", (0.7,), EXPERIMENT_IPC_SWEEP),
+    section_case("ipc_sweep.leak_rate_grid", (0.5, 1.0), EXPERIMENT_IPC_SWEEP),
+    section_case("ipc_sweep.sigma_u", 0.5, EXPERIMENT_IPC_SWEEP),
+    section_case("ipc_sweep.n_units", 16, EXPERIMENT_IPC_SWEEP),
+    section_case("ipc_sweep.n_steps", 1300, EXPERIMENT_IPC_SWEEP),
     # --- 3-B': 保存則。打ち切りとレプリケート数はこの実験だけを上書きする ---
-    _section_case("conservation.n_units_grid", (8, 12), EXPERIMENT_CONSERVATION),
-    _section_case(
+    section_case("conservation.n_units_grid", (8, 12), EXPERIMENT_CONSERVATION),
+    section_case(
         "conservation.state_noise_grid", (0.0, 0.05), EXPERIMENT_CONSERVATION
     ),
-    _section_case("conservation.rho", 0.85, EXPERIMENT_CONSERVATION),
-    _section_case("conservation.leak_rate", 0.7, EXPERIMENT_CONSERVATION),
-    _section_case("conservation.sigma_u", 0.55, EXPERIMENT_CONSERVATION),
-    _section_case("conservation.n_steps", 1500, EXPERIMENT_CONSERVATION),
-    _section_case("conservation.max_delay_by_degree", (12, 6), EXPERIMENT_CONSERVATION),
+    section_case("conservation.rho", 0.85, EXPERIMENT_CONSERVATION),
+    section_case("conservation.leak_rate", 0.7, EXPERIMENT_CONSERVATION),
+    section_case("conservation.sigma_u", 0.55, EXPERIMENT_CONSERVATION),
+    section_case("conservation.n_steps", 1500, EXPERIMENT_CONSERVATION),
+    section_case("conservation.max_delay_by_degree", (12, 6), EXPERIMENT_CONSERVATION),
     # None なら reservoir.n_replicates を継承する片方向の上書き (仕様 §7 の
     # 縮退規則のノブ)。3-B' の行だけが増える。
-    _section_case("conservation.n_replicates", 2, EXPERIMENT_CONSERVATION),
+    section_case("conservation.n_replicates", 2, EXPERIMENT_CONSERVATION),
     # --- 系列長掃引 (make saturation-03。本番の figures-03 には含めない) ---
-    _section_case("length_sweep.n_steps_grid", (1100, 1600), EXPERIMENT_LENGTH_SWEEP),
-    _section_case("length_sweep.rho", 0.6, EXPERIMENT_LENGTH_SWEEP),
-    _section_case("length_sweep.leak_rate", 0.5, EXPERIMENT_LENGTH_SWEEP),
-    _section_case("length_sweep.sigma_u", 0.6, EXPERIMENT_LENGTH_SWEEP),
-    _section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
+    section_case("length_sweep.n_steps_grid", (1100, 1600), EXPERIMENT_LENGTH_SWEEP),
+    section_case("length_sweep.rho", 0.6, EXPERIMENT_LENGTH_SWEEP),
+    section_case("length_sweep.leak_rate", 0.5, EXPERIMENT_LENGTH_SWEEP),
+    section_case("length_sweep.sigma_u", 0.6, EXPERIMENT_LENGTH_SWEEP),
+    section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
     # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
-    _section_case("narma.length", 400, EXPERIMENT_NARMA10),
+    section_case("narma.length", 400, EXPERIMENT_NARMA10),
 )
 
 
