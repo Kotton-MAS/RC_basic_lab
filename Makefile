@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 data-05 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
 	@echo "  figures-03   - Regenerate results/ for experiment 03 (2 CSV + 4 figures + meta)"
 	@echo "  figures-04   - Regenerate results/ for experiment 04 (5 CSV + 5 figures + meta)"
+	@echo "  data-05      - Download + verify (SHA256) the experiment 05 datasets into data/"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"
@@ -81,6 +82,14 @@ figures-03:
 # 区間の一部だけの内訳で上書きしてしまうため。
 figures-04:
 	uv run python experiments/04_chaotic_freerun/run_04.py --config experiments/04_chaotic_freerun/config.yaml --out results/04_chaotic_freerun
+
+# 実験05 の外部データセットを data/05_anomaly/ へ取得し SHA256 で照合する
+# (D-58: データ本体はリポジトリに含めない。マニフェストは
+# src/rc_basics_lab/datasets/manifests/*.csv)。既定は MGAB (CC0-1.0) のみ。
+# UCR (ライセンス未指定・ZIP 184 MB) まで要るときは --dataset all を使う。
+# ci の構成には入れない —— pytest はネットワークに一切触れない (D-60)。
+data-05:
+	uv run python -m rc_basics_lab.datasets.cli --dataset mgab
 
 # ESP 判定の閾値感度 (esp_threshold_sensitivity.csv) を再生成する。
 # abs_tol 3点 x window 3点で 2-C の格子を判定し直すので figures-02 とは

@@ -227,6 +227,44 @@ make figures-04
 `fig_stability_map` / `fig_freerun_stats`) と各指標の定義・閾値感度・実行時間は
 `docs/design.md` §12。
 
+## データセットのライセンスと取得手順
+
+実験05 (センサー時系列の異常検知) は外部の公開データセットを使う。
+**データ本体はこのリポジトリに一切含めない** (D-58)。置いてあるのは取得スクリプトと
+ファイル名・SHA256 のマニフェスト (`src/rc_basics_lab/datasets/manifests/*.csv`) だけで、
+`data/` は `.gitignore` 済みである。
+
+```bash
+# MGAB (既定) を data/05_anomaly/mgab/ へ取得し SHA256 で照合する
+make data-05
+
+# UCR も取りたいとき (ZIP 184 MB。採用サブセット8系列だけを展開する)
+uv run python -m rc_basics_lab.datasets.cli --dataset all
+```
+
+取得は HTTPS のみ・リダイレクト3回まで・サイズ上限 200 MB・タイムアウトつきで行い、
+**SHA256 が一致しないファイルは例外にしてキャッシュにも残さない**。
+ZIP は member 名を検査してから必要な8ファイルだけを展開する
+(`zipfile.ZipFile.extractall` は使わない)。
+
+| データセット | ライセンス | 出典 | 本リポジトリでの扱い |
+|---|---|---|---|
+| MGAB (Mackey-Glass Anomaly Benchmark) | `CC0-1.0` | <https://github.com/MarkusThill/MGAB> / DOI <https://doi.org/10.5281/zenodo.3760086> | 取得スクリプトと SHA256 のみ。データ本体は同梱しない |
+| UCR Time Series Anomaly Archive (2021) | `未指定 (再配布可否不明・データ本体は同梱しない)` | <https://www.cs.ucr.edu/~eamonn/time_series_data_2018/> | 取得スクリプトと SHA256 のみ。**再配布はしない** |
+
+- **MGAB** は CC0-1.0 (パブリックドメイン相当)。引用のお願いとして
+  Thill, Konen, Bäck, *MGAB: The Mackey-Glass Anomaly Benchmark* (2020),
+  Zenodo, doi:10.5281/zenodo.3760086 を挙げる。
+- **UCR** は公式ページにライセンス表記が一切なく、引用のお願いだけがある。
+  したがって**再配布可否が法的に不明**であり、本リポジトリはデータ本体を
+  同梱しない。利用者が自分でダウンロードする経路だけを提供する。
+  Figshare のミラーは寄託者が原著者でなくサイズも異なるため根拠にしない。
+
+ライセンス文字列はマニフェスト CSV の先頭 (`# license:`) と
+`datasets/{mgab,ucr}.py` の `LICENSE` 定数、そしてこの表の3箇所にあり、
+`tests/test_datasets_anomaly.py::test_readme_license_matches_the_manifests` が
+一致を機械検査する。
+
 ## リポジトリ構成
 
 ```
@@ -235,8 +273,11 @@ src/rc_basics_lab/
 ├── config/          # 設定 dataclass 群 (実験サイクル単位で分割、公開経路は
 │                   #   `rc_basics_lab.config` の1本のまま)
 │                   #   _common: ローダ / experiment01 / esp02 / capacity03
-│                   #   / chaos04
-├── tasks/           # 課題層 (MG / 遅延パリティ / NARMA10 / Lorenz)
+│                   #   / chaos04 / anomaly05
+├── tasks/           # 課題層 (MG / 遅延パリティ / NARMA10 / Lorenz / 異常検知)
+│                   #   anomaly: 系列の器・共通前処理・合成源 (I/O を持たない)
+├── datasets/        # 外部データセットの取得・SHA256 照合・読み取り
+│                   #   **I/O を持つ唯一のパッケージ** (D-59)。依存は datasets -> tasks
 ├── diagnostics/     # 状態系列 X だけを見る診断層 (reservoir に依存しない)
 │                   #   PCA / ESP 判定 / 条件付き Lyapunov / 実効時定数
 │                   #   / MC / IPC / 最大 Lyapunov 指数
