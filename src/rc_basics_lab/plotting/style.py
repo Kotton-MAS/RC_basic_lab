@@ -16,11 +16,15 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib
 from matplotlib import font_manager
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
 from rc_basics_lab.plotting.labels import label
 
@@ -130,12 +134,64 @@ def rc_params_for(style: StyleContext) -> dict[str, object]:
     return params
 
 
+@contextmanager
+def rc_context_for(style: StyleContext) -> Iterator[None]:
+    """``rc_params_for(style)`` を描画中だけ一時適用する.
+
+    ``matplotlib.rc_context`` の型スタブは rcParams キーの閉じた Literal 集合を
+    要求するが、``rc_params_for`` は動的に決まる部分集合の ``dict[str, object]``
+    を返す。キー自体は既定の rcParams から取った有効なものなので実行時は安全
+    —— この ``# type: ignore[arg-type]`` は、以前は4本の作図モジュールの
+    呼び出し側16箇所に同一のコメントごと複製されていた。ここへ1箇所へ集約する。
+    """
+    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+        yield
+
+
+def require_rows(rows: Sequence[object]) -> None:
+    """``rows`` が空なら ``ValueError`` を送出する.
+
+    作図関数の入口で個別に書かれていた ``if not rows: raise ValueError("rows が空です")``
+    の重複 (作図層12箇所) をまとめる。
+    """
+    if not rows:
+        raise ValueError("rows が空です")
+
+
+def new_figure(width: float, height: float) -> Figure:
+    """constrained layout の ``Figure`` を作る (4本の作図モジュール共通の規律)。
+
+    ``constrained`` layout engine が軸ラベルとタイトルの重なりを防ぐ。
+    """
+    figure = Figure(figsize=(width, height))
+    figure.set_layout_engine("constrained")
+    return figure
+
+
+def save_png(figure: Figure, path: Path) -> Path:
+    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    FigureCanvasAgg(figure)
+    figure.savefig(path, format="png")
+    return path
+
+
+def unique_sorted(values: Sequence[float]) -> tuple[float, ...]:
+    """重複を除いて昇順に並べる (格子の軸を行から復元する)。"""
+    return tuple(sorted(set(values)))
+
+
 __all__ = [
     "CJK_FONT_CANDIDATES",
     "FIGURE_DPI",
     "SAVEFIG_DPI",
     "StyleContext",
     "find_cjk_font",
+    "new_figure",
+    "rc_context_for",
     "rc_params_for",
+    "require_rows",
+    "save_png",
     "setup_style",
+    "unique_sorted",
 ]
