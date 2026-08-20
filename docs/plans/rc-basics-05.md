@@ -12,7 +12,12 @@
 | | 範囲 | 状態 |
 |---|---|---|
 | **05a** | T1 (検知指標層) + T2 (データ層) | **完了**。レビュー4周、BLOCKER 0 / HIGH 15件をすべて修正 |
-| **05b** | T3 (実験5-A・5-B) + T4 (実験5-C・5-D) + T5 (パイプライン・図5枚・配線) | 未着手 |
+| **05b** | T3 (実験5-A・5-B) | **完了** (2026-08-20)。実測は §4 T3 の末尾 |
+| **05b** | T4 (実験5-C・5-D) + T5 (パイプライン・図5枚・配線) | 未着手 |
+
+**T4 に進む前に §4 T3 のチェックポイント表を読むこと** (リスク2 の判定材料)。
+ESN 0.3935 / 遅延線 0.1877 に対し一様乱数対照 0.0811 (異常率 0.0780) で、
+**ESN と遅延線は対照から離れ、persistence / 移動統計 / 入力ノルムは対照と区別がつかない**。
 
 **05a 完了時の実測**: `uv run pytest -q` **1132 passed** (05 着手前 964) /
 `.claude/decisions.yaml` **64 件** (D-54〜D-68) / `mypy` strict・`ruff` green /
@@ -128,9 +133,11 @@ tasks/anomaly.py     純関数のみ。合成データ生成 + AnomalySeries の
 
 | モジュール | 責務 | 行数予算 |
 |---|---|---|
-| `experiment/anomaly_score.py` | スコア構成器6種。入口は1つ (`build_score`) | 350 |
-| `experiment/anomaly_threshold.py` | 較正区間分位点 + テスト側最適化 (参考値) + 閾値掃引 (5-B) | 300 |
-| `experiment/anomaly.py` | 5-A の1条件 = (系列 × 手法 × レプリケート) → 行 | 450 |
+| `experiment/anomaly_score.py` | スコア構成器6種。入口は1つ (`build_score`) | 350 (実測 446) |
+| `experiment/anomaly_threshold.py` | 較正区間分位点 + テスト側最適化 (参考値) + 閾値掃引 (5-B) | 300 (実測 181) |
+| `experiment/anomaly.py` | 5-A の1条件 = (系列 × 手法 × レプリケート) → 行 | 450 (実測 551) |
+| `experiment/anomaly_rows.py` (T3 で追加) | 行 dataclass + CSV 列 (D-55 の列の対) | — (実測 223) |
+| `experiment/anomaly_sources.py` (T3 で追加) | `dataset.source` → `SeriesSource` の辞書。`experiment/` で `datasets` を import する唯一のモジュール | — (実測 68) |
 | `experiment/anomaly_sweep.py` | 5-C (プロトコル掃引 + 順位入替) と 5-D (N 掃引) | 400 |
 | `experiment/anomaly_pipeline.py` | `ANOMALY_ARTIFACTS` / `run_and_report_anomaly` / meta.json / 図 | 350 |
 
@@ -299,7 +306,7 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
     読み取り実装が返す点数・異常点数・異常率もマニフェストの値と一致する。
     `results/01..04/` はバイト不変 (`git diff <base-ref> -- results/` が空)
 
-- [ ] **T3: 実験5-A / 5-B (対照込みの検知性能比較と閾値)** — 想定所要 **L**
+- [x] **T3: 実験5-A / 5-B (対照込みの検知性能比較と閾値)** — 想定所要 **L** (完了 2026-08-20)
   - 何をするか: `config/anomaly05.py` (`Anomaly05Config`)、`experiment/anomaly_score.py` (6スコア構成器)、
     `experiment/anomaly_threshold.py`、`experiment/anomaly.py` (行 dataclass + CSV 列定数 + 1レプリケートの実行)。
     3分割は `experiment/split.py` を使い、`compute_t0` で全手法の行を揃える (D-05)
@@ -317,6 +324,101 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
     6. 主指標列 `auprc` が **point-adjust を一切通していない**ことを、乱数スコアで実測
        (`auprc ≈ 異常率` かつ `pa_f1 > 0.9`)
     7. モジュールいずれも 600行以下 (`::test_anomaly_modules_stay_under_the_line_budget`)
+  - **T3 実装時に決めたこと** (仕様に書かれていなかった選択。次周の reviewer / fixer はここを読む):
+    1. **`protocol_sweep` / `size_sweep` を `Anomaly05Config` に足さなかった**。掃引を回す実装
+       (`anomaly_sweep.py`) が無い時点で置くと、その葉は「値を変えても出力が1バイトも変わらない」
+       死葉として全葉被覆テストに載り、D-69 が `length` / `horizon` で潰したのと同じ状態を
+       自分で作ることになる。**T4 が掃引の実装と同時に足す**こと (`tests/test_config_wiring_anomaly.py`
+       の `ANOMALY_CASES` にも同時に行を足す。忘れると `test_all_anomaly_config_fields_are_covered` が赤)
+    2. **`seeds.control` は `SeedStream.PROBE` に載せた** (`config/anomaly05.py::anomaly_stream_seed`)。
+       `seeds.py` に5本目のストリームを足していない —— 05 は初期状態プローブを使わないので
+       PROBE が空いており、`EspSeedConfig.drive` が `SeedStream.TASK` へ載るのと同じ流儀である
+       (フィールド名とストリーム名が1対1である必要は既存コードでも無い)。既存の
+       `_STREAM_INDEX` を1バイトも動かさないので 01〜04 の成果物は不変
+    3. **`max_start_offset` を設定の葉にしなかった**。`SPLIT_OFFSET_DIVISOR = 100`
+       (系列長の 1/100) から導く。`seeds.split` が効くために正の値が要るだけで、値そのものは
+       結論を動かさない —— 葉にすると死葉が1つ増える (D-69 と同じ判断)
+    4. **3分割は `SplitConfig` の `val` を較正区間に充てた**。`experiment/split.py` を
+       そのまま使うため (D-05 の `compute_t0` を共有するのが目的なので、新しい分割器を作らない)
+    5. **実験モジュールは5本になった** (仕様 §3(4) の3本から2本増)。`anomaly.py` が素直に書くと
+       799 行になり D-63 の上限に当たったため、行 dataclass と CSV 列を `anomaly_rows.py` へ、
+       系列源の組み立てを `anomaly_sources.py` へ切り出した。実測 `anomaly.py` 551 /
+       `anomaly_score.py` 446 / `anomaly_rows.py` 223 / `anomaly_threshold.py` 181 /
+       `anomaly_sources.py` 68。**上限に当たったので割った**のであって上限は動かしていない。
+       `anomaly_sources.py` は `experiment/` で `datasets` を import する唯一のモジュールでもある
+    6. **`evaluation.pa_k_grid` の観測点を訂正した**: 仕様 §5 の配線表は「PA%K の**行数**」と
+       書いているが、実装は **K ごとに2列 (`pa_f1_k{K}` / `pa_f1_random_k{K}`) を足す**形にした。
+       行にすると同じ (系列, 系統, レプリケート) の行が K の数だけ増え、`auprc` の平均を取るときに
+       重み付けが狂う。列の対は `pa_columns` が構造で保証する (D-55)
+    7. **`seeds.control` の観測点も訂正した**: 「一様乱数対照の `auprc` **のみ**変わる (他手法は不変)」
+       ではなく「**一様乱数対照の `auprc` だけが変わり、他系統の `auprc` は不変**」である。
+       `auprc_random` 列 (と PA の対照列) を**全行が持ち歩く**設計にしたため、行そのものは全系統で動く。
+       図を見ない読者にも基準線が届くようにするためで、D-61 の趣旨を成果物の形にしたもの
+    8. **`dataset.source` の観測点は「`build_sources` が返す源の型」にした**。系列そのものの差は
+       キャッシュ依存になり CI で毎回は測れない (D-60)。配線テストのチャネルを
+       `CHANNEL_SOURCES` として別立てにしてある
+    9. **`f1_test_optimal` は掃引の格子ではなく PR 曲線の全点の最大**にした (`best_test_f1`)。
+       曲線の点は「相異なるスコアで切ったときの (P, R)」の全体なので、受け入れ基準5
+       (`f1_test_optimal >= f1_calibrated`) が**定義から**成り立つ。格子で近似すると格子の粗さ次第で
+       不等号が破れる行が出る。`threshold.sweep_points` は 5-B の CSV の行数だけを決める
+    10. **「報告しない」を `nan` で表した** (`AnomalyRow.f1_test_optimal`)。`best_test_f1` は
+        `[0, 1]` しか返さないので有効値と混ざらない。列の有無は `anomaly_csv_columns` が決める
+    11. **alpha は較正区間で選ぶ** (D-04)。較正区間には異常が混ざるが、選択に使うのは NRMSE だけで
+        **ラベルを1ビットも読まない**ので D-56 に触れない (教師なしで手に入る材料しか使っていない)
+    12. **学習区間が `AnomalySeries.train_end` を越える設定は `ValueError`** にした。既定
+        `dataset.train_ratio = 0.25` は合成源の `FIRST_ANOMALY_FRACTION = 0.3` の内側に収まる値である。
+        検査しないと「異常を含む区間から前処理係数と読み出し重みを推定した実験」がそのまま緑で通り、
+        しかも結果は『よく当たっている』形で出る
+    13. **残差は「`phi[t-1]` から `x[t]` を予測」**とし、設計行列を1行ずらす (`_lagged`) 形にした。
+        目標側をずらす書き方にすると、系統ごとに「どちらをずらしたか」が割れる。`first_valid` は
+        設計行列より1行遅れる (`score_first_valid` が予測し、`build_score` の実測と一致することを固定)
+    14. **移動統計は累積和で O(T)** にした (`sliding_window_view` だと `T * window`)。標準偏差には
+        下限 `1e-12` を置く —— 窓が定数のとき 0 除算で `inf` が出ると
+        `precision_recall_curve` が「非有限スコア」で例外にするので、指標層で落とすより
+        スコア構成器で有限に閉じるほうが原因が読める
+    15. **較正区間の ignore マスクは `apply_ignore_mask` を使わない**。あちらはラベルを引数に取るので、
+        閾値決定の経路にラベルが1本通ることになる (D-56 が型で禁じたい形そのもの)。落とす規則は
+        同じ `is_ignored` で、実装は `_visible` (スコアだけを受ける)
+    16. **`plan_replicate` は名前が衝突するので `plan_anomaly_replicate` にした**
+        (`experiment/__init__.py` が `runner.plan_replicate` を再エクスポートしており、
+        後勝ちで 01 の関数が隠れる)。D-52 が塞いだ「同名で隠す」の同型
+    17. **受け入れ基準6 の条件は既定設定では出ない**。PA の乱数対照の強さは**異常区間の長さ**で
+        決まる (T1 の実装メモ1 と同じ事情)。既定 (区間長 200 / 警報率 1%) の実測は
+        `pa_f1_random` = 0.69〜0.83 なので、基準6 は SWaT に近い形 (区間長 400 x 3本 / 警報率 2%) の
+        `PA_CONTRAST` 設定で測る。既定側の数値は
+        `test_point_adjust_hides_the_gap_that_the_auprc_shows` が別途固定する
+    18. **`config/anomaly05.py` は非空 292 行**で上限 300 行まで 8 行しかない。**T4 は
+        このモジュールを割ること** (`tests/test_config_package_layout.py` の `EXPECTED_SUBMODULES` /
+        `ALLOWED_INTERNAL_EDGES` / `CYCLE_MODULES` と `docs/design.md` §11.5 の行数表への追記が要る)
+    19. **一様乱数は1レプリケートにつき1本だけ引き、対照系統と PA の対照が同じ配列を使う**。
+        別々に引くと「乱数対照の行」と `pa_f1_random` が別の乱数列になり、
+        `test_the_random_control_row_reports_itself_as_its_own_control` が測っている自己整合が崩れる
+    20. 既定値は `dataset.series` 3本 / `reservoir.n_replicates` 5 / `dataset.max_length` 20000。
+        5-A の実測が 3.3 秒 (予算 400 秒) と大きく余ったので、仕様 §3 が「予算超過時に落としてよい
+        唯一の値」とした `n_replicates` を 3 から 5 へ**上げた**
+  - **実測 (2026-08-20)**: 新規テスト **112 件** (`test_experiment_anomaly.py` 70 /
+    `test_config_wiring_anomaly.py` +42)、`uv run pytest -q` = **1269 passed / 41.2 秒**
+    (T3 着手前のベースライン 1157 から 112 増、既存の減少なし)。`mypy` strict /
+    `ruff check` / `ruff format --check` green。`results/01..04/` はバイト不変。
+    `.claude/decisions.yaml` は **72 件** (D-55 / D-56 / D-61 / D-63 を追記。4件とも変異注入で赤を実測)。
+    既定設定の 5-A = **3.28 秒** (予算 400 秒) / 5-B = **0.38 秒** (予算 60 秒)
+  - **チェックポイント (仕様 §7 リスク2 の判定材料。既定設定 = 合成源 3系列 x 5レプリケート = 90 行)**:
+
+    | 系統 | AUPRC 平均 | s.d. | 最小 | 最大 | 乱数対照比 |
+    |---|---|---|---|---|---|
+    | `esn_residual` | **0.3935** | 0.1084 | 0.1571 | 0.5643 | **4.85x** |
+    | `delay_line_residual` | **0.1877** | 0.0302 | 0.1387 | 0.2269 | **2.32x** |
+    | `persistence_residual` | 0.0792 | 0.0088 | 0.0695 | 0.0930 | 0.98x |
+    | `moving_statistics` | 0.0790 | 0.0090 | 0.0665 | 0.0938 | 0.97x |
+    | `random_control` | 0.0811 | 0.0136 | 0.0620 | 0.1129 | 1.00x |
+    | `input_norm_control` | 0.0797 | 0.0088 | 0.0708 | 0.0928 | 0.98x |
+
+    異常率 (評価点) = **0.0780** (最小 0.0704 / 最大 0.0888)。一様乱数の AUPRC の期待値はこの値で、
+    実測 0.0811 は期待どおり張り付いている。**ESN と遅延線は対照から離れており、
+    persistence / 移動統計 / 入力ノルムは対照と区別がつかない** (数値をそのまま記す。
+    差の有無の断定はしない)。参考: 同じ行の PA-F1 (K=0) は ESN 0.9271 / 遅延線 0.9536 /
+    persistence 0.8810 / 移動統計 0.7607 / 一様乱数 0.6894 / 入力ノルム 0.7969 で、
+    **AUPRC の 4.85 倍差が PA-F1 では 1.34 倍まで潰れる** (D-55 の根拠そのもの)
 
 - [ ] **T4: 実験5-C (プロトコル感度) / 5-D (N と性能)** — 想定所要 **M**
   - 何をするか: `experiment/anomaly_sweep.py`。5-C は `normalize × input_window × score_smoothing` の格子で
@@ -404,7 +506,7 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
 | フィールド | channel | 変わる出力 (判定の観測点) |
 |---|---|---|
 | `name` | meta | meta.json の `config.name` のみ。結果行は不変 |
-| `dataset.source` | rows | 系列そのもの (`anomaly.csv` の `dataset` 列と全指標) |
+| `dataset.source` | sources | **(T3 で訂正)** `build_sources` が返す源の**型**。系列そのものの差はキャッシュ依存で CI では測れない (D-60) |
 | `dataset.series` | rows | 行数 (系列数) |
 | `dataset.max_length` | rows | `n_train` / `n_calibration` / `n_test` |
 | `dataset.train_ratio` | rows | `n_train` |
@@ -428,16 +530,16 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
 | `threshold.report_test_optimal` | rows | `f1_test_optimal` 列の有無 |
 | `threshold.sweep_points` | rows | `anomaly_threshold.csv` の行数 |
 | `evaluation.report_point_adjust` | rows | `pa_f1` と `pa_f1_random` の**2列同時**の有無 |
-| `evaluation.pa_k_grid` | rows | PA%K の行数 |
+| `evaluation.pa_k_grid` | rows | **(T3 で訂正)** PA%K の**列数** (K ごとに `pa_f1_k{K}` / `pa_f1_random_k{K}` の2列)。行にすると同一条件の行が K の数だけ増え `auprc` の平均の重みが狂う |
 | `evaluation.ignore_transition` | rows | 評価点数 → `auprc` |
-| `protocol_sweep.normalize_grid` | rows | `anomaly_protocol.csv` の行数 |
+| `protocol_sweep.normalize_grid` | rows | `anomaly_protocol.csv` の行数 (**T4 が設定ごと足す**。T3 は掃引の実装が無いので死葉になるため置いていない) |
 | `protocol_sweep.input_window_grid` | rows | 同上 |
 | `protocol_sweep.score_smoothing_grid` | rows | 同上 |
 | `size_sweep.n_units_grid` | rows | `anomaly_size.csv` の行数 + `n_units_at_90pct` |
 | `seeds.reservoir` | rows | ESN 系統のみ変わる (対照は不変) |
 | `seeds.task` | rows | 合成源の系列 |
 | `seeds.split` | rows | `split_offset` |
-| `seeds.control` | rows | **一様乱数対照の `auprc` のみ**変わる (他手法は不変) |
+| `seeds.control` | rows | **(T3 で訂正)** **一様乱数対照の `auprc` だけが変わり、他系統の `auprc` は不変**。行そのものは全系統で動く (`auprc_random` 列を全行が持ち歩くため) |
 
 **特に落としてはいけない4つ** (この実験を丸ごと無意味にする配線漏れ):
 `preprocess.score_smoothing` (平滑化が効いていない) / `threshold.target_false_alarm_rate` (閾値が効いていない) /
