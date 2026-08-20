@@ -165,8 +165,9 @@ def test_max_lyapunov_requires_a_propagator() -> None:
 
 
 def test_lyapunov_time_is_nan_for_a_non_positive_exponent() -> None:
-    """指数が正でないときは Lyapunov 時間を ``nan`` にする (0 除算も負の時間も出さない)。
+    """指数が正でないときは Lyapunov 時間を ``nan`` にする。
 
+    0 除算も「負の Lyapunov 時間」も出さない。
     縮小写像 (``x -> 0.5 x``) を伝播器にすると指数は負になる。1/lambda を
     そのまま返す実装だと「負の Lyapunov 時間」が有効予測時間の分母に入る。
     """

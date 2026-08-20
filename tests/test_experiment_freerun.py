@@ -257,7 +257,10 @@ def test_free_run_uses_step_not_run() -> None:
     original_step = ESN.step
 
     def counting_step(
-        self: ESN, x: FloatArray, u: FloatArray, rng: object = None
+        self: ESN,
+        x: FloatArray,
+        u: FloatArray,
+        rng: np.random.Generator | None = None,
     ) -> FloatArray:
         calls["step"] += 1
         return original_step(self, x, u, None)
@@ -342,7 +345,7 @@ def test_run_free_run_rejects_a_window_that_runs_past_the_series() -> None:
     config = small_config(
         freerun=FreeRunConfig(warmup_steps=10, free_run_steps=100_000)
     )
-    with pytest.raises(ValueError, match="上限|テスト区間の先"):
+    with pytest.raises(ValueError, match=r"上限|テスト区間の先"):
         run_free_run(config, lorenz_task_entry(config), 0)
 
 
@@ -363,7 +366,10 @@ def test_esn_state_updater_passes_the_rng_when_state_noise_is_positive() -> None
     original_step = ESN.step
 
     def recording_step(
-        self: ESN, x: FloatArray, u: FloatArray, rng: object = None
+        self: ESN,
+        x: FloatArray,
+        u: FloatArray,
+        rng: np.random.Generator | None = None,
     ) -> FloatArray:
         seen.append(rng)
         return original_step(self, x, u, rng)
@@ -401,7 +407,7 @@ def test_lyapunov_is_estimated_from_a_single_reference_trajectory() -> None:
     """
     config = small_config()
     calls: list[int] = []
-    original = freerun_module.integrate_lorenz
+    original = freerun_module.integrate_lorenz  # type: ignore[attr-defined]
 
     def counting(*args: object, **kwargs: object) -> FloatArray:
         calls.append(1)
