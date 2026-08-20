@@ -194,7 +194,7 @@ class _StagedSink:
     """一時ファイルの fd と、それを開いた**ディレクトリの fd** を保持する、
     唯一の書き込みハンドル。
 
-    (reviewer-security 指摘、F-3-010) 以前は ``target.parent`` を**パス文字列
+    (reviewer-security 指摘) 以前は ``target.parent`` を**パス文字列
     として** ``tempfile.mkstemp(dir=target.parent)`` に渡し、確定も
     ``os.replace(partial, target)`` とパス越しに行っていた。``resolve_under``
     がいくら安全な絶対パスを返しても、その後 (mkstemp/replace の**前**) に
@@ -209,7 +209,7 @@ class _StagedSink:
     後始末をすべてこの fd 相対 (``dir_fd=`` 引数) で行う。一度ディレクトリ
     fd を握ってしまえば、その後にパス文字列としての ``target.parent`` が
     何に差し替えられようと、以降の操作は無関係に同じ実ディレクトリを指し
-    続ける。``target`` も (F-3-001 指摘) ``_staged_write`` から1回だけ渡され、
+    続ける。``target`` も ( 指摘) ``_staged_write`` から1回だけ渡され、
     ``commit`` はもう ``target`` を引数に取らない —— 「どこへ確定させるか」
     が2つの真実に割れることが型で書けなくなる。
     """
@@ -228,14 +228,14 @@ class _StagedSink:
         """一時ファイルの絶対パス (表示・テストからの直接操作用)。
 
         ``commit()`` 自身はこのパスを一切使わず、常に ``self._dir_fd`` 相対の
-        ``self._partial_name`` を使う (F-3-010 の要点)。
+        ``self._partial_name`` を使う 。
         """
         return self._target.parent / self._partial_name
 
     def write(self, data: bytes) -> None:
         """``partial`` の fd へ直接、全量書き切るまで書く (パスは使わない)。
 
-        (reviewer-security 指摘、F-3-011) ``os.write`` は POSIX ``write(2)``
+        (reviewer-security 指摘) ``os.write`` は POSIX ``write(2)``
         の薄いラッパで、ディスク満杯の境界・``RLIMIT_FSIZE`` 到達・シグナル
         割り込みなどで要求量より少なく書く (short write) ことがある。戻り値
         を確認せずに次のチャンクへ進むと、その分だけディスク上のバイト列が
@@ -269,7 +269,7 @@ class _StagedSink:
         確認し、不一致なら ``os.replace`` を行わずに送出する。確定
         (``os.replace``) も後始末に使う名前も ``self._dir_fd`` 相対でしか
         引かないので、``target.parent`` がパスとしてその後どう差し替えられ
-        ようと影響を受けない (F-3-010)。
+        ようと影響を受けない 。
         """
         os.lseek(self._descriptor, 0, os.SEEK_SET)
         digest = hashlib.sha256()
@@ -334,7 +334,7 @@ def _open_unique_temp_file(dir_fd: int, target_name: str) -> tuple[int, str]:
 def _staged_write(target: Path) -> Iterator[_StagedSink]:
     """``target`` の親ディレクトリを ``dir_fd`` として固定し、以降の一時ファイル
     作成・書き込み・再照合・確定 (``os.replace``) までの1ライフサイクルを
-    すべてこの ``dir_fd`` 相対で行う (F-3-010)。
+    すべてこの ``dir_fd`` 相対で行う 。
 
     (reviewer-architecture 指摘) 「作る → 書く → 検証して確定させる」という
     1つのライフサイクルが部品に割れていると、後始末 (``partial.unlink``) の
@@ -343,7 +343,7 @@ def _staged_write(target: Path) -> Iterator[_StagedSink]:
     かった場合 (例外・書き忘れのいずれも) は、ここで一時ファイルを自動的に
     片付ける —— 呼び出し側に ``partial.unlink`` を書かせない。
 
-    (reviewer-security 指摘、F-3-010) ``target.parent`` を**パス文字列**として
+    (reviewer-security 指摘) ``target.parent`` を**パス文字列**として
     何度も (mkdir / mkstemp / stat / replace の都度) 開き直す実装は、その
     どこかの隙間で親ディレクトリが symlink へ差し替えられると全体が無力化
     する。``os.open(target.parent, os.O_DIRECTORY | os.O_NOFOLLOW)`` を
@@ -401,7 +401,7 @@ def download(
         response = open_url(remote.url, timeout)
     except HTTPError as error:  # pragma: no cover - ネットワーク経路
         raise DatasetError(f"取得に失敗しました: {remote.url} ({error})") from error
-    # (reviewer-architecture / reviewer-security 指摘、F-3-003 / F-3-012)
+    # (reviewer-architecture / reviewer-security 指摘、)
     # ``response`` の取得を ``with _staged_write(target)`` の**外側**に置いた
     # まま ``contextlib.closing`` で同じ ``with`` 文に並べる —— こうすると
     # ``_staged_write.__enter__`` (dir_fd/mkstemp 相当) が yield 前に失敗して

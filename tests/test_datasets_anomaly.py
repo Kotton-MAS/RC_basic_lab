@@ -203,7 +203,7 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     assert list(tmp_path.glob("*.part")) == []
 
 
-# --- guard: ファイルへ書く経路の在り処 (F-3-004 / F-3-013 / F-3-019) -------
+# --- guard: ファイルへ書く経路の在り処 () -------
 #
 # round3 で reviewer-architecture / reviewer-security / reviewer-test の
 # 3者から独立に指摘された穴: 旧2テストは「``os.replace`` の在り処」を
@@ -309,7 +309,7 @@ def _iter_functions_with_allowance(
 
     除外は名前一致ではなく **``_StagedSink`` クラス直下への所属**、または
     ``_ALLOWED_WRITE_FUNCTION_NAMES`` にある専用ヘルパー関数かどうかで決める
-    (F-3-013/F-3-019: 名前一致による除外は同名の別関数・別クラスで回避できる)。
+    (/: 名前一致による除外は同名の別関数・別クラスで回避できる)。
     """
 
     def walk(
@@ -368,8 +368,8 @@ def _offending_write_paths(tree: ast.Module) -> list[str]:
 def test_every_write_capable_path_in_fetch_goes_through_staged_write() -> None:
     """fetch.py 内でファイルへ書く経路の在り処を全称で固定する。
 
-    (reviewer-architecture F-3-004 / reviewer-security F-3-013 / reviewer-test
-    F-3-019 指摘) 「``os.replace`` の在り処」ではなく「ファイルへ書く経路の
+    (reviewer-architecture  / reviewer-security  / reviewer-test
+     指摘) 「``os.replace`` の在り処」ではなく「ファイルへ書く経路の
     在り処」を測ることで、``target.open("wb")`` のような staging を経由しない
     直接書き込み・モジュールレベルの呼び出し・``from os import replace`` /
     ``import os as X`` 経由・``async def`` 内・``_StagedSink`` 以外のクラスの
@@ -419,7 +419,7 @@ def test_the_write_path_guard_detects_known_bypasses(label: str) -> None:
 
     guard の述語をそのまま合成ソースへ適用して検出できることを確認しない
     限り、「全称」を名乗る docstring は主張だけで裏付けが無い
-    (F-3-013 の指摘そのもの)。
+    ( の指摘そのもの)。
     """
     tree = ast.parse(_WRITE_PATH_BYPASS_SOURCES[label])
     offenders = _offending_write_paths(tree)
@@ -430,7 +430,7 @@ def test_every_function_that_stages_a_write_also_commits_it() -> None:
     """``_staged_write`` を呼ぶ関数は、その ``with ... as X`` の ``X`` に対して
     必ず ``.commit(`` を呼ぶ (全称)。
 
-    (reviewer-test F-3-019 指摘) 旧版は「本文中のどこかに ``.commit(`` が
+    (reviewer-test  指摘) 旧版は「本文中のどこかに ``.commit(`` が
     1つでもあれば真」という判定だったため、``_staged_write`` の結果とは無関係
     な decoy オブジェクトへの ``.commit()`` 呼び出しを1つ足すだけですり抜け
     られた。``with _staged_write(...) as X:`` の ``X`` と、``.commit(`` の
@@ -476,7 +476,7 @@ def test_every_function_that_stages_a_write_also_commits_it() -> None:
 def test_decoy_commit_call_does_not_satisfy_the_staged_write_guard() -> None:
     """``_staged_write`` の sink とは無関係な ``.commit()`` を decoy として
     持つ関数は、``test_every_function_that_stages_a_write_also_commits_it``
-    と同じ述語で検出されることを固定する (F-3-019 の実測シナリオそのもの)。
+    と同じ述語で検出されることを固定する ( の実測シナリオそのもの)。
     """
     source = (
         "def sneaky(target, other):\n"
