@@ -807,6 +807,57 @@ def test_valid_time_rows_cover_at_least_ten_seeds() -> None:
         assert item.valid_time_lyapunov != item.valid_time_steps
 
 
+def test_censored_valid_time_propagates_through_the_pipeline_to_the_sensitivity_summary() -> (
+    None
+):
+    """統合テスト: 打ち切りが実際に起きたとき、行の censored フラグと
+    ``ValidTimeSensitivity.n_censored`` の両方に正しく伝播する (D-43)。
+
+    既存のテストは (a) 純関数 ``valid_time_from_errors`` の単体テスト
+    (test_experiment_attractor.py) と (b) コミット済み CSV を読むだけの型チェック
+    (``test_valid_time_rows_cover_at_least_ten_seeds``) のみで、``run_freerun_
+    experiment`` / ``ValidTimeSensitivity`` (``n_censored`` 集計) を通した統合
+    テストで打ち切りが実際に発生するケースは無かった (grep で ``n_censored`` /
+    ``ValidTimeSensitivity`` を参照するテストは0件だった)。``valid_time_threshold``
+    を極端に大きくし、感度表の格子 (``VALID_TIME_THRESHOLD_GRID``) もその1点に
+    差し替えて、誤差が自走長まで一度も閾値を超えないようにする (=打ち切りを
+    意図的に発生させる)。censored フラグを常に False にする変異はここで落ちる。
+    """
+    huge_threshold = 1.0e6
+    config = dataclasses.replace(
+        small_config(),
+        freerun=dataclasses.replace(
+            config_freerun(), valid_time_threshold=huge_threshold
+        ),
+    )
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(freerun_module, "VALID_TIME_THRESHOLD_GRID", (huge_threshold,))
+        results = run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+
+    assert results.rows, "行が空です"
+    censored_rows = [row for row in results.rows if row.valid_time_censored]
+    assert censored_rows, "意図的に閾値を極端にしたのに打ち切りが1件も発生しません"
+    assert len(censored_rows) == len(results.rows), (
+        "全行が打ち切られるはずの設定なのに一部しか打ち切られていません"
+    )
+
+    assert results.sensitivity, "感度表 (ValidTimeSensitivity) が空です"
+    total_n_censored = 0
+    for entry in results.sensitivity:
+        rows_in_group = [
+            row
+            for row in results.rows
+            if row.task == entry.task and row.method == entry.method
+        ]
+        assert rows_in_group, entry
+        assert entry.n_censored == len(rows_in_group), (
+            "打ち切り行数が ValidTimeSensitivity.n_censored に伝播していません: "
+            f"{entry}"
+        )
+        total_n_censored += entry.n_censored
+    assert total_n_censored == len(censored_rows)
+
+
 def test_attractor_distance_separates_true_and_surrogate() -> None:
     """**受け入れ条件1 / 5**: 自走がアトラクタを再現する (D-46)。**図では測らない**。
 
