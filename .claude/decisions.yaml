@@ -370,3 +370,27 @@
   rule: "検知指標は自前実装し、scikit-learn を実行時依存に追加しない。dev グループにのみ置きテストのオラクルとしてのみ使う。[project].dependencies は matplotlib / numpy / pyyaml / scipy の4つに保つ。src/rc_basics_lab/ の本番コードから sklearn を import しない"
   rationale: "docs/plans/rc-basics-05.md §3 設計判断(1) 案C (ユーザー承認済み、2026-08-20) / §6 D-62。実行時依存を4つに保つ (D-10 と同じ規律) —— 連載の『依存最小』の主張は README の文言ではなく pyproject の行数でしか担保できない。sklearn を実行時に入れると joblib / threadpoolctl / narwhals が芋づるで増える (実測: uv add で 4 パッケージ増)。一方、AUPRC の自前実装は**同順位の扱いで容易に間違え、間違いは『少し違う値』としてしか現れない**ため、独立オラクル無しの自前実装は危険である。両方を満たす唯一の形が『自前 + dev のみの sklearn 照合』。実測 (2026-08-20): ランダム入力 1000 ケース (n=50〜500 / 異常率 1〜20% / 全ケースが同順位を含む) で sklearn.metrics.average_precision_score との最悪相対差 5.50e-16 (許容 1e-12 に対し4桁の余裕)。実装初版は precision の分母を TP+FP ではなく FP にしていて precision > 1 が出たが、**この照合が無ければ『少し高い AUPRC』として通っていた** (最悪相対差 1.02 で検出)。sklearn は型スタブを同梱しないので pyproject の mypy overrides に sklearn.* を足してある (scipy / matplotlib と同じ扱い)。変異注入: [project].dependencies に scikit-learn を足すと guard_test が赤 (実行時依存の一覧そのものをリテラルで固定しているため、依存が1つ増減しただけでも落ちる)"
   guard_test: "tests/test_metrics_detection.py::test_runtime_dependencies_do_not_include_scikit_learn"
+
+# サイクル05 (T2)。docs/plans/rc-basics-05.md §6 の D-57 / D-58 / D-59 / D-60。
+# rule / rationale は仕様の草案ではなく**T2 が実装に合わせて訂正した版**が正本
+# (特に D-57 の normalize 4値の扱いと、D-59 の検査範囲)。これで 59 件。
+
+- id: D-57
+  rule: "異常検知の前処理は手法間で完全に共通化する。係数を作れる場所は tasks/anomaly.py の AnomalyPreprocessor.from_training_prefix(series, n_steps, normalize) の1本だけとし、訓練区間の先頭から推定した1組を値として全手法・全区間へ配る。normalize は zscore / minmax / robust / none の4値で、未対応の文字列は ValueError にする (黙って恒等変換へ倒さない)。AnomalyPreprocessor を返す関数・構築する呼び出しを他に作らない"
+  rationale: "docs/plans/rc-basics-05.md §3 設計判断(3) / §6 D-57。要件書 設計判断4 で、D-41 (tasks/chaotic.py の Standardizer) と同型。区間ごとに推定し直すと『当てられていない区間でも平均・分散が揃うため予測が当たって見える』壊れ方をする。**異常検知ではさらに悪く、テスト区間から推定した尺度にはその区間の異常が入っているため、異常が「正常なばらつき」として吸収される**。実測 (2026-08-20): 前半 N(0,1) 500 点 + 後半 N(50,10) 500 点の系列で、訓練前半から推定した係数を後半へ適用すると変換後の平均は 4 方式とも 0 から大きく離れる (再推定していれば 0 付近に来る)。guard_test は normalize の4値 x 『(a) src/ 全体を AST で走査して AnomalyPreprocessor を構築する呼び出しが from_training_prefix の中にしか無い (b) 係数がテスト区間から再推定されていない』の両方を測る —— 値だけの検査は『実験層が自分で係数を作る』経路を検出できず、構造だけの検査は『from_training_prefix の中で区間を取り違える』を検出できない。normalize の値域検査を落とすと test_preprocessor_rejects_an_unsupported_normalize が赤、from_training_prefix 以外に構築経路を足すと guard_test が 4 件赤になる"
+  guard_test: "tests/test_tasks_anomaly.py::test_all_methods_share_one_preprocessor_fitted_on_training_prefix"
+
+- id: D-58
+  rule: "外部データセット本体をリポジトリに含めない。置くのは取得スクリプト・ファイル名リスト・SHA256 マニフェスト (src/rc_basics_lab/datasets/manifests/*.csv) だけとする。取得は HTTPS のみ / リダイレクト追随は 3 回まで / サイズ上限 200 MB / タイムアウトつきで行い、**SHA256 不一致は例外にしてキャッシュにも残さない** (一時ファイル .part も消す)。ZIP は member 名を検査してから必要なものだけを展開し (extractall を使わない)、data_dir の外へは1バイトも書かない"
+  rationale: "docs/plans/rc-basics-05.md §6 D-58。UCR は公式ページにライセンス表記が一切なく (引用のお願いのみ) 再配布可否が法的に不明で、Figshare ミラーは寄託者が原著者でなくサイズも異なるため根拠にならない。SHA256 照合が無いと、URL 先が差し替わったとき『違うデータで実験して同じ数値が出ない』という形でしか気づけない。**不一致のファイルを残すと次回の実行が「キャッシュ済み」として拾う**ので、guard_test は例外が出ることに加えて保存先と .part の両方が消えていることまで測る。実測 (2026-08-20): マニフェストに載せた 18 ファイル (MGAB 10 + UCR 8) と ZIP 全体の SHA256 は shasum -a 256 の実測値で、読み取り実装が返す点数・異常点数・異常率もマニフェストの値と完全に一致する。サイズ上限 200 MB は UCR の ZIP 実測 184,066,400 byte を通す最小の切りのよい値。変異注入: 照合を消すと guard_test が赤、.part を消さないと同じテストの後半 2 行が赤、extractall に差し替えると test_extract_members_rejects_a_path_traversal_member が赤"
+  guard_test: "tests/test_datasets_anomaly.py::test_download_is_rejected_when_the_sha256_does_not_match"
+
+- id: D-59
+  rule: "ネットワーク・ファイル I/O・ライセンス確認は datasets/ にのみ置く。tasks/ と metrics_detection.py は純関数層に保ち、**module-level だけでなく関数本体の中も** AST で機械検査する。依存は datasets -> tasks の一方向で、tasks から datasets を import しない"
+  rationale: "docs/plans/rc-basics-05.md §6 D-59。tasks/__init__.py の規律 (課題層は readout も reservoir も知らない) の延長。課題層に HTTP とキャッシュを足すと純関数層がステートフルな I/O 層に化け、memristor-rc-lab への移植性 (D-12 が守る性質) が失われる。**関数の中まで見るのが要点**で、module-level だけを見る検査は『関数の中で import すれば通る』ため guard にならない (test_the_io_guard_would_catch_an_import_inside_a_function が、module-level 版では素通りし関数込み版では捕まることを実測して固定してある)。禁止する根は仕様が名指しした urllib / requests / socket / pathlib / open の5つに加えて os / io / shutil / zipfile / tarfile / tempfile / subprocess / sqlite3 / csv / json と numpy 経由のファイル I/O (np.loadtxt / np.load / np.savetxt など) まで広げた —— 名指しの5つだけを塞ぐと『pathlib は使っていない (os.path を使った)』『open は呼んでいない (np.loadtxt を呼んだ)』が通る。D-53 (experiment -> plotting を関数内へ落とす) とは向きが逆で、あちらは循環 import の話、こちらは層が何をする層なのかの話である。禁止側だけだと datasets/ が空でも緑になるので、test_datasets_is_the_only_package_that_may_perform_io が I/O の在り処も同時に固定する"
+  guard_test: "tests/test_layer_boundaries.py::test_tasks_and_metrics_never_perform_io"
+
+- id: D-60
+  rule: "pytest はネットワークに一切触れない。既定データ源は合成 (generate_synthetic_anomalies) とし、実データ源のテストはキャッシュが無ければ skip する。HTTP を開く部分は fetch.Opener として差し替え可能にし、取得・照合の検査はローカルのバイト列を返す fixture で行う"
+  rationale: "docs/plans/rc-basics-05.md §6 D-60。CI がネットワーク可用性に依存すると、UCR の URL が死んだ日にリポジトリ全体が赤になり、実装の正しさと外部の可用性が区別できなくなる (サーベイ §2 が実測したとおり論文記載 URL の多くは既に死んでいる)。guard_test は urllib.request.urlopen / socket.create_connection / fetch.open_https を例外に差し替えた状態で、合成源・マニフェスト読み取り・キャッシュ問い合わせが通ることを測る。実測 (2026-08-20): data/05_anomaly を退避した状態で uv run pytest -q が **1077 passed / 9 skipped**、キャッシュ在りで **1086 passed** —— 差分の 9 件がキャッシュ依存テスト (MGAB 1 + UCR 8) で、それ以外は1件も動かない。変異注入: skip の条件を消すと退避状態で 9 件赤、Opener の差し替え口を消すと test_download_is_rejected_when_the_sha256_does_not_match がネットワークなしでは書けなくなる"
+  guard_test: "tests/test_datasets_anomaly.py::test_default_source_needs_no_network"
