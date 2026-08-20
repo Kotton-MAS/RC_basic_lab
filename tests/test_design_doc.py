@@ -886,6 +886,9 @@ _CHAOS_CALIBRATION_HEADER = re.compile(
     r"^\|\s*`sample_interval`\s*\|\s*[^|]*\|\s*1ステップ先 NRMSE"
 )
 _CHAOS_BOUND_HEADER = re.compile(r"^\|\s*#\s*\|\s*軸\s*\|\s*上限\s*\|\s*置き場所\s*\|")
+_DIGITS = re.compile(r"\d+")
+_LAMBDA = "\u03bb"
+"""ギリシャ文字 lambda。``_RHO`` と同じ理由 (ruff の RUF001/RUF002 対策)。"""
 
 
 def _chaos_meta() -> dict[str, object]:
@@ -930,14 +933,16 @@ def test_chaos_calibration_table_records_the_adopted_and_rejected_values() -> No
     from rc_basics_lab.config import LorenzConfig
 
     _, table = _table_after(_CHAOS_CALIBRATION_HEADER)
-    intervals = {int(cells[0].strip("*").split("(")[0].strip()): cells for cells in table}
+    intervals: dict[int, list[str]] = {}
+    for cells in table:
+        interval = _DIGITS.search(cells[0])
+        assert interval, f"較正表の行が sample_interval で始まっていません: {cells}"
+        intervals[int(interval[0])] = cells
     assert set(intervals) == {5, 10, 25}, intervals
-    adopted = [value for key, value in intervals.items() if "採用" in value[0]]
-    rejected = [value for key, value in intervals.items() if "落選" in value[0]]
+    adopted = [key for key, cells in intervals.items() if "採用" in cells[0]]
+    rejected = [key for key, cells in intervals.items() if "落選" in cells[0]]
     assert len(adopted) == 1 and len(rejected) == 2
-    assert int(adopted[0][0].strip("*").split("(")[0].strip()) == (
-        LorenzConfig().sample_interval
-    )
+    assert adopted[0] == LorenzConfig().sample_interval
 
 
 def test_chaos_lyapunov_record_matches_the_artifacts() -> None:
@@ -949,7 +954,7 @@ def test_chaos_lyapunov_record_matches_the_artifacts() -> None:
     lyapunov = meta["lyapunov"]
     assert isinstance(lyapunov, dict)
     estimated = float(lyapunov["lyapunov_per_time"])
-    documented = re.search(r"lambda_max = (\d+\.\d+) \[1/時間\]", text)
+    documented = re.search(rf"{_LAMBDA}_max = (\d+\.\d+) ", text)
     assert documented, "lambda_max の実測値が §11 に書かれていません"
     _assert_cell_matches(documented[1], estimated, "lyapunov_per_time")
 
@@ -958,9 +963,7 @@ def test_chaos_lyapunov_record_matches_the_artifacts() -> None:
     _assert_cell_matches(
         relative[1], 100.0 * float(lyapunov["reference_rel_error"]), "rel_error"
     )
-    assert f"**{LORENZ_LYAPUNOV_REFERENCE}**" in text, (
-        "文献値が §11 に書かれていません"
-    )
+    assert f"**{LORENZ_LYAPUNOV_REFERENCE}**" in text, "文献値が §11 に書かれていません"
     assert "Viswanath" in text, "文献値の出典が §11 に書かれていません"
 
 
@@ -975,14 +978,14 @@ def test_chaos_wall_time_table_matches_the_meta_json() -> None:
     assert isinstance(breakdown, dict)
     _, table = _table_after(re.compile(r"^\|\s*区間\s*\|\s*実測\s*\|\s*予算\s*\|"))
     expected = {
-        "真の軌道の生成 + lambda_max 推定": float(breakdown["lyapunov_s"]),
+        "真の軌道の生成": float(breakdown["lyapunov_s"]),
         "4-A": float(breakdown["onestep_s"]),
-        "合計": _number(meta, "wall_time_s"),
+        f"合計{_LPAREN}`wall_time_s`{_RPAREN}": _number(meta, "wall_time_s"),
     }
     seen = 0
     for cells in table:
         for label, value in expected.items():
-            if cells[0].startswith(label) or label in cells[0]:
+            if cells[0].startswith(label):
                 _assert_cell_matches(
                     cells[1].strip("*").removesuffix(" 秒"), value, label
                 )

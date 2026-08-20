@@ -1424,7 +1424,7 @@ Mackey-Glass は **再実装していない** —— `tasks/mackey_glass.py`（�
 | 4-A（2課題 × 3手法 × 10 レプリケート = 60 行） | **1.50 秒** | < 120 秒 |
 | 合計（`wall_time_s`） | **1.54 秒** | — |
 | ピーク RSS | **185 MB** | < 4 GB |
-| `results/04_chaotic_freerun/` の CSV 合計 | **12 KB** | < 5 MB |
+| `results/04_chaotic_freerun/` の CSV 合計 | **9 KB** | < 5 MB |
 
 確保軸は4本を**確保より前に**検査する。上限はいずれも上書き不能なモジュール定数で、
 04 で新しい上限は作っていない:
