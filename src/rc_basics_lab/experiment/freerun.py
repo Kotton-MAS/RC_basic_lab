@@ -24,6 +24,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import logging
+import math
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -34,6 +35,21 @@ import numpy as np
 from rc_basics_lab.config import Chaos04Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.lyapunov import max_lyapunov
+from rc_basics_lab.experiment.attractor import (
+    VALID_TIME_THRESHOLD_GRID,
+    AttractorDistance,
+    RegimeVerdict,
+    attractor_distance,
+    classify_regime,
+    first_autocorrelation_zero,
+    lyapunov_normalized,
+    normalized_error_curve,
+    power_spectrum,
+    return_map_points,
+    shuffled_surrogate,
+    valid_time_from_errors,
+    validate_stats_bounds,
+)
 from rc_basics_lab.experiment.capacity import (
     validate_n_units_bound,
     validate_state_matrix_bounds,
@@ -41,10 +57,13 @@ from rc_basics_lab.experiment.capacity import (
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
 from rc_basics_lab.experiment.runner import (
     CSV_COLUMNS,
+    DELAY_LINE,
     ESN_METHOD,
+    LINEAR,
     ReplicatePlan,
     ResultRow,
     TaskEntry,
+    build_methods,
     plan_replicate,
     run_task,
 )
@@ -56,6 +75,8 @@ from rc_basics_lab.readout.autoregressive import (
 )
 from rc_basics_lab.readout.design import (
     DesignMatrix,
+    FeatureSpec,
+    PassthroughSpec,
     ReservoirSpec,
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
@@ -273,7 +294,9 @@ def _rows(array: FloatArray, selection: range) -> FloatArray:
 
 
 def method_candidates(config: Chaos04Config, method: str) -> tuple[FeatureSpec, ...]:
-    """手法名 -> 候補の特徴仕様 (**手法の列挙は 01 の ``build_methods`` が単一の真実**)。
+    """手法名 -> 候補の特徴仕様。
+
+    **手法の列挙は 01 の ``build_methods`` が単一の真実**である。
 
     04 側で ``PassthroughSpec()`` / ``DelayLineSpec(...)`` を書き写さないのは、
     01 が候補を1本足したときに 04 の自走だけ古い候補を使い続ける事故を防ぐため
@@ -508,9 +531,9 @@ def closed_loop_setup(
         case _ if readout.method == DELAY_LINE:
             n_inputs = plan.task.n_inputs
             n_lags = (readout.design.phi.shape[1] - 1) // n_inputs - 1
-            window: FloatArray = plan.task.u[
-                switch_index - n_lags : switch_index + 1
-            ][::-1]
+            window: FloatArray = plan.task.u[switch_index - n_lags : switch_index + 1][
+                ::-1
+            ]
             return ClosedLoop(
                 updater=delay_line_state_updater(n_inputs),
                 spec=ReservoirSpec(include_input=False),
@@ -615,7 +638,9 @@ def run_free_run(
             f"warmup_steps は 1 以上である必要があります: {freerun_cfg.warmup_steps}"
         )
 
-    readout = fit_teacher_forced(config, task_entry, replicate, method=method, plan=plan)
+    readout = fit_teacher_forced(
+        config, task_entry, replicate, method=method, plan=plan
+    )
     replicate_plan = readout.plan
     switch_index = replicate_plan.split.test.start + freerun_cfg.warmup_steps - 1
     last_index = switch_index + freerun_cfg.free_run_steps
@@ -648,9 +673,7 @@ def run_free_run(
         if esn_cfg.state_noise > 0.0
         else None
     )
-    loop = closed_loop_setup(
-        readout, switch_index, esn=reservoir, noise_rng=noise_rng
-    )
+    loop = closed_loop_setup(readout, switch_index, esn=reservoir, noise_rng=noise_rng)
     result = free_run(
         loop.updater,
         loop.spec,
@@ -719,7 +742,6 @@ def estimate_lorenz_lyapunov(config: Chaos04Config) -> DiagnosticResult:
         sampling_interval(lorenz_cfg),
     )
     return result
-
 
 
 # --- 実験 4-B: 自走 + 有効予測時間 + 長時間統計 --------------------------------
@@ -1167,9 +1189,9 @@ def summarize_valid_time(
     """閾値 x (課題, 手法) ごとに有効予測時間を要約する (D-43 の感度表)。"""
     groups: dict[tuple[str, str], list[FreeRunEvaluation]] = {}
     for evaluation in evaluations:
-        groups.setdefault(
-            (evaluation.row.task, evaluation.row.method), []
-        ).append(evaluation)
+        groups.setdefault((evaluation.row.task, evaluation.row.method), []).append(
+            evaluation
+        )
     summary: list[ValidTimeSensitivity] = []
     for (task, method), items in sorted(groups.items()):
         for position, threshold in enumerate(VALID_TIME_THRESHOLD_GRID):
@@ -1316,26 +1338,23 @@ def run_freerun_experiment(
 
 def write_freerun_csv(rows: Sequence[FreeRunRow], path: Path) -> Path:
     """4-B の結果を CSV に書く (列順は ``FreeRunRow`` の宣言順)。"""
-    return _write_rows(rows, FREERUN_CSV_COLUMNS, path)
-
-
-def write_freerun_profile_csv(
-    rows: Sequence[FreeRunProfileRow], path: Path
-) -> Path:
-    """図が読む長形式の行を CSV に書く。"""
-    return _write_rows(rows, FREERUN_PROFILE_CSV_COLUMNS, path)
-
-
-def _write_rows(
-    rows: Sequence[object], columns: tuple[str, ...], path: Path
-) -> Path:
-    """行 dataclass の並びをそのまま CSV にする (列順は宣言順)。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(columns))
+        writer = csv.DictWriter(handle, fieldnames=list(FREERUN_CSV_COLUMNS))
         writer.writeheader()
         for row in rows:
-            writer.writerow(dataclasses.asdict(row))  # type: ignore[call-overload]
+            writer.writerow(dataclasses.asdict(row))
+    return path
+
+
+def write_freerun_profile_csv(rows: Sequence[FreeRunProfileRow], path: Path) -> Path:
+    """図が読む長形式の行を CSV に書く (列順は宣言順)。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(FREERUN_PROFILE_CSV_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(dataclasses.asdict(row))
     return path
 
 
