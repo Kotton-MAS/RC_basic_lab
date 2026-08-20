@@ -27,6 +27,7 @@ from rc_basics_lab.config import (
     FreeRunConfig,
     LorenzConfig,
     MackeyGlassConfig,
+    MackeyGlassStandardizeConfig,
     RidgeConfig,
     SplitConfig,
 )
@@ -84,6 +85,7 @@ def small_config(**overrides: object) -> Chaos04Config:
         "lorenz": LorenzConfig(
             length=600, integration_burn_in=100, standardize_steps=150
         ),
+        "mackey_glass": MackeyGlassStandardizeConfig(standardize_steps=150),
         "freerun": FreeRunConfig(warmup_steps=10, free_run_steps=40),
     }
     return Chaos04Config(**{**defaults, **overrides})  # type: ignore[arg-type]
