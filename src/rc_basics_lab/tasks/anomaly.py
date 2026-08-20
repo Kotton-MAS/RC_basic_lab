@@ -63,7 +63,7 @@ _MAX_FIND_CUT_CELLS = 5_000_000
 ``_MAX_RAW_SAMPLES`` は ``raw_samples`` (Mackey-Glass 側の系列長、``length`` に
 対して線形の項) だけを検査しており、``_find_cut`` が実際に確保する行列の
 要素数 (``starts.size * spans.size``、``segment_length`` の**2乗**のオーダー)
-には一切上限が無かった (F-1-015)。既定の ``segment_length=200`` では
+には一切上限が無かった (reviewer-performance 指摘)。既定の ``segment_length=200`` では
 ``starts.size≈201`` / ``spans.size=401`` で 80,601 要素 (無害) だが、
 ``segment_length`` だけを大きくすると ``_MAX_RAW_SAMPLES`` の制約下でも
 ``raw_samples`` は線形にしか増えないため通過してしまい、``cost`` 行列は
