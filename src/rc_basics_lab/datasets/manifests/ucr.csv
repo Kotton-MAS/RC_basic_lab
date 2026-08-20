@@ -1,0 +1,22 @@
+# dataset: UCR Time Series Anomaly Archive (2021)
+# license: 未指定 (再配布可否不明・データ本体は同梱しない)
+# source: https://www.cs.ucr.edu/~eamonn/time_series_data_2018/UCR_TimeSeriesAnomalyDatasets2021.zip
+# homepage: https://www.cs.ucr.edu/~eamonn/time_series_data_2018/
+# citation: Eamonn Keogh et al., "The UCR Time Series Anomaly Archive" (2021). 公式ページはライセンスを示さず引用のみを求めている
+# redistribution: 不明。公式ページにライセンス表記が一切ないため、本リポジトリはデータ本体を一切含めない (D-58)
+# archive_sha256: ac4b991c701e620ae9cc5ebd57ae45593a36cc9c0b6ed5e3c4b7e466cf4783d4
+# archive_size_bytes: 184066400
+# archive_member_prefix: AnomalyDatasets_2021/UCR_TimeSeriesAnomalyDatasets2021/FilesAreInHere/UCR_Anomaly_FullData/
+# filename_pattern: NNN_UCR_Anomaly_{name}_{train_end}_{anomaly_start}_{anomaly_end}.txt
+# index_convention: 1-indexed / anomaly_end は排他。0-based では labels[anomaly_start-1 : anomaly_end-1] (datasets/ucr.py に1箇所だけ実装)
+# subset_selection: 自然異常 (DISTORTED/NOISE 接頭辞なし) / センサー領域が重複しない / 異常長 25 点以上 / 900 KB 未満
+# retrieved: 2026-08-20
+filename,relative_path,sha256,n_points,train_end,anomaly_start,anomaly_end,anomaly_length,anomaly_rate,domain
+161_UCR_Anomaly_WalkingAceleration1_1500_2764_2995.txt,ucr/161_UCR_Anomaly_WalkingAceleration1_1500_2764_2995.txt,14d0faf99bc7e415408fd961a30b7f50a66546e78d4cb4c823dae1026e59e126,6684,1500,2764,2995,231,0.03456,walking_acceleration
+140_UCR_Anomaly_InternalBleeding4_1000_4675_5033.txt,ucr/140_UCR_Anomaly_InternalBleeding4_1000_4675_5033.txt,2488aceb2cc7f00a4a634039306267d39c8b7bf502e814b644a851b6599c9a68,7321,1000,4675,5033,358,0.04890,arterial_pressure
+174_UCR_Anomaly_insectEPG2_3700_8000_8025.txt,ucr/174_UCR_Anomaly_insectEPG2_3700_8000_8025.txt,8912a014412d3b952d557484d674152d8b402b5611b198bc606c82ce888e47b4,9998,3700,8000,8025,25,0.00250,insect_epg
+112_UCR_Anomaly_BIDMC1_2500_5400_5600.txt,ucr/112_UCR_Anomaly_BIDMC1_2500_5400_5600.txt,e96e3b8c49967eadae8336ba2969982c9fa6b6467324cf2b9d51e100d9e1603f,11000,2500,5400,5600,200,0.01818,patient_monitor
+158_UCR_Anomaly_TkeepForthMARS_3500_5988_6085.txt,ucr/158_UCR_Anomaly_TkeepForthMARS_3500_5988_6085.txt,4bea14d1a9cf9507e0c0d886a42023a3bf0efaab6375625ad54bcd879e99e4fe,11308,3500,5988,6085,97,0.00858,device_temperature
+151_UCR_Anomaly_MesoplodonDensirostris_10000_19280_19440.txt,ucr/151_UCR_Anomaly_MesoplodonDensirostris_10000_19280_19440.txt,b01d433cb5a4df9720c34bbe592576a7ea0b4442931dad8b92b0f2ae544a8982,24667,10000,19280,19440,160,0.00649,marine_mammal_tag
+152_UCR_Anomaly_PowerDemand1_9000_18485_18821.txt,ucr/152_UCR_Anomaly_PowerDemand1_9000_18485_18821.txt,8bccb2dd96d7de11d812c1fef381be4c59803adce17ad74109efe8984637970b,29931,9000,18485,18821,336,0.01123,power_demand
+119_UCR_Anomaly_ECG1_10000_11800_12100.txt,ucr/119_UCR_Anomaly_ECG1_10000_11800_12100.txt,f490ab448e710fe3e3796ca87ae00d41eb0ccc8fd3e01782c7d68cb2f09f9192,30000,10000,11800,12100,300,0.01000,ecg
