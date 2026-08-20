@@ -52,9 +52,12 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
-from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import (
+    StyleContext,
+    rc_context_for,
+    require_rows,
+)
 from rc_basics_lab.plotting.style import new_figure as _new_figure
-from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
 from rc_basics_lab.types import FloatArray
 
