@@ -20,7 +20,7 @@
 
 ---
 
-## 1. 05b 着手前の決定事項 (**ユーザー承認済み・2026-08-20**)
+## 1. 05b 着手前の決定事項 (**ユーザー承認済み・2026-08-20 / 実装済み**)
 
 **これらは「次のPR候補」ではなく、T3 の planner に渡す入力である。**
 
@@ -31,7 +31,50 @@
 2. **実験モジュールは `SeriesSource` Protocol にだけ依存する** —— 源の具象名で分岐しない
 3. **循環 import は避ける** —— `datasets/__init__.py` から `cli` を外す (下記 (a) を採用)
 
-以下は決定に至った背景と、実装時の具体的な注意点である。
+### 1.0 実装済み (05b 着手前の準備リファクタ、2026-08-20)
+
+**3点とも実装した。以下は T3 の planner にとって「決めるべきこと」ではなく
+「決まっていること」である。** 決定は `.claude/decisions.yaml` の D-69〜D-72
+(1決定 = 1約束 = 1 guard_test)。
+
+| 決定 | 実装 | guard_test |
+|---|---|---|
+| D-69 | `SyntheticMackeyGlassConfig` (7葉、`length`/`horizon` なし) を新設し `SyntheticAnomalyConfig.mackey_glass` が受ける。既定値は `MackeyGlassConfig()` から引く | `tests/test_config_wiring_anomaly.py::test_each_synthetic_leaf_changes_the_generated_series` |
+| D-70 | `MackeyGlassConfig` への変換は `SyntheticMackeyGlassConfig.to_mackey_glass(length=...)` 1箇所 | `tests/test_config_wiring_anomaly.py::test_only_to_mackey_glass_builds_the_generation_parameters` |
+| D-71 | `SeriesSource` Protocol を `tasks/anomaly.py` に新設。3実装 (`SyntheticSeriesSource` / `mgab.MgabSeriesSource` / `ucr.UcrSeriesSource`) | `tests/test_series_source_protocol.py::test_each_source_satisfies_the_series_source_protocol` |
+| D-72 | `datasets/__init__.py` の import と `__all__` から `cli` を外した | `tests/test_public_api_reexport.py::test_the_datasets_facade_does_not_import_the_cli` |
+
+**`SeriesSource` の確定した形** (T3 はこれを前提に書く):
+
+```python
+@runtime_checkable
+class SeriesSource(Protocol):
+    def is_available(self) -> bool: ...
+    def __call__(self, rng: np.random.Generator) -> AnomalySeries: ...
+```
+
+- 系列名は持たない (`Mapping` の鍵と `AnomalySeries.name` が持つ)
+- 実データ源は `rng` を使わないが、呼び出し口を1つに保つために受け取る
+- `is_available()` は**ネットワークに触れない** (D-60)。T3 の実験ループは
+  `{key: source(rng) for key, source in sources.items() if source.is_available()}`
+  の形で書ける (源の具象名で分岐しない)
+- 束縛の構築: `SyntheticSeriesSource(cfg=...)` / `mgab.MgabSeriesSource(series="1")` /
+  `ucr.UcrSeriesSource(filename=ucr.subset()[0])` (いずれも `data_dir` は既定値あり)
+
+**T3 の全葉被覆について**: `leaf_paths(SyntheticAnomalyConfig)` は 11 葉
+(`length` / `n_anomalies` / `segment_length` / `ignore_margin` +
+`mackey_glass.{tau,beta,gamma,exponent,rk4_step,sample_interval,integration_burn_in}`)
+で、**全葉が `tests/test_config_wiring_anomaly.py` で被覆済み**。
+`DELEGATED_SECTIONS` による免除も死葉リストも要らない。T3 が `Anomaly05Config`
+を足すときは、`synthetic.*` 節をこのテストへ委譲する形にできる
+(委譲先が実在する = 04 の `DELEGATED_SECTIONS` の前提を満たす)。
+
+実測 (2026-08-20、この準備リファクタ完了時): `uv run pytest -q` = **1157 passed
+/ 39.92 秒** (着手前 1132 passed)、`mypy` strict / `ruff check` / `ruff format
+--check` green、`results/01..04/` バイト不変、`make data-05` はキャッシュ有効時に
+ネットワークを開かず 10 (MGAB) + 8 (UCR) 系列を照合。
+
+以下は決定に至った背景と、実装時の具体的な注意点である (記録として残す)。
 
 ### 優先度1: `SyntheticAnomalyConfig.mackey_glass` の死んだ葉
 
@@ -47,15 +90,12 @@
 —— 01 の `test_config_wiring` が「`length` は効く」と証明している葉が、05 の経路では効かないため。
 `mackey_glass.*` をまるごと免除にすると、`tau`/`beta`/`gamma` など**実際に効く7葉まで一緒に抜ける**。
 
-**T3 の planner にそのまま渡す指示**:
+**T3 の planner への指示 (解決済み)**:
 
-> `mackey_glass.*` を `DELEGATED_SECTIONS` で一括免除しないこと。
-> `tau`/`beta`/`gamma`/`exponent`/`rk4_step`/`sample_interval`/`integration_burn_in` は
-> 個別に wiring case を書く。`mackey_glass.length` と `mackey_glass.horizon` は
-> `generate_synthetic_anomalies` が上書きするので、「変えても出力が1バイトも変わらない」ことを
-> assert する明示的な死葉リストとして固定する。
-> それを避けたい場合は、T3 の実装より先に `SyntheticAnomalyConfig` が
-> `length`/`horizon` を持たない絞った dataclass を受ける形へ config を変え、決定として記録する。
+> ~~`mackey_glass.*` を `DELEGATED_SECTIONS` で一括免除しないこと。…死葉リストとして固定する。~~
+> **後者 (config を変える) を採用して実装済み (D-69)。** `mackey_glass.length` /
+> `mackey_glass.horizon` は葉として存在しないので、免除も死葉リストも要らない。
+> 7葉はすべて `tests/test_config_wiring_anomaly.py` が個別に被覆している。
 
 ### 優先度2: 系列源の共通型 (`SeriesSource` Protocol) が無い
 
@@ -68,12 +108,14 @@ T3 の実験モジュールがどちらを import するかが決まる。
 決めずに着手すると「実験モジュールが `datasets` と `tasks` の両方の具象を if 分岐で捌く」形になり、
 **D-59 の一方向依存が実験層で崩れる**。
 
-**T3 の planner への指示**:
+**T3 の planner への指示 (解決済み)**:
 
-> `AnomalySeries` を返す呼び出し可能オブジェクトの Protocol (`SeriesSource`) を
-> `tasks/anomaly.py` に置き、`datasets/mgab.py`・`datasets/ucr.py`・`generate_synthetic_anomalies` の
-> 3つがそれを満たすことをテストで固定する。実験モジュールは Protocol にだけ依存し、
-> 源の具象名で分岐しない。
+> **実装済み (D-71)。** `SeriesSource` は `tasks/anomaly.py` にあり、3実装
+> (`SyntheticSeriesSource` / `MgabSeriesSource` / `UcrSeriesSource`) が
+> 引数名・引数種別・戻り値の型まで含めて満たすことを
+> `tests/test_series_source_protocol.py` が実行時に固定している (mypy strict も
+> `Mapping[str, SeriesSource]` として構造的に検査する)。確定した面は §1.0 を参照。
+> 実験モジュールは Protocol にだけ依存し、源の具象名で分岐しないこと。
 
 ### 優先度3: `datasets/__init__.py` → `cli` → `datasets` の循環 import
 
@@ -83,9 +125,15 @@ T3 の実験モジュールがどちらを import するかが決まる。
 T5 の CLI 配線はまさに再エクスポートを使いたくなる作業であり、
 そこで初めて壊れると原因が CLI 変更に見えて循環に見えない。
 
-**T5 着手前にどちらかを決める**:
+**T5 着手前にどちらかを決める** → **(a) を採用して実装済み (D-72)**:
 - **(a) `__init__.py` の import と `__all__` から `cli` を外す (推奨、構造で閉じる)**
 - (b) `cli.py` は必ず葉モジュールを直接 import する規律をテストで固定する
+
+(a) を採ったのは、(b) が「`cli.py` の書き方」という守り続ける規律であるのに対し、
+(a) は辺そのものを消すため守る対象が残らないため。除外は
+`tests/test_public_api_reexport.py` の `NOT_ON_THE_FACADE` (現在 `datasets.cli`
+の1件) に明示してある。**T5 は `rc_basics_lab.datasets.cli` / `__main__` を
+直接呼ぶこと** —— `from rc_basics_lab.datasets import cli` は解決できない。
 
 ---
 
