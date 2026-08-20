@@ -24,7 +24,10 @@ T3 が実験1本ぶんの ``Anomaly05Config`` を足すとき、この被覆は
 from __future__ import annotations
 
 import ast
+import dataclasses
 import hashlib
+from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -32,6 +35,8 @@ import numpy as np
 import pytest
 import yaml
 from wiring import (
+    CHANNEL_META,
+    WiringCase,
     apply_case,
     assert_yaml_has_all_leaves,
     case,
@@ -40,15 +45,34 @@ from wiring import (
 )
 
 from rc_basics_lab.config import (
+    Anomaly05Config,
+    AnomalyDatasetConfig,
+    AnomalyPreprocessConfig,
+    AnomalyReservoirConfig,
+    AnomalyRidgeConfig,
+    AnomalyThresholdConfig,
     MackeyGlassConfig,
     SyntheticAnomalyConfig,
     SyntheticMackeyGlassConfig,
     load_config_as,
 )
+from rc_basics_lab.experiment.anomaly import run_anomaly_headline
+from rc_basics_lab.experiment.anomaly_rows import (
+    AnomalyRow,
+    ThresholdSweepRow,
+    anomaly_csv_columns,
+    anomaly_row_as_dict,
+)
+from rc_basics_lab.experiment.anomaly_score import (
+    ANOMALY_METHODS,
+    ESN_RESIDUAL,
+    RANDOM_CONTROL,
+)
+from rc_basics_lab.experiment.anomaly_sources import build_sources
 from rc_basics_lab.tasks.anomaly import AnomalySeries, generate_synthetic_anomalies
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
-    pass
+    from _typeshed import DataclassInstance
 
 CHANNEL_SOURCES = "sources"
 """``dataset.source`` 専用のチャネル (実験固有、``wiring.py`` の想定どおり)。
@@ -290,4 +314,255 @@ def test_only_to_mackey_glass_builds_the_generation_parameters() -> None:
     assert sites == ["config/anomaly05.py::to_mackey_glass"], (
         "合成源の経路で MackeyGlassConfig を組み立てている場所が "
         f"to_mackey_glass 以外にあります (D-70): {sites}"
+    )
+
+
+# --------------------------------------------------------------------------
+# Anomaly05Config (T3) —— 実験1本ぶんの全葉被覆
+# --------------------------------------------------------------------------
+
+DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
+    ("synthetic.", SyntheticAnomalyConfig),
+)
+"""接頭辞と、その配下が過不足なく一致すべき委譲先の設定クラス。
+
+``synthetic`` は合成源の設定で、被覆はこのファイルの前半
+(``test_each_synthetic_leaf_changes_the_generated_series``) が**11葉すべて**
+について実測している (D-69)。04 の ``DELEGATED_SECTIONS`` と同じ前提
+(委譲先の別テストが同じ葉を被覆している) を満たす —— 05 では委譲先が同じ
+ファイルの中にあるので、免除が空振りになる余地がさらに小さい。
+"""
+
+REDUCED = Anomaly05Config(
+    dataset=AnomalyDatasetConfig(
+        series=("s1",),
+        max_length=2000,
+        train_ratio=0.25,
+        calibration_ratio=0.15,
+    ),
+    synthetic=SyntheticAnomalyConfig(
+        length=2000, n_anomalies=3, segment_length=40, ignore_margin=10
+    ),
+    preprocess=AnomalyPreprocessConfig(
+        standardize_steps=200, input_window=8, score_smoothing=4
+    ),
+    reservoir=AnomalyReservoirConfig(n_units=30, washout=20, n_replicates=1),
+    ridge=AnomalyRidgeConfig(alpha_grid=(1e-4, 1e-2, 1.0)),
+    threshold=AnomalyThresholdConfig(sweep_points=5),
+)
+"""秒オーダーで回せる縮小設定 (**構造は本番と同じ**)。実測 0.02 秒/回。
+
+本番既定 (``Anomaly05Config()``) は 3系列 x 5レプリケート x 6系統 = 90 行で
+実測 3.7 秒。配線テストは葉の数だけ回すので、1回 0.02 秒まで落とす。
+"""
+
+ANOMALY_CASES: tuple[WiringCase, ...] = (
+    case("name", "another_name", channel=CHANNEL_META),
+    case("dataset.source", "mgab", channel=CHANNEL_SOURCES),
+    case("dataset.series", ("s1", "s2")),
+    case("dataset.max_length", 1500),
+    case("dataset.train_ratio", 0.15),
+    case("dataset.calibration_ratio", 0.25),
+    case("preprocess.normalize", "minmax"),
+    case("preprocess.standardize_steps", 350),
+    case("preprocess.input_window", 24),
+    case("preprocess.score_smoothing", 16),
+    case("reservoir.n_units", 50, scope=ESN_RESIDUAL),
+    case("reservoir.spectral_radius", 1.1, scope=ESN_RESIDUAL),
+    case("reservoir.leak_rate", 0.6, scope=ESN_RESIDUAL),
+    case("reservoir.input_scale", 0.9, scope=ESN_RESIDUAL),
+    case("reservoir.density", 0.3, scope=ESN_RESIDUAL),
+    case("reservoir.washout", 60),
+    case("reservoir.n_replicates", 2),
+    case("ridge.alpha_grid", (1.0,)),
+    case("threshold.target_false_alarm_rate", 0.05),
+    case("threshold.report_test_optimal", False),
+    case("threshold.sweep_points", 9),
+    case("evaluation.report_point_adjust", False),
+    case("evaluation.pa_k_grid", (0.0,)),
+    case("evaluation.ignore_transition", False),
+    case("seeds.reservoir", 11, scope=ESN_RESIDUAL),
+    case("seeds.task", 12),
+    case("seeds.split", 13),
+    case("seeds.control", 14, scope=RANDOM_CONTROL),
+)
+"""1葉1ケース。``scope`` を付けたケースは「その系統の ``auprc`` だけが動く」。
+
+**仕様 §5 の配線表からの訂正が1行ある**: ``seeds.control`` の観測点は
+「一様乱数対照の ``auprc`` のみ変わる (他手法は不変)」ではなく
+「**一様乱数対照の ``auprc`` だけが変わり、他系統の ``auprc`` は不変**」で
+ある。行そのものは全系統で動く —— ``auprc_random`` 列 (と PA の対照列) を
+**全行が持ち歩く**設計にしたため (D-61: 図を見ない読者にも基準線が届く)。
+"""
+
+
+def _reduced_result(
+    config: Anomaly05Config,
+) -> tuple[tuple[AnomalyRow, ...], tuple[ThresholdSweepRow, ...]]:
+    results = run_anomaly_headline(config, build_sources(config))
+    return results.rows, results.threshold_rows
+
+
+def _row_fingerprint(config: Anomaly05Config, rows: Sequence[AnomalyRow]) -> str:
+    """行 + 列の並びをまとめた指紋 (``wall_time_s`` は除く)。
+
+    列そのものが設定で増減する (``f1_test_optimal`` / PA%K) ので、**列名も
+    指紋に入れる** —— 値だけを見ると ``threshold.report_test_optimal`` の
+    ような「列の有無」を変える葉を取りこぼす。
+    """
+    digest = hashlib.sha256()
+    digest.update(repr(anomaly_csv_columns(config)).encode("utf-8"))
+    for row in rows:
+        payload = anomaly_row_as_dict(row)
+        payload.pop("wall_time_s")
+        digest.update(repr(sorted(payload.items())).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _auprc_by_method(rows: Sequence[AnomalyRow]) -> dict[str, tuple[float, ...]]:
+    grouped: dict[str, list[float]] = {}
+    for row in rows:
+        grouped.setdefault(row.method, []).append(row.auprc)
+    return {method: tuple(values) for method, values in grouped.items()}
+
+
+@lru_cache(maxsize=1)
+def _baseline() -> tuple[tuple[AnomalyRow, ...], tuple[ThresholdSweepRow, ...]]:
+    return _reduced_result(REDUCED)
+
+
+def _case_named(field: str) -> WiringCase:
+    return next(item for item in ANOMALY_CASES if item.field == field)
+
+
+def test_all_anomaly_config_fields_are_covered() -> None:
+    """``Anomaly05Config`` の全葉が ``ANOMALY_CASES`` に登場する。
+
+    ``synthetic`` 節だけは委譲だが、**委譲先の葉集合と過不足なく一致する**
+    ことも同時に確かめる (04 の ``test_all_chaos_config_fields_are_covered``
+    と同じ形)。確かめずに接頭辞で除外すると、委譲先に無いフィールドをその下に
+    足して被覆から逃がせてしまう。
+    """
+    all_leaves = leaf_paths(Anomaly05Config)
+    delegated: set[str] = set()
+    for prefix, config_type in DELEGATED_SECTIONS:
+        under_prefix = {leaf for leaf in all_leaves if leaf.startswith(prefix)}
+        expected_leaves = {
+            f"{prefix}{leaf}"
+            for leaf in leaf_paths(cast("type[DataclassInstance]", config_type))
+        }
+        assert under_prefix == expected_leaves, (
+            f"{prefix} 配下が {config_type.__name__} と一致していません"
+            f" (不足={sorted(expected_leaves - under_prefix)},"
+            f" 余分={sorted(under_prefix - expected_leaves)})"
+        )
+        delegated |= under_prefix
+
+    covered = {item.field for item in ANOMALY_CASES}
+    expected = all_leaves - delegated
+    assert covered == expected, (
+        f"未登録: {sorted(expected - covered)} / 余分: {sorted(covered - expected)}"
+    )
+    for item in ANOMALY_CASES:
+        for path, _ in item.overrides:
+            assert path in expected, f"未知のパスです: {path}"
+
+
+@pytest.mark.parametrize(
+    "wiring_case", ANOMALY_CASES, ids=[item.field for item in ANOMALY_CASES]
+)
+def test_each_parameter_changes_output(wiring_case: WiringCase) -> None:
+    """各葉の値変更が 5-A / 5-B の出力を変える (配線の実測)。"""
+    changed_config = apply_case(REDUCED, wiring_case)
+    assert changed_config != REDUCED, "差し替えが設定に反映されていません"
+
+    if wiring_case.channel == CHANNEL_SOURCES:
+        base_types = {type(item).__name__ for item in build_sources(REDUCED).values()}
+        changed_types = {
+            type(item).__name__ for item in build_sources(changed_config).values()
+        }
+        assert base_types != changed_types, (
+            f"{wiring_case.field} を変えても系列源が変わりません (配線漏れ)"
+        )
+        return
+
+    base_rows, base_sweep = _baseline()
+    rows, sweep = _reduced_result(changed_config)
+
+    if wiring_case.field == "threshold.sweep_points":
+        assert len(sweep) != len(base_sweep), (
+            "sweep_points が anomaly_threshold.csv の行数を変えていません"
+        )
+        return
+
+    if wiring_case.channel == CHANNEL_META:
+        assert _row_fingerprint(changed_config, rows) == _row_fingerprint(
+            REDUCED, base_rows
+        ), "メタ情報のはずが結果行を変えています"
+        assert changed_config.name != REDUCED.name
+        return
+
+    assert _row_fingerprint(changed_config, rows) != _row_fingerprint(
+        REDUCED, base_rows
+    ), f"{wiring_case.field} を変えても出力が変わりません (配線漏れ)"
+
+    if wiring_case.scope is not None:
+        changed_auprc = _auprc_by_method(rows)
+        base_auprc = _auprc_by_method(base_rows)
+        assert changed_auprc[wiring_case.scope] != base_auprc[wiring_case.scope], (
+            f"{wiring_case.field} が {wiring_case.scope} の auprc を変えていません"
+        )
+        for method in ANOMALY_METHODS:
+            if method == wiring_case.scope:
+                continue
+            assert changed_auprc[method] == base_auprc[method], (
+                f"{wiring_case.field} が {method} の auprc まで変えています"
+            )
+
+
+def test_calibration_ratio_moves_only_the_calibration_size() -> None:
+    """``calibration_ratio`` を動かしても ``n_train`` が変わらない (切り分け)。
+
+    ``train_ratio`` のケースで ``n_train`` が変わった原因を ``train_ratio``
+    に帰属できるようにするための対照 (01 の ``test_split_ratio_isolation``
+    と同じ役割)。
+    """
+    base_rows, _ = _baseline()
+    rows, _ = _reduced_result(
+        apply_case(REDUCED, _case_named("dataset.calibration_ratio"))
+    )
+    assert rows[0].n_train == base_rows[0].n_train
+    assert rows[0].n_calibration != base_rows[0].n_calibration
+
+
+def test_the_false_alarm_rate_moves_the_threshold_but_not_the_auprc() -> None:
+    """``target_false_alarm_rate`` は運用点だけを動かす (AUPRC は閾値非依存)。
+
+    仕様 §5 の配線表が ``auprc`` を「**不変**を要求」としている行の実測。
+    AUPRC が閾値で動いたら、それは主指標が閾値依存の量に化けている証拠で
+    ある (図の縦軸の意味が変わる)。
+    """
+    base_rows, _ = _baseline()
+    rows, _ = _reduced_result(
+        apply_case(REDUCED, _case_named("threshold.target_false_alarm_rate"))
+    )
+    assert [row.threshold for row in rows] != [row.threshold for row in base_rows]
+    assert [row.auprc for row in rows] == [row.auprc for row in base_rows]
+
+
+def test_the_split_seed_moves_the_offset() -> None:
+    """``seeds.split`` が分割境界を動かす (``split_offset`` の実測)。"""
+    base_rows, _ = _baseline()
+    rows, _ = _reduced_result(apply_case(REDUCED, _case_named("seeds.split")))
+    assert rows[0].split_offset != base_rows[0].split_offset
+
+
+def test_every_anomaly_field_round_trips_yaml(tmp_path: Path) -> None:
+    """``Anomaly05Config`` の全葉が YAML のキーとして往復する (D-09 と対)。"""
+    path = tmp_path / "anomaly05.yaml"
+    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(REDUCED)))
+    path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
+    assert load_config_as(path, Anomaly05Config) == REDUCED
+    assert_yaml_has_all_leaves(
+        yaml.safe_load(path.read_text(encoding="utf-8")), Anomaly05Config
     )
