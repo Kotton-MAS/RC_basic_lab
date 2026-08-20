@@ -126,7 +126,7 @@ def sha256_of(path: Path) -> str:
 def resolve_under(root: Path, relative: str) -> Path:
     """``root`` の内側に解決される絶対パスを返す (外に出る指定は例外)。
 
-    (reviewer-security 指摘、F-4-011) ``_staged_write`` の ``os.O_NOFOLLOW`` は
+    (reviewer-security 指摘) ``_staged_write`` の ``os.O_NOFOLLOW`` は
     ``target.parent`` という**パスの最終成分だけ**を symlink 差し替えから守る。
     ``relative`` がディレクトリ2階層以上 (例: ``a/b/c.csv``) になると、中間の
     成分 (``a``) はこの保護の対象外になり、そこが symlink に差し替えられて

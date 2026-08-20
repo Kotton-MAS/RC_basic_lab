@@ -210,7 +210,7 @@ def test_staged_write_operations_stay_pinned_to_the_directory_fd_after_the_path_
     として開き直すのではなく、``_staged_write`` の冒頭で1回だけ取得した
     ``dir_fd`` に固定される。
 
-    (reviewer-architecture 指摘、F-4-001) ``with`` に入った**後**で
+    (reviewer-architecture 指摘) ``with`` に入った**後**で
     ``target.parent`` という名前を「元のディレクトリを改名して逃がし、その
     名前へ別ディレクトリへの symlink を差し込む」形で丸ごと差し替えても、
     書き込み・再照合・確定 (``os.replace``) は最初に取得した ``dir_fd`` が
@@ -270,7 +270,7 @@ _WRITE_CAPABLE_MODULE_ATTRS = {
 }
 """``<module>.<attr>(...)`` の形でファイルへ書ける危険な組。
 
-(round4 reviewer-test 指摘、F-4-016) ``getattr(os, "replace")(a, b)`` のような
+(round4 reviewer-test 指摘) ``getattr(os, "replace")(a, b)`` のような
 **動的な属性解決**は追わない —— 静的 AST 解析は実行時にしか決まらない属性名を
 原理的に解決できず、これを追いかけようとすると終わりがない。この集合は
 「``<モジュール>.<属性名>`` の形でソースへ直接書かれているもの」に限る。
@@ -279,7 +279,7 @@ _WRITE_CAPABLE_MODULE_ATTRS = {
 _WRITE_CAPABLE_BARE_ATTRS = {"write_bytes", "write_text"}
 """受け手を問わず危険な属性呼び出し (``anything.write_bytes(...)`` 等)。
 
-(round4 reviewer-test 指摘、F-4-016) ``.write(`` はここに含めない ——
+(round4 reviewer-test 指摘) ``.write(`` はここに含めない ——
 ``_StagedSink.write`` への正規の呼び出し (``sink.write(chunk)``) まで拾って
 しまうため、``_write_capable_calls`` 側で ``_StagedSink`` を指す名前かどうかを
 個別に判定する。
@@ -328,7 +328,7 @@ def _from_import_targets(tree: ast.Module) -> dict[str, tuple[str, str]]:
 def _staged_sink_names(tree: ast.Module) -> set[str]:
     """``_StagedSink`` を指す名前の集合 (モジュール全体から集める)。
 
-    (round4 reviewer-test 指摘、F-4-016) 名前一致 (例: 変数名が ``sink``)
+    (round4 reviewer-test 指摘) 名前一致 (例: 変数名が ``sink``)
     ではなく **構造** —— ``with _staged_write(...) as X`` の ``X``、または
     型注釈が ``_StagedSink`` である関数引数 —— で判定する。そうしないと
     ``sink`` という名前の別物 (``tempfile.NamedTemporaryFile()`` の戻り値等)
@@ -367,7 +367,7 @@ def _write_capable_calls(
     """``node`` 自身の中 (ネストした関数定義の内部も含む) にある、ファイルへ
     書き込める可能性のある呼び出しの説明を返す (空なら安全)。
 
-    (round4 reviewer-test 指摘、F-4-016) 組み込み ``open`` の裸呼び出し・
+    (round4 reviewer-test 指摘) 組み込み ``open`` の裸呼び出し・
     ``io.open`` (mode がレシーバに応じて第1/第2引数のいずれかに来る)・
     ``os.fdopen``・``*.write_text``・一時オブジェクトへの ``.write`` (例:
     ``tempfile.NamedTemporaryFile(...).write(...)``)・``numpy.save`` を追加で
@@ -550,10 +550,10 @@ _WRITE_PATH_BYPASS_SOURCES = {
     "numpy_save": ("import numpy\ndef sneaky(path, arr):\n    numpy.save(path, arr)\n"),
 }
 """round3/round4 で reviewer が実測した回避クラス (M1/M3/M4/M5/M8 系、および
-round4 F-4-016 の7パターン) をソース文字列として与え、``_offending_write_paths``
+round4 で新たに実測した7パターン) をソース文字列として与え、``_offending_write_paths``
 がそれぞれを実際に検出できることを固定する (guard の guard)。
 
-(round4 reviewer-test 指摘、F-4-016) ``getattr(os, "replace")(a, b)`` は
+(round4 reviewer-test 指摘) ``getattr(os, "replace")(a, b)`` は
 このカタログに**含めない** —— 動的な属性解決は静的 AST 解析の原理的な限界で
 あり検出しない、という決定そのものなので、検出できないことを前提に除外して
 ある (含めると本テストが必ず落ちる)。
@@ -836,7 +836,7 @@ def test_resolve_under_rejects_a_relative_path_deeper_than_one_directory(
     tmp_path: Path,
 ) -> None:
     """``relative_path`` は1階層 (ディレクトリ1つ + ファイル名) までしか受け
-    付けない (reviewer-security 指摘、F-4-011)。
+    付けない (reviewer-security 指摘)。
 
     ``_staged_write`` の ``os.O_NOFOLLOW`` は ``target.parent`` という**パス
     の最終成分だけ**を守るため、2階層以上になると中間成分の symlink 差し替え
@@ -1266,7 +1266,7 @@ def test_ucr_manifest_records_the_archive_hash_and_size() -> None:
 
 def test_manifest_relative_paths_are_at_most_one_directory_deep() -> None:
     """全 manifest 行の ``relative_path`` が1階層 (ディレクトリ1つ + ファイル名)
-    以下であることを不変条件として固定する (reviewer-security 指摘、F-4-011)。
+    以下であることを不変条件として固定する (reviewer-security 指摘)。
 
     ``resolve_under`` がこれを拒むようになった (2階層以上は
     ``UnsafeArchiveMemberError``) 以上、実データの側もこの形しか使わない
