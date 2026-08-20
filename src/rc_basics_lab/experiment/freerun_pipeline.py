@@ -27,7 +27,6 @@ from __future__ import annotations
 import dataclasses
 import logging
 import time
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -330,19 +329,6 @@ def _meta_extra(
     }
 
 
-def freerun_artifact_paths(out_dir: Path) -> tuple[Path, ...]:
-    """``FREERUN_ARTIFACTS`` を出力先へ解決したパス (テストと Makefile の照合用)。"""
-    return tuple(out_dir / name for name in FREERUN_ARTIFACTS)
-
-
-def summarize_rows(rows: Sequence[FreeRunRow]) -> dict[str, int]:
-    """手法ごとの行数 (ログの要約)。"""
-    counts: dict[str, int] = {}
-    for row in rows:
-        counts[row.method] = counts.get(row.method, 0) + 1
-    return counts
-
-
 __all__ = [
     "CAPACITY_NOTE",
     "FIG_FREERUN_ATTRACTOR",
@@ -353,7 +339,5 @@ __all__ = [
     "FREERUN_ARTIFACTS",
     "FreeRunOutputs",
     "SectionTiming",
-    "freerun_artifact_paths",
     "run_and_report_freerun",
-    "summarize_rows",
 ]
