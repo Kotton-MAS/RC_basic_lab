@@ -219,16 +219,47 @@ def condition_esn_config(
 
 
 def condition_task_entry(
-    config: Chaos04Config, condition: StabilityCondition
+    config: Chaos04Config,
+    condition: StabilityCondition,
+    *,
+    trajectory_cache: dict[int, TaskData] | None = None,
 ) -> TaskEntry:
     """条件ごとの ``TaskEntry`` (課題は Lorenz 固定、ESN 設定だけが動く)。
 
     4-C / 4-D は Lorenz だけを回す (仕様 §8: 2系で回すと条件数が2倍になり
     900 秒予算を割る)。課題の生成関数は ``lorenz_task_entry`` から借りるので、
     真の軌道の作り方が 4-A / 4-B と1行も違わない。
+
+    **真の軌道は replicate だけで決まり (rho, leak, noise) に依存しない**ので、
+    ``trajectory_cache`` を渡すと同じ replicate の2回目以降の呼び出しは
+    積分をやり直さずキャッシュした ``TaskData`` をそのまま返す (仕様 §5
+    禁止する構造3)。``plan_replicate`` は毎回
+    ``make_rng(TASK, replicate)`` を作り直す (同じシード) ので、この
+    キャッシュはビット単位で再計算した場合と同一の値になる。
+    ``trajectory_cache=None`` (既定) では毎回積分し直し、挙動は導入前と
+    変わらない。
+
+    Args:
+        config: 04 の設定。
+        condition: 回す1条件。
+        trajectory_cache: replicate -> ``TaskData`` のキャッシュ (呼び出し側が
+            条件をまたいで共有する)。
+
+    Returns:
+        条件の ESN 設定を差し替えた ``TaskEntry``。
     """
+    base_entry = lorenz_task_entry(config)
+    replicate = condition.replicate
+
+    def generate(rng: np.random.Generator) -> TaskData:
+        if trajectory_cache is None:
+            return base_entry.generate(rng)
+        if replicate not in trajectory_cache:
+            trajectory_cache[replicate] = base_entry.generate(rng)
+        return trajectory_cache[replicate]
+
     return dataclasses.replace(
-        lorenz_task_entry(config), esn=condition_esn_config(config, condition)
+        base_entry, esn=condition_esn_config(config, condition), generate=generate
     )
 
 
@@ -317,6 +348,7 @@ def evaluate_stability_condition(
     dt: float,
     lyapunov_time: float,
     ctx: DiagnosticContext,
+    trajectory_cache: dict[int, TaskData] | None = None,
 ) -> StabilityOutcome:
     """1条件を回して3態分類 (4-C) と容量 (4-D) を**同じ状態行列から**取る。
 
@@ -325,7 +357,10 @@ def evaluate_stability_condition(
     1. 確保軸3 (``stats_steps * n_units``) と課題側の確保軸を、状態行列を
        作る前に検査する。
     2. ``run_free_run`` が ``plan_replicate`` で状態行列を**1本だけ**作り、
-       教師強制で読み出しを学習し、そのまま自走させる。
+       教師強制で読み出しを学習し、そのまま自走させる。真の軌道は
+       ``trajectory_cache`` (replicate をキーにする) 経由で ``condition_task_
+       entry`` から渡すので、(rho, leak, noise) ごとに Lorenz を積分し直さない
+       (仕様 §5 禁止する構造3)。
     3. 自走軌道を純関数 (D-45) が3態へ分類する。**図も目視も使わない**。
     4. 2. が作った ``plan.states`` を ``measure_capacity`` へそのまま渡す
        (仕様 §5 禁止する構造4: 条件ごとに ESN を2回作らない)。
@@ -336,6 +371,9 @@ def evaluate_stability_condition(
         dt: サンプリング間隔 [時間]。
         lyapunov_time: ``1 / lambda_max`` [時間] (D-42 の数値推定)。
         ctx: 全条件で共有する ``DiagnosticContext`` (D-37)。
+        trajectory_cache: replicate -> ``TaskData`` のキャッシュ。呼び出し側
+            (``run_stability_experiment``) が全条件で1個を共有する。
+            ``None`` (既定) なら毎回積分し直す。
 
     Returns:
         ``StabilityOutcome``。
@@ -344,7 +382,7 @@ def evaluate_stability_condition(
         ValueError: 確保軸を超える設定、または課題・診断側の値域違反。
     """
     started = time.perf_counter()
-    entry = condition_task_entry(config, condition)
+    entry = condition_task_entry(config, condition, trajectory_cache=trajectory_cache)
     validate_state_matrix_bounds(entry.esn.n_units, task_length(config, entry.name))
 
     outcome = run_free_run(
