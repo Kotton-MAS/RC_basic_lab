@@ -112,6 +112,18 @@ class FreeRunConfig:
         free_run_steps: 自走させるステップ数。**確保軸3**
             (``free_run_steps * n_units``) の一方の項で、自走の入口で
             ``validate_state_matrix_bounds`` が確保より前に検査する。
+        stats_steps: 長時間統計 (D-46) に使う自走の総ステップ数。**確保軸4**で
+            あり、上書き不能な絶対上限 (``experiment/attractor.py`` の
+            ``_MAX_STATS_STEPS``) が 4-B の入口で確保より前に検査する。
+            自走は**1本しか回さない** —— 先頭 ``free_run_steps`` を有効予測時間
+            (D-43) に、全体を長時間統計に使う。ヒストグラムのビン数と FFT 長は
+            この値に**従属**させ、独立した設定軸にしない (確保軸7)。
+        valid_time_threshold: 有効予測時間の誤差しきい値 (D-43)。誤差は
+            **NRMSE 比** (瞬時 RMSE / 真の軌道の標準偏差、D-02 と同じ正規化) で、
+            これを初めて超えたステップまでが有効予測時間である。{0.2, 0.3, 0.4,
+            0.5} の感度は ``experiment/attractor.py`` の
+            ``VALID_TIME_THRESHOLD_GRID`` が別途まとめて測り、
+            ``docs/design.md`` §12 の感度表の一次資料になる。
 
     Note:
         自走長を削って速くするのは受け入れ条件2 (有効予測時間の分布) を壊す
@@ -120,6 +132,41 @@ class FreeRunConfig:
 
     warmup_steps: int = 200
     free_run_steps: int = 2000
+    stats_steps: int = 20000
+    valid_time_threshold: float = 0.4
+
+
+@dataclass(frozen=True, slots=True)
+class StabilityConfig:
+    """実験 4-C (自走の3態マップ) の掃引軸 (D-45)。純データ (D-09)。
+
+    格子の積 x ``n_replicates`` が**確保軸5** (条件数) で、上書き不能な絶対
+    上限 (``experiment/stability.py`` の ``_MAX_CONDITIONS``) が**条件を1つも
+    作る前に**検査する (D-34 の規律)。自走は逐次計算でベクトル化できない
+    (仕様 §10-1) ので、時間はこの積にそのまま比例する。
+
+    Attributes:
+        spectral_radius_grid: スペクトル半径の格子。
+        leak_rate_grid: リーク率の格子。
+        state_noise_grid: 状態ノイズ (tanh 内部への加算、D-36) の格子。
+            **これを変えると3態マップが変わる**ことが受け入れ条件4 の核心で、
+            ``tests/test_experiment_stability.py::test_noise_changes_the_regime_map``
+            が実測する。
+        n_replicates: 条件あたりのレプリケート数。**予算超過時に落として
+            よいのはこの値だけ** (仕様 §5)。格子・自走長は動かさない。
+        surrogate_seed: 4-D の MC / IPC のしきい値サロゲート用
+            ``DiagnosticContext.seed`` (D-27 / D-37)。**``SeedStream`` では
+            ない** —— 診断へ ``ctx.seed`` としてそのまま渡る整数で、
+            ``seeds.py`` の既存4ストリームを1つも動かさない。全条件で1個を
+            共有する (共通乱数法、D-37)。03 の ``CapacitySeedConfig.surrogate``
+            と同じ流儀。
+    """
+
+    spectral_radius_grid: tuple[float, ...] = (0.7, 0.9, 1.1, 1.3)
+    leak_rate_grid: tuple[float, ...] = (0.1, 0.3, 0.6, 1.0)
+    state_noise_grid: tuple[float, ...] = (0.0, 1.0e-4, 1.0e-3, 1.0e-2)
+    n_replicates: int = 5
+    surrogate_seed: int = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +189,8 @@ class Chaos04Config:
             alpha 格子・ESN 構造・シードはここが単一の真実。
         lorenz: Lorenz 系の生成パラメータ (04 が足す唯一の課題パラメータ)。
         mackey_glass: 04 の MG 課題の標準化 (生成は ``base.mackey_glass``)。
-        freerun: 自走の実行条件。
+        freerun: 自走の実行条件 (4-B)。
+        stability: 3態マップの掃引軸 (4-C)。
         lyapunov: 最大 Lyapunov 指数の推定条件と文献値との照合基準 (D-42)。
         mc: 線形メモリ容量の設定 (4-D。委譲先は ``diagnostics/``)。
         ipc: 情報処理容量の設定 (4-D。**既存 D-34 の4段を再利用する**)。
@@ -155,6 +203,7 @@ class Chaos04Config:
         default_factory=MackeyGlassStandardizeConfig
     )
     freerun: FreeRunConfig = field(default_factory=FreeRunConfig)
+    stability: StabilityConfig = field(default_factory=StabilityConfig)
     lyapunov: MaxLyapunovConfig = field(
         default_factory=lambda: MaxLyapunovConfig(
             reference_value=LORENZ_LYAPUNOV_REFERENCE
