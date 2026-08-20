@@ -247,6 +247,38 @@ def load_series(filename: str, *, data_dir: Path = DEFAULT_DATA_DIR) -> AnomalyS
     )
 
 
+@dataclass(frozen=True, slots=True)
+class UcrSeriesSource:
+    """UCR の系列1本を ``SeriesSource`` (D-71) として渡すための束縛。
+
+    ``MgabSeriesSource`` と同じ形 —— ファイル名と展開先を構築時に受け取り、
+    ``__call__`` は ``load_series`` へ委譲する。
+
+    Attributes:
+        filename: 採用サブセットのファイル名 (``subset()`` のいずれか)。
+        data_dir: 展開先 (既定は ``DEFAULT_DATA_DIR``)。
+    """
+
+    filename: str
+    data_dir: Path = DEFAULT_DATA_DIR
+
+    def is_available(self) -> bool:
+        """展開済みで SHA256 も一致するか (**ネットワークに触れない**)。
+
+        呼ぶのは同名のモジュール関数 ``ucr.is_available`` (メソッドの本体からは
+        モジュールのグローバルが見える)。
+        """
+        return is_available(self.filename, data_dir=self.data_dir)
+
+    def __call__(self, rng: np.random.Generator) -> AnomalySeries:
+        """展開済みのファイルを ``AnomalySeries`` にする (取得はしない)。
+
+        実データなので ``rng`` は使わない (呼び出し口を源によらず1つに保つ)。
+        """
+        del rng
+        return load_series(self.filename, data_dir=self.data_dir)
+
+
 __all__ = [
     "ARCHIVE_RELATIVE_PATH",
     "ARCHIVE_URL",
@@ -255,6 +287,7 @@ __all__ = [
     "LICENSE",
     "MANIFEST_PATH",
     "UcrFileSpec",
+    "UcrSeriesSource",
     "anomaly_slice",
     "archive_remote",
     "fetch",

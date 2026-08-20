@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -131,12 +132,47 @@ def load_series(series: str, *, data_dir: Path = DEFAULT_DATA_DIR) -> AnomalySer
     )
 
 
+@dataclass(frozen=True, slots=True)
+class MgabSeriesSource:
+    """MGAB の系列1本を ``SeriesSource`` (D-71) として渡すための束縛。
+
+    系列名とキャッシュ先を構築時に受け取り、``__call__`` は ``load_series``
+    へそのまま委譲する。実験層はこの型を ``SeriesSource`` としてしか見ないので、
+    「MGAB のときだけキャッシュを確認する」分岐を持たずに済む。
+
+    Attributes:
+        series: 系列名 (``SERIES`` のいずれか)。
+        data_dir: キャッシュ先 (既定は ``DEFAULT_DATA_DIR``)。
+    """
+
+    series: str
+    data_dir: Path = DEFAULT_DATA_DIR
+
+    def is_available(self) -> bool:
+        """キャッシュが在り SHA256 も一致するか (**ネットワークに触れない**)。
+
+        呼ぶのは同名のモジュール関数 ``mgab.is_available`` (メソッド自身では
+        ない —— メソッドの本体からはモジュールのグローバルが見える)。
+        """
+        return is_available(self.series, data_dir=self.data_dir)
+
+    def __call__(self, rng: np.random.Generator) -> AnomalySeries:
+        """キャッシュ上の CSV を ``AnomalySeries`` にする (取得はしない)。
+
+        実データなので ``rng`` は使わない —— ``SeriesSource`` の呼び出し口を
+        源によらず1つに保つために受け取るだけである。
+        """
+        del rng
+        return load_series(self.series, data_dir=self.data_dir)
+
+
 __all__ = [
     "DATASET_NAME",
     "LICENSE",
     "MANIFEST_PATH",
     "SERIES",
     "URL_TEMPLATE",
+    "MgabSeriesSource",
     "fetch",
     "is_available",
     "load_series",
