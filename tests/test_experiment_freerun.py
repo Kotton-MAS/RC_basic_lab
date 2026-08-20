@@ -553,15 +553,22 @@ def test_delay_line_free_run_never_builds_a_reservoir() -> None:
     ``free_run`` が状態生成器を ``StateUpdater`` で受けているので、シフト
     レジスタでも同じ関数がそのまま動く。ESN の構築を「呼ばれたら落ちる」ものに
     差し替えて完走させる。
+
+    教師強制の ``ReplicatePlan`` は**先に**作っておく —— 分割と ``t0`` を3手法で
+    共有する (D-05) ために、plan は手法によらず ESN の状態行列を含むからである。
+    ここが測るのは「閉ループの側がリザバーを作らないこと」で、そのために
+    ``plan=`` で渡す経路 (3手法が1つの plan を共有する経路) をそのまま使う。
     """
     config = small_config()
+    entry = lorenz_task_entry(config)
+    plan = fit_teacher_forced(config, entry, 0, method=DELAY_LINE).plan
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("遅延線の自走が ESN を作りました (D-50)")
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(ESN, "__init__", forbidden)
-        outcome = run_free_run(config, lorenz_task_entry(config), 0, method=DELAY_LINE)
+        outcome = run_free_run(config, entry, 0, method=DELAY_LINE, plan=plan)
     assert outcome.method == DELAY_LINE
     assert outcome.result.n_completed >= 1
 
