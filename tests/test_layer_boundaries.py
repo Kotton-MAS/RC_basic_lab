@@ -225,7 +225,7 @@ def _io_roots(path: Path) -> set[str]:
     """``path`` が (関数の中も含めて) import している I/O 系の根。"""
     roots = {
         root.split(".")[0]
-        for root in _imported_roots(path, include_function_bodies=True)
+        for root in imported_roots(path, include_function_bodies=True)
     }
     return roots & IO_IMPORT_ROOTS
 
@@ -274,7 +274,7 @@ def test_tasks_and_metrics_never_perform_io(path: Path) -> None:
 def test_the_io_guard_would_catch_an_import_inside_a_function(tmp_path: Path) -> None:
     """上の検査が**関数本体の中の import** を実際に捕まえる (変異注入)。
 
-    ``_imported_roots`` を module-level 版のままにすると
+    ``imported_roots`` を module-level 版のままにすると
     ``test_tasks_and_metrics_never_perform_io`` は緑のまま素通りする。
     「関数の中に書けば通る」guard は guard ではないので、そのことをここで
     実測して固定する。
@@ -286,7 +286,7 @@ def test_the_io_guard_would_catch_an_import_inside_a_function(tmp_path: Path) ->
     )
     module_level = {
         root.split(".")[0]
-        for root in _imported_roots(probe, include_function_bodies=False)
+        for root in imported_roots(probe, include_function_bodies=False)
     }
     assert not module_level & IO_IMPORT_ROOTS
     assert _io_roots(probe) == {"urllib"}
@@ -303,7 +303,7 @@ def test_datasets_is_the_only_package_that_may_perform_io() -> None:
     for path in _package_modules("datasets"):
         roots |= {
             root.split(".")[0]
-            for root in _imported_roots(path, include_function_bodies=True)
+            for root in imported_roots(path, include_function_bodies=True)
         }
     assert "urllib" in roots, (
         "datasets/ が urllib を持っていません。取得層はここにしか置けません (D-59)"
