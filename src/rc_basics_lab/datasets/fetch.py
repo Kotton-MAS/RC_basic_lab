@@ -196,8 +196,8 @@ class _StagedSink:
     開き直して**いた。mkstemp の安全性は O_EXCL と fd の保持で成り立つので
     あって名前の予測不能性ではなく、名前を開き直した瞬間に「予測不能な名前」
     という弱い性質まで安全性が後退していた —— mkstemp と ``open`` の間で同名が
-    symlink に差し替えられると、data_dir の外を上書きし得る (reviewer-security 指摘)。fd を
-    握ったまま書き込み・再照合・確定を行うことで、この窓を構造的に閉じる。
+    symlink に差し替えられると、data_dir の外を上書きし得る。fd を握ったまま
+    書き込み・再照合・確定を行うことで、この窓を構造的に閉じる。
     """
 
     def __init__(self, descriptor: int, partial: Path) -> None:
@@ -265,8 +265,9 @@ def _staged_write(target: Path) -> Iterator[_StagedSink]:
     (reviewer-architecture 指摘) 「作る → 書く → 検証して確定させる」という
     1つのライフサイクルが部品に割れていると、後始末 (``partial.unlink``) の
     義務と「確定は必ず再照合を通す」義務の両方が呼び出し側の規律として残り、
-    複製されたり漏れたりする (F-2-001)。``with`` を抜けるまでに ``commit()``
-    を呼ばなかった場合 (例外・書き忘れのいずれも) は、ここで一時ファイルを
+    複製されたり漏れたりする (reviewer-architecture 指摘)。``with`` を抜ける
+    までに ``commit()`` を呼ばなかった場合 (例外・書き忘れのいずれも) は、
+    ここで一時ファイルを
     自動的に片付ける —— 呼び出し側に ``partial.unlink`` を書かせない。
     """
     descriptor, name = tempfile.mkstemp(

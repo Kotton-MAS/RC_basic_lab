@@ -207,9 +207,9 @@ def test_os_replace_is_confined_to_the_staged_write_commit_method() -> None:
 
     旧テスト (``download``/``_extract_member`` という関数名を列挙するだけの
     存在確認) は、T3〜T5 で datasets/ に3本目の書き込み経路が増えても素通り
-    することが reviewer-architecture / reviewer-test の双方から指摘された
-    (F-2-001 / F-2-021)。関数名の列挙ではなく fetch.py の**全関数**を対象に
-    することで、新しい経路が ``_staged_write`` を経由しない限り機械的に落ちる。
+    することが reviewer-architecture / reviewer-test の双方から指摘された。
+    関数名の列挙ではなく fetch.py の**全関数**を対象にすることで、新しい
+    経路が ``_staged_write`` を経由しない限り機械的に落ちる。
     """
     tree = ast.parse(
         Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
@@ -318,8 +318,8 @@ def test_extract_members_is_rejected_when_the_part_file_is_swapped_mid_write(
 ) -> None:
     """``extract_members`` も、書き込み完了直後の ``.part`` 差し替えを検出する。
 
-    ``download()`` 側にしか存在しなかった振る舞いテストの対 (reviewer-test
-    指摘: F-2-021)。AST の存在確認テストだけでは、確定直前の再照合を無力化
+    ``download()`` 側にしか存在しなかった振る舞いテストの対 (reviewer-test 指摘)。
+    AST の存在確認テストだけでは、確定直前の再照合を無力化
     する変異を ``_extract_member`` に注入しても全テストが green のまま通る
     ことが実測されている —— この振る舞いテストがその回帰検知の穴を塞ぐ。
     """
