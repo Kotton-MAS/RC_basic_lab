@@ -43,6 +43,7 @@ from rc_basics_lab.config import (
     AnomalyThresholdConfig,
     SyntheticAnomalyConfig,
 )
+from rc_basics_lab.datasets import mgab, ucr
 from rc_basics_lab.experiment.anomaly import (
     AnomalyCondition,
     AnomalyPlan,
@@ -509,18 +510,20 @@ def test_the_headline_auprc_never_passes_through_point_adjust() -> None:
     )
 
 
-def test_the_default_configuration_keeps_the_two_metrics_apart() -> None:
-    """既定設定でも「AUPRC は分離し、PA-F1 は分離しない」(記事の主張の実測)。
+def test_point_adjust_hides_the_gap_that_the_auprc_shows() -> None:
+    """「AUPRC は分離し、PA-F1 は分離しない」(D-55 の根拠そのものの実測)。
 
-    ESN と一様乱数対照を既定の縮小設定で比べ、**AUPRC の比が PA-F1 の比より
-    大きい**ことを固定する。PA-F1 で並べると差が潰れることが D-55 の根拠
-    そのものなので、数値として1本残しておく。
+    ESN と一様乱数対照を同じ条件で比べ、**AUPRC の比が PA-F1 の比より
+    大きい**ことを固定する。PA-F1 で並べると差が潰れる ——
+    ``pa_f1`` だけを報告したら「乱数対照と同程度の手法」が SOTA に見える、
+    というのが Kim et al. の指摘であり D-55 の理由である。
     """
-    rows, _ = _run(REDUCED)
+    rows, _ = _run(PA_CONTRAST)
     esn = next(row for row in rows if row.method == ESN_RESIDUAL)
     control = next(row for row in rows if row.method == RANDOM_CONTROL)
+    assert control.point_adjust[0].pa_f1 > 0.9
     auprc_ratio = esn.auprc / control.auprc
-    pa_ratio = esn.point_adjust[0].pa_f1 / max(control.point_adjust[0].pa_f1, 1e-12)
+    pa_ratio = esn.point_adjust[0].pa_f1 / control.point_adjust[0].pa_f1
     assert auprc_ratio > pa_ratio, (
         f"AUPRC 比 {auprc_ratio:.3f} が PA-F1 比 {pa_ratio:.3f} を上回りません"
     )
@@ -691,15 +694,29 @@ def test_build_sources_returns_one_source_per_series_name() -> None:
     assert all(source.is_available() for source in sources.values())
 
 
+def _series_names_for(source: str) -> tuple[str, ...]:
+    """その源で実在する系列名 (合成源は札なので何でもよい)。"""
+    if source == "mgab":
+        return (mgab.SERIES[0],)
+    if source == "ucr":
+        return (ucr.subset()[0],)
+    return REDUCED.dataset.series
+
+
 @pytest.mark.parametrize("source", ANOMALY_SOURCES)
 def test_every_declared_source_can_be_built_without_network(source: str) -> None:
     """3源すべてが**ネットワークに触れずに**組み立てられる (D-60 / D-71)。
 
-    実データ源は ``is_available`` がキャッシュを見るだけなので、キャッシュが
-    無い環境でも構築と可用性判定は通る (系列の読み取りはしない)。
+    実データ源の ``is_available`` はマニフェスト (リポジトリ内の CSV) と
+    キャッシュを見るだけなので、キャッシュが無い環境でも構築と可用性判定は
+    通る (系列の読み取りはしない)。実験層が源の具象名で分岐しないことの
+    裏返しの検査でもある —— 3源が同じ ``SeriesSource`` の面で扱える。
     """
     config = dataclasses.replace(
-        REDUCED, dataset=dataclasses.replace(REDUCED.dataset, source=source)
+        REDUCED,
+        dataset=dataclasses.replace(
+            REDUCED.dataset, source=source, series=_series_names_for(source)
+        ),
     )
     sources = build_sources(config)
     assert set(sources) == set(config.dataset.series)
