@@ -15,7 +15,7 @@
    (``calibrate_threshold``) はラベルを引数に取らず、テスト側最適化の結果は
    ``f1_test_optimal`` という別列にしか出ない
 5. **PA-F1 は一様乱数対照と対でしか列にならない** (D-55)。列名を作る関数
-   ``pa_columns`` が2本を同時にしか返さない
+   ``anomaly_rows.pa_columns`` が2本を同時にしか返さない
 
 系列源は ``Mapping[str, SeriesSource]`` の1辞書で渡す (D-71)。実験ループは
 Protocol にしか触れないので、合成源・MGAB・UCR のどれであっても同じコードを
@@ -104,8 +104,7 @@ def build_sources(config: Anomaly05Config) -> Mapping[str, SeriesSource]:
 
     実験ループはここが返した ``Mapping[str, SeriesSource]`` にしか触れない
     ので、源が合成でも MGAB でも UCR でも同じコードを通る (D-71)。分岐が
-    2箇所目に生えると、``datasets -> tasks`` の一方向依存 (D-59) が実験層で
-    崩れる。
+    2箇所目に生えると ``datasets -> tasks`` の一方向依存 (D-59) が崩れる。
 
     Args:
         config: 実験設定。``dataset.series`` の各要素が鍵になる。
@@ -295,9 +294,9 @@ def preprocessor_id(preprocessor: AnomalyPreprocessor) -> str:
 def _visible(values: FloatArray, ignore: BoolArray, enabled: bool) -> FloatArray:
     """``is_ignored`` の点を落とす (**ラベルを持たない側**の経路)。
 
-    較正区間には ``apply_ignore_mask`` を使わない —— あちらはラベルを引数に
-    取るので、閾値決定の経路にラベルが1本でも通ることになる (D-56 が型で
-    禁じたい形そのもの)。落とす規則は同じ ``is_ignored`` である。
+    較正区間に ``apply_ignore_mask`` を使わないのは、あちらがラベルを引数に
+    取るため —— 閾値決定の経路にラベルが1本でも通る形は D-56 が型で禁じたい
+    ものそのものである。落とす規則は同じ ``is_ignored``。
     """
     if not enabled:
         return values
