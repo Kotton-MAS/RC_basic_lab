@@ -94,11 +94,8 @@ ANOMALY_SOURCES: tuple[str, ...] = (SYNTHETIC_SOURCE, MGAB_SOURCE, UCR_SOURCE)
 SPLIT_OFFSET_DIVISOR = 100
 """分割オフセットの上限を系列長の何分の1にするか (``max_start_offset``)。
 
-**設定の葉にしない**。``seeds.split`` が効く (= 分割境界が動く) ために正の値が
-要るだけで、値そのものは結論を動かさない —— 葉にすると「YAML から設定できる
-のに図も表も変わらない」フィールドが1つ増える (D-69 と同じ判断)。系列長に
-比例させるのは、打ち切り長を変えたときにオフセットが系列に対して相対的に
-同じ大きさであってほしいため。
+**設定の葉にしない** —— ``seeds.split`` が効く (分割境界が動く) ために正の値が
+要るだけで、値そのものは結論を動かさない (D-69 と同じ判断)。
 """
 
 
@@ -156,10 +153,10 @@ class AnomalyCondition:
     def draw(self) -> int:
         """``make_rng_for`` に渡す通し番号 ((系列, レプリケート) を1本に畳む)。
 
-        ``seeds.py`` の ``make_rng_for`` は ``(stream, replicate)`` の2軸しか
-        持たないので、系列軸をここで畳む。``n_replicates`` を変えると
-        2本目以降の系列の乱数列も動くが、レプリケート数を変えた時点で
-        平均±標準偏差の意味自体が変わるので、同一性を主張する相手ではない。
+        ``make_rng_for`` は ``(stream, replicate)`` の2軸しか持たないので、
+        系列軸をここで畳む。``n_replicates`` を変えると2本目以降の系列の
+        乱数列も動く (レプリケート数を変えた時点で平均±標準偏差の意味が
+        変わるので、同一性を主張する相手ではない)。
         """
         return self.series_index * self.n_replicates + self.replicate
 
@@ -439,15 +436,13 @@ def _evaluate(
     )
     elapsed = time.perf_counter() - started
     logger.info(
-        "series=%s method=%s replicate=%d auprc=%.4f (random %.4f) "
-        "f1=%.3f far=%.4f (%.2fs)",
+        "series=%s method=%s replicate=%d auprc=%.4f (random %.4f) f1=%.3f (%.2fs)",
         row.series,
         row.method,
         row.replicate,
         row.auprc,
         row.auprc_random,
         row.f1_calibrated,
-        row.far_test,
         elapsed,
     )
     return replace(row, wall_time_s=elapsed), sweep
