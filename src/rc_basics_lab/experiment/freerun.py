@@ -8,15 +8,13 @@
 課題を足さない** (足すと 01 の ``comparison.csv`` に行が増えて 01 の成果物が
 変わる)。
 
-自走の入口もここにある。``readout/autoregressive.py`` は ``reservoir`` を
-知らない (D-50) ので、ESN を ``StateUpdater`` に適合させるアダプタ
+自走の入口もここにある。ESN を ``StateUpdater`` に適合させるアダプタ
 (``esn_state_updater``) と、確保軸の検査 (``validate_free_run_bounds``) は
-実験層の責任である。
+実験層の責任である (D-50)。
 
 **自走は教師強制で学習した係数をそのまま使う** (D-44)。``fit_teacher_forced``
 が返した係数オブジェクトが ``FreeRunResult.coefficients`` に**同一オブジェクト
-として**現れるので、自走のたびに学習し直す実装 (仕様 §5 禁止する構造1) は
-同一性の検査で落ちる。
+として**現れる。
 """
 
 from __future__ import annotations
