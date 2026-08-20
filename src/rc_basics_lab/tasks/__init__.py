@@ -7,8 +7,16 @@
 - ``delay_parity``: 遅延パリティ (線形手法が解析的に解けない対照課題。D-07)
 - ``narma``: NARMA10 (実験 3-C の課題。D-29 / D-30)
 - ``chaotic``: Lorenz の生成と 04 の標準化 (D-41。MG は ``mackey_glass`` へ委譲)
+- ``anomaly``: 異常検知の系列の器・共通前処理・合成源 (D-57 / D-59。実データの
+  取得と読み取りは ``datasets/`` にあり、この層は I/O を持たない)
 """
 
+from rc_basics_lab.tasks.anomaly import (
+    NORMALIZE_METHODS,
+    AnomalyPreprocessor,
+    AnomalySeries,
+    generate_synthetic_anomalies,
+)
 from rc_basics_lab.tasks.base import TaskData, TaskGenerator
 from rc_basics_lab.tasks.chaotic import (
     Standardizer,
@@ -20,6 +28,9 @@ from rc_basics_lab.tasks.mackey_glass import generate_mackey_glass
 from rc_basics_lab.tasks.narma import generate_narma10, narma10_series
 
 __all__ = [
+    "NORMALIZE_METHODS",
+    "AnomalyPreprocessor",
+    "AnomalySeries",
     "Standardizer",
     "TaskData",
     "TaskGenerator",
@@ -28,5 +39,6 @@ __all__ = [
     "generate_mackey_glass",
     "generate_narma10",
     "generate_standardized_mackey_glass",
+    "generate_synthetic_anomalies",
     "narma10_series",
 ]

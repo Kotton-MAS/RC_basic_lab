@@ -28,6 +28,7 @@ import rc_basics_lab
 
 PACKAGE_NAMES = (
     "config",
+    "datasets",
     "diagnostics",
     "reservoir",
     "readout",
@@ -38,6 +39,8 @@ PACKAGE_NAMES = (
 """慣習の対象パッケージ (conventions.md §関連ファイルマップ)。
 
 ``config`` は 04 T1 で ``config.py`` から package 化した7つ目 (D-49)。
+``datasets`` は 05 T2 が足した8つ目で、**ネットワークとファイル I/O を持つ
+唯一のパッケージ**である (D-59)。
 公開シンボルは ``config/__init__.py`` が明示的に再エクスポートするので、
 サブモジュール (``experiment01`` / ``esp02`` / ``capacity03``) は
 ``__init__`` の import 文の副作用として親の属性になる。
