@@ -59,6 +59,7 @@ from rc_basics_lab.experiment.capacity import (
     measure_capacity,
     simulate_condition_trajectory,
 )
+from rc_basics_lab.experiment.report import DataclassSummaryMixin
 
 logger = logging.getLogger(__name__)
 
