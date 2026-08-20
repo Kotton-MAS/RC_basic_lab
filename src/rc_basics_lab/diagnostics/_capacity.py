@@ -5,7 +5,7 @@ MC (線形メモリ容量) と IPC (情報処理容量) は「同じ状態行列
 違いは**目標の作り方だけ**である。したがって回帰と容量の計算はここに1本だけ
 置き、``memory_capacity`` / ``ipc`` は目標の生成だけを持つ。
 
-このモジュールが守る性質は4つある。
+このモジュールが守る性質は6つある。
 
 1. **Gram は条件ごとに1回、``Phi`` は実体化しない** (D-26)。``CapacityProblem``
    は ``Phi = [1, X]`` の Gram をブロック分解 (
@@ -27,7 +27,17 @@ MC (線形メモリ容量) と IPC (情報処理容量) は「同じ状態行列
    変わらない (``test_chunk_size_does_not_change_results``)。
 4. **基底は宣言された入力分布に対して正規直交** (D-28)。直交していない基底で
    目標を作ると容量が目標間で二重計上され、保存則 (total <= N) が
-   「N をわずかに超える」という穏やかな形で破れる。
+   「N をわずかに超える」という穏やかな形で破れる。分布と基底は**対でのみ
+   意味を持つ**ので ``InputMeasure`` 1値にまとめ、``orthonormal_basis`` は
+   これを**既定値なしの第3引数**で受ける (片方だけ渡す呼び方を書けなくする)。
+5. **行合わせの担い手は ``RowAlignment`` 1つ** (D-24)。基準点 ``t0`` の算出・
+   ``t0 >= T`` の拒否・遅延窓の切り出しを診断ごとに複製しない。状態行列にも
+   Gram にも触れないので、行合わせだけを検査するテストがダミーの状態行列を
+   作らずに書ける。
+6. **チャンク幅は性能軸と確保軸に分ける** (D-33)。``solve_width`` は
+   ``cfg.chunk_size`` を上限とする性能軸、``block_width`` は
+   ``cfg.chunk_size`` を**読まない**確保軸で、どちらも
+   ``bounded_chunk_size`` 1本の純関数へ委譲する。
 
 ``rc_basics_lab.readout.ridge.fit_ridge_from_gram`` を使うのは D-23 で明示的に
 許可された依存である。バイアス列を正則化しない (D-03) 閉形式解の実装を2箇所に
@@ -153,9 +163,7 @@ class RowAlignment:
     n_samples: int
 
     @classmethod
-    def from_series(
-        cls, *, n_steps: int, washout: int, max_delay: int
-    ) -> RowAlignment:
+    def from_series(cls, *, n_steps: int, washout: int, max_delay: int) -> RowAlignment:
         """基準点を算出して行合わせを作る。MC と IPC はこの1本だけを呼ぶ。
 
         Args:
@@ -466,9 +474,7 @@ def _hermite_normalized(x: FloatArray, degree: int) -> FloatArray:
 def orthonormal_basis(
     u_lagged: FloatArray,
     degree: int,
-    distribution: str = UNIFORM,
-    *,
-    basis: str = LEGENDRE,
+    measure: InputMeasure,
 ) -> FloatArray:
     """次数 ``degree`` の正規直交多項式を ``u_lagged`` の各要素で評価する (D-28)。
 
@@ -482,30 +488,27 @@ def orthonormal_basis(
 
     次数 1 は分布によらず ``(u - mean) / sigma`` に一致する
     (``sqrt(3) P_1(v/sqrt(3)) = v``、``He_1(v)/sqrt(1!) = v``)。MC が
-    ``distribution`` を設定項目に持たないのはこのため。
+    入力分布を設定項目に持たず ``UNIFORM_LEGENDRE`` 固定で足りるのはこのため。
 
     Args:
         u_lagged: 入力系列、または遅延を並べた配列。形状は問わない
             (平均と標準偏差は配列全体から推定し、同じ形状の配列を返す)。
         degree: 多項式の次数 (0 以上)。0 は定数 1。
-        distribution: 宣言された入力分布 (``"uniform"`` / ``"normal"``)。
-        basis: 多項式基底 (``"legendre"`` / ``"hermite"``)。
+        measure: 入力測度 ``InputMeasure(distribution, basis)`` (D-28)。
+            **既定値を持たない** —— 分布と基底は対でのみ意味を持つので、
+            「片方だけ渡す」呼び方を型検査の時点で書けなくする
+            (``test_orthonormal_basis_requires_an_explicit_measure``)。
+            未対応の組は ``InputMeasure`` の**構築時点**で落ちるため、
+            ここには組の検査を置かない (検査を2箇所に持たない)。
 
     Returns:
         ``u_lagged`` と同じ形状の配列。
 
     Raises:
-        ValueError: ``degree`` が負 / ``(distribution, basis)`` が
-            ``SUPPORTED_BASIS_PAIRS`` に無い / 入力が空・非有限・分散 0 の場合。
+        ValueError: ``degree`` が負 / 入力が空・非有限・分散 0 の場合。
     """
     if degree < 0:
         raise ValueError(f"degree は 0 以上である必要があります: {degree}")
-    if (distribution, basis) not in SUPPORTED_BASIS_PAIRS:
-        raise ValueError(
-            "(input_distribution, basis) の組が未対応です (D-28): "
-            f"({distribution!r}, {basis!r})。"
-            f" 対応する組: {SUPPORTED_BASIS_PAIRS}"
-        )
     values = np.asarray(u_lagged, dtype=np.float64)
     if values.size == 0:
         raise ValueError("u_lagged が空です")
@@ -515,7 +518,7 @@ def orthonormal_basis(
     if sigma <= 0.0:
         raise ValueError("u_lagged が定数のため正規直交基底を定義できません")
     standardized: FloatArray = (values - float(np.mean(values))) / sigma
-    if basis == LEGENDRE:
+    if measure.basis == LEGENDRE:
         return _legendre_normalized(standardized / _UNIFORM_HALF_WIDTH_IN_SIGMA, degree)
     return _hermite_normalized(standardized, degree)
 
@@ -577,8 +580,11 @@ def bounded_chunk_size(configured: int, n_samples: int) -> int:
     逆方向 —— 性能チューニングのために大きい ``configured`` を明示指定した
     意図 —— は保護されない: ``n_samples`` が大きい本番規模では
     ``configured`` の値によらず必ず ``_MAX_CHUNK_BYTES`` 相当まで切り詰める
-    (D-33)。呼び出し側は実際に使われた値を ``CapacityProblem.
-    effective_chunk_size`` 経由で取得し、成果物の ``params`` に記録すること
+    (D-33)。この関数は **128 MiB 予算を持つ唯一の場所**であり、性能軸
+    (``RowAlignment.solve_width``) と確保軸 (``RowAlignment.block_width``)
+    の両方がここへ委譲する (予算を2箇所に持つと片方だけ動かせてしまう)。
+    呼び出し側は実際に使われた性能軸の値を ``RowAlignment.solve_width``
+    経由で取得し、成果物の ``params`` に記録すること
     (``chunk_size_effective``、F-03-2-001 / F-03-2-009)。
 
     Args:
@@ -810,9 +816,14 @@ __all__ = [
     "HERMITE",
     "LEGENDRE",
     "NORMAL",
+    "NORMAL_HERMITE",
     "SUPPORTED_BASIS_PAIRS",
+    "SUPPORTED_MEASURES",
     "UNIFORM",
+    "UNIFORM_LEGENDRE",
     "CapacityProblem",
+    "InputMeasure",
+    "RowAlignment",
     "bounded_chunk_size",
     "capacity_of_chunks",
     "capacity_of_targets",
