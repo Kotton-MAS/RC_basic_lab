@@ -29,7 +29,7 @@ import logging
 import math
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -121,8 +121,10 @@ def build_sources(config: Anomaly05Config) -> Mapping[str, SeriesSource]:
         raise ValueError("dataset.series が空です")
     match config.dataset.source:
         case "synthetic":
-            synthetic = SyntheticSeriesSource(cfg=config.synthetic)
-            return {name: synthetic for name in names}
+            # 合成源は系列名によらず同一の設定を使う (系列の違いは task
+            # ストリームの draw だけで作る)。1インスタンスを配ることで
+            # 「系列ごとに少し違う合成源」が生まれる経路も消える。
+            return dict.fromkeys(names, SyntheticSeriesSource(cfg=config.synthetic))
         case "mgab":
             return {name: mgab.MgabSeriesSource(series=name) for name in names}
         case "ucr":
@@ -448,17 +450,7 @@ def _evaluate(
         row.far_test,
         elapsed,
     )
-    return (
-        AnomalyRow(
-            **{
-                item.name: getattr(row, item.name)
-                for item in fields(AnomalyRow)
-                if item.name != "wall_time_s"
-            },
-            wall_time_s=elapsed,
-        ),
-        sweep,
-    )
+    return replace(row, wall_time_s=elapsed), sweep
 
 
 def plan_replicate(
