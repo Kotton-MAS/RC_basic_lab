@@ -183,7 +183,7 @@ make saturation-03
 
 ```bash
 # 04 の成果物 (CSV5枚 + 図5枚 + meta.json) を results/04_chaotic_freerun/ に
-# 再生成する (実測 wall_time_s = 223.4 秒 / 予算 900 秒)
+# 再生成する (実測 wall_time_s = 224.8 秒 / 予算 900 秒)
 make figures-04
 ```
 
