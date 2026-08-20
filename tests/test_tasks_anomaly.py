@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from ast_imports import imported_symbol_names
 
 from rc_basics_lab.config import SyntheticAnomalyConfig, SyntheticMackeyGlassConfig
 from rc_basics_lab.tasks.anomaly import (
@@ -438,13 +439,7 @@ def test_synthetic_source_delegates_to_the_existing_mackey_glass_generator() -> 
 
     積分を2実装に割ると、04 の較正 (D-41) と 05 の合成源が別々の系になる。
     """
-    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"), filename=str(MODULE_PATH))
-    imported = {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-        for alias in node.names
-    }
+    imported = imported_symbol_names(MODULE_PATH)
     assert "generate_mackey_glass" in imported
     source = MODULE_PATH.read_text(encoding="utf-8")
     assert "rk4" not in source.lower(), "積分器を課題層で再実装しています"
