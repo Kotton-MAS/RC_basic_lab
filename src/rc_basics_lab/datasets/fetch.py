@@ -31,7 +31,8 @@ import hashlib
 import os
 import tempfile
 import zipfile
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from io import IOBase
 from pathlib import Path, PurePosixPath
