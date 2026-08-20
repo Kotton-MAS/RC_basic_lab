@@ -1,6 +1,6 @@
-"""実験 4-A と自走の入口の検査 (D-31 / D-34 / D-36 / D-41 / D-44).
+"""実験 4-A / 4-B と自走の入口の検査 (D-31 / D-34 / D-36 / D-41 / D-43〜D-46).
 
-守るのは4系統。
+守るのは6系統。
 
 1. **01 の経路をそのまま通していること** (D-31)。4-A は ``run_task`` を呼ぶ
    だけで、公平性 (D-04 / D-05 / D-08) を書き写していない
@@ -9,6 +9,10 @@
 3. **確保軸3** が自走の確保より前に効くこと (D-34)
 4. **D-48 と D-36 の境界**。伝播器 (02) は決定的、自走 (04) は
    ``state_noise > 0`` なら rng を渡す
+5. **教師強制と自走で同じ特徴・同じ係数を使うこと** (仕様 §5 禁止する構造2)。
+   3手法とも、閉ループの設計行列が教師強制の行と一致する
+6. **成果物 (``results/04_chaotic_freerun/``) に対する受け入れ条件1・2・3・5**。
+   図ではなく行から判定する
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -36,17 +41,27 @@ from rc_basics_lab.experiment import freerun as freerun_module
 from rc_basics_lab.experiment.freerun import (
     CHAOS_ESN_SECTION,
     FREE_RUN_SPEC,
+    FREERUN_CSV,
+    FREERUN_CSV_COLUMNS,
+    FREERUN_METHODS,
     ONESTEP_ARTIFACTS,
     ONESTEP_CSV,
+    PROFILE_MAX_POINTS,
+    PROFILE_REPLICATE,
     chaos_esn_config,
     chaos_task_entries,
+    closed_loop_setup,
+    delay_line_state_updater,
     esn_state_updater,
     estimate_lorenz_lyapunov,
     fit_teacher_forced,
     lorenz_task_entry,
+    passthrough_state_updater,
     run_and_report_onestep,
     run_free_run,
+    run_freerun_experiment,
     run_onestep,
+    sign_test_p_value,
     validate_free_run_bounds,
     validate_standardization_window,
 )
@@ -58,9 +73,10 @@ from rc_basics_lab.experiment.runner import (
     ResultRow,
     build_methods,
     build_tasks,
+    plan_replicate,
 )
 from rc_basics_lab.experiment.split import make_split
-from rc_basics_lab.readout.design import ReservoirSpec
+from rc_basics_lab.readout.design import ReservoirSpec, build_design_matrix
 from rc_basics_lab.readout.ridge import fit_ridge
 from rc_basics_lab.reservoir.esn import ESN
 from rc_basics_lab.seeds import SeedStream, make_rng
@@ -88,7 +104,7 @@ def small_config() -> Chaos04Config:
         ),
         lorenz=LorenzConfig(length=600, integration_burn_in=100, standardize_steps=150),
         mackey_glass=MackeyGlassStandardizeConfig(standardize_steps=150),
-        freerun=FreeRunConfig(warmup_steps=10, free_run_steps=40),
+        freerun=FreeRunConfig(warmup_steps=10, free_run_steps=40, stats_steps=80),
     )
 
 
@@ -495,3 +511,336 @@ def test_run_and_report_onestep_writes_the_declared_artifacts(tmp_path: Path) ->
     )
     assert "lyapunov_per_time" in meta["lyapunov"]
     assert set(meta["wall_time_breakdown"]) == {"lyapunov_s", "onestep_s"}
+
+
+# --- 5. 閉ループの組み立て (3手法) -------------------------------------------
+
+
+@pytest.mark.parametrize("method", [LINEAR, DELAY_LINE, ESN_METHOD])
+def test_closed_loop_design_matches_the_teacher_forced_row(method: str) -> None:
+    """閉ループの設計行列が教師強制の行と**一致する** (仕様 §5 禁止する構造2)。
+
+    遅延線だけは学習時 (``DelayLineSpec``) と閉ループ時
+    (``ReservoirSpec(include_input=False)`` + シフトレジスタ) で仕様の表現が
+    違う。組む列が同じであることを主張ではなく実測で固定しないと、係数の並びが
+    黙ってずれても「それらしい自走」が出てしまう。
+    """
+    config = small_config()
+    entry = lorenz_task_entry(config)
+    readout = fit_teacher_forced(config, entry, 0, method=method)
+    plan = readout.plan
+    switch = plan.split.test.start + config.freerun.warmup_steps - 1
+    reservoir = (
+        ESN(
+            entry.esn,
+            make_rng(config.base.seeds, SeedStream.RESERVOIR, 0),
+            n_inputs=plan.task.n_inputs,
+        )
+        if method == ESN_METHOD
+        else None
+    )
+    loop = closed_loop_setup(readout, switch, esn=reservoir)
+    design = build_design_matrix(
+        loop.spec, plan.task.u[switch : switch + 1], loop.x0.reshape(1, -1)
+    )
+    np.testing.assert_allclose(design.phi[0], readout.design.phi[switch], rtol=0.0)
+    assert design.phi.shape[1] == readout.coefficients.shape[0]
+
+
+def test_delay_line_free_run_never_builds_a_reservoir() -> None:
+    """遅延線の自走は ESN を1つも作らない (D-50 の2つ目の実例)。
+
+    ``free_run`` が状態生成器を ``StateUpdater`` で受けているので、シフト
+    レジスタでも同じ関数がそのまま動く。ESN の構築を「呼ばれたら落ちる」ものに
+    差し替えて完走させる。
+    """
+    config = small_config()
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("遅延線の自走が ESN を作りました (D-50)")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ESN, "__init__", forbidden)
+        outcome = run_free_run(config, lorenz_task_entry(config), 0, method=DELAY_LINE)
+    assert outcome.method == DELAY_LINE
+    assert outcome.result.n_completed >= 1
+
+
+def test_linear_free_run_state_updater_is_the_identity() -> None:
+    """線形ベースラインは状態を持たない (記憶のない手法の閉ループ)。"""
+    updater = passthrough_state_updater()
+    state = np.array([0.25], dtype=np.float64)
+    assert updater(state, np.array([9.0])) is state
+
+
+def test_delay_line_state_updater_shifts_the_register() -> None:
+    """シフトレジスタは ``D_in`` ずつずれ、先頭に今の入力が入る。"""
+    updater = delay_line_state_updater(2)
+    state = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
+    np.testing.assert_allclose(
+        updater(state, np.array([9.0, 8.0])), [9.0, 8.0, 1.0, 2.0]
+    )
+
+
+# --- 6. 実験 4-B (自走 + 有効予測時間 + 長時間統計) ---------------------------
+
+
+def test_stats_axis_is_checked_before_any_free_run() -> None:
+    """確保軸4 (``stats_steps``) が 4-B の入口で、自走より前に効く (D-34)。"""
+    config = dataclasses.replace(
+        small_config(),
+        freerun=dataclasses.replace(config_freerun(), stats_steps=10**9),
+    )
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("上限検査より先に自走しています")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(freerun_module, "run_free_run", forbidden)
+        with pytest.raises(ValueError, match="stats_steps が上限"):
+            run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+
+
+def config_freerun() -> FreeRunConfig:
+    """``small_config`` の自走設定 (``dataclasses.replace`` の土台)。"""
+    return small_config().freerun
+
+
+def test_freerun_experiment_covers_tasks_methods_and_replicates() -> None:
+    """4-B は (課題 x 手法 x レプリケート) を1本ずつ回す。"""
+    config = small_config()
+    results = run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+    assert len(results.rows) == 2 * len(FREERUN_METHODS) * config.base.n_replicates
+    assert {row.method for row in results.rows} == set(FREERUN_METHODS)
+    assert all(row.stats_steps == config.freerun.stats_steps for row in results.rows)
+    # 対照も同じ長さの自走を回す (「対照は原理的に不利」を主張だけにしない)。
+    assert {row.free_run_steps for row in results.rows} == {
+        config.freerun.free_run_steps
+    }
+
+
+def test_freerun_experiment_shares_one_plan_across_methods() -> None:
+    """1レプリケートにつき ``ReplicatePlan`` は1個 (3手法で共有する)。
+
+    共有しないと「同じ分割・同じ状態行列で比べた」が構造ではなく偶然になる。
+    """
+    config = small_config()
+    calls: list[object] = []
+
+    def spy(base: ExperimentConfig, task_entry: object, replicate: int) -> object:
+        plan = plan_replicate(base, task_entry, replicate)  # type: ignore[arg-type]
+        calls.append(plan)
+        return plan
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(freerun_module, "plan_replicate", spy)
+        run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+    assert len(calls) == 2 * config.base.n_replicates
+
+
+def test_only_lorenz_rows_carry_the_lyapunov_normalization() -> None:
+    """lambda_max を推定してある系だけが Lyapunov 列を持つ (D-42)。
+
+    推定していない量を他の系の値で埋めない。Mackey-Glass の行は
+    ``lyapunov_time`` も ``valid_time_lyapunov`` も ``nan`` で、
+    ``dt`` は MG 自身のサンプリング間隔である。
+    """
+    config = small_config()
+    results = run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+    for row in results.rows:
+        if row.task == TASK_NAME_LORENZ:
+            assert math.isfinite(row.lyapunov_time)
+            assert math.isfinite(row.valid_time_lyapunov)
+            assert row.dt == pytest.approx(
+                config.lorenz.rk4_step * config.lorenz.sample_interval
+            )
+        else:
+            assert math.isnan(row.lyapunov_time)
+            assert math.isnan(row.valid_time_lyapunov)
+            assert row.dt == pytest.approx(
+                config.base.mackey_glass.rk4_step
+                * config.base.mackey_glass.sample_interval
+            )
+
+
+def test_profile_rows_are_thinned_to_the_declared_cap() -> None:
+    """確保軸6: 図に載せる点数が ``PROFILE_MAX_POINTS`` を超えない。"""
+    config = dataclasses.replace(
+        small_config(), freerun=dataclasses.replace(config_freerun(), stats_steps=400)
+    )
+    results = run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+    grouped: dict[tuple[str, str, str], int] = {}
+    for row in results.profile_rows:
+        key = (row.task, row.kind, row.source)
+        grouped[key] = grouped.get(key, 0) + 1
+    assert grouped, "profile 行が空です"
+    assert max(grouped.values()) <= PROFILE_MAX_POINTS
+    # 代表レプリケートは結果を見て選ばない (常に 0)。
+    assert {row.replicate for row in results.profile_rows} == {PROFILE_REPLICATE}
+    assert {row.method for row in results.profile_rows} == {ESN_METHOD}
+
+
+def test_sign_test_p_value_matches_the_closed_form() -> None:
+    """符号検定の p 値 (D-46 の「有意に近い」の根拠)。"""
+    assert sign_test_p_value(10, 10) == pytest.approx(1.0 / 1024.0)
+    assert sign_test_p_value(10, 0) == pytest.approx(1.0)
+    assert sign_test_p_value(1, 1) == pytest.approx(0.5)
+
+
+# --- 7. 成果物に対する受け入れ条件 (図は見ない) -------------------------------
+
+
+CHAOS_RESULTS = Path(__file__).resolve().parents[1] / "results/04_chaotic_freerun"
+
+
+def committed_freerun_rows() -> list[dict[str, str]]:
+    """コミット済みの ``freerun.csv`` (実験も図も走らせない)。"""
+    with (CHAOS_RESULTS / FREERUN_CSV).open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "freerun.csv が空です"
+    assert list(rows[0]) == list(FREERUN_CSV_COLUMNS)
+    return rows
+
+
+def test_valid_time_rows_cover_at_least_ten_seeds() -> None:
+    """**受け入れ条件2**: 有効予測時間が Lyapunov 正規化・10シード以上。
+
+    生のステップ数だけで報告していないこと (仕様 §5 禁止する構造5) も同時に
+    測る —— ``valid_time_lyapunov`` が有限で、``valid_time_steps`` と
+    ``lyapunov_time`` から復元できることまで確かめる。
+    """
+    rows = [
+        row
+        for row in committed_freerun_rows()
+        if row["task"] == TASK_NAME_LORENZ and row["method"] == ESN_METHOD
+    ]
+    assert len({row["replicate"] for row in rows}) >= 10
+    for row in rows:
+        steps = int(row["valid_time_steps"])
+        expected = steps * float(row["dt"]) / float(row["lyapunov_time"])
+        assert float(row["valid_time_lyapunov"]) == pytest.approx(expected)
+        assert math.isfinite(float(row["valid_time_lyapunov"]))
+        assert row["valid_time_censored"] in {"True", "False"}
+    values = sorted(float(row["valid_time_lyapunov"]) for row in rows)
+    assert values[0] > 1.0, f"有効予測時間が 1 Lyapunov 時間に届いていません: {values}"
+
+
+def test_attractor_distance_separates_true_and_surrogate() -> None:
+    """**受け入れ条件1 / 5**: 自走がアトラクタを再現する (D-46)。**図では測らない**。
+
+    2指標 (リターンマップの点集合距離・パワースペクトルの全変動距離) の両方が
+    **真の軌道のシャッフル代替より小さい**ことを、全シードについて要求する。
+    10 本が全部同じ向きなら片側符号検定の p は 1/1024 で、「有意に近い」と
+    言える。対照 (線形・遅延線) では成立しないことも同時に測る —— 成立して
+    しまうなら指標が自走の質を見ていない。
+    """
+    rows = committed_freerun_rows()
+    for task in {row["task"] for row in rows}:
+        esn_rows = [
+            row for row in rows if row["task"] == task and row["method"] == ESN_METHOD
+        ]
+        assert len(esn_rows) >= 10
+        for row in esn_rows:
+            assert float(row["return_map_distance"]) < float(
+                row["return_map_distance_surrogate"]
+            ), row
+            assert float(row["spectrum_distance"]) < float(
+                row["spectrum_distance_surrogate"]
+            ), row
+            assert row["closer_than_surrogate"] == "True"
+        assert sign_test_p_value(len(esn_rows), len(esn_rows)) <= 0.01
+        controls = [
+            row for row in rows if row["task"] == task and row["method"] != ESN_METHOD
+        ]
+        assert not any(row["closer_than_surrogate"] == "True" for row in controls), (
+            "対照でもアトラクタ再現が成立しています (指標が自走の質を見ていない)"
+        )
+
+
+def test_freerun_csv_reports_both_long_run_metrics() -> None:
+    """**受け入れ条件5**: 長時間統計が**2本**の列として成果物に在る (D-46)。"""
+    header = set(FREERUN_CSV_COLUMNS)
+    assert {
+        "return_map_distance",
+        "return_map_distance_surrogate",
+        "spectrum_distance",
+        "spectrum_distance_surrogate",
+        "closer_than_surrogate",
+        "n_stats_samples",
+    } <= header
+    rows = committed_freerun_rows()
+    assert all(int(row["n_stats_samples"]) > 0 for row in rows)
+
+
+def test_onestep_gap_is_small_and_freerun_gap_is_large() -> None:
+    """**受け入れ条件3**: 教師強制では差が小さく、自走では対照が成立しない。
+
+    **両方向を1本で測る**。片方だけのテストにすると、「1ステップ先でも ESN が
+    圧勝する」設定 (Delta t を大きく取った較正の落選値) でも緑になってしまう。
+
+    - 教師強制 (``onestep.csv``): ESN と遅延線の NRMSE の比が 1 桁の内側
+    - 自走 (``freerun.csv``): ESN の有効予測時間が対照の 10 倍以上
+    """
+    with (CHAOS_RESULTS / ONESTEP_CSV).open(encoding="utf-8", newline="") as handle:
+        onestep = list(csv.DictReader(handle))
+    freerun = committed_freerun_rows()
+
+    def mean_of(rows: list[dict[str, str]], column: str) -> float:
+        values = [float(row[column]) for row in rows]
+        return sum(values) / len(values)
+
+    for task in {row["task"] for row in freerun}:
+        esn_nrmse = mean_of(
+            [
+                row
+                for row in onestep
+                if row["task"] == task and row["method"] == ESN_METHOD
+            ],
+            "nrmse",
+        )
+        delay_nrmse = mean_of(
+            [
+                row
+                for row in onestep
+                if row["task"] == task and row["method"] == DELAY_LINE
+            ],
+            "nrmse",
+        )
+        ratio = max(esn_nrmse, delay_nrmse) / min(esn_nrmse, delay_nrmse)
+        assert ratio < 10.0, (
+            f"{task}: 教師強制で ESN と遅延線の差が 1 桁を超えています "
+            f"(ESN={esn_nrmse:.3g} / 遅延線={delay_nrmse:.3g})"
+        )
+        esn_time = mean_of(
+            [
+                row
+                for row in freerun
+                if row["task"] == task and row["method"] == ESN_METHOD
+            ],
+            "valid_time_steps",
+        )
+        control_time = max(
+            mean_of(
+                [
+                    row
+                    for row in freerun
+                    if row["task"] == task and row["method"] == method
+                ],
+                "valid_time_steps",
+            )
+            for method in (LINEAR, DELAY_LINE)
+        )
+        assert esn_time > 10.0 * control_time, (
+            f"{task}: 自走で ESN と対照の差が 10 倍に届いていません "
+            f"(ESN={esn_time:.1f} / 対照={control_time:.1f} ステップ)"
+        )
+
+
+def test_committed_artifacts_match_the_declared_list() -> None:
+    """**受け入れ条件6**: 1コマンドで出る成果物が宣言と一致する。"""
+    from rc_basics_lab.experiment.freerun_pipeline import FREERUN_ARTIFACTS
+
+    for name in FREERUN_ARTIFACTS:
+        assert (CHAOS_RESULTS / name).exists(), name
+    total = sum(path.stat().st_size for path in CHAOS_RESULTS.glob("*.csv"))
+    assert total < 5 * 1024 * 1024, total
