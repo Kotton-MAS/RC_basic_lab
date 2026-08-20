@@ -3,6 +3,29 @@
 *入力: `docs/要件_rc-basics-05.md` / `docs/survey_異常検知データセット_05.md` / `.claude/tmp/conventions.md`*
 *planner 出力 (2026-08-20)。⚠ 分割不足の警告あり (L タスク3本) — §8 Q3 参照*
 
+---
+
+## 進捗 (2026-08-20 時点)
+
+**サイクルは 05a / 05b に分割した** (§8 Q3 の (a) を採用)。
+
+| | 範囲 | 状態 |
+|---|---|---|
+| **05a** | T1 (検知指標層) + T2 (データ層) | **完了**。レビュー4周、BLOCKER 0 / HIGH 15件をすべて修正 |
+| **05b** | T3 (実験5-A・5-B) + T4 (実験5-C・5-D) + T5 (パイプライン・図5枚・配線) | 未着手 |
+
+**05a 完了時の実測**: `uv run pytest -q` **1132 passed** (05 着手前 964) /
+`.claude/decisions.yaml` **64 件** (D-54〜D-68) / `mypy` strict・`ruff` green /
+`results/01..04/` バイト不変 / 実行時依存は4件のまま (scikit-learn は dev のみ)。
+
+**05b に着手する前に `docs/next-pr-candidates-05a.md` §1 を読むこと。**
+そこに挙げた3点 (`mackey_glass` の死葉 / `SeriesSource` Protocol / `datasets` の循環 import) は
+**T3 の planner への入力**であり、決めずに着手すると実装後に構造的な作り直しが要る。
+特に `mackey_glass.length` / `horizon` の死葉は、
+**§5 が T3 に要求している全葉被覆テストを構造的に赤にする。**
+
+---
+
 ## 1. ゴール
 
 実データの単変量時系列に対し、**同一前処理・同一閾値方針**でリザバー予測残差と3系統の対照
