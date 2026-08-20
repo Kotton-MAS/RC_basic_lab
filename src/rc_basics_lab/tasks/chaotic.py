@@ -24,11 +24,15 @@ Lorenz 系::
 のはこのためで、係数を作れる場所を ``Standardizer.from_training_prefix``
 1箇所に閉じてある。
 
-確保軸 (D-34 の規律「確保より前に落とす」) は2本あり、``_validate`` が**生成前**に
-1本ずつ検査する:
+確保軸 (D-34 の規律「確保より前に落とす」) は2本ある:
 
-1. ``(length + horizon + integration_burn_in) * sample_interval`` = 積分ステップ数
-2. ``length * LORENZ_STATE_DIM`` = 真の軌道の配列要素数
+1. ``(length + horizon + integration_burn_in) * sample_interval`` = 積分ステップ数。
+   ``_validate`` が**生成前**に検査する (``cfg`` だけで決まる量)
+2. ``n_samples * LORENZ_STATE_DIM`` = 真の軌道の配列要素数。``integrate_lorenz``
+   が確保する ``n_samples`` は ``cfg.length`` と一致する保証がない (公開 API で
+   独立に指定できる) ので、``cfg`` からではなく**確保するその場**
+   (``integrate_lorenz``) で ``n_samples`` そのものを検査する
+   (reviewer-security 実測: 検査量と確保量が5桁ずれていた)
 """
 
 from __future__ import annotations
@@ -111,11 +115,11 @@ def _validate(cfg: LorenzConfig) -> None:
             f"(訓練区間の内側でなければならない、D-41): "
             f"standardize_steps={cfg.standardize_steps} > length={cfg.length}"
         )
-    _validate_allocation_bounds(cfg)
+    _validate_integration_step_bound(cfg)
 
 
-def _validate_allocation_bounds(cfg: LorenzConfig) -> None:
-    """確保軸1・2 を1本ずつ検査する (**確保より前に**落とす、D-34)。"""
+def _validate_integration_step_bound(cfg: LorenzConfig) -> None:
+    """確保軸1 を検査する (**確保より前に**落とす、D-34)。"""
     n_integration_steps = (
         cfg.length + cfg.horizon + cfg.integration_burn_in
     ) * cfg.sample_interval
@@ -126,12 +130,25 @@ def _validate_allocation_bounds(cfg: LorenzConfig) -> None:
             "((length + horizon + integration_burn_in) * sample_interval。"
             "RK4 は逐次計算なので時間がこの積に比例する)"
         )
-    n_elements = cfg.length * LORENZ_STATE_DIM
+
+
+def _validate_trajectory_element_bound(n_samples: int) -> None:
+    """確保軸2 を**確保するその場で**検査する (D-34)。
+
+    ``integrate_lorenz`` が実際に確保するのは ``cfg.length`` ではなく引数
+    ``n_samples`` (``generate_lorenz`` は ``length + horizon`` を渡す) である。
+    以前はここを ``cfg.length`` で検査しており、``integrate_lorenz`` を
+    ``cfg.length`` と異なる ``n_samples`` で直接呼ぶ経路 (公開 API、``__all__``
+    に含まれ ``tests/`` からも直接呼ばれている) では検査量と確保量がずれて
+    いた (reviewer-security 実測)。呼び出し側から値を書き写さず、確保する
+    まさにその関数が確保する値そのものを検査する。
+    """
+    n_elements = n_samples * LORENZ_STATE_DIM
     if n_elements > _MAX_TRAJECTORY_ELEMENTS:
         raise ValueError(
             "真の軌道の配列要素数が上限を超えています: "
             f"{n_elements} > {_MAX_TRAJECTORY_ELEMENTS} "
-            "(length * 状態次元。確保する前に検査で落とす)"
+            "(n_samples * 状態次元。確保する前に検査で落とす)"
         )
 
 
@@ -273,6 +290,7 @@ def integrate_lorenz(cfg: LorenzConfig, x0: FloatArray, n_samples: int) -> Float
     _validate(cfg)
     if n_samples < 1:
         raise ValueError(f"n_samples は 1 以上である必要があります: {n_samples}")
+    _validate_trajectory_element_bound(n_samples)
     array = np.asarray(x0, dtype=np.float64)
     if array.shape != (LORENZ_STATE_DIM,):
         raise ValueError(
