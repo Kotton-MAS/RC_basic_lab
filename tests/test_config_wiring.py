@@ -40,7 +40,6 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import fields
 from functools import lru_cache
 from pathlib import Path
 from typing import cast
@@ -176,17 +175,12 @@ WIRING_CASES: tuple[WiringCase, ...] = (
 
 def fingerprint(rows: Sequence[ResultRow], task: str | None = None) -> str:
     """結果行の指紋 (実測時間の列だけ除く)。"""
-    selected = [row for row in rows if task is None or row.task == task]
-    return json.dumps(
-        [
-            {
-                field.name: getattr(row, field.name)
-                for field in fields(ResultRow)
-                if field.name not in VOLATILE_COLUMNS
-            }
-            for row in selected
-        ],
-        sort_keys=True,
+    return wiring_fingerprint(
+        rows,
+        ResultRow,
+        volatile_columns=VOLATILE_COLUMNS,
+        field="task" if task is not None else None,
+        value=task,
     )
 
 

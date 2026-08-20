@@ -185,7 +185,8 @@ def changed_leaves(base: object, changed: object) -> set[str]:
 def round_trip[T](config: T, tmp_path: Path, name: str, cls: type[T]) -> T:
     """設定を YAML へ書き出して読み直す (``load_config_as`` の経路そのもの)。"""
     path = tmp_path / f"{name}.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
+    as_dataclass = cast("DataclassInstance", config)
+    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(as_dataclass)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     return load_config_as(path, cls)
 
