@@ -54,7 +54,10 @@ from rc_basics_lab.readout.autoregressive import (
     StateUpdater,
     free_run,
 )
-from rc_basics_lab.readout.design import DesignMatrix, ReservoirSpec
+from rc_basics_lab.readout.design import (
+    DesignMatrix,
+    ReservoirSpec,
+)
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
 from rc_basics_lab.reservoir.esn import ESN
 from rc_basics_lab.seeds import SeedStream, make_rng

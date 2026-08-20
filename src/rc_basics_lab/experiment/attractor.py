@@ -485,6 +485,47 @@ def attractor_distance(
 # --- D-45: 3態分類 ------------------------------------------------------------
 
 
+def _autocorrelation(series: FloatArray, component: int) -> FloatArray:
+    """ラグ 0 から ``T//2`` までの自己相関 (``r[0] = 1``)。空なら長さ0。
+
+    ラグ 0 を 1.0 にそろえるため、相関に実際に寄与する区間の二乗和で割る
+    (全区間の二乗和で割ると ``r[0]`` が約 0.5 になり、閾値の意味が変わる)。
+    """
+    array = _as_series(series, "series")
+    values: FloatArray = array[:, component]
+    n_samples = values.size
+    if n_samples < 8:
+        return np.empty(0, dtype=np.float64)
+    centered: FloatArray = values - np.mean(values)
+    max_lag = n_samples // 2
+    window: FloatArray = centered[: n_samples - max_lag]
+    variance = float(np.dot(window, window))
+    if variance <= 0.0:
+        return np.empty(0, dtype=np.float64)
+    correlation: FloatArray = (
+        np.correlate(centered, window, mode="valid")[:max_lag] / variance
+    )
+    return correlation
+
+
+def first_autocorrelation_zero(series: FloatArray, component: int = 0) -> int:
+    """自己相関が初めて 0 以下になるラグ (遅延座標埋め込みの標準的な選び方)。
+
+    1変数の課題 (Mackey-Glass) の位相図は遅延座標 ``(u[t], u[t - lag])`` で
+    描く。``lag`` を設定値にすると「図が良く見えるまで動かす」経路ができるので、
+    **系列そのものから決める** (真の軌道から決めた 1 個を自走側にも使う ——
+    別々に決めると同じ座標系で重ね描きできない)。
+
+    Returns:
+        ラグ。決められないときは 1。
+    """
+    correlation = _autocorrelation(series, component)
+    negative = np.nonzero(correlation <= 0.0)[0]
+    if negative.size == 0:
+        return 1
+    return max(1, int(negative[0]))
+
+
 def autocorrelation_peak(series: FloatArray, component: int = 0) -> float:
     """**最初のゼロ交差以降**の自己相関の最大値 (周期性の尺度)。
 
@@ -500,22 +541,9 @@ def autocorrelation_peak(series: FloatArray, component: int = 0) -> float:
         自己相関のピーク。標本が足りない / 分散が 0 のときは 1.0 (= 変化して
         いない軌道は周期側へ倒す)。
     """
-    array = _as_series(series, "series")
-    values: FloatArray = array[:, component]
-    n_samples = values.size
-    if n_samples < 8:
+    correlation = _autocorrelation(series, component)
+    if correlation.size == 0:
         return 1.0
-    centered: FloatArray = values - np.mean(values)
-    max_lag = n_samples // 2
-    # ラグ 0 が 1.0 になるよう、相関に実際に寄与する区間の二乗和で割る
-    # (全区間の二乗和で割ると r[0] が約 0.5 になり、閾値の意味が変わる)。
-    window: FloatArray = centered[: n_samples - max_lag]
-    variance = float(np.dot(window, window))
-    if variance <= 0.0:
-        return 1.0
-    correlation: FloatArray = (
-        np.correlate(centered, window, mode="valid")[:max_lag] / variance
-    )
     negative = np.nonzero(correlation <= 0.0)[0]
     if negative.size == 0:
         return 1.0
@@ -628,6 +656,7 @@ __all__ = [
     "attractor_distance",
     "autocorrelation_peak",
     "classify_regime",
+    "first_autocorrelation_zero",
     "lyapunov_normalized",
     "normalized_error_curve",
     "point_set_distance",
