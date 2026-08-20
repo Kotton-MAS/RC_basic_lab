@@ -691,8 +691,8 @@ def run_free_run(
     )
     # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir
     # ストリームの続き、runner.py:169-174 / esp.py:413-427 と同じ形。D-14 に
-    # 4本目を足さない)。state_noise=0 のときは1個も引かれないため無ノイズ
-    # 条件の結果は不変。
+    # 4本目を足さない)。state_noise=0 のときは1個も引かれないため、
+    # ノイズを使わない条件の結果は不変。
     noise_rng = reservoir_rng if esn_cfg.state_noise > 0.0 else None
     loop = closed_loop_setup(readout, switch_index, esn=reservoir, noise_rng=noise_rng)
     result = free_run(
