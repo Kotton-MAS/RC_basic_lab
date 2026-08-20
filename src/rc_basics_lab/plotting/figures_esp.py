@@ -25,7 +25,6 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 
@@ -37,7 +36,10 @@ from rc_basics_lab.experiment.washout import (
     WashoutSensitivity,
     mean_nrmse_by_washout,
 )
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import new_figure as _new_figure
+from rc_basics_lab.plotting.style import save_png as _save
+from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
 from rc_basics_lab.types import FloatArray
 
 _DISTANCE_FLOOR = 1.0e-16
@@ -61,26 +63,6 @@ _GALLICCHIO = (
 """2-C の副題 (仕様 §4 T3: 先行研究の再実演であることを図に明記する)。"""
 
 _CONVERGED_LABEL = ("ESP 成立率 (レプリケート平均)", "ESP rate (mean over replicates)")
-
-
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
-
-
-def _unique_sorted(values: Sequence[float]) -> tuple[float, ...]:
-    """重複を除いて昇順に並べる (格子の軸を行から復元する)。"""
-    return tuple(sorted(set(values)))
 
 
 def _group_mean(
@@ -175,7 +157,7 @@ def plot_esp_decay(
     rhos = _unique_sorted([outcome.row.rho for outcome in outcomes])
     colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(rhos)))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(7.5, 4.6)
         axis = figure.subplots(1, 1)
         for index, rho in enumerate(rhos):
@@ -364,7 +346,7 @@ def plot_leak_timescale(
     leak_rates = _unique_sorted([row.leak_rate for row in rows])
     colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(leak_rates)))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(11.0, 4.6)
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_acf_panel(axes[0][0], outcomes, leak_rates, colors, style)
@@ -479,8 +461,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     rhos = _unique_sorted([row.rho for row in rows])
     sigmas = _unique_sorted([row.sigma_u for row in rows])
     driven = tuple(sigma for sigma in sigmas if sigma > 0.0)
@@ -489,7 +470,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
     lyapunov = _group_mean(rows, "lyapunov_per_step")
     norm = Normalize(vmin=0.0, vmax=1.0)
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(9.5, 5.4)
         if has_no_input:
             axes = figure.subplots(
@@ -750,14 +731,13 @@ def plot_washout_sensitivity(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     pairs = sorted(
         {(row.task, row.method) for row in rows},
         key=lambda pair: (pair[0] != HEADLINE_TASK, pair[1] != HEADLINE_METHOD, pair),
     )
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(11.0, 4.8)
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_absolute_panel(axes[0][0], rows, pairs, sensitivity, style)
