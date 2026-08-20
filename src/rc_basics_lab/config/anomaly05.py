@@ -207,7 +207,7 @@ class AnomalyReservoirConfig:
     input_scale: float = 0.5
     density: float = 0.1
     washout: int = 200
-    n_replicates: int = 3
+    n_replicates: int = 5
 
     def to_esn(self) -> ESNConfig:
         """``ESNConfig`` を組み立てる**唯一の口** (``to_mackey_glass`` と同型)。"""
