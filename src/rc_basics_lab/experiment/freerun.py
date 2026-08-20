@@ -21,7 +21,6 @@
 
 from __future__ import annotations
 
-import csv
 import dataclasses
 import logging
 import math
@@ -1267,10 +1266,6 @@ class AttractorVerdict(DataclassSummaryMixin):
     median_spectrum: float
     median_spectrum_surrogate: float
 
-    def to_summary(self) -> dict[str, float | int | str]:
-        """``meta.json`` に載せるプレーンな dict。"""
-        return dataclasses.asdict(self)
-
 
 def sign_test_p_value(n_rows: int, n_successes: int) -> float:
     """片側符号検定の p 値 (帰無仮説: 成功確率 0.5)。
@@ -1467,24 +1462,12 @@ def run_freerun_experiment(
 
 def write_freerun_csv(rows: Sequence[FreeRunRow], path: Path) -> Path:
     """4-B の結果を CSV に書く (列順は ``FreeRunRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(FREERUN_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, FREERUN_CSV_COLUMNS)
 
 
 def write_freerun_profile_csv(rows: Sequence[FreeRunProfileRow], path: Path) -> Path:
     """図が読む長形式の行を CSV に書く (列順は宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(FREERUN_PROFILE_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, FREERUN_PROFILE_CSV_COLUMNS)
 
 
 ONESTEP_ARTIFACTS: tuple[str, ...] = (ONESTEP_CSV, META_JSON)
@@ -1503,13 +1486,7 @@ def write_onestep_csv(rows: Sequence[ResultRow], path: Path) -> Path:
     複製せず ``CSV_COLUMNS`` を参照する (D-05 の公平性の列が片方だけ欠ける事故を
     防ぐ)。
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, CSV_COLUMNS)
 
 
 def run_and_report_onestep(config: Chaos04Config, out_dir: Path) -> tuple[Path, ...]:
