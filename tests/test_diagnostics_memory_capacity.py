@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import functools
+import inspect
 import itertools
 from collections.abc import Sequence
 from typing import cast
@@ -20,8 +21,11 @@ from rc_basics_lab.diagnostics._capacity import (
     HERMITE,
     LEGENDRE,
     NORMAL,
+    NORMAL_HERMITE,
     UNIFORM,
+    UNIFORM_LEGENDRE,
     CapacityProblem,
+    InputMeasure,
     bounded_chunk_size,
     capacity_of_targets,
     orthonormal_basis,
@@ -193,11 +197,10 @@ def test_mc_profile_lengthens_with_spectral_radius() -> None:
 
 
 def _basis_gram(
-    values: FloatArray, distribution: str, basis: str, max_degree: int
+    values: FloatArray, measure: InputMeasure, max_degree: int
 ) -> FloatArray:
     columns = [
-        orthonormal_basis(values, degree, distribution, basis=basis)
-        for degree in range(max_degree + 1)
+        orthonormal_basis(values, degree, measure) for degree in range(max_degree + 1)
     ]
     matrix: FloatArray = np.column_stack(columns)
     gram: FloatArray = matrix.T @ matrix / float(matrix.shape[0])
@@ -227,11 +230,11 @@ def test_basis_is_orthonormal_under_declared_input_distribution() -> None:
 
     half_width = np.sqrt(3.0) * 1.7  # sigma_u = 1.7 の一様分布 (D-17)
     uniform_input: FloatArray = rng.uniform(-half_width, half_width, size=n_steps)
-    uniform_gram = _basis_gram(uniform_input, UNIFORM, LEGENDRE, 4)
+    uniform_gram = _basis_gram(uniform_input, UNIFORM_LEGENDRE, 4)
     assert np.max(np.abs(uniform_gram - np.eye(5))) < tolerance, uniform_gram
 
     normal_input: FloatArray = rng.normal(0.0, 0.4, size=n_steps)
-    normal_gram = _basis_gram(normal_input, NORMAL, HERMITE, 2)
+    normal_gram = _basis_gram(normal_input, NORMAL_HERMITE, 2)
     assert np.max(np.abs(normal_gram - np.eye(3))) < tolerance, normal_gram
 
 
@@ -261,17 +264,49 @@ def test_polynomial_family_is_exactly_orthonormal_under_quadrature() -> None:
     np.testing.assert_allclose(hermite_gram, np.eye(5), rtol=0.0, atol=1.0e-10)
 
 
-def test_mismatched_distribution_and_basis_raises() -> None:
-    """未対応の (input_distribution, basis) は ValueError (D-28)。
+def test_input_measure_rejects_unsupported_pairs() -> None:
+    """未対応の ``(input_distribution, basis)`` は**構築時点**で ValueError (D-28)。
 
     黙って Legendre として扱うと、正規入力に対して直交しない基底で目標が
-    作られ、容量が二重計上される。
+    作られ、容量が二重計上される。04a T3 以前は ``orthonormal_basis`` の中で
+    検査しており、対の片方だけを渡す呼び方 (第3引数に既定値があった) が
+    型検査を素通りしていた (F-03-1-006)。対を1つの値にまとめた以上、検査は
+    **値を作る場所1箇所**にしか無い —— ``orthonormal_basis`` に届いた
+    ``InputMeasure`` は定義上すべて対応済みの組である。
     """
+    for distribution, basis in ((NORMAL, LEGENDRE), (UNIFORM, HERMITE)):
+        with pytest.raises(ValueError, match="D-28"):
+            InputMeasure(distribution, basis)
+    # 対応する組は作れて、値がそのまま読める (拒否だけの実装で緑にしない)。
+    assert (UNIFORM_LEGENDRE.distribution, UNIFORM_LEGENDRE.basis) == (
+        UNIFORM,
+        LEGENDRE,
+    )
+    assert (NORMAL_HERMITE.distribution, NORMAL_HERMITE.basis) == (NORMAL, HERMITE)
+
+
+def test_orthonormal_basis_requires_an_explicit_measure() -> None:
+    """``orthonormal_basis`` の第3引数に**既定値が無い** (D-28 の実体)。
+
+    「片方だけ渡す」呼び方 (``orthonormal_basis(u, 2, NORMAL)`` のように
+    分布だけを渡し basis は既定の Legendre のまま) が書けてしまうことが
+    F-03-1-006 の指摘そのものだった。対を1つの値にしても、第3引数に既定値を
+    戻せば同じ罠が復活する (測度を渡し忘れた呼び出しが黙って既定の測度で
+    走る)。署名で固定する。
+    """
+    signature = inspect.signature(orthonormal_basis)
+    names = list(signature.parameters)
+    assert names == ["u_lagged", "degree", "measure"], names
+    measure_param = signature.parameters["measure"]
+    assert measure_param.default is inspect.Parameter.empty, (
+        "measure に既定値が付いています (片方だけ渡す呼び方が復活します)"
+    )
+    assert measure_param.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+    # 測度を渡さない呼び出しは実行時にも通らない (署名検査だけで緑にしない)。
     values: FloatArray = np.linspace(-1.0, 1.0, 100)
-    with pytest.raises(ValueError, match="未対応"):
-        orthonormal_basis(values, 2, NORMAL, basis=LEGENDRE)
-    with pytest.raises(ValueError, match="未対応"):
-        orthonormal_basis(values, 2, UNIFORM, basis=HERMITE)
+    with pytest.raises(TypeError):
+        orthonormal_basis(values, 2)  # type: ignore[call-arg]
 
 
 def test_degree_one_basis_is_the_same_for_both_distributions() -> None:
@@ -282,8 +317,8 @@ def test_degree_one_basis_is_the_same_for_both_distributions() -> None:
     """
     rng = np.random.default_rng(11)
     values: FloatArray = rng.uniform(-2.0, 2.0, size=5000)
-    legendre = orthonormal_basis(values, 1, UNIFORM, basis=LEGENDRE)
-    hermite = orthonormal_basis(values, 1, NORMAL, basis=HERMITE)
+    legendre = orthonormal_basis(values, 1, UNIFORM_LEGENDRE)
+    hermite = orthonormal_basis(values, 1, NORMAL_HERMITE)
     standardized = (values - values.mean()) / values.std()
     assert np.allclose(legendre, standardized, rtol=0.0, atol=1e-12)
     assert np.allclose(hermite, standardized, rtol=0.0, atol=1e-12)
