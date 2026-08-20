@@ -10,11 +10,7 @@
 分解でき、``evaluate_condition`` がその1条件を回す。掃引の違いはどの軸を振るか
 だけである。
 
-**入力強度は駆動信号の標準偏差 sigma_u で定義する** (D-17)。一様分布では振幅
-``a = sqrt(3) * sigma_u``。掃引中 ``input_scale`` は固定し、動かすのは信号側
-だけである (両方動かすと「信号を強くした」のか「重みを大きくした」のかを
-分離できない)。CSV には ``sigma_u`` / ``input_amplitude`` /
-``input_drive_std`` の3列を出し、指定値と実測値の食い違いが見えるようにする。
+**入力強度は駆動信号の標準偏差 sigma_u で定義する** (D-17)。
 
 **状態行列の計算と、それを使う診断・回帰は別レイヤー** (F-1-005 / F-1-010)。
 ``simulate_reference_trajectory`` は ``ReservoirSweepConfig`` + ``DriveConfig``
