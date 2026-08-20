@@ -197,7 +197,7 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     ):
         sink.write(b"legitimate-bytes")
         os.replace(swapped, sink.partial)
-        sink.commit(target, expected, error_cls=fetch.ChecksumMismatchError)
+        sink.commit(expected, error_cls=fetch.ChecksumMismatchError)
     assert not target.exists()
     assert list(tmp_path.glob("*.part")) == []
 

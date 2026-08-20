@@ -491,7 +491,7 @@ def _extract_member(
             for chunk in iter(lambda: source.read(_CHUNK_BYTES), b""):
                 digest.update(chunk)
                 sink.write(chunk)
-        sink.commit(target, digest.hexdigest(), error_cls=UnsafeArchiveMemberError)
+        sink.commit(digest.hexdigest(), error_cls=UnsafeArchiveMemberError)
 
 
 def extract_members(
@@ -535,12 +535,6 @@ def extract_members(
             _extract_member(bundle, info, target)
             written.append(target)
     return tuple(written)
-
-
-def _close(response: HttpResponse) -> None:
-    """``Opener`` が返したものを閉じる (閉じ方を持たない差し替えも許す)。"""
-    if isinstance(response, IOBase) or hasattr(response, "close"):
-        response.close()
 
 
 def missing(
