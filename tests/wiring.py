@@ -24,9 +24,18 @@ YAML 往復 (``round_trip``)・基底シードのケース (``seeds_case``)・�
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Mapping
+import json
+import pkgutil
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
+from pathlib import Path
 from typing import TYPE_CHECKING, cast, get_type_hints
+
+import yaml
+
+import rc_basics_lab.experiment as _experiment_pkg
+from rc_basics_lab.config import load_config_as
+from rc_basics_lab.seeds import SeedStream
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
@@ -91,6 +100,16 @@ def case(
     )
 
 
+def seeds_case(field: str, value: int, stream: SeedStream) -> WiringCase:
+    """基底シード1本ぶんのケース。``scope`` に変化してよいストリームを書く。"""
+    return case(field, value, channel=CHANNEL_SEEDS, scope=stream.value)
+
+
+def section_case(field: str, value: object, scope: str) -> WiringCase:
+    """セクション/課題固有の葉のケース。**そのセクションの出力だけ**が変わることまで測る。"""
+    return case(field, value, scope=scope)
+
+
 def _replace_path(instance: object, path: str, value: object) -> object:
     """ドット区切りのパスで frozen dataclass を差し替えた複製を返す。"""
     head, _, rest = path.partition(".")
@@ -142,14 +161,87 @@ def assert_yaml_has_all_leaves(written: object, cls: type) -> None:
             node = node[part]
 
 
+def leaf_value(config: object, leaf: str) -> object:
+    """ドット区切りのパスでフィールド値を取り出す。"""
+    node: object = config
+    for part in leaf.split("."):
+        node = getattr(node, part)
+    return node
+
+
+def changed_leaves(base: object, changed: object) -> set[str]:
+    """2つの設定で値が異なる葉フィールドのパス集合。
+
+    比較する葉の一覧は ``type(base)`` から求める (``base`` と ``changed`` は
+    同じ設定 dataclass のインスタンスであることが前提)。
+    """
+    return {
+        leaf
+        for leaf in leaf_paths(type(base))
+        if leaf_value(base, leaf) != leaf_value(changed, leaf)
+    }
+
+
+def round_trip[T](config: T, tmp_path: Path, name: str, cls: type[T]) -> T:
+    """設定を YAML へ書き出して読み直す (``load_config_as`` の経路そのもの)。"""
+    path = tmp_path / f"{name}.yaml"
+    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
+    path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
+    return load_config_as(path, cls)
+
+
+def fingerprint(
+    rows: Sequence[object],
+    row_cls: type,
+    *,
+    volatile_columns: frozenset[str],
+    field: str | None = None,
+    value: str | None = None,
+) -> str:
+    """結果行の指紋 (揮発列だけ除く)。
+
+    ``field``/``value`` を渡すとその値に一致する行だけを見る。セクション固有の
+    葉が他の行を動かしていないことの確認に使う (``field is None`` なら全行)。
+    """
+    selected = [row for row in rows if field is None or getattr(row, field) == value]
+    return json.dumps(
+        [
+            {
+                item.name: getattr(row, item.name)
+                for item in fields(cast("type[DataclassInstance]", row_cls))
+                if item.name not in volatile_columns
+            }
+            for row in selected
+        ],
+        sort_keys=True,
+    )
+
+
+def current_experiment_modules() -> frozenset[str]:
+    """``rc_basics_lab.experiment`` 配下の公開モジュール名の実集合。"""
+    return frozenset(
+        info.name
+        for info in pkgutil.iter_modules(_experiment_pkg.__path__)
+        if not info.name.startswith("_")
+    )
+
+
 __all__ = [
     "CHANNEL_ERROR",
     "CHANNEL_META",
     "CHANNEL_ROWS",
+    "CHANNEL_SEEDS",
     "WiringCase",
     "apply_case",
     "assert_yaml_has_all_leaves",
     "case",
+    "changed_leaves",
+    "current_experiment_modules",
+    "fingerprint",
     "leaf_paths",
+    "leaf_value",
     "plain",
+    "round_trip",
+    "section_case",
+    "seeds_case",
 ]
