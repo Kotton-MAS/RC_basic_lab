@@ -35,8 +35,6 @@ from typing import Protocol
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.attractor import (
     REGIME_ATTRACTOR,
@@ -56,7 +54,9 @@ from rc_basics_lab.experiment.freerun import (
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.experiment.stability import StabilityRow, regime_map
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import new_figure as _new_figure
+from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.types import FloatArray
 
 METHOD_LABELS: dict[str, tuple[str, str]] = {
@@ -103,21 +103,6 @@ class _HasTask(Protocol):
 
     @property
     def task(self) -> str: ...
-
-
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
 
 
 def _label_of(table: dict[str, tuple[str, str]], key: str, style: StyleContext) -> str:
@@ -181,12 +166,11 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     tasks = _tasks_of(rows)
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     positions = np.arange(len(methods), dtype=np.float64)
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(7.6, 5.0)
         axis = figure.subplots(1, 1)
         for offset, task in enumerate(tasks):
@@ -248,7 +232,7 @@ def plot_freerun_attractor(
     tasks = _tasks_of(rows)
     if not tasks:
         raise ValueError("profile 行が空です")
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(5.4 * len(tasks), 5.0)
         axes = np.atleast_1d(figure.subplots(1, len(tasks)))
         drawn = 0
@@ -303,8 +287,7 @@ def plot_valid_time(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     # **lambda_max を数値推定してある系だけを描く** (D-42 / D-43)。04 が
     # 推定しているのは Lorenz だけで、Mackey-Glass の行は Lyapunov 列が nan
     # である (推定していない量を他の系の値で埋めない)。縦軸が Lyapunov 時間の
@@ -315,7 +298,7 @@ def plot_valid_time(
     tasks = _tasks_of(normalized)
     rows = normalized
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(6.4 * len(tasks), 5.0)
         axes = np.atleast_1d(figure.subplots(1, len(tasks), sharey=True))
         for axis, task in zip(axes, tasks, strict=True):
@@ -417,10 +400,9 @@ def plot_stability_map(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_rows(rows)
     noises = sorted({row.state_noise for row in rows})
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(3.4 * (len(noises) + 1) + 1.0, 4.2)
         axes = np.atleast_1d(figure.subplots(1, len(noises) + 1))
         for axis, noise in zip(axes[:-1], noises, strict=True):
@@ -534,7 +516,7 @@ def plot_freerun_stats(
     tasks = _tasks_of(rows)
     if not tasks:
         raise ValueError("profile 行が空です")
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
+    with rc_context_for(style):
         figure = _new_figure(5.4 * len(tasks), 8.0)
         axes = np.atleast_2d(figure.subplots(2, len(tasks), squeeze=False))
         drawn = 0
