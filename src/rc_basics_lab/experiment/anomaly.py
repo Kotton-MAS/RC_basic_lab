@@ -295,14 +295,6 @@ def _evaluate(
     """1系統を評価して ``anomaly.csv`` の1行と 5-B の掃引行を返す。"""
     started = time.perf_counter()
     series, split = plan.series, plan.split
-    plan = replace(
-        plan,
-        preprocessor=AnomalyPreprocessor.from_training_prefix(
-            series.values[split.test.start :],
-            config.preprocess.standardize_steps,
-            config.preprocess.normalize,
-        ),
-    )
     ignore_transition = config.evaluation.ignore_transition
     score = plan.scores[method].values
     control = plan.scores[RANDOM_CONTROL].values
