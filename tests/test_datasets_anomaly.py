@@ -386,6 +386,35 @@ def test_extract_members_rejects_an_oversized_member(tmp_path: Path) -> None:
         )
 
 
+def _make_zip_with_symlink(path: Path, name: str, link_target: bytes) -> None:
+    """``name`` をシンボリックリンクとしてマークした ZIP を作る (F-1-026)。
+
+    ``external_attr`` の上位16bitに Unix のファイルモードが入る。
+    ``S_IFLNK (0o120000)`` を立てると、実 OS 上のシンボリックリンクを
+    アーカイブしていなくても ``_is_symlink`` が拾う対象を再現できる。
+    """
+    info = zipfile.ZipInfo(name)
+    info.external_attr = (0o120777 << 16) | 0x08  # S_IFLNK + Unix 属性フラグ
+    with zipfile.ZipFile(path, "w") as bundle:
+        bundle.writestr(info, link_target)
+
+
+def test_extract_members_rejects_a_symlink_member(tmp_path: Path) -> None:
+    """シンボリックリンクとしてマークされた member は展開しない (F-1-026)。
+
+    ``docstring``/``Raises`` に明記された「シンボリックリンク」を通る guard が
+    無かった (measured: fetch.py 147 stmts / 91% cover, missing に 326 行の
+    raise を含む)。``_is_symlink`` のビット演算 (``0o170000``/``0o120000``) を
+    間違えても検知できるように、実際に ``UnsafeArchiveMemberError`` を要求する。
+    """
+    archive = tmp_path / "symlink.zip"
+    _make_zip_with_symlink(archive, "evil-link.txt", b"/etc/passwd")
+    with pytest.raises(UnsafeArchiveMemberError, match="シンボリックリンク"):
+        fetch.extract_members(
+            archive, ["evil-link.txt"], tmp_path / "out", data_dir=tmp_path
+        )
+
+
 # --- ネットワークに触れない (D-60) -------------------------------------------
 
 
