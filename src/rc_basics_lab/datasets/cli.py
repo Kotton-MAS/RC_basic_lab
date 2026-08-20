@@ -20,7 +20,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from rc_basics_lab.datasets import DEFAULT_DATA_DIR, mgab, ucr
+from rc_basics_lab.datasets import mgab, ucr
+from rc_basics_lab.datasets.fetch import DEFAULT_DATA_DIR
 
 logger = logging.getLogger("rc_basics_lab.datasets")
 

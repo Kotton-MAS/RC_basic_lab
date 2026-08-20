@@ -23,7 +23,7 @@
 **pytest はキャッシュが無ければ skip する** (D-60)。
 """
 
-from rc_basics_lab.datasets import cli, fetch, manifest, mgab, ucr
+from rc_basics_lab.datasets import fetch, manifest, mgab, ucr
 from rc_basics_lab.datasets.fetch import (
     DEFAULT_DATA_DIR,
     ChecksumMismatchError,
