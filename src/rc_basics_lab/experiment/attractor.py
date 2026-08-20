@@ -282,29 +282,53 @@ def return_map_points(series: FloatArray, component: int = -1) -> FloatArray:
     return points
 
 
-def distribution_distance(left: FloatArray, right: FloatArray) -> float:
-    """1次元の経験分布間の 1-Wasserstein 距離 (分位点の平均絶対差)。
+_POINT_CHUNK = 2048
+"""点集合距離を計算するときの1度に持つ候補点数 (確保量を標本数に比例させない)。"""
 
-    分位点の本数は ``min(len(left), len(right))`` で、**設定軸を持たない**
-    (確保軸7: ビン数を独立の軸にしない)。
+
+def _mean_nearest(left: FloatArray, right: FloatArray) -> float:
+    """``left`` の各点から ``right`` の最近傍までの距離の平均。"""
+    total = 0.0
+    for start in range(0, left.shape[0], _POINT_CHUNK):
+        block: FloatArray = left[start : start + _POINT_CHUNK]
+        distances: FloatArray = np.linalg.norm(
+            block[:, None, :] - right[None, :, :], axis=2
+        )
+        total += float(np.sum(np.min(distances, axis=1)))
+    return total / left.shape[0]
+
+
+def point_set_distance(left: FloatArray, right: FloatArray) -> float:
+    """2次元の点集合間の**対称 chamfer 距離** (D-46 の1本目)。
+
+    ``0.5 * (mean_p min_q |p - q| + mean_q min_p |p - q|)``。対称にするのは、
+    片側だけだと**潰れた軌道が真のリターンマップ上に乗っているだけ**で距離 0
+    になるためである (周期軌道は真の曲線の1点に乗りうる)。
+
+    **2次元ヒストグラムの全変動距離を採らなかったのは実測による**: 真の軌道の
+    極大値は 106 点しかなく、同一分布からの独立標本 (真の点列を半分ずつに割った
+    もの) でも TV が 0.23〜0.45 (ビン 8〜32) に達して、自走 (0.14〜0.26) と
+    重なる。同じ対照で chamfer は 0.030 (同一分布) / 0.011 (自走) /
+    0.393 (シャッフル代替) と分離する。数字は ``docs/design.md`` §12。
+
+    ビン数も分位点数も持たないので、確保軸7 (「ビン数を独立の軸にしない」) は
+    そもそも軸が存在しない形で満たす。確保量は ``_POINT_CHUNK`` で抑える。
 
     Args:
-        left: 標本 ``(M,)``。
-        right: 標本 ``(M',)``。
+        left: 点集合 ``(M, 2)``。
+        right: 点集合 ``(M', 2)``。
 
     Returns:
-        距離。どちらかの標本数が ``MIN_RETURN_MAP_POINTS`` 未満なら ``nan``
+        距離。どちらかの点数が ``MIN_RETURN_MAP_POINTS`` 未満なら ``nan``
         (「距離 0」にすると潰れた軌道ほど近いという逆向きの結論になる)。
     """
-    a = np.asarray(left, dtype=np.float64).ravel()
-    b = np.asarray(right, dtype=np.float64).ravel()
-    n_quantiles = min(a.size, b.size)
-    if n_quantiles < MIN_RETURN_MAP_POINTS:
+    a = np.asarray(left, dtype=np.float64)
+    b = np.asarray(right, dtype=np.float64)
+    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != 2 or b.shape[1] != 2:
+        raise ValueError(f"点集合は (M, 2) が必要です: {a.shape} / {b.shape}")
+    if min(a.shape[0], b.shape[0]) < MIN_RETURN_MAP_POINTS:
         return math.nan
-    probabilities: FloatArray = (np.arange(n_quantiles) + 0.5) / n_quantiles
-    return float(
-        np.mean(np.abs(np.quantile(a, probabilities) - np.quantile(b, probabilities)))
-    )
+    return 0.5 * (_mean_nearest(a, b) + _mean_nearest(b, a))
 
 
 def spectrum_length(n_samples: int) -> int:
@@ -409,8 +433,8 @@ class AttractorDistance:
     """アトラクタ再現の距離2本 (D-46)。**視覚評価は結論に使わない**。
 
     Attributes:
-        return_map: リターンマップ (連続する極大値) の分布距離。標本が
-            足りなければ ``nan``。
+        return_map: リターンマップ (連続する極大値の対) の点集合距離
+            (対称 chamfer)。点が足りなければ ``nan``。
         spectrum: 正規化パワースペクトルの全変動距離。
         n_return_map_points: 距離の推定に使ったリターンマップの点数。
         n_spectrum_bins: スペクトルのビン数 (``stats_steps`` に従属、確保軸7)。
@@ -447,13 +471,13 @@ def attractor_distance(
         _, candidate_power = power_spectrum(candidate_array[:n_common], dt)
         spectrum = spectrum_distance(reference_power, candidate_power)
         n_bins = int(reference_power.size)
-    candidate_maxima = successive_maxima(candidate_array)
+    candidate_points = return_map_points(candidate_array)
     return AttractorDistance(
-        return_map=distribution_distance(
-            successive_maxima(reference_array), candidate_maxima
+        return_map=point_set_distance(
+            candidate_points, return_map_points(reference_array)
         ),
         spectrum=spectrum,
-        n_return_map_points=int(candidate_maxima.size),
+        n_return_map_points=int(candidate_points.shape[0]),
         n_spectrum_bins=n_bins,
     )
 
@@ -604,9 +628,9 @@ __all__ = [
     "attractor_distance",
     "autocorrelation_peak",
     "classify_regime",
-    "distribution_distance",
     "lyapunov_normalized",
     "normalized_error_curve",
+    "point_set_distance",
     "power_spectrum",
     "return_map_points",
     "shuffled_surrogate",
