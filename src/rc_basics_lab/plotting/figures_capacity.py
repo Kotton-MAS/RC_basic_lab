@@ -37,10 +37,8 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import QuadMesh
 from matplotlib.colors import Normalize, PowerNorm
-from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.capacity import (
     DIAGNOSTIC_IPC,
@@ -54,7 +52,10 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting.style import StyleContext
+from rc_basics_lab.plotting.style import new_figure as _new_figure
+from rc_basics_lab.plotting.style import save_png as _save
+from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
 from rc_basics_lab.types import FloatArray
 
 BOUND_MARGIN = 0.1
@@ -113,26 +114,6 @@ _REFERENCE_COLORS: dict[str, str] = {
     "linear_ceiling": "tab:red",
     "nonlinear_rc": "tab:green",
 }
-
-
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
-
-
-def _unique_sorted(values: Sequence[float]) -> tuple[float, ...]:
-    """重複を除いて昇順に並べる (格子の軸を行から復元する)。"""
-    return tuple(sorted(set(values)))
 
 
 def _mean_std(values: Sequence[float]) -> tuple[float, float]:
