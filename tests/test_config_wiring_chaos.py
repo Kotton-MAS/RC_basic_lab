@@ -48,8 +48,11 @@ from wiring import (
     apply_case,
     assert_yaml_has_all_leaves,
     case,
+    changed_leaves,
     leaf_paths,
     plain,
+    round_trip,
+    section_case,
 )
 
 from rc_basics_lab.config import (
@@ -287,8 +290,10 @@ def test_each_chaos_parameter_changes_output(
     changed_config = apply_case(base, wiring_case)
     assert changed_config != base, "差し替えが設定に反映されていません"
 
-    assert _round_trip(changed_config, tmp_path, "changed") == changed_config
-    assert _changed_leaves(base, changed_config) == {wiring_case.field}, (
+    assert (
+        round_trip(changed_config, tmp_path, "changed", Chaos04Config) == changed_config
+    )
+    assert changed_leaves(base, changed_config) == {wiring_case.field}, (
         f"{wiring_case.field} の差し替えが他の葉にも波及しています"
     )
 
