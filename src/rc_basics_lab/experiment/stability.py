@@ -58,6 +58,7 @@ from rc_basics_lab.experiment.freerun import (
     run_free_run,
     task_length,
 )
+from rc_basics_lab.experiment.report import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.chaotic import sampling_interval
@@ -585,13 +586,7 @@ def regime_map(
 
 def write_stability_csv(rows: Sequence[StabilityRow], path: Path) -> Path:
     """4-C の結果を CSV に書く (列順は ``StabilityRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(STABILITY_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, STABILITY_CSV_COLUMNS)
 
 
 def valid_time_by_regime(rows: Sequence[StabilityRow]) -> dict[str, float]:
