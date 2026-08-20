@@ -446,7 +446,7 @@ def test_find_cut_search_cells_matches_the_measured_formula() -> None:
 def test_synthetic_source_rejects_a_segment_length_that_would_allocate_too_much(
     segment_length: int,
 ) -> None:
-    """``_find_cut`` の探索行列が大きすぎる設定は確保前に落とす (reviewer-performance 指摘)。
+    """``_find_cut`` の探索行列が大きすぎる設定を確保前に落とす (reviewer-performance)。
 
     過去に『確保軸の積を検査しないまま巨大配列を確保 -> peak RSS 8.6GB /
     13時間』を起こしたのと同型のガード漏れ —— ``raw_samples`` への線形の上限
