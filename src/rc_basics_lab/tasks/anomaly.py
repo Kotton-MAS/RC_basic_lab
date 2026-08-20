@@ -321,7 +321,12 @@ def _splice_positions(
 
 
 def _find_cut(
-    raw: FloatArray, derivative: FloatArray, center: int, cfg: SyntheticAnomalyConfig
+    raw: FloatArray,
+    derivative: FloatArray,
+    center: int,
+    cfg: SyntheticAnomalyConfig,
+    value_scale: float,
+    slope_scale: float,
 ) -> tuple[int, int]:
     """値と微分が最も一致する ``(i, span)`` を探す (MGAB と同じ着想)。
 
@@ -329,6 +334,15 @@ def _find_cut(
     (``raw[i+1 : i+span+1]``) を取り除いて縫合する。値も微分も連続なので、
     縫合そのものは目視でも1次差分でも見えない —— 見えるのは「そこで系の位相が
     飛んだ」という**力学の異常**だけである。
+
+    (reviewer-performance 指摘) ``value_scale`` / ``slope_scale`` は ``raw`` /
+    ``derivative`` 全体に対する標準偏差であり、呼び出しをまたいで不変。以前は
+    ここで呼び出しごとに ``np.std`` を再計算しており、
+    ``generate_synthetic_anomalies`` が本関数を ``n_anomalies`` 回呼ぶことと
+    合わせて全体のコストが実質 O(n_anomalies^2) になっていた。呼び出し側
+    (``generate_synthetic_anomalies``) が1回だけ計算して引数で渡すことで、本関数
+    のコストは ``_MAX_FIND_CUT_CELLS`` で上限管理されている軸 (cells) だけに
+    戻り、``n_anomalies`` に対して線形になる。
     """
     min_span = _REMOVED_SPAN_FACTORS[0] * cfg.segment_length
     max_span = _REMOVED_SPAN_FACTORS[1] * cfg.segment_length
@@ -341,8 +355,6 @@ def _find_cut(
     starts = np.arange(lowest, highest + 1)
     spans = np.arange(min_span, max_span + 1)
     ends = starts[:, None] + spans[None, :]
-    value_scale = float(np.std(raw)) or 1.0
-    slope_scale = float(np.std(derivative)) or 1.0
     cost = (
         np.abs(raw[ends] - raw[starts][:, None]) / value_scale
         + np.abs(derivative[ends] - derivative[starts][:, None]) / slope_scale
@@ -378,13 +390,17 @@ def generate_synthetic_anomalies(
     raw_config = dataclasses.replace(cfg.mackey_glass, length=raw_samples, horizon=1)
     raw: FloatArray = generate_mackey_glass(raw_config, rng).u[:, 0]
     derivative: FloatArray = np.gradient(raw)
+    value_scale = float(np.std(raw)) or 1.0
+    slope_scale = float(np.std(derivative)) or 1.0
 
     pieces: list[FloatArray] = []
     splices: list[int] = []
     cursor = 0
     removed = 0
     for target in _splice_positions(cfg, rng):
-        start, span = _find_cut(raw, derivative, target + removed, cfg)
+        start, span = _find_cut(
+            raw, derivative, target + removed, cfg, value_scale, slope_scale
+        )
         if start < cursor:
             raise ValueError(
                 "縫合点の探索が直前の切断と重なりました "
