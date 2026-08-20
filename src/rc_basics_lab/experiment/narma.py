@@ -1,20 +1,12 @@
 """実験 3-C —— 公平な対照での NARMA10 (D-31).
 
-**01 の ``run_task`` をそのまま通す**。手法の列挙 (``build_methods``)・alpha 格子
-の共有 (D-04)・全手法が同一の行 index で学習評価すること (D-05)・ESN の構造
-ハイパーパラメータを検証分割で選ばないこと (D-08) は、すべて 01 の経路が
-担保している。3-C 側で書き写すと、公平性の3決定が2箇所に分かれて片方だけ
-劣化しうる。ここが組み立てるのは ``TaskEntry`` (課題の生成関数 + ESN 設定) 1つ
-だけで、``build_tasks`` にも ``ExperimentConfig`` にも NARMA10 を足さない
-(足すと 01 の ``comparison.csv`` に行が増えて 01 の成果物が変わる)。
+**01 の ``run_task`` をそのまま通す** (D-31)。ここが組み立てるのは
+``TaskEntry`` (課題の生成関数 + ESN 設定) 1つだけで、``build_tasks`` にも
+``ExperimentConfig`` にも NARMA10 を足さない。
 
 **レプリケート0 の ``ReplicatePlan`` はここで1回だけ作り、``run_task`` へ
-``plan0=`` で渡す** (01 の ``pipeline.py`` が ``collect_state_space`` に対して
-やっているのと同じ形、F-1-009)。こうすると「NARMA10 を解いた ESN」と
-「容量 (MC / IPC) を測った ESN」が**同一のリザバー・同一の状態行列**である
-ことが構造で保証される。``plan_replicate`` を2回呼ぶ実装でも同じシードから
-同じ値にはなるが、それは「たまたま一致している」だけで、片方の経路の
-シードや ``n_steps`` を変えたときに黙って別物になる。
+``plan0=`` で渡す** (D-31。01 の ``pipeline.py`` が ``collect_state_space``
+に対してやっているのと同じ形、F-1-009)。
 
 容量の行は ``capacity.csv`` に ``experiment="3C_narma10"`` として合流させる
 (``measure_capacity`` -> ``capacity_row_from`` -> ``capacity_outcome_from``、

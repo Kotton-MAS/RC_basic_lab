@@ -2,10 +2,7 @@
 
 01 の ``ExperimentConfig`` / 02 の ``Esp02Config`` / 03 の ``Capacity03Config``
 とはローダ (``_common.load_config_as``) だけを共有し、フィールドは一切共有
-しない。**``ExperimentConfig`` に 04 のフィールドを1個も足さない** (D-13) ——
-足すと 01 の ``tests/test_config_wiring.py::test_each_parameter_changes_output``
-(「全フィールドが 01 のパイプライン出力を変える」) を満たせないフィールドが
-生まれる。
+しない。**``ExperimentConfig`` に 04 のフィールドを1個も足さない** (D-13)。
 
 ``experiment01`` への import は ``Chaos04Config.base`` (4-A / 4-B が 01 の
 ``run_task`` を再利用するための内包、D-31 と同じ形) の1本だけで、**一方向**で
