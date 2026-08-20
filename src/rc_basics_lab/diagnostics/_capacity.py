@@ -40,8 +40,7 @@ MC (線形メモリ容量) と IPC (情報処理容量) は「同じ状態行列
    ``bounded_chunk_size`` 1本の純関数へ委譲する。
 
 ``rc_basics_lab.readout.ridge.fit_ridge_from_gram`` を使うのは D-23 で明示的に
-許可された依存である。バイアス列を正則化しない (D-03) 閉形式解の実装を2箇所に
-持つと、片方だけで D-03 が崩れても誰も気づけない。
+許可された依存である (D-03 の実装を2箇所に持たないため)。
 
 先頭が ``_`` の非公開モジュールなので、``tests/test_public_api_reexport.py`` の
 再エクスポート要求の対象外であり、``diagnostics/__init__.py`` からは公開しない。
