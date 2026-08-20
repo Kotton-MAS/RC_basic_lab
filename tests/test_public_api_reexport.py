@@ -18,7 +18,6 @@ conventions.md は「既存パッケージは全サブモジュールを再エ�
 
 from __future__ import annotations
 
-import ast
 import importlib
 import json
 import pkgutil
@@ -29,6 +28,7 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
+from ast_imports import imported_roots, imported_symbol_names
 
 import rc_basics_lab
 
@@ -286,16 +286,10 @@ def test_the_datasets_facade_does_not_import_the_cli() -> None:
     ``cli`` が現れ、1 と 2 を消しても緑のまま通ってしまうため
     (``tests/test_diagnostics_base.py`` の推移的 import 検査と同じ事情)。
     """
-    source = DATASETS_INIT.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(DATASETS_INIT))
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            imported.update(alias.name for alias in node.names)
-            if node.module is not None:
-                imported.add(node.module.rsplit(".", 1)[-1])
-        elif isinstance(node, ast.Import):
-            imported.update(alias.name.rsplit(".", 1)[-1] for alias in node.names)
+    imported = imported_symbol_names(DATASETS_INIT) | {
+        root.rsplit(".", 1)[-1]
+        for root in imported_roots(DATASETS_INIT, include_function_bodies=True)
+    }
     assert "cli" not in imported, (
         "datasets/__init__.py が cli を import しています (D-72)。"
         "cli.py はパッケージへ戻る辺を持つので、循環になります"
