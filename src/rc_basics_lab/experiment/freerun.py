@@ -58,6 +58,7 @@ from rc_basics_lab.experiment.report import (
     META_JSON,
     DataclassSummaryMixin,
     write_meta_for,
+    write_rows_csv,
 )
 from rc_basics_lab.experiment.runner import (
     CSV_COLUMNS,
