@@ -257,10 +257,6 @@ def _validate_training_window(
 
     ここを検査しないと、異常を含む区間から前処理係数や読み出し重みを推定する
     実験が**そのまま緑で通る** —— しかも結果は「よく当たっている」形で出る。
-
-    Raises:
-        ValueError: 学習区間が ``train_end`` を越える、または
-            ``standardize_steps`` が学習区間の外にある場合。
     """
     steps = config.preprocess.standardize_steps
     if split.train.stop > series.train_end:
