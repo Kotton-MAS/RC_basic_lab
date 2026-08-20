@@ -494,28 +494,31 @@ def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
 
 
 def _target_column(
-    problem: CapacityProblem,
+    rows: RowAlignment,
     psi_table: Sequence[FloatArray],
     spec: TargetSpec,
 ) -> FloatArray:
     """目標1本 ``Π_i psi_{n_i}(u[t - k_i])`` を作る。
 
     ``psi_table[n - 1]`` は次数 ``n`` の正規直交多項式を**系列全体で1回だけ**
-    評価したもの。遅延 ``k`` の窓は共有カーネルの ``CapacityProblem.lagged``
+    評価したもの。遅延 ``k`` の窓は共有カーネルの ``RowAlignment.lagged``
     に委譲する (F-03-1-001)。以前はここで ``t0 - delay`` を直接組み立てて
     おり、MC 側の同種の複製 (memory_capacity.py) には値レベルの guard が
-    無かった。どの目標も ``problem.t0`` から始まる同一の行集合に対応する (D-24)。
+    無かった。どの目標も ``rows.t0`` から始まる同一の行集合に対応する (D-24)。
+
+    目標の生成に必要なのは行合わせだけなので、状態行列と Gram を持つ
+    ``CapacityProblem`` ではなく ``RowAlignment`` を受け取る。
     """
     column: FloatArray | None = None
     for delay, order in spec:
-        factor: FloatArray = problem.lagged(psi_table[order - 1], delay)
+        factor: FloatArray = rows.lagged(psi_table[order - 1], delay)
         column = factor.copy() if column is None else column * factor
     assert column is not None
     return column
 
 
 def _iter_target_chunks(
-    problem: CapacityProblem,
+    rows: RowAlignment,
     psi_table: Sequence[FloatArray],
     specs: Sequence[TargetSpec],
     *,
@@ -525,12 +528,12 @@ def _iter_target_chunks(
 
     ``(T_eff, K)`` を一度も実体化しないのがこの関数の存在理由。
     """
-    n_samples = problem.n_samples
+    n_samples = rows.n_samples
     for start in range(0, len(specs), chunk_size):
         block = specs[start : start + chunk_size]
         chunk: FloatArray = np.empty((n_samples, len(block)), dtype=np.float64)
         for column, spec in enumerate(block):
-            chunk[:, column] = _target_column(problem, psi_table, spec)
+            chunk[:, column] = _target_column(rows, psi_table, spec)
         yield chunk
 
 
@@ -569,29 +572,37 @@ def _surrogate_indices(start: int, end: int, n_selected: int) -> tuple[int, ...]
 
 
 def _picked_target_blocks(
-    problem: CapacityProblem,
+    rows: RowAlignment,
     psi_table: Sequence[FloatArray],
     specs: Sequence[TargetSpec],
     picked: Sequence[int],
-    chunk_size: int,
 ) -> Iterator[FloatArray]:
-    """代表目標 ``picked`` を ``chunk_size`` 列ずつブロック化して生成する。
+    """代表目標 ``picked`` を**確保軸**の幅でブロック化して生成する (D-33)。
 
     F-03-2-015: ``n_surrogate_targets`` には上限が無いため ``len(picked)`` が
-    ``chunk_size`` と無関係に大きくなりうる (実測: K=400, T=1e6,
-    ``n_surrogate_targets=400``, ``chunk_size=1`` で base 単独 peak RSS
-    3.23GB)。``picked`` も ``chunk_size`` と同じ 128MiB 予算で分割して、
-    一度に保持する列数を ``chunk_size`` と同じ上限に揃える。分位点計算は
-    呼び出し側 (``surrogate_threshold``) に一本化するため、ここではブロック
-    (``(T_eff, M_i)``) を生成するだけで容量やしきい値には触れない
-    (F-03-3-002)。
+    大きくなりうる (実測: K=400, T=1e6, ``n_surrogate_targets=400``,
+    ``chunk_size=1`` で base 単独 peak RSS 3.23GB)。一度に実体化する列数を
+    128 MiB 予算で縛る必要がある。
+
+    幅を決めるのは ``rows.block_width(len(picked))`` であり
+    **``cfg.chunk_size`` を読まない** —— ここは1回の solve に畳む列数
+    (性能軸) ではなく「一度に何列を実体化してよいか」(確保軸) の話で、
+    性能上の意味を持たない。旧実装は性能軸の実効値
+    (``solve_width(cfg.chunk_size)``) をそのまま確保幅に使っており、
+    運用者の性能ノブが確保上限を動かしていた
+    (``test_representative_blocks_do_not_follow_chunk_size``)。
+
+    分位点計算は呼び出し側 (``surrogate_threshold``) に一本化するため、
+    ここではブロック (``(T_eff, M_i)``) を生成するだけで容量やしきい値には
+    触れない (F-03-3-002)。
     """
-    n_samples = problem.n_samples
-    for start in range(0, len(picked), chunk_size):
-        block_indices = picked[start : start + chunk_size]
+    n_samples = rows.n_samples
+    width = rows.block_width(len(picked))
+    for start in range(0, len(picked), width):
+        block_indices = picked[start : start + width]
         block: FloatArray = np.empty((n_samples, len(block_indices)), dtype=np.float64)
         for column, index in enumerate(block_indices):
-            block[:, column] = _target_column(problem, psi_table, specs[index])
+            block[:, column] = _target_column(rows, psi_table, specs[index])
         yield block
 
 
