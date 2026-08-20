@@ -265,10 +265,9 @@ def _staged_write(target: Path) -> Iterator[_StagedSink]:
     (reviewer-architecture 指摘) 「作る → 書く → 検証して確定させる」という
     1つのライフサイクルが部品に割れていると、後始末 (``partial.unlink``) の
     義務と「確定は必ず再照合を通す」義務の両方が呼び出し側の規律として残り、
-    複製されたり漏れたりする (reviewer-architecture 指摘)。``with`` を抜ける
-    までに ``commit()`` を呼ばなかった場合 (例外・書き忘れのいずれも) は、
-    ここで一時ファイルを
-    自動的に片付ける —— 呼び出し側に ``partial.unlink`` を書かせない。
+    複製されたり漏れたりする。``with`` を抜けるまでに ``commit()`` を呼ばな
+    かった場合 (例外・書き忘れのいずれも) は、ここで一時ファイルを自動的に
+    片付ける —— 呼び出し側に ``partial.unlink`` を書かせない。
     """
     descriptor, name = tempfile.mkstemp(
         dir=target.parent, prefix=f".{target.name}.", suffix=".part"
