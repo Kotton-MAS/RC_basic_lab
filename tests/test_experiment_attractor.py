@@ -263,6 +263,37 @@ def test_point_set_distance_is_nan_when_there_are_too_few_points() -> None:
     assert math.isnan(point_set_distance(few, few))
 
 
+def test_mean_nearest_blocks_both_sides_so_memory_never_scales_with_either_side() -> (
+    None
+):
+    """``right`` 側も ``_POINT_CHUNK`` でブロック化する (reviewer-security 実測)。
+
+    以前は ``left`` 側だけをブロック化していたため、中間配列
+    ``block[:, None, :] - right[None, :, :]`` の形が ``right`` の点数に線形に
+    伸びていた (|right|=80,000 で peak RSS 8.6 GB)。``np.linalg.norm`` に渡す
+    差分配列の形を監視し、``right`` が ``_POINT_CHUNK`` の3倍以上あっても
+    常に ``(<= _POINT_CHUNK, <= _POINT_CHUNK, 2)`` に収まることを確かめる。
+    """
+    shapes: list[tuple[int, ...]] = []
+    original_norm = attractor.np.linalg.norm
+
+    def spy(diff: object, axis: int) -> object:
+        shapes.append(diff.shape)  # type: ignore[attr-defined]
+        return original_norm(diff, axis=axis)
+
+    rng = np.random.default_rng(0)
+    chunk = attractor._POINT_CHUNK
+    left = rng.normal(size=(10, 2))
+    right = rng.normal(size=(chunk * 3 + 5, 2))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(attractor.np.linalg, "norm", spy)
+        attractor._mean_nearest(left, right)
+    assert shapes, "np.linalg.norm が1回も呼ばれていません"
+    for shape in shapes:
+        assert shape[0] <= chunk, shape
+        assert shape[1] <= chunk, shape
+
+
 def test_shuffled_surrogate_keeps_the_marginal_and_destroys_the_time_structure() -> (
     None
 ):
