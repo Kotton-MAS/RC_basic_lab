@@ -52,7 +52,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import math
-import pkgutil
 from collections.abc import Mapping, Sequence
 from dataclasses import fields
 from functools import lru_cache
@@ -73,7 +72,6 @@ from wiring import (
     plain,
 )
 
-import rc_basics_lab.experiment as experiment_pkg
 from rc_basics_lab.config import (
     ConfigError,
     DelayParityConfig,
@@ -408,8 +406,10 @@ def test_every_esp_parameter_changes_output(
     assert changed_config != base, "差し替えが設定に反映されていません"
 
     # 共通: YAML を往復しても値が保たれ、変わったのはその葉だけであること
-    assert _round_trip(changed_config, tmp_path, "changed") == changed_config
-    assert _changed_leaves(base, changed_config) == {wiring_case.field}, (
+    assert (
+        round_trip(changed_config, tmp_path, "changed", Esp02Config) == changed_config
+    )
+    assert changed_leaves(base, changed_config) == {wiring_case.field}, (
         f"{wiring_case.field} の差し替えが他の葉にも波及しています"
     )
 
@@ -529,18 +529,9 @@ def test_diagnostic_sections_cover_the_diagnostic_config_classes() -> None:
         )
 
 
-def _current_experiment_modules() -> frozenset[str]:
-    """``rc_basics_lab.experiment`` 配下の公開モジュール名の実集合。"""
-    return frozenset(
-        info.name
-        for info in pkgutil.iter_modules(experiment_pkg.__path__)
-        if not info.name.startswith("_")
-    )
-
-
 def _new_experiment_modules() -> frozenset[str]:
     """``KNOWN_EXPERIMENT_MODULES`` (01 時点の凍結スナップショット) を超えた分。"""
-    return _current_experiment_modules() - KNOWN_EXPERIMENT_MODULES
+    return current_experiment_modules() - KNOWN_EXPERIMENT_MODULES
 
 
 def test_pending_cases_disappear_once_the_experiment_layer_exists() -> None:
