@@ -229,9 +229,7 @@ def memory_capacity(
             raise ValueError(
                 "threshold_mode='surrogate' には ctx.seed が必要です (D-27)"
             )
-        base: FloatArray = rows.lagged(psi, _SURROGATE_BASE_DELAY).reshape(
-            n_samples, 1
-        )
+        base: FloatArray = rows.lagged(psi, _SURROGATE_BASE_DELAY).reshape(n_samples, 1)
         # F-03-3-002: surrogate_threshold は base_blocks を Iterable of block
         # で受ける (共有カーネルに閾値の分位点計算を1本だけ残すため)。MC は
         # 1ブロックしか持たないので [base] のように1要素の Iterable で渡す。
