@@ -24,7 +24,9 @@ from rc_basics_lab.diagnostics._capacity import (
     LEGENDRE,
     NORMAL,
     UNIFORM,
+    UNIFORM_LEGENDRE,
     CapacityProblem,
+    RowAlignment,
     bounded_chunk_size,
     orthonormal_basis,
     surrogate_threshold,
@@ -110,14 +112,6 @@ def _cached_states(
 
 def _scalars(result: DiagnosticResult) -> dict[str, float]:
     return {key: float(value) for key, value in result.scalars.items()}
-
-
-def _dummy_problem(*, t0: int, n_samples: int) -> CapacityProblem:
-    """``_target_column`` の窓計算 (``CapacityProblem.lagged``) だけを使う
-    テストのための最小の ``CapacityProblem``。状態そのものの値は使わない
-    (``t0`` / ``n_samples`` が一致していればよい)。
-    """
-    return CapacityProblem.from_states(np.zeros((t0 + n_samples, 1)), t0=t0)
 
 
 def _independent_states(
@@ -298,7 +292,9 @@ def test_surrogate_threshold_rejects_bare_ndarray_base_blocks() -> None:
     分かりにくいメッセージになる)。境界で ``TypeError`` を出すことを固定する。
     """
     states, _ = _cached_states(0.9, 15, 200, 3)
-    problem = CapacityProblem.from_states(states, t0=20)
+    problem = CapacityProblem.from_states(
+        states, rows=RowAlignment(t0=20, n_samples=180)
+    )
     bare: FloatArray = np.random.default_rng(1).standard_normal((problem.n_samples, 2))
     with pytest.raises(TypeError, match="ndarray"):
         surrogate_threshold(
@@ -596,15 +592,18 @@ def test_all_targets_share_identical_rows() -> None:
     # 行合わせの直接確認。u[t] = t なら psi_1 は単調なので index を逆算できる。
     n_steps = 500
     ramp: FloatArray = np.arange(n_steps, dtype=np.float64)
-    psi_table = [orthonormal_basis(ramp, degree, UNIFORM) for degree in (1, 2)]
+    psi_table = [orthonormal_basis(ramp, degree, UNIFORM_LEGENDRE) for degree in (1, 2)]
     t0 = 20
     n_samples = n_steps - t0
-    problem = _dummy_problem(t0=t0, n_samples=n_samples)
+    # 状態行列を作らない (``RowAlignment`` が無いと書けない)。04a T3 以前は
+    # ダミーの ``CapacityProblem`` (値を使わない ``np.zeros`` と、その特異な
+    # Gram) を構築する必要があった。
+    rows = RowAlignment(t0=t0, n_samples=n_samples)
     mean = float(np.mean(ramp))
     sigma = float(np.std(ramp))
     for delay in (1, 5, 20):
         spec: TargetSpec = ((delay, 1),)
-        column = _target_column(problem, psi_table, spec)
+        column = _target_column(rows, psi_table, spec)
         assert column.shape == (n_samples,)
         expected: FloatArray = (
             np.arange(t0 - delay, t0 - delay + n_samples, dtype=np.float64) - mean
@@ -632,15 +631,14 @@ def test_basis_is_orthonormal_and_mismatched_pair_raises() -> None:
     cfg = IpcConfig(max_delay_by_degree=(4, 3, 2), max_variables=2)
     specs = enumerate_targets(cfg)
     psi_table = [
-        orthonormal_basis(series, degree, UNIFORM, basis=LEGENDRE)
-        for degree in (1, 2, 3)
+        orthonormal_basis(series, degree, UNIFORM_LEGENDRE) for degree in (1, 2, 3)
     ]
     t0 = max(cfg.max_delay_by_degree)
     n_samples = n_steps - t0
-    problem = _dummy_problem(t0=t0, n_samples=n_samples)
+    rows = RowAlignment(t0=t0, n_samples=n_samples)
     columns: FloatArray = np.empty((n_samples, len(specs)), dtype=np.float64)
     for index, spec in enumerate(specs):
-        columns[:, index] = _target_column(problem, psi_table, spec)
+        columns[:, index] = _target_column(rows, psi_table, spec)
     gram: FloatArray = columns.T @ columns / n_samples
     deviation = float(np.max(np.abs(gram - np.eye(len(specs)))))
     assert deviation < 0.02, (
