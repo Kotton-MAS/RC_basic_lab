@@ -51,11 +51,31 @@ PACKAGE_NAMES = (
 """
 
 
+NOT_ON_THE_FACADE: dict[str, tuple[str, ...]] = {"datasets": ("cli",)}
+"""``__init__`` に**載せない**と決めた公開サブモジュール (D-72)。
+
+慣習は「全サブモジュールを再エクスポートする」だが、``datasets.cli`` は例外
+である —— ``cli.py`` は ``from rc_basics_lab.datasets import mgab, ucr`` で
+パッケージへ戻るので、``__init__`` が ``cli`` を import すると
+``__init__ -> cli -> __init__`` の辺ができる。現状は submodule import 機構の
+おかげで動いているだけで、``cli`` が ``__init__`` の**再エクスポートを1つでも
+使い始めた瞬間に ``ImportError``** になる (T5 の CLI 配線はまさに再エクスポート
+を使いたくなる作業で、そこで初めて壊れると原因が CLI 変更に見えて循環に
+見えない)。CLI は公開 API ではなく ``make data-05`` の入口なので、facade から
+外す方を選んだ。
+
+**この辞書に名前を足すのは、循環を構造で断つときだけ**である。単に
+``__init__`` への追記を忘れたモジュールを逃がす穴として使うと、この慣習テスト
+自体が意味を失う (D-52 が塞いだのと同型の抜け道)。
+"""
+
+
 def _public_submodule_names(package: ModuleType) -> set[str]:
+    exempt = NOT_ON_THE_FACADE.get(package.__name__.rsplit(".", 1)[-1], ())
     return {
         info.name
         for info in pkgutil.iter_modules(package.__path__)
-        if not info.name.startswith("_")
+        if not info.name.startswith("_") and info.name not in exempt
     }
 
 
