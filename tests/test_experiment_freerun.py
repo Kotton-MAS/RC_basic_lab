@@ -63,7 +63,7 @@ from rc_basics_lab.readout.design import ReservoirSpec
 from rc_basics_lab.readout.ridge import fit_ridge
 from rc_basics_lab.reservoir.esn import ESN
 from rc_basics_lab.seeds import SeedStream, make_rng
-from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ
+from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ, integrate_lorenz
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
 from rc_basics_lab.types import FloatArray
 
@@ -407,11 +407,12 @@ def test_lyapunov_is_estimated_from_a_single_reference_trajectory() -> None:
     """
     config = small_config()
     calls: list[int] = []
-    original = freerun_module.integrate_lorenz  # type: ignore[attr-defined]
 
-    def counting(*args: object, **kwargs: object) -> FloatArray:
+    def counting(cfg: LorenzConfig, x0: FloatArray, n_samples: int) -> FloatArray:
         calls.append(1)
-        return original(*args, **kwargs)  # type: ignore[arg-type]
+        # 差し替えるのは**配線層が import 時に束縛した参照**なので、定義元
+        # (tasks.chaotic) から取った関数をそのまま呼ぶ (04a T2 実装メモ8)。
+        return integrate_lorenz(cfg, x0, n_samples)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(freerun_module, "integrate_lorenz", counting)
