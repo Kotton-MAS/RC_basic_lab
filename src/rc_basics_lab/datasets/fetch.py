@@ -168,69 +168,116 @@ def open_https(url: str, timeout: float) -> HttpResponse:
 
 
 def _stream_to_file(
-    response: HttpResponse, destination: Path, max_bytes: int
+    response: HttpResponse, sink: _StagedSink, max_bytes: int
 ) -> tuple[str, int]:
-    """レスポンスを ``destination`` へ書きながら SHA256 と byte 数を測る。"""
+    """レスポンスを ``sink`` へ書きながら SHA256 と byte 数を測る。"""
     digest = hashlib.sha256()
     total = 0
-    with destination.open("wb") as handle:
-        while True:
-            chunk = response.read(_CHUNK_BYTES)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > max_bytes:
-                raise DownloadTooLargeError(
-                    f"サイズ上限を超えました: {total} > {max_bytes} byte"
-                )
-            digest.update(chunk)
-            handle.write(chunk)
+    while True:
+        chunk = response.read(_CHUNK_BYTES)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise DownloadTooLargeError(
+                f"サイズ上限を超えました: {total} > {max_bytes} byte"
+            )
+        digest.update(chunk)
+        sink.write(chunk)
     return digest.hexdigest(), total
 
 
-def _make_partial_path(target: Path) -> Path:
-    """``target`` と同じディレクトリに、予測不能な名前の一時ファイルを作る。
+class _StagedSink:
+    """``tempfile.mkstemp`` が返す fd をそのまま保持する、唯一の書き込みハンドル。
 
-    (reviewer-security 指摘) 固定名 (``f"{target.name}.part"``) は書き込み中に横から
-    差し替えられる TOCTOU の的になる —— 同じ ``data_dir`` に書ける別プロセス・
-    別ユーザーが、正規のストリームからダイジェストが計算されている間にその
-    パスだけを別ファイルへ差し替えると、ダイジェストは正規のストリームから
-    計算されたまま、確定するファイルだけが攻撃者のものになる。
-    ``tempfile.mkstemp`` で名前を予測不能にし、攻撃者がまず「どのパスを
-    差し替えればよいか」を知ることそのものを難しくする。
+    (reviewer-security / reviewer-architecture 指摘) 以前は mkstemp の fd を
+    ``os.close`` で即座に捨て、呼び出し側が ``partial.open("wb")`` で**名前を
+    開き直して**いた。mkstemp の安全性は O_EXCL と fd の保持で成り立つので
+    あって名前の予測不能性ではなく、名前を開き直した瞬間に「予測不能な名前」
+    という弱い性質まで安全性が後退していた —— mkstemp と ``open`` の間で同名が
+    symlink に差し替えられると、data_dir の外を上書きし得る (F-2-016)。fd を
+    握ったまま書き込み・再照合・確定を行うことで、この窓を構造的に閉じる。
+    """
+
+    def __init__(self, descriptor: int, partial: Path) -> None:
+        self.partial = partial
+        self._descriptor = descriptor
+        self._committed = False
+
+    def write(self, data: bytes) -> None:
+        """``partial`` の fd へ直接書く (パスは一切使わない)。"""
+        os.write(self._descriptor, data)
+
+    def commit(
+        self,
+        target: Path,
+        expected_sha256: str,
+        *,
+        error_cls: type[DatasetError],
+    ) -> None:
+        """``os.replace`` の直前に、書き込みに使った同じ fd から実バイト列を
+        再照合してから確定させる。
+
+        (reviewer-security 指摘) ``partial`` をパスで開き直して再照合すると、
+        書き込み完了から ``os.replace`` までの間に同名パスが symlink へ
+        差し替えられた場合、再照合そのものが攻撃者の中身を読んでしまい
+        「一致」してしまう。書き込みに使った fd から ``lseek`` して読み直せば、
+        パスがどう差し替えられても fd が指す inode には届かない。ただし
+        digest の再照合だけでは「同じ fd から書いて同じ fd から読む」という
+        自己整合性しか測れず、確定の**直前**に同名パスが**丸ごと**別の実体へ
+        差し替えられていても素通りする。そこで最後に ``os.stat(partial)``
+        (パス越しに見える実体) と ``os.fstat(fd)`` (書き込みに使った実体) の
+        ``(st_dev, st_ino)`` が一致することまで確認し、不一致なら
+        ``os.replace`` を行わずに送出する。
+        """
+        os.lseek(self._descriptor, 0, os.SEEK_SET)
+        digest = hashlib.sha256()
+        while True:
+            chunk = os.read(self._descriptor, _CHUNK_BYTES)
+            if not chunk:
+                break
+            digest.update(chunk)
+        on_disk_sha256 = digest.hexdigest()
+        if on_disk_sha256 != expected_sha256:
+            raise error_cls(
+                "SHA256 が一致しません (確定直前にディスク上のバイト列が"
+                "差し替えられた可能性があります。キャッシュには残しません): "
+                f"expected={expected_sha256} actual={on_disk_sha256}"
+            )
+        disk_stat = os.stat(self.partial)
+        fd_stat = os.fstat(self._descriptor)
+        if (disk_stat.st_dev, disk_stat.st_ino) != (fd_stat.st_dev, fd_stat.st_ino):
+            raise error_cls(
+                "一時ファイルが確定直前に別の実体へ差し替えられました "
+                "(パスが指す実体と書き込みに使った実体が一致しません。"
+                f"キャッシュには残しません): {self.partial}"
+            )
+        os.replace(self.partial, target)
+        self._committed = True
+
+
+@contextmanager
+def _staged_write(target: Path) -> Iterator[_StagedSink]:
+    """``target`` と同じディレクトリに mkstemp で一時ファイルを作り、書き込み・
+    再照合・確定 (``os.replace``) までの1ライフサイクルを1箇所に閉じる。
+
+    (reviewer-architecture 指摘) 「作る → 書く → 検証して確定させる」という
+    1つのライフサイクルが部品に割れていると、後始末 (``partial.unlink``) の
+    義務と「確定は必ず再照合を通す」義務の両方が呼び出し側の規律として残り、
+    複製されたり漏れたりする (F-2-001)。``with`` を抜けるまでに ``commit()``
+    を呼ばなかった場合 (例外・書き忘れのいずれも) は、ここで一時ファイルを
+    自動的に片付ける —— 呼び出し側に ``partial.unlink`` を書かせない。
     """
     descriptor, name = tempfile.mkstemp(
         dir=target.parent, prefix=f".{target.name}.", suffix=".part"
     )
-    os.close(descriptor)
-    return Path(name)
-
-
-def _replace_after_reverifying(
-    partial: Path,
-    target: Path,
-    expected_sha256: str,
-    *,
-    error_cls: type[DatasetError],
-) -> None:
-    """``os.replace`` の直前にディスク上の実バイト列を再照合してから確定させる。
-
-    (reviewer-security 指摘) ここまでの digest は「自分が書いたはずのバイト列」から
-    計算した値であり、``partial`` が確定させる実際のバイト列と同一である保証
-    にはならない。名前を予測不能にしても、書き込み完了から ``os.replace`` まで
-    の間に同じパスが差し替えられる余地をゼロにはできないため、確定させる
-    **直前**にディスクを読み直して同じ値かどうかを測る
-    (``download()`` と ``extract_members()`` の両方が通る、この層の最終防衛線)。
-    """
-    on_disk_sha256 = sha256_of(partial)
-    if on_disk_sha256 != expected_sha256:
-        partial.unlink(missing_ok=True)
-        raise error_cls(
-            "SHA256 が一致しません (確定直前にディスク上のバイト列が"
-            "差し替えられた可能性があります。キャッシュには残しません): "
-            f"expected={expected_sha256} actual={on_disk_sha256}"
-        )
-    os.replace(partial, target)
+    sink = _StagedSink(descriptor, Path(name))
+    try:
+        yield sink
+    finally:
+        os.close(descriptor)
+        if not sink._committed:
+            sink.partial.unlink(missing_ok=True)
 
 
 def download(
