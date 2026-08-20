@@ -518,7 +518,7 @@ def orthonormal_basis(
     if sigma <= 0.0:
         raise ValueError("u_lagged が定数のため正規直交基底を定義できません")
     standardized: FloatArray = (values - float(np.mean(values))) / sigma
-    if measure.distribution == LEGENDRE:
+    if measure.basis == LEGENDRE:
         return _legendre_normalized(standardized / _UNIFORM_HALF_WIDTH_IN_SIGMA, degree)
     return _hermite_normalized(standardized, degree)
 
