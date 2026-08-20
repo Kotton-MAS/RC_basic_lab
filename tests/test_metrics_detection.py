@@ -513,6 +513,20 @@ def test_point_adjust_rejects_control_of_a_different_length() -> None:
         point_adjust_report(labels, predictions, np.zeros(3))
 
 
+def test_point_adjust_report_with_no_alarms_gives_zero_f1() -> None:
+    """``_top_alarm_mask`` の ``n_alarms <= 0`` 分岐 (F-1-028)。
+
+    ``predictions`` が全 False (警報ゼロ) のとき、対照も ``n_alarms=0`` で
+    警報ゼロになる (249行目の早期 return)。両方とも TP=0 なので pa_f1 /
+    pa_f1_random はともに 0.0 になる。
+    """
+    labels, _, control = _pa_fixture()
+    predictions = np.zeros(labels.size, dtype=np.bool_)
+    report = point_adjust_report(labels, predictions, control, k=0.0)
+    assert report.pa_f1 == 0.0
+    assert report.pa_f1_random == 0.0
+
+
 # --- 固定誤報率からの閾値 ---------------------------------------------------
 
 
@@ -558,6 +572,24 @@ def test_threshold_at_false_alarm_rate_rejects_out_of_range_rates(rate: float) -
 def test_threshold_at_false_alarm_rate_rejects_an_empty_calibration_window() -> None:
     with pytest.raises(ValueError, match="空"):
         threshold_at_false_alarm_rate(np.zeros(0), 0.05)
+
+
+def test_threshold_at_false_alarm_rate_rejects_a_two_dimensional_input() -> None:
+    """``calibration_scores`` の2次元入力検査 (F-1-028)。"""
+    with pytest.raises(ValueError, match="1次元"):
+        threshold_at_false_alarm_rate(np.zeros((10, 2)), 0.05)
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_threshold_at_false_alarm_rate_rejects_non_finite_values(value: float) -> None:
+    """docstring が明記する非有限値の検査 (F-1-028)。
+
+    docstring の Raises には非有限値で ``ValueError`` になると明記されているが
+    検証するテストが無かった。
+    """
+    calibration = np.array([0.1, 0.5, value, 0.9])
+    with pytest.raises(ValueError, match="非有限"):
+        threshold_at_false_alarm_rate(calibration, 0.05)
 
 
 # --- is_ignored マスク ------------------------------------------------------
