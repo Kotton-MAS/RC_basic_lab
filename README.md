@@ -247,6 +247,9 @@ uv run python -m rc_basics_lab.datasets --dataset all
 ZIP は member 名を検査してから必要な8ファイルだけを展開する
 (`zipfile.ZipFile.extractall` は使わない)。
 
+取得処理 (`datasets/fetch.py`) は `os.O_DIRECTORY`/`os.O_NOFOLLOW`/`dir_fd=` に
+依存するため **POSIX (macOS/Linux) 専用であり Windows では動作しない**。
+
 | データセット | ライセンス | 出典 | 本リポジトリでの扱い |
 |---|---|---|---|
 | MGAB (Mackey-Glass Anomaly Benchmark) | `CC0-1.0` | <https://github.com/MarkusThill/MGAB> / DOI <https://doi.org/10.5281/zenodo.3760086> | 取得スクリプトと SHA256 のみ。データ本体は同梱しない |
