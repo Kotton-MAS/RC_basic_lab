@@ -57,11 +57,18 @@ def _sources() -> dict[str, SeriesSource]:
     }
 
 
-def _signature_of(func: Callable[..., object]) -> list[tuple[str, str]]:
-    """``(引数名, 引数の種別)`` の並び (``self`` は除く)。"""
+def _signature_of(owner: type, method: str) -> list[tuple[str, str]]:
+    """``owner.method`` の ``(引数名, 引数の種別)`` の並び (``self`` は除く)。
+
+    クラスとメソッド名で受けるのは、関数オブジェクトを引数の型として書くと
+    ``Callable[..., object]`` になり、``disallow_any_explicit`` (CLAUDE.md の
+    「``Any`` 禁止」) に触れるため。
+    """
     return [
         (name, parameter.kind.name)
-        for name, parameter in inspect.signature(func).parameters.items()
+        for name, parameter in inspect.signature(
+            getattr(owner, method)
+        ).parameters.items()
         if name != "self"
     ]
 
@@ -79,12 +86,11 @@ def test_each_source_satisfies_the_series_source_protocol(key: str) -> None:
     source = _sources()[key]
     assert isinstance(source, SeriesSource)
 
-    expected_call = _signature_of(SeriesSource.__call__)
-    assert _signature_of(type(source).__call__) == expected_call, (
-        f"{key} の __call__ の引数が SeriesSource と違います (D-71)"
-    )
-    assert _signature_of(type(source).is_available) == _signature_of(
-        SeriesSource.is_available
+    assert _signature_of(type(source), "__call__") == _signature_of(
+        SeriesSource, "__call__"
+    ), f"{key} の __call__ の引数が SeriesSource と違います (D-71)"
+    assert _signature_of(type(source), "is_available") == _signature_of(
+        SeriesSource, "is_available"
     ), f"{key} の is_available の引数が SeriesSource と違います (D-71)"
 
     hints = get_type_hints(type(source).__call__)
