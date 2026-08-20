@@ -88,7 +88,7 @@ class SyntheticMackeyGlassConfig:
             7葉 + ``length`` + ``horizon=_SYNTHETIC_HORIZON`` の生成パラメータ。
         """
         return MackeyGlassConfig(
-            tau=self.tau,
+            tau=_MACKEY_GLASS_DEFAULTS.tau,
             beta=self.beta,
             gamma=self.gamma,
             exponent=self.exponent,
