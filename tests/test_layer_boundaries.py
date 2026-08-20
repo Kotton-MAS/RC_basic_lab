@@ -192,3 +192,150 @@ def test_plotting_may_import_experiment_at_module_level() -> None:
         "行 dataclass だけの依存になったのなら ADR 0001 §5.5 の見直し条件に "
         "該当します (decisions.yaml の D-53 を先に改訂してください)"
     )
+
+
+# --- 純関数層の境界 (D-59) ---------------------------------------------------
+
+IO_IMPORT_ROOTS = frozenset(
+    {
+        "urllib",
+        "requests",
+        "socket",
+        "http",
+        "pathlib",
+        "os",
+        "io",
+        "shutil",
+        "zipfile",
+        "tarfile",
+        "tempfile",
+        "subprocess",
+        "sqlite3",
+        "csv",
+        "json",
+    }
+)
+"""純関数層 (``tasks`` / ``metrics_detection``) が import してはいけない根。
+
+仕様 §4 T2 の受け入れ基準2 が名指しするのは ``urllib`` / ``requests`` /
+``socket`` / ``open`` / ``pathlib`` の5つだが、``os`` / ``io`` / ``zipfile`` /
+``csv`` などは**同じことを別の名前でやる**ので一緒に塞ぐ。名指しの5つだけを
+禁じると「``pathlib`` は使っていない (``os.path`` を使った)」が通ってしまう。
+"""
+
+IO_BUILTIN_CALLS = frozenset({"open", "eval", "exec", "compile", "__import__"})
+"""同じく、呼んではいけない組み込み。"""
+
+IO_NUMPY_FUNCTIONS = frozenset(
+    {
+        "load",
+        "loadtxt",
+        "genfromtxt",
+        "fromfile",
+        "save",
+        "savez",
+        "savetxt",
+        "tofile",
+        "memmap",
+    }
+)
+"""numpy 経由のファイル I/O。
+
+``import numpy as np`` は純関数層でも当然許すので、**根の名前だけを見る検査には
+この穴が残る**。``np.loadtxt`` は ``open`` も ``pathlib`` も使わずにファイルを
+読む。
+"""
+
+
+def _pure_layer_modules() -> list[Path]:
+    """純関数層のソース一覧 (``tasks/*.py`` + ``metrics_detection.py``)。"""
+    return [*_package_modules("tasks"), SRC / "metrics_detection.py"]
+
+
+def _io_roots(path: Path) -> set[str]:
+    """``path`` が (関数の中も含めて) import している I/O 系の根。"""
+    roots = {
+        root.split(".")[0]
+        for root in _imported_roots(path, include_function_bodies=True)
+    }
+    return roots & IO_IMPORT_ROOTS
+
+
+@pytest.mark.parametrize("path", _pure_layer_modules(), ids=lambda p: p.name)
+def test_tasks_and_metrics_never_perform_io(path: Path) -> None:
+    """課題層と検知指標層が I/O を1行も持たない (D-59)。
+
+    **module-level だけでなく関数本体の中も見る** —— 「関数の中で import すれば
+    層の境界を越えていない」という抜け道を塞ぐためで、D-53 (``experiment ->
+    plotting`` を関数内へ落とす) とはここが逆向きになる。あちらは循環 import
+    の話で、こちらは**層が何をする層なのか**の話である。
+
+    課題層に HTTP とキャッシュが入ると純関数層がステートフルな I/O 層に化け、
+    memristor-rc-lab への移植性 (D-12 が守る性質) が失われる。取得・展開・
+    ライセンス確認は ``datasets/`` だけが持つ。
+    """
+    offenders = _io_roots(path)
+    assert not offenders, (
+        f"{path.name} が I/O 系モジュールを import しています "
+        f"(取得・読み書きは datasets/ に置いてください。D-59): {sorted(offenders)}"
+    )
+
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    called_names = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    assert not called_names & IO_BUILTIN_CALLS, (
+        f"{path.name} が I/O 系の組み込みを呼んでいます: "
+        f"{sorted(called_names & IO_BUILTIN_CALLS)}"
+    )
+
+    attribute_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert not attribute_calls & IO_NUMPY_FUNCTIONS, (
+        f"{path.name} が numpy 経由でファイルを読み書きしています: "
+        f"{sorted(attribute_calls & IO_NUMPY_FUNCTIONS)}"
+    )
+
+
+def test_the_io_guard_would_catch_an_import_inside_a_function(tmp_path: Path) -> None:
+    """上の検査が**関数本体の中の import** を実際に捕まえる (変異注入)。
+
+    ``_imported_roots`` を module-level 版のままにすると
+    ``test_tasks_and_metrics_never_perform_io`` は緑のまま素通りする。
+    「関数の中に書けば通る」guard は guard ではないので、そのことをここで
+    実測して固定する。
+    """
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "def load(path):\n    import urllib.request\n    return urllib.request\n",
+        encoding="utf-8",
+    )
+    module_level = {
+        root.split(".")[0]
+        for root in _imported_roots(probe, include_function_bodies=False)
+    }
+    assert not module_level & IO_IMPORT_ROOTS
+    assert _io_roots(probe) == {"urllib"}
+
+
+def test_datasets_is_the_only_package_that_may_perform_io() -> None:
+    """I/O の側は ``datasets`` に**在る**ことを固定する (D-59 の裏返し)。
+
+    禁止側だけを測ると、``datasets`` が空になっても緑のままになる
+    (「どこにも I/O が無い」は要件を満たしていない)。取得層が実際に
+    ``urllib`` を持っていることをここで要求しておく。
+    """
+    roots: set[str] = set()
+    for path in _package_modules("datasets"):
+        roots |= {
+            root.split(".")[0]
+            for root in _imported_roots(path, include_function_bodies=True)
+        }
+    assert "urllib" in roots, (
+        "datasets/ が urllib を持っていません。取得層はここにしか置けません (D-59)"
+    )
