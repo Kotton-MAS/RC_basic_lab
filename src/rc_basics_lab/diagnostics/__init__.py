@@ -33,68 +33,39 @@ memristor-rc-lab への移植性の実体であり、
 何も差し替わらないまま変異試験が偽の緑になる (3a のレビューで実際に踏んだ)。
 したがって ``ipc`` / ``memory_capacity`` はここでは**モジュール**であり、
 関数の入手経路はフルパス (``from rc_basics_lab.diagnostics.ipc import ipc``)
-1本に固定する。設定と既定値 (``IpcConfig`` / ``DEFAULT_IPC`` など) は
-モジュール名と衝突しないのでこれまでどおり再エクスポートする。
-04 で足す ``lyapunov`` も、公開関数名を ``lyapunov`` にしてはいけない
+1本に固定する。
+
+公開面の縮小 (05): root からこの ``__init__`` 経由でシンボル
+(``IpcConfig`` / ``DEFAULT_ESP`` / ``conditional_lyapunov`` など) が引かれて
+いる箇所は実測で0件だったため、**シンボルの再エクスポートは一切行わず
+モジュール名だけを再エクスポートする**。設定・既定値・関数の入手経路は
+フルパス (``from rc_basics_lab.diagnostics.esp import EspConfig`` 等) に
+統一する。これにより命名規約 (D-52) が要求する「モジュール名と公開シンボル
+の非衝突」は構造的に成立する (シンボルを一切再エクスポートしないため衝突し
+ようがない)。04 で足す ``lyapunov`` のような新規モジュールも、公開関数名を
+モジュール名と同じにしてはいけない
 (``tests/test_public_api_reexport.py::test_package_attributes_are_modules_not_shadowed``
 が自動で赤くする)。
 """
 
-from rc_basics_lab.diagnostics.base import (
-    Diagnostic,
-    DiagnosticContext,
-    DiagnosticResult,
-    StatePropagator,
-    validate_diagnostic_input,
-)
-from rc_basics_lab.diagnostics.dummy import state_mean_norm
-from rc_basics_lab.diagnostics.esp import (
-    DEFAULT_ESP,
-    DEFAULT_LYAPUNOV,
-    EspConfig,
-    LyapunovConfig,
-    conditional_lyapunov,
-    esp_convergence,
-)
-from rc_basics_lab.diagnostics.ipc import DEFAULT_IPC, IpcConfig
-from rc_basics_lab.diagnostics.lyapunov import (
-    DEFAULT_MAX_LYAPUNOV,
-    MaxLyapunovConfig,
-    max_lyapunov,
-)
-from rc_basics_lab.diagnostics.memory_capacity import (
-    DEFAULT_MEMORY_CAPACITY,
-    MemoryCapacityConfig,
-)
-from rc_basics_lab.diagnostics.state_space import state_pca
-from rc_basics_lab.diagnostics.timescale import (
-    DEFAULT_TIMESCALE,
-    TimescaleConfig,
-    autocorrelation_time,
+from rc_basics_lab.diagnostics import (
+    base,
+    dummy,
+    esp,
+    ipc,
+    lyapunov,
+    memory_capacity,
+    state_space,
+    timescale,
 )
 
 __all__ = [
-    "DEFAULT_ESP",
-    "DEFAULT_IPC",
-    "DEFAULT_LYAPUNOV",
-    "DEFAULT_MAX_LYAPUNOV",
-    "DEFAULT_MEMORY_CAPACITY",
-    "DEFAULT_TIMESCALE",
-    "Diagnostic",
-    "DiagnosticContext",
-    "DiagnosticResult",
-    "EspConfig",
-    "IpcConfig",
-    "LyapunovConfig",
-    "MaxLyapunovConfig",
-    "MemoryCapacityConfig",
-    "StatePropagator",
-    "TimescaleConfig",
-    "autocorrelation_time",
-    "conditional_lyapunov",
-    "esp_convergence",
-    "max_lyapunov",
-    "state_mean_norm",
-    "state_pca",
-    "validate_diagnostic_input",
+    "base",
+    "dummy",
+    "esp",
+    "ipc",
+    "lyapunov",
+    "memory_capacity",
+    "state_space",
+    "timescale",
 ]
