@@ -1019,7 +1019,7 @@ def test_chaos_artifact_sizes_are_within_budget() -> None:
 
 # --- §12 (04b-2 T5): 自由走行の設計と実測 --------------------------------------
 
-_SENSITIVITY_HEADER = re.compile(
+_VALID_TIME_HEADER = re.compile(
     r"^\|\s*しきい値.*NRMSE 比.*\|\s*中央値 \[λ_max\^-1\]\s*\|"
 )
 _METHOD_TIME_HEADER = re.compile(
@@ -1042,8 +1042,8 @@ def _sensitivity_entries() -> list[dict[str, object]]:
 
 
 def _bold(cell: str) -> str:
-    """``**0.4（採用）**`` のような装飾を落として中身だけにする。"""
-    return cell.strip("*").strip()
+    """太字と注記を落として中身だけにする (``**0.4 + 全角括弧の注記**`` -> ``0.4``)。"""
+    return cell.strip("*").split(_LPAREN)[0].strip()
 
 
 def test_chaos_valid_time_sensitivity_table_matches_the_meta_json() -> None:
@@ -1059,8 +1059,8 @@ def test_chaos_valid_time_sensitivity_table_matches_the_meta_json() -> None:
     ]
     assert entries, "meta.json に Lorenz / ESN の感度が入っていません"
     by_threshold = {float(str(entry["threshold"])): entry for entry in entries}
-    _, table = _table_after(_SENSITIVITY_HEADER)
-    documented = {float(_bold(row[0]).split("（")[0]): row for row in table}
+    _, table = _table_after(_VALID_TIME_HEADER)
+    documented = {float(_bold(row[0])): row for row in table}
     assert set(documented) == set(by_threshold), (documented, by_threshold)
     for threshold, row in documented.items():
         entry = by_threshold[threshold]
@@ -1163,12 +1163,12 @@ def test_chaos_stats_steps_table_records_the_adopted_and_rejected_lengths() -> N
     from rc_basics_lab.config import Chaos04Config
 
     _, table = _table_after(_STATS_STEPS_HEADER)
-    lengths = {int(_bold(row[0]).split("（")[0].replace(",", "")) for row in table}
+    lengths = {int(_bold(row[0]).replace(",", "")) for row in table}
     adopted = [row for row in table if "採用" in row[0]]
     assert len(adopted) == 1, table
     assert len(lengths) >= 3, lengths
     assert (
-        int(_bold(adopted[0][0]).split("（")[0].replace(",", ""))
+        int(_bold(adopted[0][0]).replace(",", ""))
         == Chaos04Config().freerun.stats_steps
     )
 
