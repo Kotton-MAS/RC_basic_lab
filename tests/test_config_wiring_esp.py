@@ -246,11 +246,6 @@ def base_config() -> Esp02Config:
     )
 
 
-def _seeds_case(field: str, value: int, stream: SeedStream) -> WiringCase:
-    """基底シード1本ぶんのケース。``scope`` に変化してよいストリームを書く。"""
-    return case(field, value, channel=CHANNEL_SEEDS, scope=stream.value)
-
-
 def _diagnostic_case(field: str, value: object) -> WiringCase:
     return case(
         field,
@@ -268,9 +263,9 @@ def _washout_case(field: str, value: object) -> WiringCase:
 ESP_WIRING_CASES: tuple[WiringCase, ...] = (
     # name は結果行に出ない純粋なメタ情報。meta.json に載ることを確かめる。
     case("name", "02-renamed", channel=CHANNEL_META),
-    _seeds_case("seeds.reservoir", 100, SeedStream.RESERVOIR),
-    _seeds_case("seeds.drive", 101, SeedStream.TASK),
-    _seeds_case("seeds.probe", 102, SeedStream.PROBE),
+    seeds_case("seeds.reservoir", 100, SeedStream.RESERVOIR),
+    seeds_case("seeds.drive", 101, SeedStream.TASK),
+    seeds_case("seeds.probe", 102, SeedStream.PROBE),
     # --- 駆動入力と2軌道の生成条件 (2-A / 2-B / 2-C 共通) ---
     # 一様分布以外は未対応。黙って一様として扱わないこと自体が配線である。
     case("drive.distribution", "gaussian", channel=CHANNEL_ERROR),
@@ -329,30 +324,6 @@ def _diagnostic_field_names(section: str) -> set[str]:
     return {item.name for item in fields(config_type)}
 
 
-def _changed_leaves(base: Esp02Config, changed: Esp02Config) -> set[str]:
-    """2つの設定で値が異なる葉フィールドのパス集合。"""
-    return {
-        leaf
-        for leaf in leaf_paths(Esp02Config)
-        if _leaf_value(base, leaf) != _leaf_value(changed, leaf)
-    }
-
-
-def _leaf_value(config: object, leaf: str) -> object:
-    node: object = config
-    for part in leaf.split("."):
-        node = getattr(node, part)
-    return node
-
-
-def _round_trip(config: Esp02Config, tmp_path: Path, name: str) -> Esp02Config:
-    """設定を YAML へ書き出して読み直す (T2 が実装した経路そのもの)。"""
-    path = tmp_path / f"{name}.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
-    path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
-    return load_config_as(path, Esp02Config)
-
-
 VOLATILE_COLUMNS = frozenset({"wall_time_s"})
 """指紋から外す列 (実測時間は実行ごとに変わる)。"""
 
@@ -363,19 +334,12 @@ def fingerprint(rows: Sequence[EspRow], experiment: str | None = None) -> str:
     ``experiment`` を渡すとその実験の行だけを見る。セクション固有の葉が
     他の実験の行を動かしていないことの確認に使う。
     """
-    selected = [
-        row for row in rows if experiment is None or row.experiment == experiment
-    ]
-    return json.dumps(
-        [
-            {
-                field.name: getattr(row, field.name)
-                for field in fields(EspRow)
-                if field.name not in VOLATILE_COLUMNS
-            }
-            for row in selected
-        ],
-        sort_keys=True,
+    return wiring_fingerprint(
+        rows,
+        EspRow,
+        volatile_columns=VOLATILE_COLUMNS,
+        field="experiment" if experiment is not None else None,
+        value=experiment,
     )
 
 
