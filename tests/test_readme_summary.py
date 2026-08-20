@@ -358,3 +358,91 @@ def test_readme_experiment_03_capacity_numbers_match_the_csv() -> None:
     assert int(sticky_match["lags"]) == top
     assert int(sticky_match["count"]) == len(selected)
     assert int(sticky_match["hits"]) == selected.count(top)
+
+
+# --- 実験04 (04b-2 T5) --------------------------------------------------------
+
+CHAOS_RESULTS = ROOT / "results" / "04_chaotic_freerun"
+CHAOS_META = CHAOS_RESULTS / "meta.json"
+FREERUN_CSV = CHAOS_RESULTS / "freerun.csv"
+
+_VALID_TIME_RE = re.compile(
+    r"ESN ([\d.]+) / 遅延線 ([\d.]+) / 線形 ([\d.]+) \[1/lambda_max\]"
+)
+_REGIME_TREND_RE = re.compile(r"80 条件中 (\d+) -> (\d+)")
+
+
+def _chaos_meta_json() -> dict[str, object]:
+    loaded: dict[str, object] = json.loads(CHAOS_META.read_text(encoding="utf-8"))
+    return loaded
+
+
+def _experiment_04_section() -> str:
+    """README の 04 節だけを切り出す。"""
+    text = README.read_text(encoding="utf-8")
+    start = text.index("## 実験04")
+    end = text.index("\n## ", start)
+    return text[start:end]
+
+
+def test_readme_mentions_the_experiment_04_artifacts_as_the_source() -> None:
+    """04 の数値の出どころ (生成物と再生成コマンド) が README にある。"""
+    text = _experiment_04_section()
+    assert "make figures-04" in text
+    assert "capacity_note" in text
+    assert "docs/design.md" in text
+
+
+def test_readme_experiment_04_wall_time_matches_meta_json() -> None:
+    """README に書いた `make figures-04` の実測時間が ``meta.json`` と一致する。"""
+    meta = _chaos_meta_json()
+    match = re.search(r"wall_time_s = ([\d.]+) 秒", _experiment_04_section())
+    assert match, "README に 04 の wall_time_s の記述が見つかりません"
+    wall_time = meta["wall_time_s"]
+    assert isinstance(wall_time, float)
+    assert float(match.group(1)) == round(wall_time, 1)
+
+
+def test_readme_experiment_04_valid_time_matches_the_freerun_csv() -> None:
+    """README の有効予測時間 (3手法の中央値) が ``freerun.csv`` と一致する。
+
+    「自走では対照が成立しない」という 04 の主張そのものの数値なので、手書きの
+    まま古くなると記事の根拠が崩れる。
+    """
+    with FREERUN_CSV.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    match = _VALID_TIME_RE.search(_experiment_04_section())
+    assert match, "README に 04 の有効予測時間の記述が見つかりません"
+    for cell, method in zip(
+        match.groups(), ("esn", "delay_line", "linear"), strict=True
+    ):
+        values = sorted(
+            float(row["valid_time_lyapunov"])
+            for row in rows
+            if row["task"] == "lorenz" and row["method"] == method
+        )
+        assert values, method
+        middle = len(values) // 2
+        median = (
+            values[middle]
+            if len(values) % 2
+            else 0.5 * (values[middle - 1] + values[middle])
+        )
+        decimals = len(cell.partition(".")[2])
+        assert float(cell) == round(median, decimals), method
+
+
+def test_readme_experiment_04_noise_trend_matches_meta_json() -> None:
+    """README の「発散が減る」の数値が ``meta.json`` の3態の内訳と一致する。"""
+    counts = _chaos_meta_json()["regime_counts_by_noise"]
+    assert isinstance(counts, dict)
+    keys = sorted(counts, key=float)
+    match = _REGIME_TREND_RE.search(_experiment_04_section())
+    assert match, "README に 04 の3態の傾向が見つかりません"
+    for cell, key in zip(match.groups(), (keys[0], keys[-1]), strict=True):
+        entry = counts[key]
+        assert isinstance(entry, dict)
+        assert int(cell) == int(entry["diverged"]), key
+    total = counts[keys[0]]
+    assert isinstance(total, dict)
+    assert sum(int(value) for value in total.values()) == 80
