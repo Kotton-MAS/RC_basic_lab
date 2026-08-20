@@ -244,10 +244,18 @@ class TeacherForcedReadout:
 
     Attributes:
         plan: 01 の ``plan_replicate`` が作った課題・状態・設計行列・分割。
-        design: ESN 手法の設計行列 (``[1, u[t], x[t]]``)。
+        design: 選ばれた候補の設計行列。
         alpha: 検証分割で選ばれた正則化係数 (D-04 の格子から)。
         coefficients: リッジ解 ``(F, D_out)``。**このオブジェクトを自走へ渡す**。
         val_nrmse: 選択時の検証 NRMSE。
+        method: 手法名 (``LINEAR`` / ``DELAY_LINE`` / ``ESN_METHOD``)。
+            対照 (線形・遅延線) も自走させるのは、受け入れ条件3 の後半
+            「自走では対照が成立しない」を**数値で**示すためである。
+            「原理的に不利」を主張だけで済ませると、読者は「回してみたら
+            動いたかもしれない」を否定できない。
+        spec: 学習に使った特徴仕様 (遅延線は選ばれた ``n_lags`` を持つ)。
+            **閉ループで使う仕様とは表現が違うことがある** ——
+            ``closed_loop_setup`` を参照。
     """
 
     plan: ReplicatePlan
@@ -255,6 +263,8 @@ class TeacherForcedReadout:
     alpha: float
     coefficients: FloatArray
     val_nrmse: float
+    method: str = ESN_METHOD
+    spec: FeatureSpec = FREE_RUN_SPEC
 
 
 def _rows(array: FloatArray, selection: range) -> FloatArray:
