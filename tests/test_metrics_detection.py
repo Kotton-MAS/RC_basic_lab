@@ -426,7 +426,7 @@ def test_point_scores_rejects_an_empty_series() -> None:
 
 
 def test_point_adjust_report_rejects_an_empty_series() -> None:
-    """``point_adjust_report`` も同じ ``_as_mask_pair`` を経由する (reviewer-test 指摘)。"""
+    """``point_adjust_report`` も同じ ``_as_mask_pair`` を経由する。"""
     with pytest.raises(ValueError, match="空の系列"):
         point_adjust_report(
             np.zeros(0, dtype=np.bool_), np.zeros(0, dtype=np.bool_), np.zeros(0)

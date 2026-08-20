@@ -215,7 +215,7 @@ def _replace_after_reverifying(
 ) -> None:
     """``os.replace`` の直前にディスク上の実バイト列を再照合してから確定させる。
 
-    (reviewer-security 指摘) ここまでに計算した digest は「自分が書いたはずのバイト列」から
+    (reviewer-security 指摘) ここまでの digest は「自分が書いたはずのバイト列」から
     計算した値であり、``partial`` が確定させる実際のバイト列と同一である保証
     にはならない。名前を予測不能にしても、書き込み完了から ``os.replace`` まで
     の間に同じパスが差し替えられる余地をゼロにはできないため、確定させる
