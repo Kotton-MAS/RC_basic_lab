@@ -64,13 +64,19 @@ from wiring import (
     CHANNEL_ERROR,
     CHANNEL_META,
     CHANNEL_ROWS,
+    CHANNEL_SEEDS,
     WiringCase,
     apply_case,
     assert_yaml_has_all_leaves,
     case,
+    changed_leaves,
+    current_experiment_modules,
     leaf_paths,
     plain,
+    round_trip,
+    seeds_case,
 )
+from wiring import fingerprint as wiring_fingerprint
 
 from rc_basics_lab.config import (
     ConfigError,
@@ -108,9 +114,6 @@ from rc_basics_lab.seeds import SeedStream, make_rng_for
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
-
-CHANNEL_SEEDS = "seeds"
-"""基底シードを変えると、そのストリームの乱数列だけが変わる。"""
 
 CHANNEL_DIAGNOSTIC = "diagnostic"
 """診断の判定基準。効きは tests/test_diagnostics_esp.py が実測する (D-15)。"""
