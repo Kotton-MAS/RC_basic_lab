@@ -95,40 +95,9 @@ def test_every_package_resolves_all_of_its_public_names_when_imported_first(
     )
 
 
-def _imported_roots(path: Path, *, include_function_bodies: bool) -> set[str]:
-    """``path`` の import 文が指すモジュール名を集める。
-
-    ``include_function_bodies=False`` なら**関数の外**だけを見る (D-53 の検査。
-    ``if TYPE_CHECKING:`` の中も module-level として数える —— 実行時には
-    走らないが、そこに置くと循環の解消が型検査の設定に依存する形になり、
-    「関数本体の中で import する」という規律が読めなくなる)。
-
-    ``include_function_bodies=True`` なら関数本体の中も数える。D-59 の
-    「``tasks`` と ``metrics_detection`` は I/O を持たない」は**関数の中に
-    書いても破れてしまう**ので、そちらの検査はこの版を使う。
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    roots: set[str] = set()
-
-    def visit(node: ast.AST, inside_function: bool) -> None:
-        for child in ast.iter_child_nodes(node):
-            is_function = isinstance(
-                child, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda
-            )
-            if include_function_bodies or not inside_function:
-                if isinstance(child, ast.Import):
-                    roots.update(alias.name for alias in child.names)
-                elif isinstance(child, ast.ImportFrom) and child.module is not None:
-                    roots.add(child.module)
-            visit(child, inside_function or is_function)
-
-    visit(tree, False)
-    return roots
-
-
 def _module_level_imported_roots(path: Path) -> set[str]:
     """``path`` が**関数の外**で import しているトップレベル名 (D-53)。"""
-    return _imported_roots(path, include_function_bodies=False)
+    return imported_roots(path, include_function_bodies=False)
 
 
 def _package_modules(package_name: str) -> list[Path]:
