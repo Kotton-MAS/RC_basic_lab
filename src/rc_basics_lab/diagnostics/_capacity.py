@@ -273,18 +273,19 @@ class CapacityProblem:
         gram: ブロック分解した ``Phi.T @ Phi`` ``(F, F)`` (``F = 1 + N``)。
             構築時点の ``X`` から作ったスナップショット (コピー)。
         bias_column: 正則化しない列の index (D-03)。``gram`` の作り方から常に 0。
-        t0: ``X`` の何行目から使ったか (D-24 の単一基準点)。
+        rows: 行合わせ (D-24 の単一基準点と ``T_eff``)。``t0`` を直接持たない
+            のは、行合わせの担い手を ``RowAlignment`` 1つにするため。
     """
 
     x: FloatArray
     gram: FloatArray
     bias_column: int
-    t0: int
+    rows: RowAlignment
 
     @property
     def n_samples(self) -> int:
         """回帰に使う行数 ``T_eff``。全目標がこの行集合を共有する (D-24)。"""
-        return int(self.x.shape[0])
+        return self.rows.n_samples
 
     @property
     def n_features(self) -> int:
@@ -296,19 +297,8 @@ class CapacityProblem:
         """状態の次元 ``N``。容量の理論上限 (Dambre 2012) がこの値。"""
         return int(self.x.shape[1])
 
-    def effective_chunk_size(self, configured: int) -> int:
-        """``configured`` を、この問題の ``n_samples`` に基づき下げた実効値。
-
-        ``bounded_chunk_size(configured, self.n_samples)`` に委譲するだけだが、
-        ``n_samples`` を持っているのは ``CapacityProblem`` 自身なので、ここに
-        置くことで呼び出し側 (``ipc.py`` / ``memory_capacity.py``) が
-        ``n_samples`` を取り出して ``bounded_chunk_size`` を個別に呼ぶ形の
-        複製を防ぐ (F-03-2-001: F-03-1-001 で潰した複製が別の軸で復活していた)。
-        """
-        return bounded_chunk_size(configured, self.n_samples)
-
     @classmethod
-    def from_states(cls, X: FloatArray, *, t0: int) -> CapacityProblem:
+    def from_states(cls, X: FloatArray, *, rows: RowAlignment) -> CapacityProblem:
         """状態系列 ``X`` の ``t0`` 行目以降から ``Phi = [1, X]`` の Gram を作る。
 
         ``Phi`` そのものは作らない。バイアス列の寄与 (行和・列和) は ``X`` の
@@ -318,19 +308,30 @@ class CapacityProblem:
 
         Args:
             X: 状態系列 ``(T, N)``。
-            t0: 使い始める行 (D-24 の単一基準点)。全目標で同じ値を使うこと。
+            rows: 行合わせ (D-24 の単一基準点)。全目標で同じ値を使うこと。
 
         Raises:
-            ValueError: ``X`` が2次元でない / ``t0`` が範囲外 /
+            ValueError: ``X`` が2次元でない / ``rows.t0`` が範囲外 /
+                ``rows.n_samples`` が切り出した行数と食い違う /
                 行数が特徴数以下 / 非有限値を含む場合。
         """
         states = np.asarray(X, dtype=np.float64)
         if states.ndim != 2:
             raise ValueError(f"X は (T, N) の2次元配列が必要です: {states.shape}")
         n_steps, n_units = states.shape
-        if not 0 <= t0 < n_steps:
-            raise ValueError(f"t0 が範囲外です: t0={t0}, T={n_steps}")
-        window: FloatArray = states[t0:]
+        if not 0 <= rows.t0 < n_steps:
+            raise ValueError(f"t0 が範囲外です: t0={rows.t0}, T={n_steps}")
+        window: FloatArray = states[rows.t0 :]
+        # 行合わせは RowAlignment が正本なので、状態から実際に切り出した行数と
+        # 食い違ったまま進むと「どちらが本物か」が実行時に決まってしまう
+        # (目標は rows.n_samples 行、設計行列は window 行で組まれる)。構築時に
+        # 一致を要求して、行合わせの単一の担い手 (D-24) を構造で保つ。
+        if window.shape[0] != rows.n_samples:
+            raise ValueError(
+                "RowAlignment の行数が状態から切り出した行数と一致しません "
+                f"(D-24): rows.n_samples={rows.n_samples},"
+                f" X[t0:] の行数={window.shape[0]} (t0={rows.t0}, T={n_steps})"
+            )
         if not np.all(np.isfinite(window)):
             raise ValueError("X に有限でない値があります")
         # F-03-3-006: window は X (または dtype 変換されていなければ X 自身) の
@@ -340,7 +341,7 @@ class CapacityProblem:
         # ビュー自身を読み取り専用にする (元の X の writeable フラグは変えない
         # ので、呼び出し側が X を書き換える経路は 3b の受け入れ条件で塞ぐ)。
         window.flags.writeable = False
-        n_samples = window.shape[0]
+        n_samples = rows.n_samples
         n_features = n_units + 1
         if n_samples <= n_features:
             raise ValueError(
@@ -357,44 +358,7 @@ class CapacityProblem:
         gram[0, 1:] = column_sums
         gram[1:, 0] = column_sums
         gram[1:, 1:] = gram_xx
-        return cls(x=window, gram=gram, bias_column=0, t0=t0)
-
-    def lagged(self, series: FloatArray, delay: int) -> FloatArray:
-        """入力系列を D-24 の単一基準点に合わせて遅延 ``delay`` だけずらす。
-
-        ``series[t0 - delay : t0 - delay + n_samples]`` を返す。MC と IPC は
-        どちらも「遅延 k の目標は状態と同じ行集合 (``t0`` 始まり) に対応する」
-        という同じ規律 (D-24) の実体をこの1本の窓計算に依存する。かつては
-        MC (2箇所) と IPC (1箇所) がこの式を共有カーネルの外でそれぞれ書いて
-        おり、MC 側だけ複製が値レベルで検査されていなかった (F-03-1-001:
-        窓を1ステップずらしても MC のテスト22本が全て緑のまま通った)。ここに
-        1本だけ置くことで、以後どの容量診断が増えても複製が生まれない。
-
-        Args:
-            series: 1次元の系列 (入力の正規直交多項式など)。
-            delay: 遅延 (0 以上)。
-
-        Returns:
-            ``(n_samples,)`` のビュー。
-
-        Raises:
-            ValueError: ``series`` が1次元でない / ``delay`` が負 /
-                窓が ``series`` の範囲外になる場合。
-        """
-        if delay < 0:
-            raise ValueError(f"delay は 0 以上が必要です: {delay}")
-        values = np.asarray(series, dtype=np.float64)
-        if values.ndim != 1:
-            raise ValueError(f"series は1次元配列が必要です: {values.shape}")
-        start = self.t0 - delay
-        stop = start + self.n_samples
-        if start < 0 or stop > values.shape[0]:
-            raise ValueError(
-                "delay が範囲外です (D-24): "
-                f"t0={self.t0}, delay={delay}, series長={values.shape[0]},"
-                f" n_samples={self.n_samples}"
-            )
-        return values[start:stop]
+        return cls(x=window, gram=gram, bias_column=0, rows=rows)
 
 
 def capacity_of_targets(
