@@ -56,6 +56,7 @@ from wiring import (
     leaf_paths,
     plain,
 )
+from wiring import fingerprint as wiring_fingerprint
 
 from rc_basics_lab.config import (
     DelayParityConfig,
