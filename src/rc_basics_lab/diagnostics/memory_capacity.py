@@ -9,9 +9,10 @@ Jaeger 2002 の短期記憶容量。遅延 ``k`` の入力 ``u[t-k]`` を状態 
 - **行集合は全遅延で同一** (D-24)。``t0 = max(ctx.washout, cfg.max_delay)`` を
   単一の基準点にする。遅延ごとに使える行数を変えると、深い遅延ほど標本数が
   減って容量が系統的に下がる —— これは測りたい現象 (記憶の減衰) と**まったく
-  同じ向き**に出るため、プロファイルの図を見ても気づけない。窓の切り出しは
-  ``CapacityProblem.lagged`` (共有カーネル) に1本だけ書き、ここで手で
-  ``t0 - delay`` を組み立てない (F-03-1-001)。
+  同じ向き**に出るため、プロファイルの図を見ても気づけない。基準点の算出も
+  窓の切り出しも ``RowAlignment`` (共有カーネル) に1本だけ書き、ここで手で
+  ``max(washout, max_delay)`` や ``t0 - delay`` を組み立てない
+  (F-03-1-001 と、その取りこぼしだった基準点の複製)。
 - **正則化は固定の微小 alpha** (D-25)。容量は「線形読み出しで到達可能な最大の
   説明率」という定義そのものなので、検証分割による alpha 選択 (D-04) は行わない。
 - **有限標本のかさ上げをサロゲートで差し引く** (D-27)。時間シャッフルした目標を
@@ -30,8 +31,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from rc_basics_lab.diagnostics._capacity import (
-    UNIFORM,
+    UNIFORM_LEGENDRE,
     CapacityProblem,
+    RowAlignment,
     capacity_of_chunks,
     input_series,
     orthonormal_basis,
@@ -119,7 +121,7 @@ def _validate_config(cfg: MemoryCapacityConfig) -> None:
 
 
 def _iter_delay_chunks(
-    problem: CapacityProblem,
+    rows: RowAlignment,
     psi: FloatArray,
     delays: Sequence[int],
     *,
@@ -128,18 +130,20 @@ def _iter_delay_chunks(
     """遅延目標を ``chunk_size`` 列ずつ作って渡す (D-26)。
 
     ``psi`` は入力の1次正規直交多項式を**系列全体で1回だけ**評価したもの。
-    遅延 ``k`` の目標は ``problem.lagged(psi, k)`` という同じ長さのビューであり、
+    遅延 ``k`` の目標は ``rows.lagged(psi, k)`` という同じ長さのビューであり、
     どの遅延も ``t0`` から始まる同一の行集合に対応する (D-24)。窓の切り出しを
-    共有カーネルの ``CapacityProblem.lagged`` に委譲しているのは F-03-1-001
+    共有カーネルの ``RowAlignment.lagged`` に委譲しているのは F-03-1-001
     のため —— かつてはここで ``psi[t0 - delay : t0 - delay + n_samples]`` を
     直接書いており、IPC 側の複製と違って値レベルの guard が無かった。
+    目標の生成に必要なのは行合わせだけなので、状態行列や Gram を持つ
+    ``CapacityProblem`` ではなく ``RowAlignment`` を受け取る。
     """
-    n_samples = problem.n_samples
+    n_samples = rows.n_samples
     for start in range(0, len(delays), chunk_size):
         block = delays[start : start + chunk_size]
         chunk: FloatArray = np.empty((n_samples, len(block)), dtype=np.float64)
         for column, delay in enumerate(block):
-            chunk[:, column] = problem.lagged(psi, delay)
+            chunk[:, column] = rows.lagged(psi, delay)
         yield chunk
 
 
@@ -192,33 +196,31 @@ def memory_capacity(
     series = input_series(u, diagnostic="memory_capacity")
 
     n_steps = int(np.asarray(X).shape[0])
-    # D-24: 全遅延で同一の行集合。基準点は washout と最大遅延の大きい方。
-    t0 = max(context.washout, cfg.max_delay)
-    if t0 >= n_steps:
-        raise ValueError(
-            "系列が短すぎます: "
-            f"t0=max(washout={context.washout}, max_delay={cfg.max_delay})={t0}"
-            f" >= T={n_steps}"
-        )
-    problem = CapacityProblem.from_states(X, t0=t0)
+    # D-24: 全遅延で同一の行集合。基準点の算出と系列長の検査は RowAlignment
+    # 1本に集約してある (IPC 側と式を複製しない)。
+    rows = RowAlignment.from_series(
+        n_steps=n_steps, washout=context.washout, max_delay=cfg.max_delay
+    )
+    problem = CapacityProblem.from_states(X, rows=rows)
     n_samples = problem.n_samples
     # F-03-1-012/013 の BLOCKER 完了条件 (T=1e6 で peak RSS < 4GB) は
     # 既定の chunk_size=256 のままでは満たせない (1チャンクが T_eff * 256 *
     # 8byte に達し、生成器のチャンク境界での一時的な2重生存と合わさって
     # 4GB を超える)。結果を変えない性能パラメータのまま (D-26)、実際に使う
     # チャンク列数だけを T_eff に応じて下げる。F-03-2-001: 呼び出し側で
-    # ``_capacity.bounded_chunk_size`` を直接呼ぶ代わりに ``CapacityProblem``
-    # 自身に委譲し、IPC 側と同じ規律の複製を防ぐ。
-    chunk_size = problem.effective_chunk_size(cfg.chunk_size)
+    # ``_capacity.bounded_chunk_size`` を直接呼ぶ代わりに ``RowAlignment``
+    # へ委譲し、IPC 側と同じ規律の複製を防ぐ。これは**性能軸**であり、
+    # 確保軸 (``block_width``) とは導出元を分ける (D-33)。
+    chunk_size = rows.solve_width(cfg.chunk_size)
 
     # 正規直交化は系列全体で1回だけ行う (遅延ごとに標準化し直すと、遅延ごとに
     # 別の測度で直交化することになり保存則が破れる)。次数1は入力分布に
-    # よらないので distribution は既定の uniform で足りる。
-    psi = orthonormal_basis(series, 1, UNIFORM)
+    # よらない (D-28) ので UNIFORM_LEGENDRE 固定で足りる。
+    psi = orthonormal_basis(series, 1, UNIFORM_LEGENDRE)
     delays = tuple(range(1, cfg.max_delay + 1))
     profile_raw = capacity_of_chunks(
         problem,
-        _iter_delay_chunks(problem, psi, delays, chunk_size=chunk_size),
+        _iter_delay_chunks(rows, psi, delays, chunk_size=chunk_size),
         cfg.alpha,
     )
 
@@ -227,7 +229,7 @@ def memory_capacity(
             raise ValueError(
                 "threshold_mode='surrogate' には ctx.seed が必要です (D-27)"
             )
-        base: FloatArray = problem.lagged(psi, _SURROGATE_BASE_DELAY).reshape(
+        base: FloatArray = rows.lagged(psi, _SURROGATE_BASE_DELAY).reshape(
             n_samples, 1
         )
         # F-03-3-002: surrogate_threshold は base_blocks を Iterable of block
@@ -262,7 +264,7 @@ def memory_capacity(
         arrays={"mc_profile": profile},
         params={
             "washout": str(context.washout),
-            "t0": str(t0),
+            "t0": str(rows.t0),
             "n_samples": str(n_samples),
             "n_units": str(problem.n_units),
             "max_delay": str(cfg.max_delay),
