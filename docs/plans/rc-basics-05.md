@@ -268,7 +268,8 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
     12. `AnomalyPreprocessor` は係数のほかに `normalize` と `n_steps` を**来歴として**持つ。
         5-C の格子点と 5-A の条件が同じ前処理を通っていることを、実験層が値で照合できるようにするため
   - 実測 (2026-08-20): 新規テスト **80 件** (`test_tasks_anomaly.py` 29 / `test_datasets_anomaly.py` 36 /
-    `test_layer_boundaries.py` +15)、`uv run pytest -q` = **1086 passed / 38.9 秒**
+    `test_layer_boundaries.py` +11 / `test_public_api_reexport.py` +3 /
+    `test_config_package_layout.py` +1)、`uv run pytest -q` = **1086 passed / 39.0 秒**
     (T1 完了時点のベースライン 1006 から 80 増、既存の減少なし)。
     **`data/05_anomaly` を退避した状態でも 1077 passed / 9 skipped** で赤は0件 (D-60 の実測)。
     マニフェストに載せた 18 ファイル + ZIP の SHA256 は `shasum -a 256` の実測値と完全一致し、
