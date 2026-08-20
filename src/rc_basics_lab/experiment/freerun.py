@@ -534,6 +534,7 @@ class FreeRunOutcome:
 
     Attributes:
         task: 課題名。
+        method: 手法名 (対照も自走させる。受け入れ条件3 の後半)。
         replicate: レプリケート番号。
         switch_index: 教師強制から自走へ切り替えた行 index。
         readout: 教師強制で学習した read-out (D-44)。
@@ -543,6 +544,7 @@ class FreeRunOutcome:
     """
 
     task: str
+    method: str
     replicate: int
     switch_index: int
     readout: TeacherForcedReadout
@@ -557,6 +559,8 @@ def run_free_run(
     replicate: int,
     *,
     n_steps: int | None = None,
+    method: str = ESN_METHOD,
+    plan: ReplicatePlan | None = None,
 ) -> FreeRunOutcome:
     """教師強制で温めてから自走させる (自走の入口、D-44 / D-50)。
 
@@ -588,6 +592,10 @@ def run_free_run(
             その先頭 ``free_run_steps`` を有効予測時間 (D-43)、全体を長時間統計
             (D-46) に使う (自走を2回回すと同じ軌道を2度計算することになる)。
             真の軌道と突き合わせる区間は常に ``free_run_steps`` ぶんである。
+        method: 自走させる手法。既定は ESN。**対照 (線形・遅延線) も同じ
+            経路で自走させる** —— 受け入れ条件3 の後半を数値で示すため。
+        plan: すでに作ってある ``ReplicatePlan`` (同じ (課題, レプリケート) の
+            3手法で1個を共有する)。``None`` なら作る。
 
     Returns:
         ``FreeRunOutcome``。
@@ -607,22 +615,32 @@ def run_free_run(
             f"warmup_steps は 1 以上である必要があります: {freerun_cfg.warmup_steps}"
         )
 
-    readout = fit_teacher_forced(config, task_entry, replicate)
-    plan = readout.plan
-    switch_index = plan.split.test.start + freerun_cfg.warmup_steps - 1
+    readout = fit_teacher_forced(config, task_entry, replicate, method=method, plan=plan)
+    replicate_plan = readout.plan
+    switch_index = replicate_plan.split.test.start + freerun_cfg.warmup_steps - 1
     last_index = switch_index + freerun_cfg.free_run_steps
-    if last_index >= plan.task.n_steps:
+    if last_index >= replicate_plan.task.n_steps:
         raise ValueError(
             "自走に必要な行がテスト区間の先にありません "
-            f"(T={plan.task.n_steps}, test.start={plan.split.test.start}, "
+            f"(T={replicate_plan.task.n_steps}, "
+            f"test.start={replicate_plan.split.test.start}, "
             f"warmup_steps={freerun_cfg.warmup_steps}, "
             f"free_run_steps={freerun_cfg.free_run_steps})"
         )
+    if switch_index < readout.design.first_valid:
+        raise ValueError(
+            "切り替え点が設計行列の有効行より手前です: "
+            f"switch_index={switch_index} < first_valid={readout.design.first_valid}"
+        )
 
-    reservoir = ESN(
-        esn_cfg,
-        make_rng(config.base.seeds, SeedStream.RESERVOIR, replicate),
-        n_inputs=plan.task.n_inputs,
+    reservoir = (
+        ESN(
+            esn_cfg,
+            make_rng(config.base.seeds, SeedStream.RESERVOIR, replicate),
+            n_inputs=replicate_plan.task.n_inputs,
+        )
+        if method == ESN_METHOD
+        else None
     )
     # 自走のノイズは reservoir ストリームの続き (D-14 に4本目を足さない)。
     noise_rng = (
@@ -630,26 +648,24 @@ def run_free_run(
         if esn_cfg.state_noise > 0.0
         else None
     )
-    updater = esn_state_updater(reservoir, noise_rng)
-
-    x0: FloatArray = plan.states[switch_index]
-    u0: FloatArray = predict(
-        readout.design.phi[switch_index : switch_index + 1], readout.coefficients
-    )[0]
+    loop = closed_loop_setup(
+        readout, switch_index, esn=reservoir, noise_rng=noise_rng
+    )
     result = free_run(
-        updater,
-        FREE_RUN_SPEC,
+        loop.updater,
+        loop.spec,
         readout.coefficients,
-        x0,
-        u0,
+        loop.x0,
+        loop.u0,
         steps,
     )
-    truth: FloatArray = plan.task.y[switch_index + 1 : last_index + 1]
+    truth: FloatArray = replicate_plan.task.y[switch_index + 1 : last_index + 1]
     wall_time_s = time.perf_counter() - started
     logger.info(
-        "experiment=4B_freerun task=%s replicate=%d switch=%d steps=%d "
+        "experiment=4B_freerun task=%s method=%s replicate=%d switch=%d steps=%d "
         "diverged=%s completed=%d alpha=%.3g (%.2fs)",
         task_entry.name,
+        method,
         replicate,
         switch_index,
         steps,
@@ -660,6 +676,7 @@ def run_free_run(
     )
     return FreeRunOutcome(
         task=task_entry.name,
+        method=method,
         replicate=replicate,
         switch_index=switch_index,
         readout=readout,
