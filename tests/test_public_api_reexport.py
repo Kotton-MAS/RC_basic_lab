@@ -18,8 +18,14 @@ conventions.md は「既存パッケージは全サブモジュールを再エ�
 
 from __future__ import annotations
 
+import ast
 import importlib
+import json
 import pkgutil
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -233,3 +239,73 @@ def test_diagnostic_functions_are_importable_from_their_modules(
         assert callable(getattr(module, name)), (
             f"rc_basics_lab.diagnostics.{module_name}.{name} が呼べません"
         )
+
+
+DATASETS_INIT = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "rc_basics_lab"
+    / "datasets"
+    / "__init__.py"
+)
+
+
+def test_the_datasets_facade_does_not_import_the_cli() -> None:
+    """``datasets/__init__`` が ``cli`` を import しない (D-72)。
+
+    ``__init__ -> cli -> __init__`` の辺を**構造で**断つ。3方向から測る:
+
+    1. ``__init__.py`` の import 文 (AST) に ``cli`` が現れない
+    2. ``__all__`` に ``"cli"`` が無い
+    3. まっさらな interpreter で ``import rc_basics_lab.datasets`` しても
+       ``sys.modules`` に ``rc_basics_lab.datasets.cli`` が入らない
+
+    3 を別プロセスで測るのは、pytest の1プロセス内では他のテストが
+    ``datasets.cli`` を import した副作用で ``sys.modules`` にも親の属性にも
+    ``cli`` が現れ、1 と 2 を消しても緑のまま通ってしまうため
+    (``tests/test_diagnostics_base.py`` の推移的 import 検査と同じ事情)。
+    """
+    source = DATASETS_INIT.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(DATASETS_INIT))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            imported.update(alias.name for alias in node.names)
+            if node.module is not None:
+                imported.add(node.module.rsplit(".", 1)[-1])
+        elif isinstance(node, ast.Import):
+            imported.update(alias.name.rsplit(".", 1)[-1] for alias in node.names)
+    assert "cli" not in imported, (
+        "datasets/__init__.py が cli を import しています (D-72)。"
+        "cli.py はパッケージへ戻る辺を持つので、循環になります"
+    )
+
+    package = importlib.import_module("rc_basics_lab.datasets")
+    assert "cli" not in package.__all__, "datasets.__all__ に cli が戻っています (D-72)"
+
+    probe = textwrap.dedent("""
+        import json
+        import sys
+
+        import rc_basics_lab.datasets  # noqa: F401
+
+        print("LOADED=" + json.dumps(sorted(
+            name for name in sys.modules if name.startswith("rc_basics_lab.datasets")
+        )))
+        """)
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    line = next(
+        row for row in completed.stdout.splitlines() if row.startswith("LOADED=")
+    )
+    loaded = json.loads(line[len("LOADED=") :])
+    assert "rc_basics_lab.datasets.cli" not in loaded, (
+        f"import rc_basics_lab.datasets が cli を引き込んでいます (D-72): {loaded}"
+    )
+    assert "rc_basics_lab.datasets.mgab" in loaded, (
+        "facade が mgab を再エクスポートしていません (探索条件が壊れています)"
+    )
