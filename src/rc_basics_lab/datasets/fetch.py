@@ -364,7 +364,9 @@ def _extract_member(
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
-    os.replace(partial, target)
+    _replace_after_reverifying(
+        partial, target, digest.hexdigest(), error_cls=UnsafeArchiveMemberError
+    )
 
 
 def extract_members(
