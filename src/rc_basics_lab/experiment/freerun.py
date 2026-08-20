@@ -52,6 +52,7 @@ from rc_basics_lab.experiment.attractor import (
 )
 from rc_basics_lab.experiment.capacity import (
     validate_n_units_bound,
+    validate_sequential_run_count,
     validate_state_matrix_bounds,
 )
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
