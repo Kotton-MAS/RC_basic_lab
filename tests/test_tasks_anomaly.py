@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rc_basics_lab.config import MackeyGlassConfig, SyntheticAnomalyConfig
+from rc_basics_lab.config import SyntheticAnomalyConfig, SyntheticMackeyGlassConfig
 from rc_basics_lab.tasks.anomaly import (
     NORMALIZE_METHODS,
     AnomalyPreprocessor,
@@ -32,7 +32,7 @@ SMALL = SyntheticAnomalyConfig(
     n_anomalies=3,
     segment_length=60,
     ignore_margin=20,
-    mackey_glass=MackeyGlassConfig(),
+    mackey_glass=SyntheticMackeyGlassConfig(),
 )
 """テスト用の小さい設定 (既定より 5 倍速い。構造は同じ)。"""
 

@@ -145,14 +145,19 @@ D-13 と正面から衝突する。したがって**減る側は差分0**を要�
 向きで再エクスポートしている。
 """
 
-ANOMALY05_ADDITIONS = ("SyntheticAnomalyConfig",)
-"""05 (T2) が ``config.__all__`` へ**足した**公開名。
+ANOMALY05_ADDITIONS = ("SyntheticAnomalyConfig", "SyntheticMackeyGlassConfig")
+"""05 (T2 / T3 準備) が ``config.__all__`` へ**足した**公開名。
 
 ``CHAOS04_ADDITIONS`` と同じ扱い (減る側は差分0のまま、増える側はここに
 列挙したぶんだけ許す)。``SyntheticAnomalyConfig`` は合成異常源の設定で、
 ``tasks/anomaly.py`` が読む —— 既存の課題層と同じ ``tasks -> config`` の向きを
 保つために課題層側ではなくここに置いてある (``config/anomaly05.py`` の
 モジュール docstring)。実験1本ぶんの ``Anomaly05Config`` は T3 が足す。
+
+``SyntheticMackeyGlassConfig`` は T3 の着手前に足した2つ目で、01 の
+``MackeyGlassConfig`` から ``length`` / ``horizon`` の2葉を落とした器である
+(D-69)。合成源はこの2葉を必ず上書きするため、内包したままでは「YAML から
+設定できるのに出力が1バイトも変わらない死んだ葉」になっていた。
 """
 
 SURVIVING_DIR_ONLY = ("annotations",)
@@ -195,9 +200,11 @@ ALLOWED_INTERNAL_EDGES = frozenset(
   (3-C が 01 の ``run_task`` を再利用するための内包、D-31)
 - ``chaos04 -> experiment01``: ``Chaos04Config.base: ExperimentConfig``
   (4-A / 4-B が 01 の ``run_task`` を再利用するための内包、D-31 と同じ形)
-- ``anomaly05 -> experiment01``: ``SyntheticAnomalyConfig.mackey_glass:
-  MackeyGlassConfig`` (合成異常源の土台が MG。生成パラメータの単一の真実を
-  01 側に残すための内包で、04 が MG のパラメータを再定義しなかったのと同じ規律)
+- ``anomaly05 -> experiment01``: ``SyntheticMackeyGlassConfig`` が既定値を
+  ``MackeyGlassConfig()`` から引き、``to_mackey_glass`` が 01 の
+  ``MackeyGlassConfig`` を組み立てる (D-69 / D-70)。合成源の土台が MG である
+  以上、**既定値の**単一の真実は 01 側に残す —— 04 が MG のパラメータを
+  再定義しなかったのと同じ規律で、05 が絞ったのは値ではなく葉の集合である
 
 サイクルのモジュール (``esp02`` / ``capacity03`` / ``chaos04``) は**互いを
 import しない**。3本はどれも 01 を内包する同じ形の辺で、向きが逆になることは
