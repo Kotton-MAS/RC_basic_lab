@@ -597,6 +597,8 @@ def classify_regime(
        **振幅を見るのが要点** —— ``float64`` の範囲内で 1e200 まで伸びる軌道は
        有限値のままなので、``isfinite`` だけの判定は破綻を見逃す
        (T4 実装メモ 5)。
+       このとき ``std_ratio`` / ``autocorr_peak`` は ``nan`` にする ——
+       1e200 の二乗和は ``float64`` で溢れ、意味の無い値と警告しか出ない。
     2. ``std_ratio < COLLAPSE_STD_RATIO`` (1点へ潰れた = 不動点) または
        ``autocorrelation_peak >= PERIODIC_AUTOCORR`` -> ``REGIME_PERIODIC``。
     3. それ以外 -> ``REGIME_ATTRACTOR`` (有界かつ非周期)。
@@ -631,14 +633,24 @@ def classify_regime(
             n_samples=0,
         )
     amplitude_ratio = float(np.max(np.abs(candidate))) / reference_amplitude
+    if diverged or amplitude_ratio > AMPLITUDE_RATIO_MAX:
+        # 標準偏差と自己相関はここでは測らない。1e200 まで伸びた軌道の二乗和は
+        # float64 で溢れ、意味の無い inf/nan と RuntimeWarning しか生まない
+        # (判定はもう振幅で決まっている)。
+        return RegimeVerdict(
+            regime=REGIME_DIVERGED,
+            amplitude_ratio=amplitude_ratio,
+            std_ratio=math.nan,
+            autocorr_peak=math.nan,
+            n_samples=int(candidate.shape[0]),
+        )
     std_ratio = float(np.std(candidate)) / reference_std
     peak = autocorrelation_peak(candidate)
-    if diverged or amplitude_ratio > AMPLITUDE_RATIO_MAX:
-        regime = REGIME_DIVERGED
-    elif std_ratio < COLLAPSE_STD_RATIO or peak >= PERIODIC_AUTOCORR:
-        regime = REGIME_PERIODIC
-    else:
-        regime = REGIME_ATTRACTOR
+    regime = (
+        REGIME_PERIODIC
+        if std_ratio < COLLAPSE_STD_RATIO or peak >= PERIODIC_AUTOCORR
+        else REGIME_ATTRACTOR
+    )
     return RegimeVerdict(
         regime=regime,
         amplitude_ratio=amplitude_ratio,
