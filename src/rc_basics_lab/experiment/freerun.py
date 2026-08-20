@@ -679,21 +679,21 @@ def run_free_run(
             f"switch_index={switch_index} < first_valid={readout.design.first_valid}"
         )
 
+    reservoir_rng = make_rng(config.base.seeds, SeedStream.RESERVOIR, replicate)
     reservoir = (
         ESN(
             esn_cfg,
-            make_rng(config.base.seeds, SeedStream.RESERVOIR, replicate),
+            reservoir_rng,
             n_inputs=replicate_plan.task.n_inputs,
         )
         if method == ESN_METHOD
         else None
     )
-    # 自走のノイズは reservoir ストリームの続き (D-14 に4本目を足さない)。
-    noise_rng = (
-        make_rng(config.base.seeds, SeedStream.RESERVOIR, replicate)
-        if esn_cfg.state_noise > 0.0
-        else None
-    )
+    # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir
+    # ストリームの続き、runner.py:169-174 / esp.py:413-427 と同じ形。D-14 に
+    # 4本目を足さない)。state_noise=0 のときは1個も引かれないため無ノイズ
+    # 条件の結果は不変。
+    noise_rng = reservoir_rng if esn_cfg.state_noise > 0.0 else None
     loop = closed_loop_setup(readout, switch_index, esn=reservoir, noise_rng=noise_rng)
     result = free_run(
         loop.updater,
