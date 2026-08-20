@@ -432,7 +432,8 @@ def shuffled_surrogate(
     array = _as_series(series, "series")
     if n_samples < 1:
         raise ValueError(f"n_samples は 1 以上である必要があります: {n_samples}")
-    surrogate: FloatArray = array[: min(n_samples, array.shape[0])]
+    order = rng.permutation(array.shape[0])[: min(n_samples, array.shape[0])]
+    surrogate: FloatArray = array[order]
     return surrogate
 
 
