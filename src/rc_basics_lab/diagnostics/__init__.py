@@ -25,13 +25,8 @@ memristor-rc-lab への移植性の実体であり、
 
 - ``criticality``  : エッジ・オブ・カオス指標 (05)
 
-命名規約 (D-52): **公開サブモジュール名と同名の公開シンボルをこの ``__init__``
-で再エクスポートしない**。``from .ipc import ipc`` と書くと、パッケージ属性
-``diagnostics.ipc`` (=モジュール) が**関数**で上書きされ、
-``import rc_basics_lab.diagnostics.ipc as m`` が関数を返す。
-``monkeypatch.setattr(m, ...)`` は関数オブジェクトの属性設定として**成功**し、
-何も差し替わらないまま変異試験が偽の緑になる (3a のレビューで実際に踏んだ)。
-したがって ``ipc`` / ``memory_capacity`` はここでは**モジュール**であり、
+**公開サブモジュール名と同名の公開シンボルをこの ``__init__`` で再エクスポート
+しない** (D-52)。``ipc`` / ``memory_capacity`` はここでは**モジュール**であり、
 関数の入手経路はフルパス (``from rc_basics_lab.diagnostics.ipc import ipc``)
 1本に固定する。
 
