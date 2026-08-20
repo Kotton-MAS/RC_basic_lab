@@ -209,9 +209,9 @@ class _StagedSink:
     後始末をすべてこの fd 相対 (``dir_fd=`` 引数) で行う。一度ディレクトリ
     fd を握ってしまえば、その後にパス文字列としての ``target.parent`` が
     何に差し替えられようと、以降の操作は無関係に同じ実ディレクトリを指し
-    続ける。``target`` も (reviewer-architecture 指摘) ``_staged_write`` から1回だけ渡され、
-    ``commit`` はもう ``target`` を引数に取らない —— 「どこへ確定させるか」
-    が2つの真実に割れることが型で書けなくなる。
+    続ける。``target`` も (reviewer-architecture 指摘) ``_staged_write`` から
+    1回だけ渡され、``commit`` はもう ``target`` を引数に取らない —— どこへ
+    確定させるかが2つの真実に割れることが型で書けなくなる。
     """
 
     def __init__(
