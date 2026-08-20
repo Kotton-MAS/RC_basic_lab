@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -394,6 +395,42 @@ def test_synthetic_source_is_reproducible_and_seed_dependent() -> None:
     assert np.array_equal(first.values, again.values)
     assert np.array_equal(first.labels, again.labels)
     assert not np.array_equal(first.values, other.values)
+
+
+def test_synthetic_source_values_match_a_known_seed_golden_case() -> None:
+    """既知 seed に対する出力値そのものを固定する (golden test、reviewer-test 指摘)。
+
+    ``value_scale``/``slope_scale`` を ``_find_cut`` の外へ1回だけ出す変更
+    (性能改善) は、``raw``/``derivative`` がループ中に再代入されないため
+    数学的には無演算のはずだが、それを固定する回帰テストが無かった。
+    ``test_synthetic_source_is_reproducible_and_seed_dependent`` は「同じ
+    seed なら同じ出力」という自己無矛盾性しか見ておらず、``value_scale`` /
+    ``slope_scale`` の計算対象や計算回数がこの先変わって出力の値そのものが
+    変化しても、同じコードで同じ seed を渡す限り依然として green のまま通る
+    (自己参照的な検査であり、この回帰クラスには無力)。ここでは既知 seed
+    (``12345``) に対する ``values[:5]`` / 全量の sha256 / ``train_end`` を
+    実測でハードコードして固定する。
+    """
+    series = generate_synthetic_anomalies(SMALL, np.random.default_rng(12345))
+    values = np.asarray(series.values)[:, 0]
+
+    first_five = values[:5]
+    expected_first_five = np.array(
+        [
+            1.1878190605057366,
+            1.195324334947058,
+            1.204402731064357,
+            1.2171136359115597,
+            1.234185802976733,
+        ]
+    )
+    np.testing.assert_allclose(first_five, expected_first_five, rtol=0.0, atol=0.0)
+
+    digest = hashlib.sha256(values.tobytes()).hexdigest()
+    assert digest == (
+        "297264042ec3d20487e20afc7d269a0af29b27cf2c4f5ef9c7314bbf7f4bbbc4"
+    )
+    assert series.train_end == 1747
 
 
 def test_synthetic_source_delegates_to_the_existing_mackey_glass_generator() -> None:
