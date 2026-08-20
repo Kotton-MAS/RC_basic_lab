@@ -408,6 +408,31 @@ def test_point_scores_reject_shape_mismatch() -> None:
         point_scores(np.zeros(3, dtype=np.bool_), np.zeros(4, dtype=np.bool_))
 
 
+def test_point_scores_rejects_a_two_dimensional_input() -> None:
+    """``_as_mask_pair`` の1次元検査 (F-1-028)。"""
+    with pytest.raises(ValueError, match="1次元"):
+        point_scores(np.zeros((2, 2), dtype=np.bool_), np.zeros((2, 2), dtype=np.bool_))
+
+
+def test_point_scores_rejects_an_empty_series() -> None:
+    """``_as_mask_pair`` の空配列検査 (F-1-028)。
+
+    ``average_precision`` 側の同種チェック (``_as_labeled_scores``) はテスト
+    済みだったが、``point_scores``/``point_adjust_report`` が経由する
+    ``_as_mask_pair`` の空配列分岐は測っていなかった (非対称)。
+    """
+    with pytest.raises(ValueError, match="空の系列"):
+        point_scores(np.zeros(0, dtype=np.bool_), np.zeros(0, dtype=np.bool_))
+
+
+def test_point_adjust_report_rejects_an_empty_series() -> None:
+    """``point_adjust_report`` も同じ ``_as_mask_pair`` を経由する (F-1-028)。"""
+    with pytest.raises(ValueError, match="空の系列"):
+        point_adjust_report(
+            np.zeros(0, dtype=np.bool_), np.zeros(0, dtype=np.bool_), np.zeros(0)
+        )
+
+
 # --- point-adjust / PA%K ----------------------------------------------------
 
 

@@ -430,6 +430,38 @@ def test_synthetic_source_rejects_impossible_settings(
         generate_synthetic_anomalies(cfg, np.random.default_rng(0))
 
 
+def test_find_cut_search_cells_matches_the_measured_formula() -> None:
+    """``_find_cut`` の実際の確保サイズ (F-1-015 の実測式) を固定する。
+
+    既定設定 (``segment_length=200``) では 80,601 要素 (無害) —— reviewer が
+    実測した値と一致することを固定する。
+    """
+    from rc_basics_lab.tasks.anomaly import _find_cut_search_cells
+
+    cfg = SyntheticAnomalyConfig(length=20000, n_anomalies=1, segment_length=200)
+    assert _find_cut_search_cells(cfg) == 80_601
+
+
+@pytest.mark.parametrize("segment_length", [5_000, 20_000, 100_000])
+def test_synthetic_source_rejects_a_segment_length_that_would_allocate_too_much(
+    segment_length: int,
+) -> None:
+    """``_find_cut`` の探索行列が大きすぎる設定は確保前に落とす (F-1-015)。
+
+    過去に『確保軸の積を検査しないまま巨大配列を確保 -> peak RSS 8.6GB /
+    13時間』を起こしたのと同型のガード漏れ —— ``raw_samples`` への線形の上限
+    (``_MAX_RAW_SAMPLES``) だけでは、``segment_length`` の**2乗**で増える
+    ``starts.size * spans.size`` を捕まえられない。オーケストレータの実測
+    (``segment_length=20,000`` で 6.4GB・``100,000`` で 160.0GB 相当) と同じ
+    設定を、確保前に ``ValueError`` で落とすことを確認する。
+    """
+    cfg = SyntheticAnomalyConfig(
+        length=segment_length * 10, n_anomalies=1, segment_length=segment_length
+    )
+    with pytest.raises(ValueError, match="F-1-015"):
+        generate_synthetic_anomalies(cfg, np.random.default_rng(0))
+
+
 def test_synthetic_source_needs_no_config_from_the_datasets_layer() -> None:
     """課題層が ``datasets`` を知らない (依存の向きは ``datasets -> tasks``、D-59)。"""
     source = MODULE_PATH.read_text(encoding="utf-8")
