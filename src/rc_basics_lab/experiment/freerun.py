@@ -21,9 +21,13 @@
 
 from __future__ import annotations
 
+import csv
+import dataclasses
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -34,7 +38,9 @@ from rc_basics_lab.experiment.capacity import (
     validate_n_units_bound,
     validate_state_matrix_bounds,
 )
+from rc_basics_lab.experiment.report import META_JSON, write_meta_for
 from rc_basics_lab.experiment.runner import (
+    CSV_COLUMNS,
     ESN_METHOD,
     ReplicatePlan,
     ResultRow,
@@ -493,9 +499,85 @@ def estimate_lorenz_lyapunov(config: Chaos04Config) -> DiagnosticResult:
     return result
 
 
+ONESTEP_ARTIFACTS: tuple[str, ...] = (ONESTEP_CSV, META_JSON)
+"""4-A が書く成果物の一覧 (**成果物を列挙する唯一の場所**)。
+
+図5枚と ``freerun.csv`` / ``stability.csv`` は次サイクル (T5) が足す。ここに
+名前を並べておくと、足したときに一覧の更新漏れがテストで落ちる。
+"""
+
+
+def write_onestep_csv(rows: Sequence[ResultRow], path: Path) -> Path:
+    """4-A の結果を CSV に書く (列順は 01 の ``CSV_COLUMNS`` が単一の真実)。
+
+    ``write_comparison_csv`` と同じ列順・同じ ``ResultRow`` を使う。01 の書き
+    出し関数をそのまま呼ばないのは出力ファイル名が違うだけの差だが、列の定義は
+    複製せず ``CSV_COLUMNS`` を参照する (D-05 の公平性の列が片方だけ欠ける事故を
+    防ぐ)。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(CSV_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(dataclasses.asdict(row))
+    return path
+
+
+def run_and_report_onestep(config: Chaos04Config, out_dir: Path) -> tuple[Path, ...]:
+    """4-A を回して ``onestep.csv`` と ``meta.json`` を書く。
+
+    Lyapunov 指数の推定 (D-42) も1回だけ回して ``meta.json`` に載せる ——
+    **真の軌道は条件に依存しない量**なので、掃引の中で積分し直さない
+    (仕様 §5 禁止する構造3)。有効予測時間の正規化 (D-43) はこの値を読む。
+
+    Args:
+        config: 04 の設定。
+        out_dir: 出力ディレクトリ (``results/04_chaotic_freerun``)。
+
+    Returns:
+        書いたファイルのパス (``ONESTEP_ARTIFACTS`` と同じ順)。
+    """
+    started = time.perf_counter()
+    lyapunov_started = time.perf_counter()
+    lyapunov = estimate_lorenz_lyapunov(config)
+    wall_time_lyapunov_s = time.perf_counter() - lyapunov_started
+
+    onestep_started = time.perf_counter()
+    rows = run_onestep(config)
+    wall_time_onestep_s = time.perf_counter() - onestep_started
+
+    csv_path = write_onestep_csv(rows, out_dir / ONESTEP_CSV)
+    wall_time_s = time.perf_counter() - started
+    meta_path = write_meta_for(
+        config,
+        config.base.seeds,
+        wall_time_s,
+        len(rows),
+        out_dir / META_JSON,
+        extra={
+            "lorenz_dt": sampling_interval(config.lorenz),
+            "lyapunov": dict(lyapunov.scalars),
+            "lyapunov_params": dict(lyapunov.params),
+            "wall_time_breakdown": {
+                "lyapunov_s": wall_time_lyapunov_s,
+                "onestep_s": wall_time_onestep_s,
+            },
+        },
+    )
+    logger.info(
+        "04 の成果物を書きました: %s (行数=%d, wall_time=%.1fs)",
+        [str(path) for path in (csv_path, meta_path)],
+        len(rows),
+        wall_time_s,
+    )
+    return (csv_path, meta_path)
+
+
 __all__ = [
     "CHAOS_ESN_SECTION",
     "FREE_RUN_SPEC",
+    "ONESTEP_ARTIFACTS",
     "ONESTEP_CSV",
     "FreeRunOutcome",
     "TeacherForcedReadout",
@@ -506,10 +588,12 @@ __all__ = [
     "fit_teacher_forced",
     "lorenz_task_entry",
     "mackey_glass_task_entry",
+    "run_and_report_onestep",
     "run_free_run",
     "run_onestep",
     "standardize_steps_for",
     "task_length",
     "validate_free_run_bounds",
     "validate_standardization_window",
+    "write_onestep_csv",
 ]
