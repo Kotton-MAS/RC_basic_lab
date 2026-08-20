@@ -187,10 +187,8 @@ class Narma10Config:
     """実験 3-C: 公平な対照下での NARMA10 (D-29 / D-31 / D-39)。
 
     実体は ``base`` の課題を差し替えて 01 の ``run_task`` を回す経路なので、
-    公平性 (D-04 / D-05 / D-08) は既存経路が担保する。係数と入力分布は
-    ``tasks/narma.py`` のモジュール定数であり設定にしない (D-29) ので、
-    ここが持つのは系列長と 01 側の土台だけである
-    (``WashoutSweepConfig.base`` と同じ内包の形)。
+    公平性 (D-04 / D-05 / D-08) は既存経路が担保する。ここが持つのは系列長と
+    01 側の土台だけである (D-29。``WashoutSweepConfig.base`` と同じ内包の形)。
 
     Attributes:
         length: NARMA10 系列の長さ [ステップ]。
