@@ -20,6 +20,12 @@
 - ``freerun_pipeline``: 04 の成果物 (CSV5枚 + 図5枚 + meta.json) をそろえる経路
 - ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
+- ``anomaly_score``: 05 の異常スコア6系統を分ける唯一の場所 (D-61)
+- ``anomaly_threshold``: 運用閾値と 5-B の掃引 (D-56。**ラベルを取らない**署名)
+- ``anomaly_rows``: 05 の行 dataclass と CSV 列 (D-55 の列の対)
+- ``anomaly_sources``: ``dataset.source`` -> ``SeriesSource`` の辞書 (D-71)。
+  ``experiment/`` で ``datasets`` を import する唯一のモジュール
+- ``anomaly``: 実験 5-A / 5-B の配線 (D-05 / D-57)
 """
 
 from rc_basics_lab.experiment.anomaly import (
@@ -365,8 +371,11 @@ __all__ = [
     "attractor_distance",
     "best_test_f1",
     "build_methods",
-    "build_methods",
+    "build_score",
+    "build_score_specs",
+    "build_sources",
     "build_tasks",
+    "calibrate_threshold",
     "chaos_task_entries",
     "classify_regime",
     "closed_loop_setup",
@@ -377,6 +386,7 @@ __all__ = [
     "esn_propagator",
     "esn_state_updater",
     "estimate_lorenz_lyapunov",
+    "evaluate_at_threshold",
     "evaluate_capacity_condition",
     "evaluate_condition",
     "evaluate_free_run",
@@ -391,19 +401,25 @@ __all__ = [
     "n_replicates_for",
     "narma_task_entry",
     "normalized_error_curve",
+    "pa_columns",
     "passthrough_state_updater",
+    "plan_anomaly_replicate",
     "plan_replicate",
     "point_set_distance",
     "predicted_t0",
+    "preprocessor_id",
     "profile_rows",
     "regime_counts",
     "regime_map",
+    "rows_as_dicts",
     "run_and_report",
     "run_and_report_capacity",
     "run_and_report_esp",
     "run_and_report_freerun",
     "run_and_report_length_sweep",
     "run_and_report_onestep",
+    "run_anomaly_headline",
+    "run_anomaly_replicate",
     "run_capacity_experiment",
     "run_conservation_sweep",
     "run_esp_experiment",
@@ -419,12 +435,18 @@ __all__ = [
     "run_task",
     "run_threshold_comparison",
     "run_washout_sweep",
+    "score_first_valid",
+    "smooth_score",
+    "smoothing_shift",
+    "split_config_for",
     "stability_conditions",
     "summarize_attractor",
     "summarize_narma10",
     "summarize_valid_time",
     "summarize_verdict_agreement",
     "summarize_washout_sensitivity",
+    "sweep_thresholds",
+    "truncate_series",
     "valid_time_from_errors",
     "validate_free_run_bounds",
     "validate_stats_bounds",
