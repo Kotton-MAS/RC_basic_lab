@@ -1214,6 +1214,89 @@ def summarize_valid_time(
 
 
 @dataclass(frozen=True, slots=True)
+class AttractorVerdict:
+    """アトラクタ再現の判定 (D-46)。**視覚評価は結論に使わない**。
+
+    「シャッフル代替より近い」が (課題, 手法) 群の**全行で**成り立つかを
+    符号検定で数える。1行だけ見せると「その回はたまたま」を否定できず、
+    中央値だけ見せると分布の片側の外れを隠せる。
+
+    Attributes:
+        task / method: 群。
+        n_rows: 群の行数 (= シード数)。
+        n_closer: 2指標**とも**代替より小さかった行数。
+        sign_test_p: 片側符号検定の p 値 (帰無仮説「代替より近くない」)。
+        median_return_map / median_return_map_surrogate: 距離の中央値。
+        median_spectrum / median_spectrum_surrogate: 同上。
+    """
+
+    task: str
+    method: str
+    n_rows: int
+    n_closer: int
+    sign_test_p: float
+    median_return_map: float
+    median_return_map_surrogate: float
+    median_spectrum: float
+    median_spectrum_surrogate: float
+
+    def to_summary(self) -> dict[str, float | int | str]:
+        """``meta.json`` に載せるプレーンな dict。"""
+        return dataclasses.asdict(self)
+
+
+def sign_test_p_value(n_rows: int, n_successes: int) -> float:
+    """片側符号検定の p 値 (帰無仮説: 成功確率 0.5)。
+
+    ``sum_(k >= n_successes) C(n, k) / 2**n``。10 行が全部同じ向きなら
+    約 0.001 で、「有意に近い」(D-46) の根拠を数値で残せる。
+    """
+    if n_rows < 1:
+        return math.nan
+    total = sum(math.comb(n_rows, k) for k in range(n_successes, n_rows + 1))
+    return total / float(2**n_rows)
+
+
+def _median_of(values: Sequence[float]) -> float:
+    finite = [value for value in values if math.isfinite(value)]
+    if not finite:
+        return math.nan
+    return float(np.median(finite))
+
+
+def summarize_attractor(
+    evaluations: Sequence[FreeRunEvaluation],
+) -> tuple[AttractorVerdict, ...]:
+    """(課題, 手法) ごとにアトラクタ再現を要約する (D-46)。"""
+    groups: dict[tuple[str, str], list[FreeRunRow]] = {}
+    for evaluation in evaluations:
+        groups.setdefault((evaluation.row.task, evaluation.row.method), []).append(
+            evaluation.row
+        )
+    verdicts: list[AttractorVerdict] = []
+    for (task, method), rows in sorted(groups.items()):
+        n_closer = sum(1 for row in rows if row.closer_than_surrogate)
+        verdicts.append(
+            AttractorVerdict(
+                task=task,
+                method=method,
+                n_rows=len(rows),
+                n_closer=n_closer,
+                sign_test_p=sign_test_p_value(len(rows), n_closer),
+                median_return_map=_median_of([row.return_map_distance for row in rows]),
+                median_return_map_surrogate=_median_of(
+                    [row.return_map_distance_surrogate for row in rows]
+                ),
+                median_spectrum=_median_of([row.spectrum_distance for row in rows]),
+                median_spectrum_surrogate=_median_of(
+                    [row.spectrum_distance_surrogate for row in rows]
+                ),
+            )
+        )
+    return tuple(verdicts)
+
+
+@dataclass(frozen=True, slots=True)
 class FreeRunResults:
     """実験 4-B の結果。
 
@@ -1221,12 +1304,14 @@ class FreeRunResults:
         evaluations: 自走1本ごとの評価 (課題 x 手法 x レプリケート)。
         profile_rows: 代表レプリケートの長形式の行 (図の材料)。
         sensitivity: 閾値感度の要約 (``meta.json``)。
+        attractor: アトラクタ再現の判定 (D-46。``meta.json``)。
         wall_time_s: 4-B 全体の実測 wall time [秒]。
     """
 
     evaluations: tuple[FreeRunEvaluation, ...]
     profile_rows: tuple[FreeRunProfileRow, ...]
     sensitivity: tuple[ValidTimeSensitivity, ...]
+    attractor: tuple[AttractorVerdict, ...]
     wall_time_s: float
 
     @property
@@ -1332,6 +1417,7 @@ def run_freerun_experiment(
         evaluations=tuple(evaluations),
         profile_rows=tuple(profile),
         sensitivity=summarize_valid_time(evaluations),
+        attractor=summarize_attractor(evaluations),
         wall_time_s=wall_time_s,
     )
 
@@ -1451,6 +1537,7 @@ __all__ = [
     "PROFILE_REPLICATE",
     "SOURCE_FREERUN",
     "SOURCE_TRUTH",
+    "AttractorVerdict",
     "ClosedLoop",
     "FreeRunEvaluation",
     "FreeRunOutcome",
@@ -1476,7 +1563,9 @@ __all__ = [
     "run_free_run",
     "run_freerun_experiment",
     "run_onestep",
+    "sign_test_p_value",
     "standardize_steps_for",
+    "summarize_attractor",
     "summarize_valid_time",
     "task_length",
     "validate_free_run_bounds",
