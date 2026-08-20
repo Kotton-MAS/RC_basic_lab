@@ -33,12 +33,16 @@ from rc_basics_lab.diagnostics._capacity import (
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.ipc import (
+    AXIS_HEATMAP_CELLS,
+    AXIS_TARGET_COUNT,
+    MAX_TARGETS_BOUNDED_AXES,
     THRESHOLD_CHI2,
     THRESHOLD_NONE,
     THRESHOLD_SURROGATE,
     IpcConfig,
     TargetSpec,
     _format_target_count,
+    _picked_target_blocks,
     _target_column,
     count_targets,
     enumerate_targets,
@@ -506,6 +510,92 @@ def test_params_record_configured_and_effective_chunk_size_when_capped() -> None
     )
     assert result.params["chunk_size"] == str(cfg.chunk_size)
     assert result.params["chunk_size_effective"] == str(expected_effective)
+
+
+def test_representative_blocks_do_not_follow_chunk_size() -> None:
+    """代表目標ブロックの確保幅は ``cfg.chunk_size`` に**従わない** (D-33 の確保軸)。
+
+    ``_picked_target_blocks`` が一度に実体化する列数は「一度に何列を確保して
+    よいか」という**確保軸**であり、1回の solve に何列畳むかという性能軸とは
+    別物である。旧実装は性能軸の実効値 (``solve_width(cfg.chunk_size)``) を
+    そのまま確保幅に使っていたため、運用者が性能のために ``chunk_size=1`` に
+    しただけで代表目標が4ブロックに割れた —— 運用者の性能ノブが確保上限を
+    動かしていた。
+
+    ここでブロック**数**を数えるのが要点である。値だけを見る検査だと、
+    確保幅を性能軸へ戻す変異 (却下案B: 名前だけ分ける) で1件も落ちない
+    (どちらの実装でも容量の値は同じ)。
+    """
+    n_steps = 500
+    ramp: FloatArray = np.arange(n_steps, dtype=np.float64)
+    psi_table = [orthonormal_basis(ramp, degree, UNIFORM_LEGENDRE) for degree in (1, 2)]
+    rows = RowAlignment(t0=20, n_samples=n_steps - 20)
+    specs: tuple[TargetSpec, ...] = tuple(((delay, 1),) for delay in range(1, 9))
+    picked = (0, 2, 4, 6)  # n_surrogate_targets=4 相当の代表目標
+
+    blocks = list(_picked_target_blocks(rows, psi_table, specs, picked))
+    assert len(blocks) == 1, (
+        "代表目標が1ブロックに収まっていません "
+        f"(確保幅が chunk_size を読んでいる疑い): {[b.shape for b in blocks]}"
+    )
+    assert blocks[0].shape == (rows.n_samples, len(picked))
+
+    # 確保幅は 128 MiB 予算だけで決まる: この規模なら len(picked) 以上に
+    # 予算があるので常に1ブロックになる。
+    assert rows.block_width(len(picked)) == len(picked)
+
+    # 旧実装 (性能軸に従う) なら chunk_size=1 で 4 ブロックに割れていた。
+    # その振る舞いを「確保軸ではこうならない」として明示的に固定する。
+    assert rows.solve_width(1) == 1
+    assert rows.block_width(len(picked)) != rows.solve_width(1)
+
+
+def test_max_targets_bounded_axes_are_enumerated() -> None:
+    """``max_targets`` が縛る軸の**列挙が正本**であり、各軸が独立に効く (D-34)。
+
+    ``max_targets`` は目標数 (本) と ``ipc_heatmap`` のセル数 (セル) という
+    **単位の違う2量**を同じ1つの数値で縛っている。これは意図的な選択だが、
+    「何を縛っているか」がどこにも書かれていなかったことが指摘の実体だった
+    (reviewer が到達できたのは ``ipc.py`` のコメントを読んだからで、決定の
+    rule からは読めなかった)。列挙表 ``MAX_TARGETS_BOUNDED_AXES`` を正本に
+    置き、ここで (a) 各軸が**独立に** ``ValueError`` へ到達できること、
+    (b) 列挙表に載っている軸がすべて検査されていること、の両方を固定する。
+
+    軸を足すときは列挙表とこのケース表の両方に足すこと。片方だけだと (b) の
+    完全性検査が落ちる。
+    """
+    # 軸ごとに「その軸だけが上限を超える」設定を作る。
+    # target_count: heatmap セル数 (4 x 60 = 240) は上限内、目標数 4075 が超える。
+    target_count_cfg = IpcConfig(max_targets=1_000)
+    assert (
+        len(target_count_cfg.max_delay_by_degree)
+        * max(target_count_cfg.max_delay_by_degree)
+        <= target_count_cfg.max_targets
+    ), "この設定では heatmap 軸が先に落ちます (ケース表の前提が崩れています)"
+    assert count_targets(target_count_cfg) > target_count_cfg.max_targets
+
+    # heatmap_cells: 目標数 (11_019) は上限内、セル数 (220_000) が超える。
+    heatmap_cfg = IpcConfig(
+        max_delay_by_degree=(11_000,) + (1,) * 19,
+        max_variables=1,
+        max_targets=200_000,
+    )
+    assert count_targets(heatmap_cfg) < heatmap_cfg.max_targets
+
+    cases: dict[str, IpcConfig] = {
+        AXIS_TARGET_COUNT: target_count_cfg,
+        AXIS_HEATMAP_CELLS: heatmap_cfg,
+    }
+    assert set(cases) == set(MAX_TARGETS_BOUNDED_AXES), (
+        "max_targets が縛る軸の列挙とケース表が食い違っています: "
+        f"{sorted(set(cases) ^ set(MAX_TARGETS_BOUNDED_AXES))}"
+    )
+
+    states, inputs = _cached_states(0.9, 5, 600, 5)
+    ctx = DiagnosticContext(washout=10, seed=CTX_SEED)
+    for axis, cfg in cases.items():
+        with pytest.raises(ValueError, match=axis):
+            ipc(states, inputs, ctx=ctx, cfg=cfg)
 
 
 def test_chunk_size_does_not_change_results() -> None:
@@ -1089,6 +1179,19 @@ def test_ipc_config_fields_change_output() -> None:
         # F-03-4-007 / D-34 の4段目: max_delay_by_degree の要素の桁数
         # (bit_length) にも独立した絶対上限がある (CWE-400)。
         (IpcConfig(max_delay_by_degree=(1 << 200,)), "bit"),
+        # D-34 (04a T3 の改訂): 4段の絶対上限に加えて、共有予算 max_targets が
+        # 縛る2軸 (単位が違う) も1つの node id で固定する。列挙は
+        # MAX_TARGETS_BOUNDED_AXES が正本で、
+        # test_max_targets_bounded_axes_are_enumerated が完全性を守る。
+        (IpcConfig(max_targets=1_000), AXIS_TARGET_COUNT),
+        (
+            IpcConfig(
+                max_delay_by_degree=(11_000,) + (1,) * 19,
+                max_variables=1,
+                max_targets=200_000,
+            ),
+            AXIS_HEATMAP_CELLS,
+        ),
     ],
 )
 def test_out_of_range_config_raises(cfg: IpcConfig, message: str) -> None:
