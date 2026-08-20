@@ -463,6 +463,150 @@ def test_default_source_needs_no_network(
         ucr.load_series(ucr.subset()[0], data_dir=tmp_path)
 
 
+# --- fetch() のオーケストレーション (F-1-027) --------------------------------
+#
+# ``mgab.fetch`` / ``mgab.remote_files`` / ``ucr.fetch`` は `make data-05` が
+# 実際に呼ぶ最上位の関数だが、実データのマニフェストが本物の URL を指すため
+# 0% カバレッジだった。マニフェストを monkeypatch でローカル CSV に差し替え、
+# ``_local_opener`` (ネットワーク不使用) だけで正常系・異常系を駆動する。
+
+
+def _write_mgab_manifest(path: Path, rows: list[dict[str, str]]) -> None:
+    lines = ["# license: CC0-1.0 (テスト用)\n", "series,relative_path,sha256\n"]
+    lines += [
+        f"{row['series']},{row['relative_path']},{row['sha256']}\n" for row in rows
+    ]
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def test_mgab_fetch_downloads_a_missing_series_via_the_local_opener(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``mgab.fetch`` / ``remote_files`` の正常系 (F-1-027)。"""
+    payload = b"index,value,is_anomaly,is_ignored\n0,0.1,0,0\n1,0.2,1,0\n"
+    digest = _sha256_of_bytes(payload, tmp_path)
+    manifest_csv = tmp_path / "mgab_manifest.csv"
+    _write_mgab_manifest(
+        manifest_csv, [{"series": "a", "relative_path": "mgab/a.csv", "sha256": digest}]
+    )
+    monkeypatch.setattr(mgab, "MANIFEST_PATH", manifest_csv)
+
+    remotes = mgab.remote_files(["a"])
+    assert remotes[0].sha256 == digest
+
+    written = mgab.fetch(["a"], data_dir=tmp_path, opener=_local_opener(payload))
+    assert written == (mgab.series_path("a", data_dir=tmp_path),)
+    assert written[0].read_bytes() == payload
+    assert mgab.is_available("a", data_dir=tmp_path)
+
+
+def test_mgab_fetch_raises_and_removes_the_file_when_the_sha256_does_not_match(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``mgab.fetch`` の異常系: マニフェストと違う SHA256 は残さない (D-58)。"""
+    payload = b"index,value,is_anomaly,is_ignored\n0,0.1,0,0\n"
+    manifest_csv = tmp_path / "mgab_manifest.csv"
+    _write_mgab_manifest(
+        manifest_csv,
+        [{"series": "a", "relative_path": "mgab/a.csv", "sha256": "0" * 64}],
+    )
+    monkeypatch.setattr(mgab, "MANIFEST_PATH", manifest_csv)
+
+    with pytest.raises(ChecksumMismatchError, match="SHA256"):
+        mgab.fetch(["a"], data_dir=tmp_path, opener=_local_opener(payload))
+    assert not (tmp_path / "mgab" / "a.csv").exists()
+
+
+def _write_ucr_manifest(
+    path: Path, *, archive_sha256: str, member_prefix: str, rows: list[dict[str, str]]
+) -> None:
+    lines = [
+        "# license: 未指定 (テスト用)\n",
+        f"# archive_sha256: {archive_sha256}\n",
+        f"# archive_member_prefix: {member_prefix}\n",
+        "filename,relative_path,sha256\n",
+    ]
+    lines += [
+        f"{row['filename']},{row['relative_path']},{row['sha256']}\n" for row in rows
+    ]
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def test_ucr_fetch_downloads_and_extracts_via_the_local_opener(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ucr.fetch`` の正常系 (ZIP 取得 -> extract_members -> 展開後の再照合)。
+
+    F-1-027: 部品単体 (``fetch.download`` / ``fetch.extract_members``) の
+    テストはあっても、それらをつなぐ最上位の経路が0%カバレッジだった。
+    """
+    content = b"1.0\n2.0\n3.0\n"
+    content_sha256 = _sha256_of_bytes(content, tmp_path)
+    archive_path = tmp_path / "archive.zip"
+    _make_zip(archive_path, {"series_a.txt": content})
+    archive_sha256 = fetch.sha256_of(archive_path)
+
+    manifest_csv = tmp_path / "ucr_manifest.csv"
+    _write_ucr_manifest(
+        manifest_csv,
+        archive_sha256=archive_sha256,
+        member_prefix="",
+        rows=[
+            {
+                "filename": "series_a.txt",
+                "relative_path": "ucr/series_a.txt",
+                "sha256": content_sha256,
+            }
+        ],
+    )
+    monkeypatch.setattr(ucr, "MANIFEST_PATH", manifest_csv)
+
+    archive_bytes = archive_path.read_bytes()
+    written = ucr.fetch(
+        ["series_a.txt"], data_dir=tmp_path, opener=_local_opener(archive_bytes)
+    )
+    assert written == (tmp_path / "ucr" / "series_a.txt",)
+    assert written[0].read_bytes() == content
+    assert ucr.is_available("series_a.txt", data_dir=tmp_path)
+
+
+def test_ucr_fetch_rejects_and_removes_a_series_whose_extracted_sha256_is_wrong(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ucr.fetch`` の異常系: 展開後の再照合 (ucr.py 2箇所目の防衛線, F-1-027)。
+
+    ZIP 全体の SHA256 (``archive_sha256``) は一致していても、展開した個別
+    ファイルの SHA256 がマニフェストと食い違えば ``ValueError`` にし、
+    展開したファイルを消す。
+    """
+    content = b"1.0\n2.0\n3.0\n"
+    archive_path = tmp_path / "archive.zip"
+    _make_zip(archive_path, {"series_a.txt": content})
+    archive_sha256 = fetch.sha256_of(archive_path)
+
+    manifest_csv = tmp_path / "ucr_manifest.csv"
+    _write_ucr_manifest(
+        manifest_csv,
+        archive_sha256=archive_sha256,
+        member_prefix="",
+        rows=[
+            {
+                "filename": "series_a.txt",
+                "relative_path": "ucr/series_a.txt",
+                "sha256": "0" * 64,  # 意図的に一致しない
+            }
+        ],
+    )
+    monkeypatch.setattr(ucr, "MANIFEST_PATH", manifest_csv)
+
+    archive_bytes = archive_path.read_bytes()
+    with pytest.raises(ValueError, match="SHA256"):
+        ucr.fetch(
+            ["series_a.txt"], data_dir=tmp_path, opener=_local_opener(archive_bytes)
+        )
+    assert not (tmp_path / "ucr" / "series_a.txt").exists()
+
+
 # --- マニフェストとライセンス表記 --------------------------------------------
 
 
