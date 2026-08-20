@@ -82,7 +82,7 @@ IPC_THRESHOLD_MODES: tuple[str, ...] = (
 
 
 @dataclass(frozen=True, slots=True)
-class McThresholdRow:
+class McThresholdRow(DataclassSummaryMixin):
     """MC の総容量をしきい値法ごとに並べた1行。
 
     Attributes:
@@ -101,13 +101,9 @@ class McThresholdRow:
     mc_effective_delay: float
     mc_ratio: float
 
-    def to_summary(self) -> dict[str, float | str]:
-        """``meta.json`` に載せるプレーンな dict。"""
-        return dataclasses.asdict(self)
-
 
 @dataclass(frozen=True, slots=True)
-class IpcThresholdRow:
+class IpcThresholdRow(DataclassSummaryMixin):
     """IPC の総容量をしきい値法ごとに並べた1行。
 
     Attributes:
@@ -132,10 +128,6 @@ class IpcThresholdRow:
     ipc_saturation_ratio: float
     n_targets_kept: int
     ipc_threshold_degree1: float
-
-    def to_summary(self) -> dict[str, float | int | str]:
-        """``meta.json`` に載せるプレーンな dict。"""
-        return dataclasses.asdict(self)
 
 
 @dataclass(frozen=True, slots=True)
