@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from ast_imports import imported_roots
 from test_public_api_reexport import PACKAGE_NAMES
 
 import rc_basics_lab

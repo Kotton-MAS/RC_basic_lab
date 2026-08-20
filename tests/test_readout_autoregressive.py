@@ -14,13 +14,13 @@
 
 from __future__ import annotations
 
-import ast
 import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+from ast_imports import imported_roots
 
 import rc_basics_lab
 from rc_basics_lab.readout.autoregressive import FreeRunResult, StateUpdater, free_run
@@ -126,13 +126,7 @@ def test_autoregressive_does_not_import_reservoir_at_module_level() -> None:
     AST を見るので、関数内 import へ逃がしても落ちる (D-53 の AST ガードと
     同じ流儀)。
     """
-    tree = ast.parse(AUTOREGRESSIVE_SOURCE.read_text(encoding="utf-8"))
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module is not None:
-            imported.add(node.module)
-        elif isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
+    imported = imported_roots(AUTOREGRESSIVE_SOURCE, include_function_bodies=True)
     offenders = sorted(
         name
         for name in imported
