@@ -27,6 +27,7 @@ pyplot を使わず ``Figure`` + ``FigureCanvasAgg`` を直接組み、描画設
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
@@ -256,11 +257,16 @@ def plot_freerun_attractor(
                 points = profile_points(rows, task, KIND_PHASE, source)
                 if points.shape[0] == 0:
                     continue
+                # **線ではなく点で描く**。位相図の点列は確保軸6 で間引いて
+                # あるので、線でつなぐと間引きの弦が軌道の一部に見える
+                # (真の軌道が通っていない直線が図に出る)。
                 axis.plot(
                     points[:, 0],
                     points[:, 1],
-                    linewidth=0.5,
-                    alpha=0.8,
+                    linestyle="none",
+                    marker=".",
+                    markersize=0.8,
+                    alpha=0.7,
                     color=SOURCE_STYLE[source][0],
                     label=_source_label(source, style),
                 )
@@ -272,7 +278,8 @@ def plot_freerun_attractor(
             axis.set_ylabel(
                 style.label("第2成分 / 遅延座標", "component 2 / delay coordinate")
             )
-            axis.legend(loc="best", fontsize=8)
+            legend = axis.legend(loc="best", fontsize=8, markerscale=12)
+            legend.set_title(None)
         if drawn == 0:
             raise ValueError("位相図に描く点がありません")
         figure.suptitle(
@@ -300,10 +307,18 @@ def plot_valid_time(
     """
     if not rows:
         raise ValueError("rows が空です")
-    tasks = _tasks_of(rows)
+    # **lambda_max を数値推定してある系だけを描く** (D-42 / D-43)。04 が
+    # 推定しているのは Lorenz だけで、Mackey-Glass の行は Lyapunov 列が nan
+    # である (推定していない量を他の系の値で埋めない)。縦軸が Lyapunov 時間の
+    # この図に nan の系を並べると、空のパネルが「有効予測時間が 0」に見える。
+    normalized = [row for row in rows if math.isfinite(row.lyapunov_time)]
+    if not normalized:
+        raise ValueError("lyapunov_time が有限な行がありません")
+    tasks = _tasks_of(normalized)
+    rows = normalized
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(5.4 * len(tasks), 5.0)
+        figure = _new_figure(6.4 * len(tasks), 5.0)
         axes = np.atleast_1d(figure.subplots(1, len(tasks), sharey=True))
         for axis, task in zip(axes, tasks, strict=True):
             _valid_time_panel(axis, rows, task, methods, style)
@@ -318,6 +333,15 @@ def plot_valid_time(
                 "Experiment 4-B: valid prediction time (until the NRMSE ratio"
                 " exceeds the threshold)",
             )
+        )
+        figure.supxlabel(
+            style.label(
+                "注: lambda_max を数値推定してあるのは Lorenz だけなので、"
+                "Lyapunov 正規化した分布もその系に限る (D-42)。",
+                "Note: lambda_max is estimated numerically only for the Lorenz"
+                " system, so the normalized distribution is shown only there.",
+            ),
+            fontsize=8,
         )
         return _save(figure, path)
 
