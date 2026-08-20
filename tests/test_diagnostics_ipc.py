@@ -566,7 +566,7 @@ def test_max_targets_bounded_axes_are_enumerated() -> None:
     """
     # 軸ごとに「その軸だけが上限を超える」設定を作る。
     # target_count: heatmap セル数 (4 x 60 = 240) は上限内、目標数 4075 が超える。
-    target_count_cfg = IpcConfig(max_targets=1_000)
+    target_count_cfg = IpcConfig(max_targets=500)
     assert (
         len(target_count_cfg.max_delay_by_degree)
         * max(target_count_cfg.max_delay_by_degree)
@@ -1019,19 +1019,25 @@ def test_max_delay_bit_length_bounds_combinatorial_blowup_in_count_targets() -> 
         )
 
 
-def test_surrogate_base_matrix_never_exceeds_the_effective_chunk_size(
+def test_surrogate_base_matrix_is_bounded_by_the_allocation_axis(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """代表目標行列 ``base`` は一括確保されず、chunk_size と同じ上限で分割
-    される (CWE-789、F-03-2-015)。
+    """代表目標行列 ``base`` は一括確保されず、**確保軸**で分割される
+    (CWE-789、F-03-2-015 / D-33 の改訂)。
 
     round1 の BLOCKER 修正はサロゲート列の生成 (``_iter_surrogate_chunks``)
     をチャンク化したが、その入力である代表目標行列 ``base`` は対象外だった。
     ``n_surrogate_targets`` に上限が無いため ``len(picked)`` は
-    ``chunk_size`` と無関係に大きくなりうる (実測: K=400, T=1e6,
+    いくらでも大きくなりうる (実測: K=400, T=1e6,
     ``n_surrogate_targets=K``, ``chunk_size=1`` で base 単独 peak RSS
-    3.23GB)。ここでは ``np.empty`` に渡された列数の最大値を監視し、
-    ``effective_chunk_size`` を超える確保が一度も起きないことを確認する。
+    3.23GB)。ここでは ``np.empty`` に渡された列数の最大値を監視する。
+
+    04a T3 (D-33 の改訂) で分割の上限は ``cfg.chunk_size`` から
+    ``RowAlignment.block_width`` (128 MiB 予算だけで決まる確保軸) へ
+    変わった。安全側の性質 (どんな設定でも 1 チャンクが 128 MiB を超えない)
+    は保たれ、**運用者の性能ノブが確保上限を動かす経路が消える**。後者を
+    ここで直接固定する: ``chunk_size=3`` にしても代表目標ブロックは 3 列に
+    割れない (旧実装なら割れた)。
     """
     states, inputs = _cached_states(0.9, 15, 4000, 5)
     ctx = DiagnosticContext(washout=100, seed=CTX_SEED)
@@ -1057,9 +1063,14 @@ def test_surrogate_base_matrix_never_exceeds_the_effective_chunk_size(
     monkeypatch.setattr(np, "empty", spying_empty)
     ipc(states, inputs, ctx=ctx, cfg=cfg)
     assert max_columns_seen > 0, "監視対象の確保が一度も起きませんでした"
-    assert max_columns_seen <= cfg.chunk_size, (
-        f"chunk_size={cfg.chunk_size} を超える列数の確保がありました: "
+    budget_columns = bounded_chunk_size(10**9, n_samples)
+    assert max_columns_seen <= budget_columns, (
+        f"128 MiB 予算 ({budget_columns} 列) を超える確保がありました: "
         f"{max_columns_seen}"
+    )
+    assert max_columns_seen > cfg.chunk_size, (
+        "代表目標ブロックが cfg.chunk_size で割れています "
+        f"(確保軸が性能ノブに従っている): {max_columns_seen} <= {cfg.chunk_size}"
     )
 
 
@@ -1183,7 +1194,7 @@ def test_ipc_config_fields_change_output() -> None:
         # 縛る2軸 (単位が違う) も1つの node id で固定する。列挙は
         # MAX_TARGETS_BOUNDED_AXES が正本で、
         # test_max_targets_bounded_axes_are_enumerated が完全性を守る。
-        (IpcConfig(max_targets=1_000), AXIS_TARGET_COUNT),
+        (IpcConfig(max_targets=500), AXIS_TARGET_COUNT),
         (
             IpcConfig(
                 max_delay_by_degree=(11_000,) + (1,) * 19,
