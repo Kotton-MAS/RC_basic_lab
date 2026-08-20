@@ -1237,9 +1237,9 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 191 | 245 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 185 | 233 |
 | `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 176 | 213 |
-| `anomaly05.py` | 05 の合成異常源の設定 / `SyntheticAnomalyConfig` / `SyntheticMackeyGlassConfig` | 110 | 137 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 121 | 128 |
-| **合計** | — | **1012** | **1247** |
+| `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` | 292 | 359 |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 139 | 146 |
+| **合計** | — | **1212** | **1487** |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
 機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は
@@ -1258,7 +1258,11 @@ Mackey-Glass 生成パラメータ）と変換の唯一の口 `to_mackey_glass` 
 ため、01 の `MackeyGlassConfig` を内包したままでは「YAML から設定できるのに
 出力が1バイトも変わらない死んだ葉」が2つ残っていた。**既定値**の単一の真実は
 01 側のままで（`_MACKEY_GLASS_DEFAULTS = MackeyGlassConfig()` から引く）、
-05 が絞ったのは葉の集合だけである。
+05 が絞ったのは葉の集合だけである。T3 は同じモジュールへ実験1本ぶんの
+`Anomaly05Config`（セクション7個 + `anomaly_stream_seed`）を足して 292 行に
+した。**上限（非空 300 行）まで 8 行**しかないので、5-C / 5-D の掃引設定を足す
+T4 はこのモジュールを割ることになる —— 上限は「次に到達した時点でもう1段割る
+判断を機械が要求する」ために置いてあり、緩めない（D-63 と同じ規律）。
 
 package 内の依存は**一方向**で、辺は3本しかない（`tests/test_config_package_layout.py`
 が AST で固定する）:
