@@ -52,13 +52,20 @@ from wiring import (
     CHANNEL_ERROR,
     CHANNEL_META,
     CHANNEL_ROWS,
+    CHANNEL_SEEDS,
     WiringCase,
     apply_case,
     assert_yaml_has_all_leaves,
     case,
+    changed_leaves,
+    current_experiment_modules,
     leaf_paths,
     plain,
+    round_trip,
+    section_case,
+    seeds_case,
 )
+from wiring import fingerprint as wiring_fingerprint
 
 import rc_basics_lab.experiment as experiment_pkg
 from rc_basics_lab.config import (
@@ -99,9 +106,6 @@ from rc_basics_lab.seeds import SeedStream, make_rng_for
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
-
-CHANNEL_SEEDS = "seeds"
-"""基底シードを変えると、そのストリームの乱数列だけが変わる。"""
 
 CHANNEL_PENDING = "pending"
 """消費側がまだ無い葉のチャネル (**T4 時点で該当なし**、``PENDING_SECTIONS``)。"""
