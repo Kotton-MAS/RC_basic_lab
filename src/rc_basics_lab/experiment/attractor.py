@@ -10,12 +10,12 @@
    純関数であれば、判定の根拠は引数と定数だけになり「図を見て閾値を動かす」
    経路が構造上存在しない。
 2. **アトラクタ再現を視覚評価で結論しない** (D-46)。距離指標を2本 (リターン
-   マップの分布距離・パワースペクトルの距離) 返し、**真の軌道のシャッフル
+   マップの点集合距離・パワースペクトルの距離) 返し、**真の軌道のシャッフル
    代替**と比べる形をここに閉じる。
 3. **確保軸4 と確保軸7 の在り処を1か所にする**。長時間統計の系列長
    (``stats_steps``) には上書き不能な絶対上限を置き (``_MAX_STATS_STEPS``)、
-   ヒストグラムの分位点数と FFT 長は ``stats_steps`` に**従属**させて独立した
-   設定軸にしない (仕様 §5 確保軸7)。
+   FFT 長は ``stats_steps`` に**従属**させて独立した設定軸にしない
+   (仕様 §5 確保軸7。リターンマップ側はビンも分位点も持たない)。
 
 **発散の判定は ``isfinite`` だけでは足りない** (T4 実装メモ 5)。``float64`` の
 範囲内で 1e200 まで伸びる軌道は有限値のまま「破綻」しているので、分類器は
@@ -80,7 +80,7 @@ PERIODIC_AUTOCORR = 0.95
 """
 
 MIN_RETURN_MAP_POINTS = 8
-"""リターンマップの分布距離を定義できる最小の点数。
+"""リターンマップの点集合距離を定義できる最小の点数。
 
 これ未満のときは距離を ``nan`` にする。0 を返すと「潰れた軌道ほど真の軌道に
 近い」という逆向きの結論になり、nan なら比較 (``<``) が必ず False になるので
@@ -212,7 +212,7 @@ def valid_time_from_errors(errors: FloatArray, threshold: float) -> ValidTime:
         raise ValueError(f"errors は非空の1次元配列が必要です: {curve.shape}")
     if not threshold > 0.0:
         raise ValueError(f"threshold は正である必要があります: {threshold}")
-    exceeded: FloatArray = ~(curve <= threshold)
+    exceeded = ~(curve <= threshold)
     if not bool(np.any(exceeded)):
         return ValidTime(steps=int(curve.size), censored=True, threshold=threshold)
     return ValidTime(
@@ -295,7 +295,7 @@ def _mean_nearest(left: FloatArray, right: FloatArray) -> float:
             block[:, None, :] - right[None, :, :], axis=2
         )
         total += float(np.sum(np.min(distances, axis=1)))
-    return total / left.shape[0]
+    return total / float(left.shape[0])
 
 
 def point_set_distance(left: FloatArray, right: FloatArray) -> float:
