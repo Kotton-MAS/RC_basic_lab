@@ -27,8 +27,10 @@ opener で行う。
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
+import secrets
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -189,33 +191,67 @@ def _stream_to_file(
 
 
 class _StagedSink:
-    """``tempfile.mkstemp`` が返す fd をそのまま保持する、唯一の書き込みハンドル。
+    """一時ファイルの fd と、それを開いた**ディレクトリの fd** を保持する、
+    唯一の書き込みハンドル。
 
-    (reviewer-security / reviewer-architecture 指摘) 以前は mkstemp の fd を
-    ``os.close`` で即座に捨て、呼び出し側が ``partial.open("wb")`` で**名前を
-    開き直して**いた。mkstemp の安全性は O_EXCL と fd の保持で成り立つので
-    あって名前の予測不能性ではなく、名前を開き直した瞬間に「予測不能な名前」
-    という弱い性質まで安全性が後退していた —— mkstemp と ``open`` の間で同名が
-    symlink に差し替えられると、data_dir の外を上書きし得る。fd を握ったまま
-    書き込み・再照合・確定を行うことで、この窓を構造的に閉じる。
+    (reviewer-security 指摘、F-3-010) 以前は ``target.parent`` を**パス文字列
+    として** ``tempfile.mkstemp(dir=target.parent)`` に渡し、確定も
+    ``os.replace(partial, target)`` とパス越しに行っていた。``resolve_under``
+    がいくら安全な絶対パスを返しても、その後 (mkstemp/replace の**前**) に
+    ``target.parent`` そのものが data_dir 外を指す symlink へ差し替えられると、
+    以降の全操作がその symlink を辿ってしまう ——
+    ``_StagedSink.commit`` の fstat/stat 再照合ですら、fd もパスも同じ
+    (symlink 越しの) 実体を指すので一致してしまい無力だった。
+
+    この版は ``_staged_write`` の冒頭で ``target.parent`` を
+    ``os.O_NOFOLLOW`` つきで1回だけ開いた**ディレクトリ fd**
+    (``self._dir_fd``) を最後まで保持し、一時ファイルの作成・再照合・確定・
+    後始末をすべてこの fd 相対 (``dir_fd=`` 引数) で行う。一度ディレクトリ
+    fd を握ってしまえば、その後にパス文字列としての ``target.parent`` が
+    何に差し替えられようと、以降の操作は無関係に同じ実ディレクトリを指し
+    続ける。``target`` も (F-3-001 指摘) ``_staged_write`` から1回だけ渡され、
+    ``commit`` はもう ``target`` を引数に取らない —— 「どこへ確定させるか」
+    が2つの真実に割れることが型で書けなくなる。
     """
 
-    def __init__(self, descriptor: int, partial: Path) -> None:
-        self.partial = partial
+    def __init__(
+        self, descriptor: int, dir_fd: int, partial_name: str, target: Path
+    ) -> None:
         self._descriptor = descriptor
+        self._dir_fd = dir_fd
+        self._partial_name = partial_name
+        self._target = target
         self._committed = False
 
-    def write(self, data: bytes) -> None:
-        """``partial`` の fd へ直接書く (パスは一切使わない)。"""
-        os.write(self._descriptor, data)
+    @property
+    def partial(self) -> Path:
+        """一時ファイルの絶対パス (表示・テストからの直接操作用)。
 
-    def commit(
-        self,
-        target: Path,
-        expected_sha256: str,
-        *,
-        error_cls: type[DatasetError],
-    ) -> None:
+        ``commit()`` 自身はこのパスを一切使わず、常に ``self._dir_fd`` 相対の
+        ``self._partial_name`` を使う (F-3-010 の要点)。
+        """
+        return self._target.parent / self._partial_name
+
+    def write(self, data: bytes) -> None:
+        """``partial`` の fd へ直接、全量書き切るまで書く (パスは使わない)。
+
+        (reviewer-security 指摘、F-3-011) ``os.write`` は POSIX ``write(2)``
+        の薄いラッパで、ディスク満杯の境界・``RLIMIT_FSIZE`` 到達・シグナル
+        割り込みなどで要求量より少なく書く (short write) ことがある。戻り値
+        を確認せずに次のチャンクへ進むと、その分だけディスク上のバイト列が
+        欠落する。``memoryview`` を使い、全量を書き切るまでループする。
+        """
+        view = memoryview(data)
+        while view:
+            written = os.write(self._descriptor, view)
+            if written == 0:
+                raise DatasetError(
+                    "一時ファイルへの書き込みが 0 byte で停止しました "
+                    f"(descriptor={self._descriptor})"
+                )
+            view = view[written:]
+
+    def commit(self, expected_sha256: str, *, error_cls: type[DatasetError]) -> None:
         """``os.replace`` の直前に、書き込みに使った同じ fd から実バイト列を
         再照合してから確定させる。
 
@@ -226,10 +262,14 @@ class _StagedSink:
         パスがどう差し替えられても fd が指す inode には届かない。ただし
         digest の再照合だけでは「同じ fd から書いて同じ fd から読む」という
         自己整合性しか測れず、確定の**直前**に同名パスが**丸ごと**別の実体へ
-        差し替えられていても素通りする。そこで最後に ``os.stat(partial)``
-        (パス越しに見える実体) と ``os.fstat(fd)`` (書き込みに使った実体) の
-        ``(st_dev, st_ino)`` が一致することまで確認し、不一致なら
-        ``os.replace`` を行わずに送出する。
+        差し替えられていても素通りする。そこで最後に
+        ``os.stat(name, dir_fd=self._dir_fd, follow_symlinks=False)``
+        (ディレクトリ fd 相対に見える実体) と ``os.fstat(fd)``
+        (書き込みに使った実体) の ``(st_dev, st_ino)`` が一致することまで
+        確認し、不一致なら ``os.replace`` を行わずに送出する。確定
+        (``os.replace``) も後始末に使う名前も ``self._dir_fd`` 相対でしか
+        引かないので、``target.parent`` がパスとしてその後どう差し替えられ
+        ようと影響を受けない (F-3-010)。
         """
         os.lseek(self._descriptor, 0, os.SEEK_SET)
         digest = hashlib.sha256()
@@ -245,7 +285,9 @@ class _StagedSink:
                 "差し替えられた可能性があります。キャッシュには残しません): "
                 f"expected={expected_sha256} actual={on_disk_sha256}"
             )
-        disk_stat = os.stat(self.partial)
+        disk_stat = os.stat(
+            self._partial_name, dir_fd=self._dir_fd, follow_symlinks=False
+        )
         fd_stat = os.fstat(self._descriptor)
         if (disk_stat.st_dev, disk_stat.st_ino) != (fd_stat.st_dev, fd_stat.st_ino):
             raise error_cls(
@@ -253,14 +295,46 @@ class _StagedSink:
                 "(パスが指す実体と書き込みに使った実体が一致しません。"
                 f"キャッシュには残しません): {self.partial}"
             )
-        os.replace(self.partial, target)
+        os.replace(
+            self._partial_name,
+            self._target.name,
+            src_dir_fd=self._dir_fd,
+            dst_dir_fd=self._dir_fd,
+        )
         self._committed = True
+
+
+def _open_unique_temp_file(dir_fd: int, target_name: str) -> tuple[int, str]:
+    """``dir_fd`` 相対で ``O_CREAT|O_EXCL`` の一時ファイルを作る。
+
+    ランダムな名前を自前生成し (``secrets.token_hex``)、``EEXIST`` (衝突) は
+    ``_MAX_TEMP_NAME_ATTEMPTS`` 回まで再試行する。``O_NOFOLLOW`` を足すのは、
+    同名の symlink が既に存在するケースを弾くため (万一の衝突時にも symlink
+    を辿って書かない)。
+    """
+    for _ in range(_MAX_TEMP_NAME_ATTEMPTS):
+        name = f".{target_name}.{secrets.token_hex(16)}.part"
+        try:
+            descriptor = os.open(
+                name,
+                os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=dir_fd,
+            )
+        except FileExistsError:
+            continue
+        return descriptor, name
+    raise DatasetError(
+        "一時ファイル名の生成に失敗しました "
+        f"(再試行上限 {_MAX_TEMP_NAME_ATTEMPTS} 回に達しました): {target_name!r}"
+    )
 
 
 @contextmanager
 def _staged_write(target: Path) -> Iterator[_StagedSink]:
-    """``target`` と同じディレクトリに mkstemp で一時ファイルを作り、書き込み・
-    再照合・確定 (``os.replace``) までの1ライフサイクルを1箇所に閉じる。
+    """``target`` の親ディレクトリを ``dir_fd`` として固定し、以降の一時ファイル
+    作成・書き込み・再照合・確定 (``os.replace``) までの1ライフサイクルを
+    すべてこの ``dir_fd`` 相対で行う (F-3-010)。
 
     (reviewer-architecture 指摘) 「作る → 書く → 検証して確定させる」という
     1つのライフサイクルが部品に割れていると、後始末 (``partial.unlink``) の
@@ -268,17 +342,29 @@ def _staged_write(target: Path) -> Iterator[_StagedSink]:
     複製されたり漏れたりする。``with`` を抜けるまでに ``commit()`` を呼ばな
     かった場合 (例外・書き忘れのいずれも) は、ここで一時ファイルを自動的に
     片付ける —— 呼び出し側に ``partial.unlink`` を書かせない。
+
+    (reviewer-security 指摘、F-3-010) ``target.parent`` を**パス文字列**として
+    何度も (mkdir / mkstemp / stat / replace の都度) 開き直す実装は、その
+    どこかの隙間で親ディレクトリが symlink へ差し替えられると全体が無力化
+    する。``os.open(target.parent, os.O_DIRECTORY | os.O_NOFOLLOW)`` を
+    ここで1回だけ呼び、以降は返された ``dir_fd`` だけを使う —— ``O_NOFOLLOW``
+    は「``target.parent`` 自身が (このパスを開こうとした瞬間に) symlink で
+    あれば開けない」ことを保証し、開いた後はパスがどう差し替えられようと
+    ``dir_fd`` は同じ実ディレクトリを指し続ける。
     """
-    descriptor, name = tempfile.mkstemp(
-        dir=target.parent, prefix=f".{target.name}.", suffix=".part"
-    )
-    sink = _StagedSink(descriptor, Path(name))
+    dir_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        yield sink
+        descriptor, name = _open_unique_temp_file(dir_fd, target.name)
+        sink = _StagedSink(descriptor, dir_fd, name, target)
+        try:
+            yield sink
+        finally:
+            os.close(descriptor)
+            if not sink._committed:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(name, dir_fd=dir_fd)
     finally:
-        os.close(descriptor)
-        if not sink._committed:
-            sink.partial.unlink(missing_ok=True)
+        os.close(dir_fd)
 
 
 def download(
@@ -315,11 +401,14 @@ def download(
         response = open_url(remote.url, timeout)
     except HTTPError as error:  # pragma: no cover - ネットワーク経路
         raise DatasetError(f"取得に失敗しました: {remote.url} ({error})") from error
-    with _staged_write(target) as sink:
-        try:
-            digest, total = _stream_to_file(response, sink, max_bytes)
-        finally:
-            _close(response)
+    # (reviewer-architecture / reviewer-security 指摘、F-3-003 / F-3-012)
+    # ``response`` の取得を ``with _staged_write(target)`` の**外側**に置いた
+    # まま ``contextlib.closing`` で同じ ``with`` 文に並べる —— こうすると
+    # ``_staged_write.__enter__`` (dir_fd/mkstemp 相当) が yield 前に失敗して
+    # も、``with`` 文の展開規則により既に入った ``closing(response)`` の
+    # ``__exit__`` は必ず呼ばれ、ソケットが閉じられずに残ることがない。
+    with contextlib.closing(response), _staged_write(target) as sink:
+        digest, total = _stream_to_file(response, sink, max_bytes)
         if digest != remote.sha256:
             raise ChecksumMismatchError(
                 "SHA256 が一致しません (取得先が差し替わった可能性があります。"
@@ -327,7 +416,7 @@ def download(
                 f"url={remote.url} expected={remote.sha256} actual={digest} "
                 f"size={total}"
             )
-        sink.commit(target, remote.sha256, error_cls=ChecksumMismatchError)
+        sink.commit(remote.sha256, error_cls=ChecksumMismatchError)
     return target
 
 
