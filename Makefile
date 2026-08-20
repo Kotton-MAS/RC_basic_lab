@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 onestep-04 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -13,6 +13,7 @@ help:
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
 	@echo "  figures-03   - Regenerate results/ for experiment 03 (2 CSV + 4 figures + meta)"
+	@echo "  onestep-04   - Regenerate results/ for experiment 4-A (onestep.csv + meta)"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"
@@ -70,6 +71,13 @@ figures-02:
 # (threshold-02 と figures-02 の関係と同じ規律)。
 figures-03:
 	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity
+
+# 実験04 の 4-A の成果物 (onestep.csv / meta.json) を results/04_chaotic_freerun/
+# に再生成する。自走の成果物 (freerun.csv / stability.csv) と図5枚は次サイクル
+# が足すので、そのときに figures-04 を新設する (成果物の一覧の単一の真実は
+# experiment/freerun.py の ONESTEP_ARTIFACTS)。
+onestep-04:
+	uv run python experiments/04_chaotic_freerun/run_04.py --config experiments/04_chaotic_freerun/config.yaml --out results/04_chaotic_freerun
 
 # ESP 判定の閾値感度 (esp_threshold_sensitivity.csv) を再生成する。
 # abs_tol 3点 x window 3点で 2-C の格子を判定し直すので figures-02 とは

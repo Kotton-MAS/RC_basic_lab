@@ -113,12 +113,22 @@ lyapunov:
 # 4-D (次サイクル) の委譲先。04 で新しい上限を作らず、03 で置いた D-34 の
 # 4段の上限をそのまま使う (確保軸8)。
 mc:
-  max_delay: 200
+  max_delay: 400
+  alpha: 1.0e-09
+  threshold_mode: surrogate
   n_surrogates: 100
-  quantile: 0.99
+  surrogate_quantile: 0.99
   chunk_size: 256
 ipc:
-  max_delay_by_degree: [60, 20, 10, 5]
+  max_delay_by_degree: [60, 20, 10, 6]
+  max_variables: 3
+  basis: legendre
+  input_distribution: uniform
+  alpha: 1.0e-09
+  threshold_mode: surrogate
   n_surrogates: 100
-  quantile: 0.99
+  n_surrogate_targets: 4
+  surrogate_quantile: 0.99
   chunk_size: 256
+  max_targets: 200000
+  max_degrees: 20

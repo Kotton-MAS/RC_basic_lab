@@ -5,6 +5,7 @@
     uv run python main.py --experiment 01
     uv run python main.py --experiment 02
     uv run python main.py --experiment 03
+    uv run python main.py --experiment 04
 
 ``--experiment`` は ``experiments/`` 配下の実験番号。この層が知っているのは
 「どの設定 YAML を、どのローダで読み、どのパイプラインに渡すか」だけで、
@@ -23,12 +24,14 @@ from pathlib import Path
 
 from rc_basics_lab.config import (
     Capacity03Config,
+    Chaos04Config,
     Esp02Config,
     load_config,
     load_config_as,
 )
 from rc_basics_lab.experiment.capacity_pipeline import run_and_report_capacity
 from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
+from rc_basics_lab.experiment.freerun import run_and_report_onestep
 from rc_basics_lab.experiment.pipeline import run_and_report
 
 logger = logging.getLogger("rc_basics_lab.main")
@@ -93,6 +96,19 @@ def _run_03(config_path: Path, out_dir: Path) -> None:
     run_and_report_capacity(config, out_dir)
 
 
+def _run_04(config_path: Path, out_dir: Path) -> None:
+    """実験04 (カオス時系列の自由走行予測。T4 時点では 4-A のみ)。"""
+    config = load_config_as(config_path, Chaos04Config)
+    logger.info(
+        "実験04 を実行します: %s (Lorenz T=%d dt=%g / n_replicates=%d)",
+        config_path,
+        config.lorenz.length,
+        config.lorenz.rk4_step * config.lorenz.sample_interval,
+        config.base.n_replicates,
+    )
+    run_and_report_onestep(config, out_dir)
+
+
 EXPERIMENTS: dict[str, ExperimentSpec] = {
     "01": ExperimentSpec(
         config_path=ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
@@ -108,6 +124,11 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
         config_path=ROOT / "experiments" / "03_capacity" / "config.yaml",
         run=_run_03,
         out_dir=Path("results/03_capacity"),
+    ),
+    "04": ExperimentSpec(
+        config_path=ROOT / "experiments" / "04_chaotic_freerun" / "config.yaml",
+        run=_run_04,
+        out_dir=Path("results/04_chaotic_freerun"),
     ),
 }
 """実験番号 -> ``ExperimentSpec``。
