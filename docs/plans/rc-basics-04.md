@@ -666,3 +666,116 @@ ADR §2.3 の推定（`a·σ` のオーダー、leak=0.3・σ=1e-4 で 1e-5 台�
 新テストは型の確認に加えて **`monkeypatch` が実際に効くこと**まで測る
 （型だけを見ると、`getattr` が別経路で関数を返す実装に戻したときに気づけない）。
 
+
+---
+
+## T3 実装時に決めたこと
+
+> 仕様 §4 T3 と ADR 0002 に書かれていなかった選択、および両者の記述と食い違った点の記録。
+> 次周の reviewer / fixer が読むのはこの節であり、実装のコメントではない。
+> 決定そのものは `.claude/decisions.yaml` の D-24 / D-28 / D-33 / D-34 の**改訂**が正本
+> (+ D-26 の rule を名前の変更に追随させた)。**新規採番はしていない** (次の空き番号は D-54)。
+
+### 1. ADR §5.5 の前提は**成立した** (着手前の実測)
+
+決定4 (チャンク幅の軸分離) は 04b 送りにせず実施した。03 の全条件で 128 MiB 予算の
+実効列数 `budget_columns` を実測した結果:
+
+| 条件 | T | `n_samples` (IPC) | `budget_columns` | `solve_width` | `len(picked)` 最大 | ブロック数 (改訂前 / 後) |
+|---|---|---|---|---|---|---|
+| 3-A mc_sweep | 20,000 | 19,800 | 847 | 256 | 4 | 4 / 4 |
+| 3-B ipc_sweep | 100,000 | 99,800 | 168 | 168 | 4 | 4 / 4 |
+| 3-B' conservation | 200,000 | 199,800 | 83 | 83 | 4 | 4 / 4 |
+| 系列長掃引 T=1e5 | 100,000 | 99,800 | 168 | 168 | 4 | 4 / 4 |
+| 系列長掃引 T=2e5 | 200,000 | 199,800 | 83 | 83 | 4 | 4 / 4 |
+| 系列長掃引 T=5e5 | 500,000 | 499,800 | 33 | 33 | 4 | 4 / 4 |
+| 系列長掃引 T=1e6 | 1,000,000 | 999,800 | **16** | 16 | 4 | 4 / 4 |
+
+最悪でも `budget_columns` = 16 >= `n_surrogate_targets` = 4 なので、代表目標ブロックは
+全条件で1ブロック4列 (次数ごとに1ブロック、4次数で計4ブロック) のまま変わらない。
+分割も丸め順序も同一なので `mc_threshold` / `ipc_threshold_degree{d}` の最終ビットは動かない
+(実測でも確認。下記6)。
+
+### 2. `test_chunk_size_does_not_change_results` はビット一致を測っていない (**ADR の発見を実測で確認**)
+
+docstring は「結果を1ビットも変えてはいけない」と書いているが、実際の assert は
+`pytest.approx(rel=1.0e-10)` と `np.testing.assert_allclose(rtol=1.0e-10)` である
+(MC 側 `tests/test_diagnostics_memory_capacity.py`、IPC 側 `tests/test_diagnostics_ipc.py`
+の同名テストの両方)。**本サイクルでは修正していない** (スコープ外。`chunk_size` を変えると
+浮動小数の加算順序が変わりうるので、ビット一致を要求するのが正しいかは別途判断が要る)。
+
+**ビット一致を実際に測っているのは成果物の SHA-256 突き合わせの方**である。T3 の
+「純粋な整理である」ことの証明はそちらに依存しており、このテストには依存していない。
+04b でこの docstring と assert の食い違いを閉じる場合は、`chunk_size` を変えたときの
+ビット一致が本当に成り立つかを先に実測すること。
+
+### 3. `_validate_config` は `None` ではなく `InputMeasure` を返す (**ADR に無い選択**)
+
+ADR §2.2-4 は「`ipc()` は入口で1度だけ `InputMeasure(...)` を作る」とだけ書いていた。
+実装では `ipc._validate_config(cfg) -> InputMeasure` にした。
+
+理由: 対の検査を `InputMeasure.__post_init__` の1箇所だけに置くと、`_validate_config`
+から自前の検査を消すことになる。そのとき「検証は使う側」(D-09) の入口である
+`_validate_config` を素通りして値を作ると、検査の順序 (fail fast) が実装の並びに依存する。
+検証関数が畳んだ値を返す形にすれば、**検証を通っていない測度が本体へ届かない**ことが
+型で読める。`ipc()` の側は `measure = _validate_config(cfg)` の1行になる。
+
+### 4. `SUPPORTED_BASIS_PAIRS` は残し、`SUPPORTED_MEASURES` を併置した (**ADR どおりだが理由を明記**)
+
+`SUPPORTED_BASIS_PAIRS` は (a) `InputMeasure.__post_init__` の検査表そのもの、
+(b) `docs/design.md` §9 の既定値表が `diagnostics._capacity.SUPPORTED_BASIS_PAIRS` を
+**コード上の出どころとして機械照合している** (`tests/test_design_doc.py`)、の2つの役目を
+持つため残した。`SUPPORTED_MEASURES` は `(UNIFORM_LEGENDRE, NORMAL_HERMITE)` の別名で、
+値としての測度を列挙したいときに使う。**既定値表は変更していない** ——
+表に載っている出どころ (`SUPPORTED_BASIS_PAIRS` / `_MAX_CHUNK_BYTES` / `_MAX_DEGREES` /
+`_MAX_VARIABLES_FOR_COUNT` など) はどれも改名・削除していないため。
+
+### 5. 「系列が短すぎます」の文言は `(D-24)` を足しただけ (**ADR の想定と実際の差**)
+
+ADR §4.4 は「メッセージが1本に統合されるため文言が変わる。`match` しているテストを
+更新する」と書いていたが、**MC と IPC のメッセージは元から一字一句同じだった**
+(`"系列が短すぎます: t0=max(washout=..., max_delay=...)=... >= T=..."`)。統合しても
+文言は変わらないので、決定 ID が読めるように `"系列が短すぎます (D-24): ..."` へ
+`(D-24)` だけを足した。`match="系列が短すぎます"` している既存テスト2本
+(`tests/test_diagnostics_ipc.py` / `tests/test_diagnostics_memory_capacity.py`) は
+そのまま通る。
+
+### 6. `results/03_capacity/` のバイト不変の実測 (**`results/` は1バイトも触っていない**)
+
+`make figures-03` 相当を**一時ディレクトリ `/tmp` へ出力**して突き合わせた
+(`meta.json` に出力先は入らないので、`results/` を上書きせずに比較できる)。
+
+| ファイル | 結果 |
+|---|---|
+| `fig_mc_sweep.png` / `fig_ipc_profile.png` / `fig_memory_nonlinearity.png` / `fig_ipc_conservation.png` / `fig_narma10_control.png` | **SHA-256 バイト一致** (5枚) |
+| `capacity_profile.csv` (21,812 行) | **SHA-256 バイト一致** |
+| `capacity.csv` (118 行) | 差分のあるセルは `wall_time_state_s` / `wall_time_mc_s` / `wall_time_ipc_s` / `wall_time_s` の4列のみ。**他の35列は全118行で文字列として同一** |
+| `narma10.csv` (15 行) | 差分は `wall_time_s` のみ |
+| `meta.json` | `config` ブロックは **109 キーすべて一致** (`json.dumps(sort_keys=True)` でも一致)。差分は `commit` / `timestamp_utc` / `wall_time_s` / `wall_time_breakdown` の時間欄 / `threshold_comparison.wall_time_s` のみ。`narma10_verdict` / `n_rows` / `n_profile_rows` / `n_narma10_rows` / `threshold_comparison` の数値は全て一致 |
+
+`results/` 全24ファイルの個別 SHA-256 は着手前と完了後で 24/24 一致
+(`git status --short` も空)。複合ハッシュは T1 が固定した定義
+
+```
+find results -type f | LC_ALL=C sort | xargs shasum -a 256 | awk '{print $1}' \
+  | tr -d '\n' | shasum -a 256
+```
+
+で **`0f7558efc418242f…`** (着手前・完了後とも一致)。指示の完了条件5 が挙げる
+`47bcd302de7a7366…` は T1 実装メモ §4 が「6通りの定義すべてで再現できなかった」と
+記録済みの値で、本サイクルでも再現しない (**仕様との相違。3周連続で同じ食い違い**)。
+
+### 7. 変異注入15件はすべて落とせた (詳細は `.claude/decisions.yaml` の各 rationale)
+
+`test_surrogate_base_matrix_never_exceeds_the_effective_chunk_size` は
+`test_surrogate_base_matrix_is_bounded_by_the_allocation_axis` へ改名し、assert を
+「`cfg.chunk_size` を超えない」から「(a) 128 MiB 予算を超えない **かつ**
+(b) `cfg.chunk_size` では割れない」へ変えた。旧 assert は D-33 の改訂そのもの
+(確保軸が性能ノブに従わない) と真っ向から矛盾するため、放置すると新しい決定を
+古いテストが押し戻す。改名前の名前は decisions.yaml からも docs からも参照されていない
+(実測: 0 ヒット)。
+
+### 8. `docs/design.md` に節番号は増やしていない
+
+仕様 §4 T5 が §12 を 04b-2 のために予約しているため、T3 の記録は §11 の既存の
+容量カーネルの節に段落と表を足す形にした (T1 / T2 の前例と同じ)。
