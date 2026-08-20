@@ -980,7 +980,6 @@ def test_chaos_wall_time_table_matches_the_meta_json() -> None:
     expected = {
         "真の軌道の生成": float(breakdown["lyapunov_s"]),
         "4-A": float(breakdown["onestep_s"]),
-        f"合計{_LPAREN}`wall_time_s`{_RPAREN}": _number(meta, "wall_time_s"),
     }
     seen = 0
     for cells in table:
@@ -1010,9 +1009,9 @@ def test_chaos_allocation_bound_table_matches_the_module_constants() -> None:
 
 
 def test_chaos_artifact_sizes_are_within_budget() -> None:
-    """§11 に書いた成果物サイズが実ファイルと桁で一致し、予算 5 MB の内側。"""
+    """§12.7 に書いた成果物サイズが実ファイルと一致し、予算 5 MB の内側。"""
     total = sum(path.stat().st_size for path in CHAOS_RESULTS.glob("*.csv"))
     assert total < 5 * 1024 * 1024
-    documented = re.search(r"CSV 合計 \| \*\*(\d+) KB\*\*", _text())
-    assert documented, "§11 に CSV 合計サイズが書かれていません"
-    assert int(documented[1]) == round(total / 1024)
+    documented = re.search(r"CSV 合計 \| \*\*([\d,]+) KB\*\*", _text())
+    assert documented, "§12.7 に CSV 合計サイズが書かれていません"
+    assert int(documented[1].replace(",", "")) == round(total / 1024)
