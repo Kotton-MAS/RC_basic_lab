@@ -248,6 +248,27 @@ def test_lorenz_generation_rejects_the_trajectory_element_axis() -> None:
         integrate_lorenz(cfg, np.array(REFERENCE_X0), cfg.length)
 
 
+def test_lorenz_integration_rejects_the_trajectory_element_axis_by_n_samples() -> None:
+    """確保軸2 は ``cfg.length`` ではなく ``integrate_lorenz`` が実際に確保する
+    ``n_samples`` を検査する (reviewer-security 実測: 検査量と確保量が5桁
+    ずれていた)。
+
+    ``cfg.length`` を軸2 の上限よりずっと小さく保ったまま (``cfg`` だけを見る
+    検査ならここで通ってしまう)、``n_samples`` だけを上限超に指定する。
+    """
+    cfg = dataclasses.replace(
+        SHORT_CONFIG,
+        length=100,
+        sample_interval=1,
+        integration_burn_in=0,
+        standardize_steps=2,
+    )
+    assert cfg.length * LORENZ_STATE_DIM < chaotic._MAX_TRAJECTORY_ELEMENTS
+    big_n_samples = chaotic._MAX_TRAJECTORY_ELEMENTS // LORENZ_STATE_DIM + 1
+    with pytest.raises(ValueError, match="真の軌道の配列要素数が上限"):
+        integrate_lorenz(cfg, np.array(REFERENCE_X0), big_n_samples)
+
+
 def test_allocation_bounds_cannot_be_raised_from_the_config() -> None:
     """上限は上書き不能なモジュール定数である (設定フィールドにしない、D-34)。"""
     field_names = {item.name for item in dataclasses.fields(LorenzConfig)}
