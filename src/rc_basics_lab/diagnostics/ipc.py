@@ -165,6 +165,35 @@ F-03-4-007、D-34 の4段目)。
 に化けうるため、``bit_length`` だけを報告する)。
 """
 
+AXIS_TARGET_COUNT = "target_count"
+"""``max_targets`` が縛る確保軸: 列挙する目標の本数 (単位: 本)。"""
+
+AXIS_HEATMAP_CELLS = "heatmap_cells"
+"""``max_targets`` が縛る確保軸: ``ipc_heatmap`` のセル数 (単位: セル)。"""
+
+MAX_TARGETS_BOUNDED_AXES: tuple[str, ...] = (AXIS_TARGET_COUNT, AXIS_HEATMAP_CELLS)
+"""``max_targets`` 1本が縛っている確保軸の列挙 (**この列挙が正本**、D-34)。
+
+``max_targets`` は「目標数の上限」ではなく、**単位の違う複数の確保軸を1本で
+縛る、運用者が宣言する共有予算の終端**である。単位が違うものを同じ数値で
+縛るのは意図的な選択であり (本番の余裕は目標数で 49 倍・heatmap セル数で
+250 倍)、軸ごとに設定フィールドを分けると『正しく設定すべきノブ』が増える
+だけで機能的な必要が無い。代わりに**何を縛っているかをここに列挙して正本
+とする** —— reviewer が「単位が食い違っている」に到達できたのは ``ipc.py``
+のコメントを読んだからで、決定の rule からは読めなかった (F-03-4-010 の
+留保が残していた欠落)。
+
+軸を足すときは、この列挙と
+``test_max_targets_bounded_axes_are_enumerated`` のケース表の**両方**に
+足すこと (片方だけだと完全性検査が落ちる)。各軸の ``ValueError`` の
+メッセージには軸の名前をそのまま含める。
+
+**分離を再検討する条件**: どちらかの軸の余裕が **10 倍を切ったとき**、
+軸が3本以上になったとき、``ipc_heatmap`` が成果物の配列として
+``results/`` に直接出るようになったとき。
+"""
+
+
 type TargetSpec = tuple[tuple[int, int], ...]
 """目標1本の仕様 ``((k_1, n_1), ..., (k_m, n_m))``。
 
@@ -194,7 +223,9 @@ class IpcConfig:
         chunk_size: 1回の solve に畳む目標の列数。**結果を変えない性能
             パラメータ** であり、他のフィールドとは逆向きの要求を持つ
             (``test_chunk_size_does_not_change_results``)。
-        max_targets: 目標数の上限。超えたら黙って切り詰めず ``ValueError``
+        max_targets: 確保軸の**共有予算の終端** (D-34)。目標数だけでなく
+            ``MAX_TARGETS_BOUNDED_AXES`` に列挙した軸をまとめて縛る。
+            超えたら黙って切り詰めず ``ValueError``
             (``test_target_enumeration_raises_instead_of_truncating``)。
         max_degrees: 評価する次数の本数 (``len(max_delay_by_degree)``) の上限。
             ``max_targets`` (目標数) や ``heatmap_cells`` (F-03-1-016) とは
@@ -291,15 +322,17 @@ def _validate_combinatorial_bounds(cfg: IpcConfig) -> None:
         )
 
 
-def _validate_config(cfg: IpcConfig) -> None:
-    """設定の値域を検証する (D-09: 検証は使う側)。"""
+def _validate_config(cfg: IpcConfig) -> InputMeasure:
+    """設定の値域を検証し、入力測度を1つに畳んで返す (D-09: 検証は使う側)。
+
+    ``(input_distribution, basis)`` の対の検査を自前で書かず
+    ``InputMeasure`` の構築に任せているのは D-28 のため —— 対の検査は
+    ``InputMeasure.__post_init__`` 1箇所にしか無く、``ipc()`` はここで
+    **入口で1度だけ**畳んだ値を受け取って ``orthonormal_basis`` へ渡す。
+    """
     _validate_combinatorial_bounds(cfg)
-    if (cfg.input_distribution, cfg.basis) not in SUPPORTED_BASIS_PAIRS:
-        raise ValueError(
-            "(input_distribution, basis) の組が未対応です (D-28): "
-            f"({cfg.input_distribution!r}, {cfg.basis!r})。"
-            f" 対応する組: {SUPPORTED_BASIS_PAIRS}"
-        )
+    # D-28: 未対応の組は構築時点で ValueError になる (メッセージに D-28)。
+    measure = InputMeasure(cfg.input_distribution, cfg.basis)
     if cfg.alpha < 0.0:
         raise ValueError(f"alpha は 0 以上が必要です: {cfg.alpha}")
     if cfg.threshold_mode not in SUPPORTED_THRESHOLD_MODES:
@@ -331,7 +364,7 @@ def _validate_config(cfg: IpcConfig) -> None:
         heatmap_cells_display = _format_target_count(heatmap_cells)
         raise ValueError(
             "ipc_heatmap のセル数が max_targets を超えます (CWE-789 対策、"
-            "F-03-1-016): "
+            f"F-03-1-016、D-34 の確保軸 {AXIS_HEATMAP_CELLS}): "
             f"n_degrees={len(cfg.max_delay_by_degree)} x"
             f" max(max_delay_by_degree)={max_delay_display} ="
             f" {heatmap_cells_display} > max_targets={cfg.max_targets}。"
@@ -350,6 +383,7 @@ def _validate_config(cfg: IpcConfig) -> None:
         raise ValueError(
             f"surrogate_quantile は 0〜1 が必要です: {cfg.surrogate_quantile}"
         )
+    return measure
 
 
 def _ordered_compositions(total: int, parts: int) -> Iterator[tuple[int, ...]]:
@@ -438,6 +472,7 @@ def enumerate_targets(cfg: IpcConfig) -> tuple[TargetSpec, ...]:
     if total > cfg.max_targets:
         raise ValueError(
             "目標数が max_targets を超えました "
+            f"(D-34 の確保軸 {AXIS_TARGET_COUNT}): "
             f"({_format_target_count(total)} > {cfg.max_targets})。"
             " 黙って切り詰めないので、max_delay_by_degree / max_variables を"
             " 下げるか max_targets を上げてください"
