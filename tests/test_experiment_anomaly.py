@@ -729,7 +729,7 @@ def test_build_sources_rejects_an_unknown_source() -> None:
     config = dataclasses.replace(
         REDUCED, dataset=dataclasses.replace(REDUCED.dataset, source="nope")
     )
-    with pytest.raises(ValueError, match="dataset.source"):
+    with pytest.raises(ValueError, match=r"dataset\.source"):
         build_sources(config)
 
 
