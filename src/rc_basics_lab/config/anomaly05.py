@@ -49,10 +49,7 @@ _SYNTHETIC_HORIZON = 1
 class SyntheticMackeyGlassConfig:
     """合成源が使う MG 生成パラメータ (**``length`` / ``horizon`` を持たない**).
 
-    01 の ``MackeyGlassConfig`` をそのまま内包していたときは、``length`` と
-    ``horizon`` の2葉が ``generate_synthetic_anomalies`` に必ず上書きされる
-    **死んだ設定**だった (YAML から設定できるのに出力が1バイトも変わらない)。
-    絞った器で受けることで、この2葉は構造的に存在しなくなる (D-69)。
+    **絞った器で受けることで、この2葉は構造的に存在しなくなる** (D-69)。
 
     既定値は ``_MACKEY_GLASS_DEFAULTS`` (= 01 の ``MackeyGlassConfig()``) から
     引くので、01 の既定を変えれば 05 の合成源も追随する。
@@ -78,11 +75,6 @@ class SyntheticMackeyGlassConfig:
 
     def to_mackey_glass(self, *, length: int) -> MackeyGlassConfig:
         """01 の ``MackeyGlassConfig`` を組み立てる**唯一の口** (D-70)。
-
-        ``tasks/chaotic.py`` の ``Standardizer.from_training_prefix`` (D-41) と
-        同じ流儀で、**作れる場所を1本に閉じる**。呼び出し側が自前で
-        ``MackeyGlassConfig`` を組み立てられると、そこで ``horizon`` や他の葉を
-        黙って別の値にする経路が復活する。
 
         Args:
             length: 生成を頼むサンプル数 (合成源が「除去するぶんを足した長さ」
