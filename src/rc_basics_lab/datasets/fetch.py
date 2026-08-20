@@ -314,25 +314,19 @@ def download(
         response = open_url(remote.url, timeout)
     except HTTPError as error:  # pragma: no cover - ネットワーク経路
         raise DatasetError(f"取得に失敗しました: {remote.url} ({error})") from error
-    partial = _make_partial_path(target)
-    try:
-        digest, total = _stream_to_file(response, partial, max_bytes)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
-    finally:
-        _close(response)
-    if digest != remote.sha256:
-        partial.unlink(missing_ok=True)
-        raise ChecksumMismatchError(
-            "SHA256 が一致しません (取得先が差し替わった可能性があります。"
-            "キャッシュには残しません): "
-            f"url={remote.url} expected={remote.sha256} actual={digest} "
-            f"size={total}"
-        )
-    _replace_after_reverifying(
-        partial, target, remote.sha256, error_cls=ChecksumMismatchError
-    )
+    with _staged_write(target) as sink:
+        try:
+            digest, total = _stream_to_file(response, sink, max_bytes)
+        finally:
+            _close(response)
+        if digest != remote.sha256:
+            raise ChecksumMismatchError(
+                "SHA256 が一致しません (取得先が差し替わった可能性があります。"
+                "キャッシュには残しません): "
+                f"url={remote.url} expected={remote.sha256} actual={digest} "
+                f"size={total}"
+            )
+        sink.commit(target, remote.sha256, error_cls=ChecksumMismatchError)
     return target
 
 
@@ -401,19 +395,13 @@ def _extract_member(
     書き込み中に計算した digest でディスク上の実バイト列を再照合し、
     ``os.replace`` で確定させる。
     """
-    partial = _make_partial_path(target)
-    digest = hashlib.sha256()
-    try:
-        with bundle.open(info) as source, partial.open("wb") as sink:
+    with _staged_write(target) as sink:
+        digest = hashlib.sha256()
+        with bundle.open(info) as source:
             for chunk in iter(lambda: source.read(_CHUNK_BYTES), b""):
                 digest.update(chunk)
                 sink.write(chunk)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
-    _replace_after_reverifying(
-        partial, target, digest.hexdigest(), error_cls=UnsafeArchiveMemberError
-    )
+        sink.commit(target, digest.hexdigest(), error_cls=UnsafeArchiveMemberError)
 
 
 def extract_members(
