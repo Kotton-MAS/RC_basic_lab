@@ -29,12 +29,10 @@ from __future__ import annotations
 
 import hashlib
 import os
-import tempfile
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from io import IOBase
 from pathlib import Path, PurePosixPath
 from typing import IO, Protocol
 from urllib.error import HTTPError
