@@ -709,6 +709,40 @@ def test_closer_than_surrogate_is_derived_from_the_two_distances() -> None:
     )
 
 
+def test_pipeline_actually_calls_the_real_shuffled_surrogate() -> None:
+    """呼び出し配線: freerun.py が**本物の** ``shuffled_surrogate`` を呼ぶ (D-46)。
+
+    ``test_closer_than_surrogate_is_derived_from_the_two_distances`` は
+    ``closer_than_surrogate`` が2つの距離から正しく導出されているかしか見ておらず、
+    その2つの距離が「本物のシャッフル代替」に対して計算されたものかは見ていない。
+    freerun.py の呼び出し側 (``shuffled_surrogate(...)``) だけを no-op (シャッフル
+    せず先頭 n_samples をそのまま返す) に差し替える変異は、このテストが無いと
+    検出できない (``attractor.py`` 側の直接テストは呼び出しバインディングの破損を
+    対象にしない)。本物へスパイをかぶせ、(1) 実際に呼ばれていること (2) 返り値が
+    no-op の結果と一致しないこと (= 実際にシャッフルされていること) の両方を測る。
+    """
+    config = small_config()
+    real = freerun_module.shuffled_surrogate
+    calls: list[tuple[FloatArray, FloatArray]] = []
+
+    def spy(series: FloatArray, rng: np.random.Generator, n_samples: int) -> FloatArray:
+        result = real(series, rng, n_samples)
+        noop = np.asarray(series, dtype=float)[: min(n_samples, len(series))]
+        calls.append((noop, result))
+        return result
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(freerun_module, "shuffled_surrogate", spy)
+        run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+
+    assert calls, "shuffled_surrogate が1度も呼ばれていません"
+    for noop, surrogate in calls:
+        assert not np.array_equal(surrogate, noop), (
+            "shuffled_surrogate の返り値が no-op (先頭 n_samples をそのまま返す) "
+            "と一致しています (シャッフルされていない可能性)"
+        )
+
+
 def test_sign_test_p_value_matches_the_closed_form() -> None:
     """符号検定の p 値 (D-46 の「有意に近い」の根拠)。"""
     assert sign_test_p_value(10, 10) == pytest.approx(1.0 / 1024.0)

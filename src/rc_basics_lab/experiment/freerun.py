@@ -46,7 +46,6 @@ from rc_basics_lab.experiment.attractor import (
     normalized_error_curve,
     power_spectrum,
     return_map_points,
-    shuffled_surrogate,
     valid_time_from_errors,
     validate_stats_bounds,
 )
@@ -998,11 +997,7 @@ def evaluate_free_run(
     )
     free_distance: AttractorDistance = attractor_distance(truth_series, trajectory, dt)
     if trajectory.shape[0] >= 1:
-        surrogate = shuffled_surrogate(
-            truth_series,
-            make_rng(config.base.seeds, SeedStream.TASK, outcome.replicate),
-            trajectory.shape[0],
-        )
+        surrogate = truth_series[: trajectory.shape[0]]  # MUTATION: no-op surrogate
         surrogate_distance: AttractorDistance = attractor_distance(
             truth_series, surrogate, dt
         )
