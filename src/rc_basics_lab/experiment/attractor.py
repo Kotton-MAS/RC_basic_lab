@@ -342,7 +342,9 @@ def point_set_distance(left: FloatArray, right: FloatArray) -> float:
     0.393 (シャッフル代替) と分離する。数字は ``docs/design.md`` §12。
 
     ビン数も分位点数も持たないので、確保軸7 (「ビン数を独立の軸にしない」) は
-    そもそも軸が存在しない形で満たす。確保量は ``_POINT_CHUNK`` で抑える。
+    そもそも軸が存在しない形で満たす。確保量は ``_POINT_CHUNK`` で抑える
+    (``left`` / ``right`` の両側をブロック化する。片側だけだと確保量が
+    ブロック化していない側の点数に線形に伸びる)。
 
     Args:
         left: 点集合 ``(M, 2)``。
