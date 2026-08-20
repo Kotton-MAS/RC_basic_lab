@@ -129,7 +129,7 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
 
 ## 4. タスク分解
 
-- [ ] **T1: 検知指標層 `metrics_detection.py`** — 想定所要 **M**
+- [x] **T1: 検知指標層 `metrics_detection.py`** — 想定所要 **M** (完了 2026-08-20)
   - 何をするか: AP (階段和) / PR 曲線点列 / 点単位 P・R・F1 / PA-F1 / PA%K /
     固定誤報率の分位点閾値 / `is_ignored` マスク適用を numpy だけで実装。`metrics.py` は触らない
   - 触るファイル: `src/rc_basics_lab/metrics_detection.py` (新規) / `tests/test_metrics_detection.py` (新規) /
@@ -146,6 +146,43 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
        Kim et al. の SWaT 相当の合成条件 (異常区間長 100、異常率 5%) で `pa_f1_random > 0.9` を実測
     5. `mypy strict` / `ruff` green、ネットワーク・ファイル I/O を1行も持たない
   - 実装メモ: 同順位の扱い (同スコアは1つの閾値に畳む) を sklearn と一致させること
+  - **T1 実装時に決めたこと** (仕様に書かれていなかった選択。次周の reviewer / fixer はここを読む):
+    1. **受け入れ基準4 の数値条件を訂正した**。「異常区間長 100 / 異常率 5%」では
+       `pa_f1_random` は**原理的に 0.9 に届かない** (警報予算 0.1〜10% を掃引した最大が
+       **実測 0.7646**、seed 0〜4 で 0.760〜0.807)。PA の乱数対照の強さは区間長で決まり、
+       SWaT は 449,919 点 / 異常率 11.98% / 攻撃 35 本 = 平均区間長 **約 1,540 点**である。
+       そこで「SWaT 相当」を SWaT の実際の形状 (区間長 1,500 × 16 本 / 異常率 12% /
+       警報率 0.3%) と読み替え、`pa_f1_random` を seed 0〜4 で **0.9567 / 0.9893 / 0.9891 /
+       0.9567 / 0.9567** と実測して固定した (Kim et al. の SWaT 実測 0.969 と同水準)。
+       短区間側の 0.7646 も `test_point_adjust_random_control_is_weaker_on_short_segments` で
+       別途固定してある —— 「区間長が効く」ことが PA 批判の本体なので、両方残す
+    2. `PointAdjustReport` を返す関数は**乱数源を持たない**。`control_scores` を引数で受ける
+       (D-59 の純関数層を守るため。`np.random.Generator` を内部に持つと呼び出しごとに値が動き、
+       CSV の再現性が落ちる)。対照の閾値は評価対象と**同じ警報数**で切る (順位で切るので
+       同順位があっても予算が厳密に一致する。分位点補間だと予算がずれ「対照は警報が多いから高い」
+       という逃げ道が残る)
+    3. PA%K の判定は検知率の**厳密不等号** `ratio > K/100`。K=0 で従来の PA、K=100 で素の F1 に
+       ちょうど一致する (`>=` にすると K=0 で無検知の区間まで当たり扱いになる)
+    4. `BoolArray = npt.NDArray[np.bool_]` は `metrics_detection.py` の**モジュール内**に置いた。
+       `types.py` は「`FloatArray` が唯一の型エイリアス」と明記しており、T1 の触るファイルにも
+       入っていない。共有が必要になった時点 (T2 の `AnomalySeries`) で `types.py` へ昇格させる
+    5. 陽性が1件も無いラベル列は `ValueError`。sklearn は警告つきで 0.0 を返すが、
+       `metrics.nrmse` が定数目標で即失敗するのと同じ規律に揃えた (0 を返すと下流の集計が静かに壊れる)
+    6. PR 曲線の点列に `(recall=0, precision=1)` の**合成端点を含めない**。階段和 (`R_0 = 0`) が
+       そのままコードになり、端点の有無で AP が変わる余地が消える。端点が要る作図側で足す
+    7. `point_scores` は分母 0 のとき 0.0 を返す (例外にしない)。閾値掃引の端では必ず通る境界で、
+       例外にすると掃引そのものが書けない
+    8. `threshold_at_false_alarm_rate` は分位点補間ではなく**順位**で切る
+       (`n_alarms = max(1, floor(rate * n))`)。補間した閾値は較正区間のどのスコアとも一致せず、
+       実際の警報数が目標からずれる。`rate * n < 1` でも 1 点ぶんは出す
+    9. `apply_ignore_mask` は `MaskedEvaluation(labels, scores)` を返す**点単位指標専用**。
+       点を落とすと異常区間の連続性が壊れるので、PA 系はマスク前の系列で計算する (docstring に明記)
+    10. `pyproject.toml` の mypy overrides に `sklearn.*` を追加した (scipy / matplotlib と同じ、
+        型スタブ非同梱への対応)。実行時 `[project].dependencies` は 4 つのまま
+    11. D-59 (I/O を持たない) の局所 guard として `test_metrics_detection_performs_no_io` を
+        同ファイルに置いた。T2 が `test_layer_boundaries.py` に `tasks/` 込みの AST 走査を足すまでの繋ぎ
+  - 実測 (2026-08-20): 新規テスト **42 件**、`uv run pytest -q` = **1006 passed / 37.9 秒**
+    (ベースライン 964 から 42 増、既存の減少なし)。sklearn 照合 1000 ケースの最悪相対差 **5.50e-16**
 
 - [ ] **T2: データ層 `datasets/` + `tasks/anomaly.py` + ライセンス文書** — 想定所要 **L**
   - 何をするか: (a) `AnomalySeries` dataclass (`values (T,1)` / `labels (T,)` bool / `ignore (T,)` bool /
