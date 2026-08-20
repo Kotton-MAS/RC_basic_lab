@@ -16,55 +16,20 @@ pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI �
 ディスプレイが無いため、既定バックエンドに依存しない経路にそろえる。
 """
 
-from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
-from rc_basics_lab.plotting.figures_capacity import (
-    plot_ipc_conservation,
-    plot_ipc_profile,
-    plot_mc_sweep,
-    plot_memory_nonlinearity,
-    plot_narma10_control,
-)
-from rc_basics_lab.plotting.figures_esp import (
-    plot_esp_decay,
-    plot_esp_map,
-    plot_leak_timescale,
-    plot_washout_sensitivity,
-)
-from rc_basics_lab.plotting.figures_freerun import (
-    plot_freerun_attractor,
-    plot_freerun_stats,
-    plot_onestep,
-    plot_stability_map,
-    plot_valid_time,
-)
-from rc_basics_lab.plotting.labels import label
-from rc_basics_lab.plotting.style import (
-    StyleContext,
-    find_cjk_font,
-    rc_params_for,
-    setup_style,
+from rc_basics_lab.plotting import (
+    figures,
+    figures_capacity,
+    figures_esp,
+    figures_freerun,
+    labels,
+    style,
 )
 
 __all__ = [
-    "StyleContext",
-    "find_cjk_font",
-    "label",
-    "plot_comparison",
-    "plot_esp_decay",
-    "plot_esp_map",
-    "plot_freerun_attractor",
-    "plot_freerun_stats",
-    "plot_ipc_conservation",
-    "plot_ipc_profile",
-    "plot_leak_timescale",
-    "plot_mc_sweep",
-    "plot_memory_nonlinearity",
-    "plot_narma10_control",
-    "plot_onestep",
-    "plot_stability_map",
-    "plot_state_space",
-    "plot_valid_time",
-    "plot_washout_sensitivity",
-    "rc_params_for",
-    "setup_style",
+    "figures",
+    "figures_capacity",
+    "figures_esp",
+    "figures_freerun",
+    "labels",
+    "style",
 ]

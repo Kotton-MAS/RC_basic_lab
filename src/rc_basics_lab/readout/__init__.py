@@ -9,46 +9,10 @@ import しない** (D-50)。状態更新器を ``StateUpdater`` プロトコル�
 ESN 以外の生成器 (外部シミュレータ・実素子) でも同じ関数がそのまま動く。
 """
 
-from rc_basics_lab.readout.autoregressive import (
-    FreeRunResult,
-    StateUpdater,
-    free_run,
-)
-from rc_basics_lab.readout.design import (
-    BIAS_NAME,
-    DelayLineSpec,
-    DesignMatrix,
-    FeatureSpec,
-    PassthroughSpec,
-    ReservoirSpec,
-    bias_column_index,
-    build_design_matrix,
-)
-from rc_basics_lab.readout.ridge import (
-    AlphaSelection,
-    fit_ridge,
-    fit_ridge_from_gram,
-    penalty_matrix,
-    predict,
-    select_alpha,
-)
+from rc_basics_lab.readout import autoregressive, design, ridge
 
 __all__ = [
-    "BIAS_NAME",
-    "AlphaSelection",
-    "DelayLineSpec",
-    "DesignMatrix",
-    "FeatureSpec",
-    "FreeRunResult",
-    "PassthroughSpec",
-    "ReservoirSpec",
-    "StateUpdater",
-    "bias_column_index",
-    "build_design_matrix",
-    "fit_ridge",
-    "fit_ridge_from_gram",
-    "free_run",
-    "penalty_matrix",
-    "predict",
-    "select_alpha",
+    "autoregressive",
+    "design",
+    "ridge",
 ]
