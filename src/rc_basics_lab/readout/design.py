@@ -14,7 +14,7 @@
 「少しずれた学習結果」として静かに通ってしまうため。
 
 ``build_design_matrix`` は ``phi`` を確保する**唯一の場所**なので、確保軸の
-検査もここに置く (F-04-1-001, CWE-789)。以前は 04 (``freerun.py``) が
+検査もここに置く (CWE-789)。以前は 04 (``freerun.py``) が
 ``lorenz.length`` と ``ridge.n_lags_grid`` から確保量を別途計算して検査して
 いたが、``phi`` の列数を決める規則 (``_layout_of``) が変わっても検査式は
 自動で追随しない。**確保する要素数そのものをここで数える**ことで、遅延線の
@@ -34,7 +34,7 @@ BIAS_NAME = "bias"
 """バイアス列の特徴名。``fit_ridge`` の無罰則列の判定に使う (D-03)。"""
 
 _MAX_DESIGN_MATRIX_ELEMENTS = 200_000_000
-"""``phi`` (``n_steps * n_features``) の上書き不能な絶対上限 (F-04-1-001, CWE-789)。
+"""``phi`` (``n_steps * n_features``) の上書き不能な絶対上限 (CWE-789)。
 
 ``experiment/capacity.py`` の ``_MAX_STATE_ELEMENTS`` と**同じ値・同じ
 threat model** (状態行列も設計行列もどちらも ``float64`` の2次元配列で、
@@ -246,7 +246,7 @@ def build_design_matrix(
 
     Raises:
         ValueError: 形状不整合、``ReservoirSpec`` に ``states=None``、または
-            確保軸 (``phi`` の要素数) が上限を超える場合 (F-04-1-001)。
+            確保軸 (``phi`` の要素数) が上限を超える場合。
     """
     inputs, state_array, layout, first_valid = _validate_inputs(spec, u, states)
     n_steps, n_inputs = inputs.shape
