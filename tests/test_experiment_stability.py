@@ -162,7 +162,7 @@ def test_stability_conditions_rejects_the_product_of_condition_count_and_stats_s
     """
     config = dataclasses.replace(
         small_config(),
-        freerun=dataclasses.replace(small_config().freerun, stats_steps=500_000),
+        freerun=dataclasses.replace(small_config().freerun, stats_steps=600_000),
         stability=StabilityConfig(
             spectral_radius_grid=tuple(float(index) for index in range(10)),
             leak_rate_grid=tuple(float(index) for index in range(10)),
