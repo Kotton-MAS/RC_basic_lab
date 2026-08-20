@@ -1,10 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "_comment": "プロジェクト固有の設定だけを置く場所。ガード (block-dangerous.sh / protect-files.sh)、自動フォーマット (format.sh)、自動コミット (auto-commit.sh)、停止前検証 (verify-ci.sh)、通知 (notify.sh) は user スコープの claude-pdca-kit (~/.claude/settings.json) が提供するため、ここには書かない。以前ここに置いていた同等のフックは、キット側と二重に発火し (通知が2回鳴る)、かつキット側より弱いパターンだったため『守られているつもり』を生んでいた。permissions.allow を列挙しないのも同じ理由で、判断は hook に一元化されている (キットの README『権限とガードレール』参照)。プロジェクト固有の reviewer や hook が必要になったら .claude/agents/ と このファイルの hooks に追加する。",
-  "_comment_env": "PYENV_VERSION: このリポジトリの .python-version は uv 向けの 3.12 だが、pyenv には system と 3.10.0 しか無いため、pyenv shim 経由の python3 が『version 3.12 is not installed』で必ず失敗する。キットのフックは PY=$(command -v python3) で処理系を解決するため、check-decisions.sh (decisions.yaml のスキーマ検証) と record-incident.sh (incidents.jsonl への記録) が無言で死んでいた。プロジェクトのコードは常に uv 管理の 3.12.5 で動く (uv は requires-python から解決し PYENV_VERSION を見ない) ため、フック用の python3 だけを pyenv の実在バージョンに向ける。3.10.0 が PyYAML 6.0.2 を持つことは実測で確認済み。恒久対処は pyenv install 3.12 + PyYAML 導入、またはキット側スクリプトのフォールバック追加。",
-  "env": {
-    "PYENV_VERSION": "3.10.0"
-  },
+  "_comment_env": "env は空にしてある。以前ここに PYENV_VERSION: 3.10.0 を固定していたが、これはフックが無言で死ぬのを止めるための回避策が恒久設定として残ったものだった。副作用として、フックが動く処理系がこのリポジトリのコードを解析できなくなっていた —— src/rc_basics_lab/diagnostics/ipc.py の PEP 695 型エイリアス (type TargetSpec = ...) は 3.10 では SyntaxError になる (実測)。decisions.yaml のスキーマ検証しかしていない間は無害だが、rationale の数値を一次資料 (src/ と results/) と機械照合する提言を実装した瞬間に破綻する。フック用の処理系はマシンごとに違うので、解決は gitignore された .claude/settings.local.json の PATH で行う (プロジェクトの .venv/bin を先頭に置く)。この固定が戻っていないことは tests/test_hook_interpreter.py が機械的に検査する (D-73)。",
+  "env": {},
   "permissions": {
     "allow": [],
     "deny": []
