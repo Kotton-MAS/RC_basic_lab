@@ -30,6 +30,12 @@ test:
 cov:
 	uv run pytest --cov
 
+# 成果物 (results/) の指紋を書き直す。**意図して成果物を変えたときだけ**実行する。
+# リファクタリングの合否判定は「成果物が1バイトも変わらないこと」なので (D-74)、
+# 何も考えずにこれを叩くと判定そのものが無効になる。
+artifacts-manifest:
+	uv run python tests/_artifact_manifest.py
+
 lint:
 	uv run ruff check .
 
