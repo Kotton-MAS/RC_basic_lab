@@ -86,7 +86,8 @@ def _validate_config(cfg: MaxLyapunovConfig) -> None:
         )
     if cfg.reference_rel_tol < 0.0:
         raise ValueError(
-            f"reference_rel_tol は 0 以上である必要があります: {cfg.reference_rel_tol!r}"
+            "reference_rel_tol は 0 以上である必要があります: "
+            f"{cfg.reference_rel_tol!r}"
         )
 
 

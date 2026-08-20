@@ -85,7 +85,9 @@ D-08 により ESN の構造ハイパーパラメータは検証分割で選ば�
 """
 
 FREE_RUN_SPEC = ReservoirSpec()
-"""自走に使う特徴仕様 (``[1, u[t], x[t]]``)。仕様 §3.2: 多項式読み出しは v0.1 では入れない。
+"""自走に使う特徴仕様 ``[1, u[t], x[t]]``。
+
+多項式読み出しは v0.1 では入れない (仕様 §3.2)。
 
 01 の ``build_methods`` が ESN 手法に与える候補と**同一の値**であることを
 ``test_free_run_spec_matches_the_one_step_esn_candidate`` が固定する。ここが

@@ -19,7 +19,6 @@ memristor-rc-lab への移植性の実体であり、
 - ``memory_capacity``: 線形メモリ容量 MC (03。サロゲート閾値は ``ctx.seed``)
 - ``ipc``          : 情報処理容量 IPC (03。サロゲート閾値は ``ctx.seed``)
 - ``_capacity``    : MC / IPC が共有する容量カーネル (非公開)
-
 - ``lyapunov``     : 自律系の最大 Lyapunov 指数 (04。``ctx.dt`` で正規化。D-42)
 
 サイクル 05 で追加予定のモジュール (名前を予約する):
