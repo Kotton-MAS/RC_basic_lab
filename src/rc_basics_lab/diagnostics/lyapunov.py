@@ -8,21 +8,14 @@ Lyapunov 時間 ``1 / lambda_max`` がそのまま有効予測時間の正規化
 
 **正本は数値推定である** (D-42)。文献値 (Lorenz なら 0.9056、
 ``config.chaos04.LORENZ_LYAPUNOV_REFERENCE``) は ``cfg.reference_value`` に
-渡したときに**照合として**報告されるだけで、計算には一切使わない。文献値を
-正本にすると、積分刻み・サンプリング間隔・burn-in の取り違えが指標に現れず、
-図でも有効予測時間でも検出できない。
+渡したときに**照合として**報告されるだけで、計算には一切使わない。
 
 Benettin 法の反復そのものは ``diagnostics/esp.py`` の ``conditional_lyapunov``
-に既にある。**同じ反復を書き直さない**: 自律系は「入力が無い = 伝播器が時刻に
-依存しない」場合であり、条件付き Lyapunov 指数の特別な場合そのものである
-(``memory_capacity`` と ``ipc`` が ``_capacity`` を共有しているのと同じ形)。
-ここが足すのは (a) 自律系向けの名前と ``params``、(b) Lyapunov 時間、
-(c) 文献値との照合の3つで、いずれも反復の中身ではない。
+に既にある。**同じ反復を書き直さない** (D-42)。ここが足すのは (a) 自律系向け
+の名前と ``params``、(b) Lyapunov 時間、(c) 文献値との照合の3つで、いずれも
+反復の中身ではない。
 
-命名規約 (D-52): 公開関数名を ``lyapunov`` に**しない**。パッケージ属性
-``diagnostics.lyapunov`` がモジュールでなくなると
-``import rc_basics_lab.diagnostics.lyapunov as m`` が関数を返し、
-``monkeypatch.setattr(m, ...)`` が何も差し替えないまま成功する。
+**公開関数名を ``lyapunov`` にしない** (D-52)。
 """
 
 from __future__ import annotations
