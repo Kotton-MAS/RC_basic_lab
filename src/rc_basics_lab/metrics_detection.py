@@ -6,7 +6,7 @@
 
 このモジュールが守る決定:
 
-- **D-54**: AUPRC は average precision (階段和) ``Σ (R_n − R_{n−1}) · P_n`` で
+- **D-54**: AUPRC は average precision (階段和) ``Σ (R_n - R_{n-1}) · P_n`` で
   計算する。台形則・線形補間を使わない。台形則は補間の分だけ楽観バイアスが
   乗るが、値は 0〜1 に収まり曲線も滑らかなので**図でも CSV でも壊れて見えない**。
 - **D-55**: point-adjust の F1 は `PointAdjustReport` (一様乱数対照つき) でしか
@@ -82,7 +82,7 @@ class PrecisionRecallCurve:
     同順位のスコアは**1つの点に畳まれている** (sklearn と同じ規則)。
 
     ``(recall=0, precision=1)`` のような合成端点は**含めない**。
-    階段和 ``Σ (R_n − R_{n−1}) · P_n`` (``R_0 = 0``) がそのまま
+    階段和 ``Σ (R_n - R_{n-1}) · P_n`` (``R_0 = 0``) がそのまま
     `average_precision` の定義になるようにするためで、作図側で端点が要る場合は
     呼び出し側で足す。
 
@@ -107,7 +107,7 @@ class PrecisionRecallCurve:
         return int(self.threshold.shape[0])
 
     def average_precision(self) -> float:
-        """階段和 ``Σ (R_n − R_{n−1}) · P_n`` (``R_0 = 0``)。D-54。"""
+        """階段和 ``Σ (R_n - R_{n-1}) · P_n`` (``R_0 = 0``)。D-54。"""
         previous_recall: FloatArray = np.concatenate(
             (np.zeros(1, dtype=np.float64), self.recall[:-1])
         )
@@ -164,7 +164,7 @@ def precision_recall_curve(
 def average_precision(labels: BoolArray, scores: FloatArray) -> float:
     """AUPRC を average precision (階段和) で計算する (D-54)。
 
-    ``Σ_n (R_n − R_{n−1}) · P_n``。**台形則・線形補間を使わない**。
+    ``Σ_n (R_n - R_{n-1}) · P_n``。**台形則・線形補間を使わない**。
     `sklearn.metrics.average_precision_score` と同じ値になる
     (同順位は1つの閾値に畳む)。
 
