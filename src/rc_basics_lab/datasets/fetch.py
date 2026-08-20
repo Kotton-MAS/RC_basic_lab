@@ -191,7 +191,7 @@ def _stream_to_file(
 def _make_partial_path(target: Path) -> Path:
     """``target`` と同じディレクトリに、予測不能な名前の一時ファイルを作る。
 
-    (F-1-019) 固定名 (``f"{target.name}.part"``) は書き込み中に横から
+    (reviewer-security 指摘) 固定名 (``f"{target.name}.part"``) は書き込み中に横から
     差し替えられる TOCTOU の的になる —— 同じ ``data_dir`` に書ける別プロセス・
     別ユーザーが、正規のストリームからダイジェストが計算されている間にその
     パスだけを別ファイルへ差し替えると、ダイジェストは正規のストリームから

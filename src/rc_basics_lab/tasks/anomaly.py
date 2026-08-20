@@ -294,8 +294,8 @@ def _validate(cfg: SyntheticAnomalyConfig) -> None:
     cells = _find_cut_search_cells(cfg)
     if cells > _MAX_FIND_CUT_CELLS:
         raise ValueError(
-            "_find_cut が確保する探索行列 (starts x spans) が大きすぎます "
-            f"(F-1-015): {cells} > {_MAX_FIND_CUT_CELLS} "
+            "_find_cut が確保する探索行列 (starts x spans) が大きすぎます: "
+            f"{cells} > {_MAX_FIND_CUT_CELLS} "
             f"(segment_length={cfg.segment_length})"
         )
 
