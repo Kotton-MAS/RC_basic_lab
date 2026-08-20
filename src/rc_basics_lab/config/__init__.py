@@ -37,6 +37,13 @@ from rc_basics_lab.config.capacity03 import (
     McSweepConfig,
     Narma10Config,
 )
+from rc_basics_lab.config.chaos04 import (
+    LORENZ_LYAPUNOV_REFERENCE,
+    Chaos04Config,
+    FreeRunConfig,
+    LorenzConfig,
+    MackeyGlassStandardizeConfig,
+)
 from rc_basics_lab.config.esp02 import (
     DEFAULT_ESP_MAP_RHO_GRID,
     DEFAULT_ESP_MAP_SIGMA_GRID,
@@ -62,6 +69,7 @@ from rc_basics_lab.config.experiment01 import (
 )
 from rc_basics_lab.diagnostics.esp import EspConfig, LyapunovConfig
 from rc_basics_lab.diagnostics.ipc import IpcConfig
+from rc_basics_lab.diagnostics.lyapunov import MaxLyapunovConfig
 from rc_basics_lab.diagnostics.memory_capacity import MemoryCapacityConfig
 from rc_basics_lab.diagnostics.timescale import TimescaleConfig
 from rc_basics_lab.reservoir.esn import ESNConfig
@@ -70,11 +78,13 @@ __all__ = [
     "DEFAULT_ALPHA_GRID",
     "DEFAULT_ESP_MAP_RHO_GRID",
     "DEFAULT_ESP_MAP_SIGMA_GRID",
+    "LORENZ_LYAPUNOV_REFERENCE",
     "TASK_LENGTH_FIELDS",
     "Capacity03Config",
     "CapacityDriveConfig",
     "CapacityReservoirConfig",
     "CapacitySeedConfig",
+    "Chaos04Config",
     "ConfigError",
     "ConservationConfig",
     "DelayParityConfig",
@@ -86,11 +96,15 @@ __all__ = [
     "EspMapConfig",
     "EspSeedConfig",
     "ExperimentConfig",
+    "FreeRunConfig",
     "IpcConfig",
     "IpcSweepConfig",
     "LengthSweepConfig",
+    "LorenzConfig",
     "LyapunovConfig",
     "MackeyGlassConfig",
+    "MackeyGlassStandardizeConfig",
+    "MaxLyapunovConfig",
     "McSweepConfig",
     "MemoryCapacityConfig",
     "Narma10Config",

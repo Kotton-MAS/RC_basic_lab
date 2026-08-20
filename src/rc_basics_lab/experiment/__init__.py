@@ -12,6 +12,7 @@
 - ``capacity_pipeline``: 03 の成果物 (CSV3枚 + 図5枚 + meta.json) をそろえる経路
 - ``capacity_threshold``: しきい値法の比較 (受け入れ条件3、design.md §11.2 の一次資料)
 - ``narma``: 実験 3-C (NARMA10) の配線 (01 の ``run_task`` を再利用、D-31)
+- ``freerun``: 実験 4-A (1ステップ先予測) と自走の入口 (D-31 / D-44 / D-50)
 - ``washout``: 実験 2-D の washout 感度 (01 の ``run_experiment`` を再利用)
 - ``esp_pipeline``: 02 の成果物 (CSV2枚 + 図4枚 + meta.json) をそろえる経路
 """
@@ -71,6 +72,18 @@ from rc_basics_lab.experiment.esp_pipeline import (
     run_and_report_esp,
     write_esp_csv,
     write_washout_csv,
+)
+from rc_basics_lab.experiment.freerun import (
+    ONESTEP_CSV,
+    FreeRunOutcome,
+    TeacherForcedReadout,
+    chaos_task_entries,
+    esn_state_updater,
+    estimate_lorenz_lyapunov,
+    fit_teacher_forced,
+    run_free_run,
+    run_onestep,
+    validate_free_run_bounds,
 )
 from rc_basics_lab.experiment.narma import (
     Narma10Results,

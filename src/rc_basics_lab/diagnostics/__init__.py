@@ -20,9 +20,10 @@ memristor-rc-lab への移植性の実体であり、
 - ``ipc``          : 情報処理容量 IPC (03。サロゲート閾値は ``ctx.seed``)
 - ``_capacity``    : MC / IPC が共有する容量カーネル (非公開)
 
-サイクル 04〜05 で追加予定のモジュール (名前を予約する):
+- ``lyapunov``     : 自律系の最大 Lyapunov 指数 (04。``ctx.dt`` で正規化。D-42)
 
-- ``lyapunov``     : 最大 Lyapunov 指数 (04。``ctx.dt`` で正規化)
+サイクル 05 で追加予定のモジュール (名前を予約する):
+
 - ``criticality``  : エッジ・オブ・カオス指標 (05)
 
 命名規約 (D-52): **公開サブモジュール名と同名の公開シンボルをこの ``__init__``
@@ -57,6 +58,11 @@ from rc_basics_lab.diagnostics.esp import (
     esp_convergence,
 )
 from rc_basics_lab.diagnostics.ipc import DEFAULT_IPC, IpcConfig
+from rc_basics_lab.diagnostics.lyapunov import (
+    DEFAULT_MAX_LYAPUNOV,
+    MaxLyapunovConfig,
+    max_lyapunov,
+)
 from rc_basics_lab.diagnostics.memory_capacity import (
     DEFAULT_MEMORY_CAPACITY,
     MemoryCapacityConfig,
@@ -72,6 +78,7 @@ __all__ = [
     "DEFAULT_ESP",
     "DEFAULT_IPC",
     "DEFAULT_LYAPUNOV",
+    "DEFAULT_MAX_LYAPUNOV",
     "DEFAULT_MEMORY_CAPACITY",
     "DEFAULT_TIMESCALE",
     "Diagnostic",
@@ -80,12 +87,14 @@ __all__ = [
     "EspConfig",
     "IpcConfig",
     "LyapunovConfig",
+    "MaxLyapunovConfig",
     "MemoryCapacityConfig",
     "StatePropagator",
     "TimescaleConfig",
     "autocorrelation_time",
     "conditional_lyapunov",
     "esp_convergence",
+    "max_lyapunov",
     "state_mean_norm",
     "state_pca",
     "validate_diagnostic_input",
