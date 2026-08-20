@@ -234,9 +234,7 @@ def _length_bearing_construction_sites(path: Path) -> list[str]:
     return sites
 
 
-def test_only_to_mackey_glass_builds_the_generation_parameters(
-
-) -> None:
+def test_only_to_mackey_glass_builds_the_generation_parameters() -> None:
     """合成源の経路で ``MackeyGlassConfig`` を組み立てるのは1箇所だけ (D-70)。
 
     ``tasks/chaotic.py`` の ``Standardizer.from_training_prefix`` (D-41) と同じ
