@@ -379,7 +379,7 @@ def test_synthetic_source_splices_without_a_visible_jump() -> None:
     )
     quiet = float(np.quantile(steps, 0.999))
     for start in starts:
-        splice = start + SMALL.segment_length // 2
+        splice = int(start) + SMALL.segment_length // 2
         window = steps[max(0, splice - 2) : splice + 2]
         assert float(np.max(window)) <= 4.0 * quiet, (
             f"縫合点 {splice} に段差があります (最大差分 {float(np.max(window))})"

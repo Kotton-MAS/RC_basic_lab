@@ -367,7 +367,8 @@ def test_no_dataset_payload_is_committed_to_the_repository() -> None:
         path.relative_to(ROOT).as_posix()
         for path in package.rglob("*")
         if path.is_file()
-        and path.suffix not in {".py", ".typed"}
+        and path.suffix not in {".py", ".typed", ".pyc"}
+        and "__pycache__" not in path.parts
         and path.parent.name != "manifests"
     ]
     assert not unexpected, f"データ本体らしきファイルがあります: {unexpected}"
