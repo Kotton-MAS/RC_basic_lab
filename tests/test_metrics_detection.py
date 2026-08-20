@@ -409,13 +409,13 @@ def test_point_scores_reject_shape_mismatch() -> None:
 
 
 def test_point_scores_rejects_a_two_dimensional_input() -> None:
-    """``_as_mask_pair`` の1次元検査 (F-1-028)。"""
+    """``_as_mask_pair`` の1次元検査 (reviewer-test 指摘)。"""
     with pytest.raises(ValueError, match="1次元"):
         point_scores(np.zeros((2, 2), dtype=np.bool_), np.zeros((2, 2), dtype=np.bool_))
 
 
 def test_point_scores_rejects_an_empty_series() -> None:
-    """``_as_mask_pair`` の空配列検査 (F-1-028)。
+    """``_as_mask_pair`` の空配列検査 (reviewer-test 指摘)。
 
     ``average_precision`` 側の同種チェック (``_as_labeled_scores``) はテスト
     済みだったが、``point_scores``/``point_adjust_report`` が経由する
@@ -426,7 +426,7 @@ def test_point_scores_rejects_an_empty_series() -> None:
 
 
 def test_point_adjust_report_rejects_an_empty_series() -> None:
-    """``point_adjust_report`` も同じ ``_as_mask_pair`` を経由する (F-1-028)。"""
+    """``point_adjust_report`` も同じ ``_as_mask_pair`` を経由する (reviewer-test 指摘)。"""
     with pytest.raises(ValueError, match="空の系列"):
         point_adjust_report(
             np.zeros(0, dtype=np.bool_), np.zeros(0, dtype=np.bool_), np.zeros(0)
@@ -514,7 +514,7 @@ def test_point_adjust_rejects_control_of_a_different_length() -> None:
 
 
 def test_point_adjust_report_with_no_alarms_gives_zero_f1() -> None:
-    """``_top_alarm_mask`` の ``n_alarms <= 0`` 分岐 (F-1-028)。
+    """``_top_alarm_mask`` の ``n_alarms <= 0`` 分岐 (reviewer-test 指摘)。
 
     ``predictions`` が全 False (警報ゼロ) のとき、対照も ``n_alarms=0`` で
     警報ゼロになる (249行目の早期 return)。両方とも TP=0 なので pa_f1 /
@@ -575,14 +575,14 @@ def test_threshold_at_false_alarm_rate_rejects_an_empty_calibration_window() -> 
 
 
 def test_threshold_at_false_alarm_rate_rejects_a_two_dimensional_input() -> None:
-    """``calibration_scores`` の2次元入力検査 (F-1-028)。"""
+    """``calibration_scores`` の2次元入力検査 (reviewer-test 指摘)。"""
     with pytest.raises(ValueError, match="1次元"):
         threshold_at_false_alarm_rate(np.zeros((10, 2)), 0.05)
 
 
 @pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
 def test_threshold_at_false_alarm_rate_rejects_non_finite_values(value: float) -> None:
-    """docstring が明記する非有限値の検査 (F-1-028)。
+    """docstring が明記する非有限値の検査 (reviewer-test 指摘)。
 
     docstring の Raises には非有限値で ``ValueError`` になると明記されているが
     検証するテストが無かった。

@@ -154,7 +154,7 @@ def test_ensure_file_does_not_open_anything_when_the_cache_is_valid(
     assert fetch.ensure_file(remote, data_dir=tmp_path, opener=forbidden) == target
 
 
-# --- TOCTOU (F-1-019) --------------------------------------------------------
+# --- TOCTOU (reviewer-security 指摘) -----------------------------------------
 
 
 def test_partial_path_is_not_predictable(tmp_path: Path) -> None:
@@ -162,7 +162,7 @@ def test_partial_path_is_not_predictable(tmp_path: Path) -> None:
 
     固定名は、同じ ``data_dir`` に書ける別プロセス・別ユーザーが「どのパスを
     差し替えればよいか」を書き込み前から知っている TOCTOU の的になる
-    (F-1-019)。少なくとも旧来の固定名パターンとは一致せず、2回呼んでも
+    (reviewer-security 指摘)。少なくとも旧来の固定名パターンとは一致せず、2回呼んでも
     毎回違う名前になることを固定する。
     """
     target = tmp_path / "probe.bin"
@@ -178,7 +178,7 @@ def test_partial_path_is_not_predictable(tmp_path: Path) -> None:
 def test_replace_after_reverifying_rejects_bytes_swapped_before_replace(
     tmp_path: Path,
 ) -> None:
-    """``download()`` と ``extract_members()`` が共有する最終防衛線 (F-1-019)。
+    """``download()`` と ``extract_members()`` が共有する最終防衛線。
 
     書き込みが完了した直後に ``.part`` の中身が差し替えられても、
     ``os.replace`` 直前の再照合が検出し、一時ファイルも確定先も残さない。
@@ -199,7 +199,7 @@ def test_download_and_extract_members_both_route_through_the_replace_guard() -> 
     """``download()`` と ``_extract_member()`` の両方が最終防衛線を通る。
 
     片方だけ直して他方を「一貫性のため」据え置く事故を機械的に防ぐ
-    (F-1-019: 同じクラスの欠陥は全経路で潰す)。
+    (reviewer-security 指摘: 同じクラスの欠陥は全経路で潰す)。
     """
     tree = ast.parse(
         Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
@@ -223,7 +223,7 @@ def test_download_is_rejected_when_the_part_file_is_swapped_mid_write(
 ) -> None:
     """予測不能な一時名でも、ディレクトリを監視 (glob) できる攻撃者は検出する。
 
-    F-1-019 の再現 (``.claude/tmp/repro_toctou.py``) が前提にしていた「固定名を
+    TOCTOU の再現 (``.claude/tmp/repro_toctou.py``) が前提にしていた「固定名を
     知っている」より強い攻撃者モデル —— 名前の予測不能性だけに頼らず、確定
     直前にディスク上の実バイト列を再照合する経路がここで効くことを確認する。
     """
@@ -394,7 +394,7 @@ def test_extract_members_rejects_an_oversized_member(tmp_path: Path) -> None:
 
 
 def _make_zip_with_symlink(path: Path, name: str, link_target: bytes) -> None:
-    """``name`` をシンボリックリンクとしてマークした ZIP を作る (F-1-026)。
+    """``name`` をシンボリックリンクとしてマークした ZIP を作る (reviewer-test 指摘)。
 
     ``external_attr`` の上位16bitに Unix のファイルモードが入る。
     ``S_IFLNK (0o120000)`` を立てると、実 OS 上のシンボリックリンクを
@@ -407,7 +407,7 @@ def _make_zip_with_symlink(path: Path, name: str, link_target: bytes) -> None:
 
 
 def test_extract_members_rejects_a_symlink_member(tmp_path: Path) -> None:
-    """シンボリックリンクとしてマークされた member は展開しない (F-1-026)。
+    """シンボリックリンクとしてマークされた member は展開しない (reviewer-test 指摘)。
 
     ``docstring``/``Raises`` に明記された「シンボリックリンク」を通る guard が
     無かった (measured: fetch.py 147 stmts / 91% cover, missing に 326 行の
@@ -463,7 +463,7 @@ def test_default_source_needs_no_network(
         ucr.load_series(ucr.subset()[0], data_dir=tmp_path)
 
 
-# --- fetch() のオーケストレーション (F-1-027) --------------------------------
+# --- fetch() のオーケストレーション (reviewer-test 指摘) ----------------------
 #
 # ``mgab.fetch`` / ``mgab.remote_files`` / ``ucr.fetch`` は `make data-05` が
 # 実際に呼ぶ最上位の関数だが、実データのマニフェストが本物の URL を指すため
@@ -482,7 +482,7 @@ def _write_mgab_manifest(path: Path, rows: list[dict[str, str]]) -> None:
 def test_mgab_fetch_downloads_a_missing_series_via_the_local_opener(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``mgab.fetch`` / ``remote_files`` の正常系 (F-1-027)。"""
+    """``mgab.fetch`` / ``remote_files`` の正常系 (reviewer-test 指摘)。"""
     payload = b"index,value,is_anomaly,is_ignored\n0,0.1,0,0\n1,0.2,1,0\n"
     digest = _sha256_of_bytes(payload, tmp_path)
     manifest_csv = tmp_path / "mgab_manifest.csv"
@@ -537,7 +537,7 @@ def test_ucr_fetch_downloads_and_extracts_via_the_local_opener(
 ) -> None:
     """``ucr.fetch`` の正常系 (ZIP 取得 -> extract_members -> 展開後の再照合)。
 
-    F-1-027: 部品単体 (``fetch.download`` / ``fetch.extract_members``) の
+    reviewer-test 指摘: 部品単体 (``fetch.download`` / ``fetch.extract_members``) の
     テストはあっても、それらをつなぐ最上位の経路が0%カバレッジだった。
     """
     content = b"1.0\n2.0\n3.0\n"
@@ -573,7 +573,7 @@ def test_ucr_fetch_downloads_and_extracts_via_the_local_opener(
 def test_ucr_fetch_rejects_and_removes_a_series_whose_extracted_sha256_is_wrong(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``ucr.fetch`` の異常系: 展開後の再照合 (ucr.py 2箇所目の防衛線, F-1-027)。
+    """``ucr.fetch`` の異常系: 展開後の再照合 (ucr.py 2箇所目の防衛線)。
 
     ZIP 全体の SHA256 (``archive_sha256``) は一致していても、展開した個別
     ファイルの SHA256 がマニフェストと食い違えば ``ValueError`` にし、

@@ -215,7 +215,7 @@ def _replace_after_reverifying(
 ) -> None:
     """``os.replace`` の直前にディスク上の実バイト列を再照合してから確定させる。
 
-    (F-1-019) ここまでに計算した digest は「自分が書いたはずのバイト列」から
+    (reviewer-security 指摘) ここまでに計算した digest は「自分が書いたはずのバイト列」から
     計算した値であり、``partial`` が確定させる実際のバイト列と同一である保証
     にはならない。名前を予測不能にしても、書き込み完了から ``os.replace`` まで
     の間に同じパスが差し替えられる余地をゼロにはできないため、確定させる
@@ -346,7 +346,7 @@ def _is_symlink(info: zipfile.ZipInfo) -> bool:
 def _extract_member(
     bundle: zipfile.ZipFile, info: zipfile.ZipInfo, target: Path
 ) -> None:
-    """1 member を安全に取り出す (``download()`` と同型の TOCTOU 対策、F-1-019)。
+    """1 member を安全に取り出す (``download()`` と同型の TOCTOU 対策)。
 
     展開したファイルも「ディスクに確定するバイト列が検証されていない」という
     ``download()`` と同じ不変条件の対象である。予測可能な basename へ直接
@@ -385,7 +385,7 @@ def extract_members(
     Raises:
         UnsafeArchiveMemberError: member 名が安全でない、シンボリックリンク、
             展開後サイズが上限を超える、または確定直前のディスク再照合で
-            バイト列の差し替えを検出した場合 (F-1-019)。
+            バイト列の差し替えを検出した場合 (reviewer-security 指摘)。
     """
     if not destination.resolve().is_relative_to(data_dir.resolve()):
         raise UnsafeArchiveMemberError(
