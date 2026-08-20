@@ -6,11 +6,10 @@
 ぶんの候補を持つ、という長さの差しかない。
 
 1レプリケート内では全手法が同一の行 index で学習・評価する (D-05)。基準点
-``t0`` は ``compute_t0`` が全候補の ``first_valid`` と washout から1つだけ決める。
+``t0`` は ``compute_t0`` が決める。
 
-alpha 格子は ``config.ridge.alpha_grid`` という単一キーから全手法・全課題へ
-そのまま渡る (D-04)。ESN の構造ハイパーパラメータは課題ごとの設定から
-そのまま使い、検証分割では一切選ばない (D-08)。
+alpha 格子は ``config.ridge.alpha_grid`` から全手法・全課題へそのまま渡る
+(D-04)。ESN の構造ハイパーパラメータは課題ごとの設定からそのまま使う (D-08)。
 """
 
 from __future__ import annotations
