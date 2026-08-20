@@ -1236,13 +1236,15 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `experiment01.py` | 01 の設定 dataclass 群 / `TASK_LENGTH_FIELDS` / `load_config` | 104 | 137 |
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 191 | 245 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 185 | 233 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 99 | 106 |
-| **合計** | — | **704** | **875** |
+| `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 132 | 164 |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 113 | 120 |
+| **合計** | — | **850** | **1053** |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
-機械が要求する）。合計が分割前（615 行）より 89 行増えているのは、モジュール
-docstring 4本・import 文の再掲・`__init__.py` の再エクスポート 40 行ぶんであり、
-**設定 dataclass の定義とローダ本体は1行も変えていない**。
+機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は
+モジュール docstring 4本・import 文の再掲・`__init__.py` の再エクスポート 40 行ぶん
+であり、**設定 dataclass の定義とローダ本体は1行も変えていない**。その後 04b-1 の
+T4 が `chaos04.py`（132 行）を新設し、`__init__.py` が 6 名を再エクスポートした。
 
 package 内の依存は**一方向**で、辺は3本しかない（`tests/test_config_package_layout.py`
 が AST で固定する）:
@@ -1251,10 +1253,15 @@ package 内の依存は**一方向**で、辺は3本しかない（`tests/test_c
   `_common` は package 内の**葉**で、どのサイクルモジュールも import しない
 - `esp02 -> experiment01`（`WashoutSweepConfig.base: ExperimentConfig`、D-19）
 - `capacity03 -> experiment01`（`Narma10Config.base: ExperimentConfig`、D-31）
+- `chaos04 -> experiment01`（`Chaos04Config.base: ExperimentConfig`、D-31 と同じ形）
 
-`esp02` と `capacity03` は互いを import しない。公開シンボルの経路は package 化
-**前と同一**で、`__all__`（36 名）は差分 0（D-49）。04 の `Chaos04Config` は
-`config/chaos04.py` に置く（**T1 では作らない**。置き場所を決めただけ）。
+`esp02` / `capacity03` / `chaos04` は互いを import しない。公開シンボルの経路は
+package 化**前と同一**で、分割前の `__all__`（36 名）は**1名も落ちていない**
+（D-49）。04b-1 の T4 が `Chaos04Config` / `LorenzConfig` /
+`MackeyGlassStandardizeConfig` / `FreeRunConfig` / `MaxLyapunovConfig` /
+`LORENZ_LYAPUNOV_REFERENCE` の 6 名を足したので、現在は 42 名である。増える側は
+`tests/test_config_package_layout.py::CHAOS04_ADDITIONS` にリテラルで記録して
+あり、記録の無い追加は落ちる（減る側は従来どおり差分 0 を要求する）。
 
 この表の行数も `tests/test_design_doc.py` が実ファイルから数え直して照合する
 （モジュールが増減したり上限を超えたりした瞬間に赤くなる）。
