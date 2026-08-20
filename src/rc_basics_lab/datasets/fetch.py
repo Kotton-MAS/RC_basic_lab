@@ -60,6 +60,8 @@ MAX_ARCHIVE_MEMBER_BYTES = 64 * 1024 * 1024
 
 _CHUNK_BYTES = 1 << 20
 _USER_AGENT = "rc-basics-lab/0.1 (+https://github.com/)"
+_MAX_TEMP_NAME_ATTEMPTS = 100
+"""``O_CREAT|O_EXCL`` が ``EEXIST`` を返し続けた場合の再試行上限。"""
 
 
 class DatasetError(RuntimeError):
