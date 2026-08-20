@@ -179,7 +179,9 @@ def test_staged_write_uses_an_unpredictable_partial_name(tmp_path: Path) -> None
 def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     tmp_path: Path,
 ) -> None:
-    """``download()`` と ``extract_members()`` が共有する最終防衛線 (``_StagedSink.commit``)。
+    """``download()`` と ``extract_members()`` が共有する最終防衛線。
+
+    (``_StagedSink.commit``)
 
     確定直前に一時ファイルの実体そのものが (パス越しに) 別の実体へ差し替え
     られても、fd から再照合するだけでは検出できない自己整合性の穴を
@@ -189,11 +191,13 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     swapped = tmp_path / "attacker-controlled.bin"
     swapped.write_bytes(b"attacker-controlled-bytes")
     expected = hashlib.sha256(b"legitimate-bytes").hexdigest()
-    with pytest.raises(fetch.ChecksumMismatchError, match="差し替え"):
-        with fetch._staged_write(target) as sink:
-            sink.write(b"legitimate-bytes")
-            os.replace(swapped, sink.partial)
-            sink.commit(target, expected, error_cls=fetch.ChecksumMismatchError)
+    with (
+        pytest.raises(fetch.ChecksumMismatchError, match="差し替え"),
+        fetch._staged_write(target) as sink,
+    ):
+        sink.write(b"legitimate-bytes")
+        os.replace(swapped, sink.partial)
+        sink.commit(target, expected, error_cls=fetch.ChecksumMismatchError)
     assert not target.exists()
     assert list(tmp_path.glob("*.part")) == []
 
@@ -348,9 +352,9 @@ def test_extract_members_is_rejected_when_the_part_file_is_swapped_mid_write(
             self._inner.close()
 
     def racing_open(
-        self: zipfile.ZipFile, *args: object, **kwargs: object
+        self: zipfile.ZipFile, name: str | zipfile.ZipInfo
     ) -> _RacingMemberFile:
-        return _RacingMemberFile(real_open(self, *args, **kwargs))
+        return _RacingMemberFile(real_open(self, name))
 
     monkeypatch.setattr(zipfile.ZipFile, "open", racing_open)
 
