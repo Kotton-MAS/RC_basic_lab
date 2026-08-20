@@ -8,7 +8,9 @@
 ここが固定するのは3つ:
 
 1. **公開シンボルの経路が変わらない** —— 分割前の ``rc_basics_lab.config`` から
-   取った公開名のスナップショットと突き合わせる。``__all__`` は差分0を要求し、
+   取った公開名のスナップショットと突き合わせる。``__all__`` は分割前の 36 名を
+   **1つも落とさない**ことを要求し (増える側は ``CHAOS04_ADDITIONS`` のように
+   実験サイクルごとに明示的に記録する)、
    ``dir()`` にしか出ない名前 (実装の都合で入っていた import) は**消える側も
    増える側も全部書き出して固定する**。「``__all__`` さえ合っていればよい」に
    すると、package 化のついでに実装 import が公開名として増えても気づけない
@@ -119,6 +121,28 @@ PRE_SPLIT_DIR_ONLY = (
 「リポジトリの誰もこの経路で import していない」ことを実測する。
 """
 
+CHAOS04_ADDITIONS = (
+    "Chaos04Config",
+    "FreeRunConfig",
+    "LORENZ_LYAPUNOV_REFERENCE",
+    "LorenzConfig",
+    "MackeyGlassStandardizeConfig",
+    "MaxLyapunovConfig",
+)
+"""04 T4 が ``config.__all__`` へ**足した**公開名 (6 名)。
+
+D-49 が守るのは「package 化**前と同一**の経路で引ける」ことであって、
+「以後どの実験も公開シンボルを増やせない」ことではない —— 増やせないなら 04 の
+設定 (``Chaos04Config``) を 01 の ``ExperimentConfig`` に相乗りさせるしかなく、
+D-13 と正面から衝突する。したがって**減る側は差分0**を要求したまま、
+**増える側はここに列挙したぶんだけ**を許す。列挙を忘れて増やせば落ちるので、
+「package 化のついでに実装 import が公開名として増えた」は従来どおり検出できる。
+
+``MaxLyapunovConfig`` は ``diagnostics/lyapunov.py`` の設定 (D-15) で、
+``EspConfig`` / ``IpcConfig`` などと同じく ``config -> diagnostics`` の許可された
+向きで再エクスポートしている。
+"""
+
 SURVIVING_DIR_ONLY = ("annotations",)
 """分割後も ``dir(config)`` に残る ``PRE_SPLIT_DIR_ONLY`` の名前。
 
@@ -126,7 +150,7 @@ SURVIVING_DIR_ONLY = ("annotations",)
 書くので残る (このリポジトリの全モジュールが書いている慣習)。
 """
 
-EXPECTED_SUBMODULES = ("capacity03", "esp02", "experiment01")
+EXPECTED_SUBMODULES = ("capacity03", "chaos04", "esp02", "experiment01")
 """分割で ``dir(config)`` に**増える**公開名 (実験サイクル単位のサブモジュール)。
 
 ``_common`` は ``_`` 始まりなので公開名には出ない。ここに書いていない名前が
@@ -139,9 +163,11 @@ ALLOWED_INTERNAL_EDGES = frozenset(
         ("__init__", "experiment01"),
         ("__init__", "esp02"),
         ("__init__", "capacity03"),
+        ("__init__", "chaos04"),
         ("experiment01", "_common"),
         ("esp02", "experiment01"),
         ("capacity03", "experiment01"),
+        ("chaos04", "experiment01"),
     }
 )
 """``config`` package 内で許可する import の辺 (``from`` -> ``to``)。
@@ -153,11 +179,16 @@ ALLOWED_INTERNAL_EDGES = frozenset(
   (2-D が 01 の ``run_experiment`` を再利用するための内包、D-19)
 - ``capacity03 -> experiment01``: ``Narma10Config.base: ExperimentConfig``
   (3-C が 01 の ``run_task`` を再利用するための内包、D-31)
+- ``chaos04 -> experiment01``: ``Chaos04Config.base: ExperimentConfig``
+  (4-A / 4-B が 01 の ``run_task`` を再利用するための内包、D-31 と同じ形)
 
-``esp02`` と ``capacity03`` は**互いを import しない**。この2本はどちらも
-01 を内包する同じ形の辺で、向きが逆になることは無い (01 が 02・03 の設定を
-知ることは D-13 が禁じている)。
+サイクルのモジュール (``esp02`` / ``capacity03`` / ``chaos04``) は**互いを
+import しない**。3本はどれも 01 を内包する同じ形の辺で、向きが逆になることは
+無い (01 が 02・03・04 の設定を知ることは D-13 が禁じている)。
 """
+
+CYCLE_MODULES = ("esp02", "capacity03", "chaos04")
+"""実験サイクル単位のモジュール (``experiment01`` を内包する側)。互いに独立。"""
 
 
 def _module_paths() -> list[Path]:
@@ -209,16 +240,26 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
     名前が実際に属性として解決できることの両方を要求する。``__all__`` に名前を
     残したまま import 文を落とすと後者で落ちる。
     """
-    assert tuple(config_pkg.__all__) == PRE_SPLIT_ALL, (
-        "config.__all__ が分割前と一致しません "
-        f"(不足={sorted(set(PRE_SPLIT_ALL) - set(config_pkg.__all__))}, "
-        f"余剰={sorted(set(config_pkg.__all__) - set(PRE_SPLIT_ALL))})"
+    actual = set(config_pkg.__all__)
+    assert not set(PRE_SPLIT_ALL) - actual, (
+        "config.__all__ から分割前の公開名が消えています (D-49): "
+        f"{sorted(set(PRE_SPLIT_ALL) - actual)}"
     )
-    missing = [name for name in PRE_SPLIT_ALL if not hasattr(config_pkg, name)]
+    assert actual - set(PRE_SPLIT_ALL) == set(CHAOS04_ADDITIONS), (
+        "config.__all__ が記録していない公開名を増やしています "
+        f"(予定外={sorted(actual - set(PRE_SPLIT_ALL) - set(CHAOS04_ADDITIONS))}, "
+        f"記録済みだが不在={sorted(set(CHAOS04_ADDITIONS) - actual)})"
+    )
+    assert len(config_pkg.__all__) == len(actual), "config.__all__ に重複があります"
+    missing = [name for name in EXPECTED_ALL if not hasattr(config_pkg, name)]
     assert not missing, f"__all__ に在るが解決できない名前: {missing}"
 
 
-@pytest.mark.parametrize("name", PRE_SPLIT_ALL)
+EXPECTED_ALL: tuple[str, ...] = PRE_SPLIT_ALL + CHAOS04_ADDITIONS
+"""``config.__all__`` に在るべき名前の全体 (分割前の 36 名 + 04 が足した 6 名)。"""
+
+
+@pytest.mark.parametrize("name", EXPECTED_ALL)
 def test_each_public_symbol_resolves_through_the_import_statement(name: str) -> None:
     """``from rc_basics_lab.config import <名前>`` が1つずつ通る (D-49)。
 
@@ -237,7 +278,8 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
 
     分割前の公開名 (``__all__`` 36 + ``dir()`` のみ 17 = 53) に対して、
     消えるのは ``PRE_SPLIT_DIR_ONLY`` から ``SURVIVING_DIR_ONLY`` を除いたもの、
-    増えるのは実験サイクル単位のサブモジュール3つだけ。両側を固定するので、
+    増えるのは実験サイクル単位のサブモジュールと、記録した公開名
+    (``CHAOS04_ADDITIONS``) だけ。両側を固定するので、
     ``__init__.py`` が numpy や yaml を公開名に漏らしても落ちる。
     """
     actual = {name for name in dir(config_pkg) if not name.startswith("_")}
@@ -246,7 +288,7 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
 
     expected_removed = set(PRE_SPLIT_DIR_ONLY) - set(SURVIVING_DIR_ONLY)
     assert before - actual == expected_removed
-    assert actual - before == set(EXPECTED_SUBMODULES)
+    assert actual - before == set(EXPECTED_SUBMODULES) | set(CHAOS04_ADDITIONS)
 
 
 def test_no_module_imported_the_dir_only_names_from_config() -> None:
@@ -307,8 +349,8 @@ def test_design_doc_records_the_same_line_budget() -> None:
 def test_config_package_has_exactly_the_expected_modules() -> None:
     """``config/`` の中身が ``_common`` + 実験サイクル3本 + ``__init__`` だけ。
 
-    04 T4 が ``chaos04.py`` を足すときはここが赤くなる (置き場所は T1 で決めて
-    あるが、**T1 では作らない**)。
+    04 T4 で ``chaos04.py`` (``Chaos04Config``) を足した。05 以降が
+    ``criticality05.py`` などを足すときも同じ場所が赤くなる。
     """
     submodules = {info.name for info in pkgutil.iter_modules([str(PACKAGE_DIR)])}
     assert submodules == {"_common", *EXPECTED_SUBMODULES}
@@ -318,7 +360,8 @@ def test_config_package_internal_dependencies_are_one_way() -> None:
     """package 内の import が許可した辺だけで、循環が無い (D-49)。
 
     ``_common`` は葉であること (package 内の誰も import しない先を持たない) と、
-    ``esp02`` / ``capacity03`` が互いを import しないことを同時に固定する。
+    実験サイクルのモジュール (``CYCLE_MODULES``) が互いを import しないことを
+    同時に固定する。
     """
     edges = _internal_edges()
     assert edges <= ALLOWED_INTERNAL_EDGES, (
@@ -327,8 +370,13 @@ def test_config_package_internal_dependencies_are_one_way() -> None:
     assert not [edge for edge in edges if edge[0] == "_common"], (
         "_common は config package 内の葉でなければなりません"
     )
-    for pair in (("esp02", "capacity03"), ("capacity03", "esp02")):
-        assert pair not in edges, f"実験サイクル間の import があります: {pair}"
+    for source in CYCLE_MODULES:
+        for target in CYCLE_MODULES:
+            if source == target:
+                continue
+            assert (source, target) not in edges, (
+                f"実験サイクル間の import があります: {(source, target)}"
+            )
 
     # 許可した辺の集合だけで循環が作れないことを、到達可能性で確かめる
     # (許可リストを書き換えて循環を足すと、ここで落ちる)。
