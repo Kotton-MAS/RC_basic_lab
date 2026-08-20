@@ -721,6 +721,624 @@ def estimate_lorenz_lyapunov(config: Chaos04Config) -> DiagnosticResult:
     return result
 
 
+
+# --- 実験 4-B: 自走 + 有効予測時間 + 長時間統計 --------------------------------
+
+EXPERIMENT_FREERUN = "4B_freerun"
+"""``freerun.csv`` の ``experiment`` 列 (4-B)。"""
+
+FREERUN_CSV = "freerun.csv"
+"""4-B の成果物名 (列順は ``FreeRunRow`` の宣言順が単一の真実)。"""
+
+FREERUN_PROFILE_CSV = "freerun_profile.csv"
+"""図が読む長形式の配列 (位相図・リターンマップ・スペクトル)。
+
+**図は成果物 CSV の行だけを読む** (§2.2-3) ので、位相図やスペクトルのように
+「行」ではなく「配列」で表現される量も、書き出したのと同じ長形式の行として
+図へ渡す。03 の ``capacity_profile.csv`` と同じ役割で、成果物と図が食い違う
+経路 (CSV には無いものを図が描く) を構造で塞ぐ。
+"""
+
+KIND_PHASE = "phase"
+"""``FreeRunProfileRow.kind``: 位相図 (Lorenz は (x, z)、1変数系は遅延座標)。"""
+
+KIND_RETURN_MAP = "return_map"
+"""``FreeRunProfileRow.kind``: リターンマップ ``(z_n, z_(n+1))`` (D-46 の1本目)。"""
+
+KIND_SPECTRUM = "spectrum"
+"""``FreeRunProfileRow.kind``: 正規化パワースペクトル (D-46 の2本目)。"""
+
+SOURCE_TRUTH = "truth"
+"""``FreeRunProfileRow.source``: 真の軌道。"""
+
+SOURCE_FREERUN = "freerun"
+"""``FreeRunProfileRow.source``: 自走の軌道。"""
+
+PROFILE_MAX_POINTS = 4000
+"""確保軸6: 位相図に載せる点数の上限 (間引きの上限)。
+
+PNG のサイズと描画時間はここに比例する。**上書き不能な定数**で、
+``freerun_profile_rows`` が ``stats_steps`` に関係なくこの本数まで間引く
+(``stats_steps`` を伸ばすと図の点数が黙って増える、を塞ぐ)。
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class FreeRunRow:
+    """``freerun.csv`` の1行 = 自走1本 (課題 x 手法 x レプリケート)。
+
+    列順はこの宣言順が単一の真実である (§2.2-1)。
+
+    Attributes:
+        experiment: ``EXPERIMENT_FREERUN``。
+        task: 課題名。
+        method: 手法名 (対照も自走させる)。
+        replicate: レプリケート番号。
+        seed_reservoir / seed_task / seed_split: 基底シード (D-06)。
+        n_units / rho / leak_rate / state_noise: ESN の条件。
+        alpha: 教師強制で選ばれた正則化係数。
+        val_nrmse: 選択時の検証 NRMSE。
+        switch_index: 教師強制から自走へ切り替えた行 index。
+        warmup_steps / free_run_steps / stats_steps: 自走の設定。
+        dt: サンプリング間隔 [時間]。
+        lyapunov_per_time: 数値推定した lambda_max [1/時間] (D-42)。
+        lyapunov_time: ``1 / lambda_max`` [時間] (正規化の分母)。
+        valid_time_threshold: 有効予測時間の閾値 (NRMSE 比、D-43)。
+        valid_time_steps: 有効予測時間 [ステップ]。**生の値だけで報告しない**
+            (仕様 §5 禁止する構造5) ので ``valid_time_lyapunov`` を必ず併記する。
+        valid_time: 同 [時間]。
+        valid_time_lyapunov: 同 [Lyapunov 時間] —— **報告の主指標**。
+        valid_time_censored: 自走長の最後まで閾値を超えなかったか (右側打ち切り)。
+        diverged / n_completed: 自走の打ち切り (T4)。
+        regime: 3態分類 (D-45)。
+        amplitude_ratio / std_ratio / autocorr_peak: 分類の根拠になった数値。
+        return_map_distance: リターンマップの点集合距離 (D-46 の1本目)。
+        return_map_distance_surrogate: 同じ指標を**真の軌道のシャッフル代替**に
+            対して測った値。自走の方が小さくなければ「再現した」と言わない。
+        spectrum_distance / spectrum_distance_surrogate: パワースペクトルの
+            全変動距離と、その代替に対する値 (D-46 の2本目)。
+        closer_than_surrogate: **2指標とも**代替より小さいか。
+        n_stats_samples / n_return_map_points / n_spectrum_bins: 統計に使った量。
+        wall_time_s: 実測 wall time [秒]。
+    """
+
+    experiment: str
+    task: str
+    method: str
+    replicate: int
+    seed_reservoir: int
+    seed_task: int
+    seed_split: int
+    n_units: int
+    rho: float
+    leak_rate: float
+    state_noise: float
+    alpha: float
+    val_nrmse: float
+    switch_index: int
+    warmup_steps: int
+    free_run_steps: int
+    stats_steps: int
+    dt: float
+    lyapunov_per_time: float
+    lyapunov_time: float
+    valid_time_threshold: float
+    valid_time_steps: int
+    valid_time: float
+    valid_time_lyapunov: float
+    valid_time_censored: bool
+    diverged: bool
+    n_completed: int
+    regime: str
+    amplitude_ratio: float
+    std_ratio: float
+    autocorr_peak: float
+    return_map_distance: float
+    return_map_distance_surrogate: float
+    spectrum_distance: float
+    spectrum_distance_surrogate: float
+    closer_than_surrogate: bool
+    n_stats_samples: int
+    n_return_map_points: int
+    n_spectrum_bins: int
+    wall_time_s: float
+
+
+FREERUN_CSV_COLUMNS: tuple[str, ...] = tuple(
+    item.name for item in dataclasses.fields(FreeRunRow)
+)
+"""``freerun.csv`` の列順 (``FreeRunRow`` の宣言順が単一の真実)。"""
+
+
+@dataclass(frozen=True, slots=True)
+class FreeRunProfileRow:
+    """``freerun_profile.csv`` の1行 (図が読む長形式の点)。
+
+    Attributes:
+        experiment / task / method / replicate: どの自走の点か。
+        kind: ``KIND_PHASE`` / ``KIND_RETURN_MAP`` / ``KIND_SPECTRUM``。
+        source: ``SOURCE_TRUTH`` / ``SOURCE_FREERUN``。
+        index: 系列内の通し番号 (描画順)。
+        x / y: 点の座標 (スペクトルは (周波数, 正規化パワー))。
+    """
+
+    experiment: str
+    task: str
+    method: str
+    replicate: int
+    kind: str
+    source: str
+    index: int
+    x: float
+    y: float
+
+
+FREERUN_PROFILE_CSV_COLUMNS: tuple[str, ...] = tuple(
+    item.name for item in dataclasses.fields(FreeRunProfileRow)
+)
+"""``freerun_profile.csv`` の列順 (``FreeRunProfileRow`` の宣言順)。"""
+
+
+@dataclass(frozen=True, slots=True)
+class FreeRunEvaluation:
+    """1本の自走に対する評価 (行 + 感度 + 図の材料)。
+
+    Attributes:
+        row: ``freerun.csv`` の1行。
+        valid_time_by_threshold: ``VALID_TIME_THRESHOLD_GRID`` と同じ並びの
+            有効予測時間 [Lyapunov 時間] (閾値感度表の一次資料)。
+        censored_by_threshold: 同じ並びの打ち切りフラグ。
+        trajectory: 自走の有限行 ``(n_completed, D)``。
+        truth_series: 真の系列 ``(T, D)`` (図の重ね描きの相手)。
+    """
+
+    row: FreeRunRow
+    valid_time_by_threshold: tuple[float, ...]
+    censored_by_threshold: tuple[bool, ...]
+    trajectory: FloatArray
+    truth_series: FloatArray
+
+
+def evaluate_free_run(
+    config: Chaos04Config,
+    outcome: FreeRunOutcome,
+    *,
+    dt: float,
+    lyapunov_per_time: float,
+    lyapunov_time: float,
+) -> FreeRunEvaluation:
+    """自走1本を数値で評価する (D-43 / D-45 / D-46 をここで合流させる)。
+
+    測るのは3つで、どれも ``experiment/attractor.py`` の純関数へ委譲する。
+
+    1. **有効予測時間** (D-43): 誤差は NRMSE 比、閾値は
+       ``freerun.valid_time_threshold``、報告は Lyapunov 時間で正規化した値。
+       打ち切り (自走長まで超えなかった) はフラグで残す。
+    2. **3態分類** (D-45): 振幅・標準偏差・自己相関から純関数が決める。
+    3. **長時間統計** (D-46): リターンマップとパワースペクトルの距離を、
+       自走と**真の軌道のシャッフル代替**の両方について測る。
+
+    シャッフル用の乱数は **task ストリームの続き**である (D-14: 5本目の
+    ストリームを新設しない)。代替は真の系列の並べ替えなので、素性としても
+    課題側の乱数に属する。
+
+    Args:
+        config: 04 の設定。
+        outcome: ``run_free_run`` の結果 (``n_steps=stats_steps`` で回したもの)。
+        dt: サンプリング間隔 [時間]。
+        lyapunov_per_time: lambda_max [1/時間] (D-42)。
+        lyapunov_time: ``1 / lambda_max`` [時間]。
+
+    Returns:
+        ``FreeRunEvaluation``。
+    """
+    freerun_cfg = config.freerun
+    result = outcome.result
+    readout = outcome.readout
+    esn_cfg = readout.plan.task
+    trajectory: FloatArray = result.predictions[: result.n_completed]
+    truth_series: FloatArray = readout.plan.task.y
+    del esn_cfg
+
+    horizon = min(freerun_cfg.free_run_steps, result.predictions.shape[0])
+    errors = normalized_error_curve(
+        outcome.truth[:horizon], result.predictions[:horizon]
+    )
+    valid = valid_time_from_errors(errors, freerun_cfg.valid_time_threshold)
+    sensitivity = tuple(
+        valid_time_from_errors(errors, threshold)
+        for threshold in VALID_TIME_THRESHOLD_GRID
+    )
+
+    verdict: RegimeVerdict = classify_regime(
+        trajectory, reference=truth_series, diverged=result.diverged
+    )
+    free_distance: AttractorDistance = attractor_distance(truth_series, trajectory, dt)
+    if trajectory.shape[0] >= 1:
+        surrogate = shuffled_surrogate(
+            truth_series,
+            make_rng(config.base.seeds, SeedStream.TASK, outcome.replicate),
+            trajectory.shape[0],
+        )
+        surrogate_distance: AttractorDistance = attractor_distance(
+            truth_series, surrogate, dt
+        )
+    else:
+        surrogate_distance = AttractorDistance(math.nan, math.nan, 0, 0)
+
+    esn = _esn_of(config, outcome)
+    row = FreeRunRow(
+        experiment=EXPERIMENT_FREERUN,
+        task=outcome.task,
+        method=outcome.method,
+        replicate=outcome.replicate,
+        seed_reservoir=config.base.seeds.reservoir,
+        seed_task=config.base.seeds.task,
+        seed_split=config.base.seeds.split,
+        n_units=esn.n_units,
+        rho=esn.spectral_radius,
+        leak_rate=esn.leak_rate,
+        state_noise=esn.state_noise,
+        alpha=readout.alpha,
+        val_nrmse=readout.val_nrmse,
+        switch_index=outcome.switch_index,
+        warmup_steps=freerun_cfg.warmup_steps,
+        free_run_steps=freerun_cfg.free_run_steps,
+        stats_steps=int(result.predictions.shape[0]),
+        dt=dt,
+        lyapunov_per_time=lyapunov_per_time,
+        lyapunov_time=lyapunov_time,
+        valid_time_threshold=valid.threshold,
+        valid_time_steps=valid.steps,
+        valid_time=valid.steps * dt,
+        valid_time_lyapunov=lyapunov_normalized(valid.steps, dt, lyapunov_time),
+        valid_time_censored=valid.censored,
+        diverged=result.diverged,
+        n_completed=result.n_completed,
+        regime=verdict.regime,
+        amplitude_ratio=verdict.amplitude_ratio,
+        std_ratio=verdict.std_ratio,
+        autocorr_peak=verdict.autocorr_peak,
+        return_map_distance=free_distance.return_map,
+        return_map_distance_surrogate=surrogate_distance.return_map,
+        spectrum_distance=free_distance.spectrum,
+        spectrum_distance_surrogate=surrogate_distance.spectrum,
+        closer_than_surrogate=bool(
+            free_distance.return_map < surrogate_distance.return_map
+            and free_distance.spectrum < surrogate_distance.spectrum
+        ),
+        n_stats_samples=int(trajectory.shape[0]),
+        n_return_map_points=free_distance.n_return_map_points,
+        n_spectrum_bins=free_distance.n_spectrum_bins,
+        wall_time_s=outcome.wall_time_s,
+    )
+    return FreeRunEvaluation(
+        row=row,
+        valid_time_by_threshold=tuple(
+            lyapunov_normalized(item.steps, dt, lyapunov_time) for item in sensitivity
+        ),
+        censored_by_threshold=tuple(item.censored for item in sensitivity),
+        trajectory=trajectory,
+        truth_series=truth_series,
+    )
+
+
+def _esn_of(config: Chaos04Config, outcome: FreeRunOutcome) -> ESNConfig:
+    """行に載せる ESN の条件 (対照の行にも同じ条件を書く)。
+
+    対照 (線形・遅延線) はリザバーを使わないが、**同じ条件で回した対照である**
+    ことを行から読めるようにするため同じ値を書く (3-C が ``capacity.csv`` の
+    条件列を埋めるのと同じ流儀)。
+    """
+    del outcome
+    return chaos_esn_config(config.base)
+
+
+def _phase_points(series: FloatArray, lag: int) -> FloatArray:
+    """位相図の2次元投影。多変数なら (第0成分, 最終成分)、1変数なら遅延座標。
+
+    ``lag`` は**真の軌道から**決めた1個を自走側にも使う (別々に決めると同じ
+    座標系で重ね描きできない)。
+    """
+    if series.shape[1] >= 2:
+        projected: FloatArray = np.stack([series[:, 0], series[:, -1]], axis=1)
+        return projected
+    if series.shape[0] <= lag:
+        return np.empty((0, 2), dtype=np.float64)
+    embedded: FloatArray = np.stack(
+        [series[lag:, 0], series[: series.shape[0] - lag, 0]], axis=1
+    )
+    return embedded
+
+
+def _thinned(points: FloatArray) -> FloatArray:
+    """確保軸6: 図に載せる点数を ``PROFILE_MAX_POINTS`` まで間引く。"""
+    if points.shape[0] <= PROFILE_MAX_POINTS:
+        return points
+    stride = int(np.ceil(points.shape[0] / PROFILE_MAX_POINTS))
+    thinned: FloatArray = points[::stride][:PROFILE_MAX_POINTS]
+    return thinned
+
+
+def _profile_block(
+    row: FreeRunRow, kind: str, source: str, points: FloatArray
+) -> list[FreeRunProfileRow]:
+    return [
+        FreeRunProfileRow(
+            experiment=row.experiment,
+            task=row.task,
+            method=row.method,
+            replicate=row.replicate,
+            kind=kind,
+            source=source,
+            index=index,
+            x=float(point[0]),
+            y=float(point[1]),
+        )
+        for index, point in enumerate(points)
+    ]
+
+
+def freerun_profile_rows(
+    evaluation: FreeRunEvaluation, dt: float
+) -> tuple[FreeRunProfileRow, ...]:
+    """図が読む長形式の行を組む (**診断も実験もここでは走らせない**)。
+
+    位相図・リターンマップ・スペクトルの3種類を、真の軌道と自走の両方について
+    出す。点数は ``PROFILE_MAX_POINTS`` (確保軸6) で間引く。
+
+    Args:
+        evaluation: ``evaluate_free_run`` の結果。
+        dt: サンプリング間隔 [時間] (スペクトルの周波数軸)。
+
+    Returns:
+        長形式の行。
+    """
+    row = evaluation.row
+    truth = evaluation.truth_series
+    trajectory = evaluation.trajectory
+    lag = first_autocorrelation_zero(truth)
+    rows: list[FreeRunProfileRow] = []
+    rows += _profile_block(
+        row, KIND_PHASE, SOURCE_TRUTH, _thinned(_phase_points(truth, lag))
+    )
+    rows += _profile_block(
+        row, KIND_RETURN_MAP, SOURCE_TRUTH, _thinned(return_map_points(truth))
+    )
+    if trajectory.shape[0] >= 3:
+        rows += _profile_block(
+            row, KIND_PHASE, SOURCE_FREERUN, _thinned(_phase_points(trajectory, lag))
+        )
+        rows += _profile_block(
+            row,
+            KIND_RETURN_MAP,
+            SOURCE_FREERUN,
+            _thinned(return_map_points(trajectory)),
+        )
+    n_common = min(truth.shape[0], trajectory.shape[0])
+    if n_common >= 8:
+        for source, series in (
+            (SOURCE_TRUTH, truth[:n_common]),
+            (SOURCE_FREERUN, trajectory[:n_common]),
+        ):
+            frequencies, power = power_spectrum(series, dt)
+            rows += _profile_block(
+                row,
+                KIND_SPECTRUM,
+                source,
+                _thinned(np.stack([frequencies, power], axis=1)),
+            )
+    return tuple(rows)
+
+
+@dataclass(frozen=True, slots=True)
+class ValidTimeSensitivity:
+    """閾値感度表の1行 (``meta.json`` の ``valid_time_sensitivity``)。
+
+    ``docs/design.md`` §12 の感度表はここから機械照合する。閾値を1点だけ
+    報告すると「その閾値だから出た結論」を否定できない。
+
+    Attributes:
+        task / method: どの群か。
+        threshold: NRMSE 比の閾値。
+        median_lyapunov: 有効予測時間の中央値 [Lyapunov 時間]。
+        min_lyapunov / max_lyapunov: 同じ群の最小・最大。
+        n_rows: 群の行数 (= シード数)。
+        n_censored: 打ち切られた行数 (**無かったことにしない**)。
+    """
+
+    task: str
+    method: str
+    threshold: float
+    median_lyapunov: float
+    min_lyapunov: float
+    max_lyapunov: float
+    n_rows: int
+    n_censored: int
+
+    def to_summary(self) -> dict[str, float | int | str]:
+        """``meta.json`` に載せるプレーンな dict。"""
+        return dataclasses.asdict(self)
+
+
+def summarize_valid_time(
+    evaluations: Sequence[FreeRunEvaluation],
+) -> tuple[ValidTimeSensitivity, ...]:
+    """閾値 x (課題, 手法) ごとに有効予測時間を要約する (D-43 の感度表)。"""
+    groups: dict[tuple[str, str], list[FreeRunEvaluation]] = {}
+    for evaluation in evaluations:
+        groups.setdefault(
+            (evaluation.row.task, evaluation.row.method), []
+        ).append(evaluation)
+    summary: list[ValidTimeSensitivity] = []
+    for (task, method), items in sorted(groups.items()):
+        for position, threshold in enumerate(VALID_TIME_THRESHOLD_GRID):
+            values = [item.valid_time_by_threshold[position] for item in items]
+            summary.append(
+                ValidTimeSensitivity(
+                    task=task,
+                    method=method,
+                    threshold=threshold,
+                    median_lyapunov=float(np.median(values)),
+                    min_lyapunov=float(np.min(values)),
+                    max_lyapunov=float(np.max(values)),
+                    n_rows=len(values),
+                    n_censored=sum(
+                        1 for item in items if item.censored_by_threshold[position]
+                    ),
+                )
+            )
+    return tuple(summary)
+
+
+@dataclass(frozen=True, slots=True)
+class FreeRunResults:
+    """実験 4-B の結果。
+
+    Attributes:
+        evaluations: 自走1本ごとの評価 (課題 x 手法 x レプリケート)。
+        profile_rows: 代表レプリケートの長形式の行 (図の材料)。
+        sensitivity: 閾値感度の要約 (``meta.json``)。
+        wall_time_s: 4-B 全体の実測 wall time [秒]。
+    """
+
+    evaluations: tuple[FreeRunEvaluation, ...]
+    profile_rows: tuple[FreeRunProfileRow, ...]
+    sensitivity: tuple[ValidTimeSensitivity, ...]
+    wall_time_s: float
+
+    @property
+    def rows(self) -> tuple[FreeRunRow, ...]:
+        """``freerun.csv`` と同じ行。"""
+        return tuple(evaluation.row for evaluation in self.evaluations)
+
+
+PROFILE_REPLICATE = 0
+"""図に載せる代表レプリケート。**結果を見て選ばない** (常に 0)。
+
+「一番きれいな回」を選べる形にすると、図が主張の証拠でなくなる。
+"""
+
+FREERUN_METHODS: tuple[str, ...] = (LINEAR, DELAY_LINE, ESN_METHOD)
+"""4-B が自走させる手法 (01 の3手法すべて)。
+
+対照も自走させるのは受け入れ条件3 の後半 (「自走では対照が成立しない」) を
+**数値で**示すためである。並びは 01 の ``build_methods`` と同じ。
+"""
+
+
+def run_freerun_experiment(
+    config: Chaos04Config, lyapunov: DiagnosticResult
+) -> FreeRunResults:
+    """実験 4-B を回す (自走 -> 有効予測時間 -> 長時間統計)。
+
+    **確保軸4 (``stats_steps``) をここで、自走を1ステップも回す前に検査する。**
+
+    1レプリケートにつき ``ReplicatePlan`` は1個だけ作り、3手法で共有する
+    (01 の ``run_task(..., plan0=...)`` と同じ形)。共有しないと「同じ分割・
+    同じ状態行列で比べた」が構造ではなく偶然になる。
+
+    Args:
+        config: 04 の設定。
+        lyapunov: ``estimate_lorenz_lyapunov`` の結果 (**真の軌道は条件に
+            依存しない量**なので掃引の中で推定し直さない、仕様 §5 禁止構造3)。
+
+    Returns:
+        ``FreeRunResults``。
+
+    Raises:
+        ValueError: 確保軸を超える設定、または課題・分割側の値域違反。
+    """
+    started = time.perf_counter()
+    validate_stats_bounds(config.freerun.stats_steps)
+    dt = sampling_interval(config.lorenz)
+    lyapunov_per_time = lyapunov.scalars["lyapunov_per_time"]
+    lyapunov_time = lyapunov.scalars["lyapunov_time"]
+
+    evaluations: list[FreeRunEvaluation] = []
+    profile: list[FreeRunProfileRow] = []
+    for entry in chaos_task_entries(config):
+        validate_state_matrix_bounds(entry.esn.n_units, task_length(config, entry.name))
+        for replicate in range(config.base.n_replicates):
+            plan: ReplicatePlan | None = None
+            for method in FREERUN_METHODS:
+                outcome = run_free_run(
+                    config,
+                    entry,
+                    replicate,
+                    n_steps=config.freerun.stats_steps,
+                    method=method,
+                    plan=plan,
+                )
+                plan = outcome.readout.plan
+                evaluation = evaluate_free_run(
+                    config,
+                    outcome,
+                    dt=dt,
+                    lyapunov_per_time=lyapunov_per_time,
+                    lyapunov_time=lyapunov_time,
+                )
+                evaluations.append(evaluation)
+                if replicate == PROFILE_REPLICATE and method == ESN_METHOD:
+                    profile.extend(freerun_profile_rows(evaluation, dt))
+    wall_time_s = time.perf_counter() - started
+    logger.info(
+        "experiment=%s 行数=%d 課題=%s 手法=%s "
+        "有効予測時間の中央値 [1/lambda]=%s (%.2fs)",
+        EXPERIMENT_FREERUN,
+        len(evaluations),
+        sorted({item.row.task for item in evaluations}),
+        list(FREERUN_METHODS),
+        {
+            method: round(
+                float(
+                    np.median(
+                        [
+                            item.row.valid_time_lyapunov
+                            for item in evaluations
+                            if item.row.method == method
+                        ]
+                    )
+                ),
+                3,
+            )
+            for method in FREERUN_METHODS
+        },
+        wall_time_s,
+    )
+    return FreeRunResults(
+        evaluations=tuple(evaluations),
+        profile_rows=tuple(profile),
+        sensitivity=summarize_valid_time(evaluations),
+        wall_time_s=wall_time_s,
+    )
+
+
+def write_freerun_csv(rows: Sequence[FreeRunRow], path: Path) -> Path:
+    """4-B の結果を CSV に書く (列順は ``FreeRunRow`` の宣言順)。"""
+    return _write_rows(rows, FREERUN_CSV_COLUMNS, path)
+
+
+def write_freerun_profile_csv(
+    rows: Sequence[FreeRunProfileRow], path: Path
+) -> Path:
+    """図が読む長形式の行を CSV に書く。"""
+    return _write_rows(rows, FREERUN_PROFILE_CSV_COLUMNS, path)
+
+
+def _write_rows(
+    rows: Sequence[object], columns: tuple[str, ...], path: Path
+) -> Path:
+    """行 dataclass の並びをそのまま CSV にする (列順は宣言順)。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(columns))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(dataclasses.asdict(row))  # type: ignore[call-overload]
+    return path
+
+
 ONESTEP_ARTIFACTS: tuple[str, ...] = (ONESTEP_CSV, META_JSON)
 """4-A が書く成果物の一覧 (**成果物を列挙する唯一の場所**)。
 
