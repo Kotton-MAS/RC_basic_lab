@@ -157,7 +157,7 @@ def test_ensure_file_does_not_open_anything_when_the_cache_is_valid(
 # --- TOCTOU (reviewer-security 指摘) -----------------------------------------
 
 
-def test_partial_path_is_not_predictable(tmp_path: Path) -> None:
+def test_staged_write_uses_an_unpredictable_partial_name(tmp_path: Path) -> None:
     """``.part`` の名前は固定 (``f"{name}.part"``) ではなく予測不能である。
 
     固定名は、同じ ``data_dir`` に書ける別プロセス・別ユーザーが「どのパスを
@@ -166,56 +166,97 @@ def test_partial_path_is_not_predictable(tmp_path: Path) -> None:
     毎回違う名前になることを固定する。
     """
     target = tmp_path / "probe.bin"
-    first = fetch._make_partial_path(target)
-    first.unlink()
-    second = fetch._make_partial_path(target)
-    second.unlink()
-    assert first != second
-    assert first.name != f"{target.name}.part"
-    assert second.name != f"{target.name}.part"
+    with fetch._staged_write(target) as first:
+        first_name = first.partial.name
+    with fetch._staged_write(target) as second:
+        second_name = second.partial.name
+    assert first_name != second_name
+    assert first_name != f"{target.name}.part"
+    assert second_name != f"{target.name}.part"
 
 
-def test_replace_after_reverifying_rejects_bytes_swapped_before_replace(
+def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     tmp_path: Path,
 ) -> None:
-    """``download()`` と ``extract_members()`` が共有する最終防衛線。
+    """``download()`` と ``extract_members()`` が共有する最終防衛線 (``_StagedSink.commit``)。
 
-    書き込みが完了した直後に ``.part`` の中身が差し替えられても、
-    ``os.replace`` 直前の再照合が検出し、一時ファイルも確定先も残さない。
+    確定直前に一時ファイルの実体そのものが (パス越しに) 別の実体へ差し替え
+    られても、fd から再照合するだけでは検出できない自己整合性の穴を
+    fstat/stat の実体一致検査が塞ぎ、一時ファイルも確定先も残さない。
     """
-    partial = tmp_path / ".probe.bin.deadbeef.part"
     target = tmp_path / "probe.bin"
-    partial.write_bytes(b"attacker-controlled-bytes")
+    swapped = tmp_path / "attacker-controlled.bin"
+    swapped.write_bytes(b"attacker-controlled-bytes")
     expected = hashlib.sha256(b"legitimate-bytes").hexdigest()
     with pytest.raises(fetch.ChecksumMismatchError, match="差し替え"):
-        fetch._replace_after_reverifying(
-            partial, target, expected, error_cls=fetch.ChecksumMismatchError
-        )
-    assert not partial.exists()
+        with fetch._staged_write(target) as sink:
+            sink.write(b"legitimate-bytes")
+            os.replace(swapped, sink.partial)
+            sink.commit(target, expected, error_cls=fetch.ChecksumMismatchError)
     assert not target.exists()
+    assert list(tmp_path.glob("*.part")) == []
 
 
-def test_download_and_extract_members_both_route_through_the_replace_guard() -> None:
-    """``download()`` と ``_extract_member()`` の両方が最終防衛線を通る。
+def test_os_replace_is_confined_to_the_staged_write_commit_method() -> None:
+    """``os.replace`` は ``_StagedSink.commit`` からしか呼ばれない (全称)。
 
-    片方だけ直して他方を「一貫性のため」据え置く事故を機械的に防ぐ
-    (reviewer-security 指摘: 同じクラスの欠陥は全経路で潰す)。
+    旧テスト (``download``/``_extract_member`` という関数名を列挙するだけの
+    存在確認) は、T3〜T5 で datasets/ に3本目の書き込み経路が増えても素通り
+    することが reviewer-architecture / reviewer-test の双方から指摘された
+    (F-2-001 / F-2-021)。関数名の列挙ではなく fetch.py の**全関数**を対象に
+    することで、新しい経路が ``_staged_write`` を経由しない限り機械的に落ちる。
     """
     tree = ast.parse(
         Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
     )
-    functions = {
-        node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-    }
-    for name in ("download", "_extract_member"):
-        called = {
-            call.func.id
-            for call in ast.walk(functions[name])
-            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
-        }
-        assert "_replace_after_reverifying" in called, (
-            f"{name} が最終防衛線 (_replace_after_reverifying) を通っていません"
+    offenders = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name != "commit"
+        for call in ast.walk(node)
+        if isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Attribute)
+        and call.func.attr == "replace"
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "os"
+    ]
+    assert offenders == [], (
+        f"os.replace が _StagedSink.commit の外で呼ばれています: {offenders}"
+    )
+
+
+def test_every_function_that_stages_a_write_also_commits_it() -> None:
+    """``_staged_write`` を呼ぶ関数は必ず ``.commit(`` も呼ぶ (全称)。
+
+    片方だけ直して他方を「一貫性のため」据え置く事故 (reviewer-security 指摘)
+    を、関数名を列挙する閉じたテストではなく検出する。
+    """
+    tree = ast.parse(
+        Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
+    )
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        calls_staged_write = any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "_staged_write"
+            for call in ast.walk(node)
         )
+        if not calls_staged_write:
+            continue
+        commits = any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "commit"
+            for call in ast.walk(node)
+        )
+        if not commits:
+            offenders.append(node.name)
+    assert offenders == [], (
+        f"_staged_write を呼ぶが commit() を呼ばない関数: {offenders}"
+    )
 
 
 def test_download_is_rejected_when_the_part_file_is_swapped_mid_write(
