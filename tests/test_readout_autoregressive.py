@@ -233,7 +233,8 @@ def test_free_run_records_divergence_without_hiding_it() -> None:
     """
 
     def exploding(x: FloatArray, u: FloatArray) -> FloatArray:
-        blown: FloatArray = np.asarray(x, dtype=np.float64) * 1.0e300
+        with np.errstate(over="ignore"):
+            blown: FloatArray = np.asarray(x, dtype=np.float64) * 1.0e300
         return blown
 
     result = free_run(
