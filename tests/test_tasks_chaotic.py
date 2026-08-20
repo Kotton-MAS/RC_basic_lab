@@ -108,7 +108,7 @@ def test_lorenz_sample_step_reproduces_the_sampled_trajectory() -> None:
     実行時に検査する。ここが近似一致でしかないと、伝播器の整合検査が
     ``propagator_tol`` の設定次第で通ったり落ちたりする。
     """
-    cfg = _short_config(length=50)
+    cfg = _short_config(length=50, standardize_steps=50)
     trajectory = integrate_lorenz(cfg, np.array(REFERENCE_X0), 50)
     for index in (0, 17, 48):
         stepped = lorenz_sample_step(cfg, trajectory[index])
