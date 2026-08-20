@@ -38,6 +38,7 @@ from rc_basics_lab.config import (
     SplitConfig,
 )
 from rc_basics_lab.experiment import freerun as freerun_module
+from rc_basics_lab.experiment.attractor import shuffled_surrogate
 from rc_basics_lab.experiment.freerun import (
     CHAOS_ESN_SECTION,
     FREE_RUN_SPEC,
@@ -722,11 +723,10 @@ def test_pipeline_actually_calls_the_real_shuffled_surrogate() -> None:
     no-op の結果と一致しないこと (= 実際にシャッフルされていること) の両方を測る。
     """
     config = small_config()
-    real = freerun_module.shuffled_surrogate
     calls: list[tuple[FloatArray, FloatArray]] = []
 
     def spy(series: FloatArray, rng: np.random.Generator, n_samples: int) -> FloatArray:
-        result = real(series, rng, n_samples)
+        result = shuffled_surrogate(series, rng, n_samples)
         noop = np.asarray(series, dtype=float)[: min(n_samples, len(series))]
         calls.append((noop, result))
         return result
