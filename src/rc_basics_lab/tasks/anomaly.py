@@ -57,6 +57,22 @@ _REMOVED_SPAN_FACTORS = (1, 3)
 _MAX_RAW_SAMPLES = 4_000_000
 """合成源が Mackey-Glass に要求してよいサンプル数の絶対上限 (確保前に検査)。"""
 
+_MAX_FIND_CUT_CELLS = 5_000_000
+"""``_find_cut`` が確保する ``starts x spans`` (``ends``/``cost``) の要素数上限。
+
+``_MAX_RAW_SAMPLES`` は ``raw_samples`` (Mackey-Glass 側の系列長、``length`` に
+対して線形の項) だけを検査しており、``_find_cut`` が実際に確保する行列の
+要素数 (``starts.size * spans.size``、``segment_length`` の**2乗**のオーダー)
+には一切上限が無かった (F-1-015)。既定の ``segment_length=200`` では
+``starts.size≈201`` / ``spans.size=401`` で 80,601 要素 (無害) だが、
+``segment_length`` だけを大きくすると ``_MAX_RAW_SAMPLES`` の制約下でも
+``raw_samples`` は線形にしか増えないため通過してしまい、``cost`` 行列は
+容易に数億〜数百億要素 (float64 で数GB〜数百GB) に達する —— 過去に起きた
+「確保軸の積を検査しないまま巨大配列を確保 → peak RSS 8.6GB / 13時間」と
+同型のガード漏れ。閾値 5,000,000 要素は既定設定に対して60倍以上の余地を
+残しつつ、cost/ends 行列を合わせて 100MB 未満に収める。
+"""
+
 
 def _as_series_matrix(series: FloatArray, label: str) -> FloatArray:
     """``(T, D)`` の float64 行列に揃える (1次元は受理しない)。"""
