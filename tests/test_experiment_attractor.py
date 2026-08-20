@@ -275,18 +275,19 @@ def test_mean_nearest_blocks_both_sides_so_memory_never_scales_with_either_side(
     常に ``(<= _POINT_CHUNK, <= _POINT_CHUNK, 2)`` に収まることを確かめる。
     """
     shapes: list[tuple[int, ...]] = []
-    original_norm = attractor.np.linalg.norm
+    original_norm = np.linalg.norm
 
-    def spy(diff: object, axis: int) -> object:
-        shapes.append(diff.shape)  # type: ignore[attr-defined]
-        return original_norm(diff, axis=axis)
+    def spy(diff: FloatArray, axis: int) -> FloatArray:
+        shapes.append(diff.shape)
+        result: FloatArray = original_norm(diff, axis=axis)
+        return result
 
     rng = np.random.default_rng(0)
     chunk = attractor._POINT_CHUNK
     left = rng.normal(size=(10, 2))
     right = rng.normal(size=(chunk * 3 + 5, 2))
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(attractor.np.linalg, "norm", spy)
+        patch.setattr(np.linalg, "norm", spy)
         attractor._mean_nearest(left, right)
     assert shapes, "np.linalg.norm が1回も呼ばれていません"
     for shape in shapes:
