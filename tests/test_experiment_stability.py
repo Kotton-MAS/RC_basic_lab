@@ -189,7 +189,6 @@ def test_stability_never_uses_the_esp_condition_path() -> None:
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(esp_module, "simulate_condition", forbidden)
-        patch.setattr(stability_module, "run_free_run", stability_module.run_free_run)
         results = run_stability_experiment(config, estimate_lorenz_lyapunov(config))
     assert len(results.outcomes) == 1
 
@@ -203,11 +202,13 @@ def test_one_state_matrix_per_condition_is_shared_by_4c_and_4d() -> None:
     しまうためである。
     """
     import rc_basics_lab.experiment.freerun as freerun_module
+    from rc_basics_lab.experiment.capacity import measure_capacity
+    from rc_basics_lab.experiment.runner import plan_replicate
 
     config = small_config()
     plans: list[object] = []
-    original_plan = freerun_module.plan_replicate
-    original_measure = stability_module.measure_capacity
+    original_plan = plan_replicate
+    original_measure = measure_capacity
     measured: list[object] = []
 
     def spy_plan(*args: object, **kwargs: object) -> object:
@@ -235,9 +236,11 @@ def test_capacity_rows_go_through_the_03_seam() -> None:
     行の組み立てを 04 側で複製すると、``CapacityRow`` に列を1本足したときに
     04 だけ置き去りになる (型検査では落ちない)。
     """
+    from rc_basics_lab.experiment.capacity import capacity_row_from
+
     config = small_config()
     calls: list[str] = []
-    original = stability_module.capacity_row_from
+    original = capacity_row_from
 
     def spy(*args: object, **kwargs: object) -> object:
         calls.append(str(kwargs.get("experiment")))
@@ -355,7 +358,7 @@ def test_noise_changes_the_regime_map() -> None:
     highest = _map_of(rows, noises[-1])
     assert set(lowest) == set(highest), "格子が state_noise ごとに違います"
     changed = {key for key in lowest if lowest[key] != highest[key]}
-    assert changed, "状態ノイズを変えても3態マップが 1 点も変わりません"
+    assert changed, "state_noise を変えても3態マップが 1 点も変わりません"
     stabilized = sum(
         1 for key in changed if lowest[key] == REGIMES[0] and highest[key] != REGIMES[0]
     )
