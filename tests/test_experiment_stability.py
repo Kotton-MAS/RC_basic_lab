@@ -2,7 +2,7 @@
 
 このファイルが守るのは4つ。
 
-1. **3態が状態ノイズで変わる** (受け入れ条件4 / D-45) —— 成果物
+1. **3態が ``state_noise`` で変わる** (受け入れ条件4 / D-45) —— 成果物
    ``results/04_chaotic_freerun/stability.csv`` の行から判定する。図は見ない。
 2. **確保軸5 (条件数) が条件を1つも作る前に効く** (D-34)。
 3. **1条件につきリザバーは1つ、状態行列は1本** (仕様 §5 禁止する構造4)。
@@ -339,7 +339,7 @@ def _map_of(rows: list[dict[str, str]], noise: str) -> dict[tuple[str, str], str
 
 
 def test_noise_changes_the_regime_map() -> None:
-    """**受け入れ条件4**: 状態ノイズの注入で3態の領域が変わる (D-45)。
+    """**受け入れ条件4**: ``state_noise`` の注入で3態の領域が変わる (D-45)。
 
     成果物の行だけから判定する (図も目視も使わない、仕様 §5 禁止する構造6)。
     状態ノイズが最小のマップと最大のマップを格子点ごとに比べ、少なくとも
@@ -353,7 +353,7 @@ def test_noise_changes_the_regime_map() -> None:
     assert len(noises) >= 2, noises
     lowest = _map_of(rows, noises[0])
     highest = _map_of(rows, noises[-1])
-    assert set(lowest) == set(highest), "格子が状態ノイズの量で違います"
+    assert set(lowest) == set(highest), "格子が state_noise ごとに違います"
     changed = {key for key in lowest if lowest[key] != highest[key]}
     assert changed, "状態ノイズを変えても3態マップが 1 点も変わりません"
     stabilized = sum(
