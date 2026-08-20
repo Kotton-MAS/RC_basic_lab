@@ -74,7 +74,7 @@ IPAexGothic / Yu Gothic）が見つかる環境では日本語ラベル、見つ
 ## 実験02: ESP はスペクトル半径だけでは決まらない
 
 ```bash
-# 7成果物 (CSV2枚 + 図4枚 + meta.json) を再生成する (実測 wall_time_s = 87.69 秒)
+# 7成果物 (CSV2枚 + 図4枚 + meta.json) を再生成する (実測 wall_time_s = 88.0 秒)
 make figures-02
 
 # ESP 判定の閾値感度 CSV だけを再生成する (実測 60.70 秒)
