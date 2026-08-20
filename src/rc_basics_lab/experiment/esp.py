@@ -209,20 +209,14 @@ def esn_propagator(esn: ESN, u: FloatArray) -> StatePropagator:
     "それらしい値" で出てレビューでは気づけないため、``conditional_lyapunov``
     は既定でこの一致を実行時に検査する (``check_propagator``)。
 
-    **``state_noise > 0`` の ESN は受理しない** (D-48)。``conditional_lyapunov``
-    は同じ写像を2本の近接した状態に当てて摂動の成長率を測るので、伝播器は
-    決定的でなければならない。ノイズを入れると測っているのは「摂動の成長率」
-    ではなく「摂動 + ノイズ実現値の差の成長率」という別の量になる。D-36 の
-    「``ESN.run`` には常に ``rng`` を渡す」は**軌道を作る**呼び出しの規律であり、
-    伝播器はそこに含めない —— したがって ``esn.step`` に ``rng`` を渡して
+    **``state_noise > 0`` の ESN は受理しない** (D-48)。D-36 の「``ESN.run``
+    には常に ``rng`` を渡す」は**軌道を作る**呼び出しの規律であり、伝播器は
+    そこに含めない —— したがって ``esn.step`` に ``rng`` を渡して
     ``ValueError`` を黙らせるのは誤りである (F-3b1-2-006)。
 
-    判定は**伝播器を作る時点**で行う。伝播器は ``conditional_lyapunov`` の深部で
-    初めて呼ばれるため、ここで落とさないと失敗が D-18 の
-    ``check_propagator`` のメッセージ (「参照軌道と別の入力で伝播している疑い」)
-    として出て、次の実装者を**存在しないバグの捜索**へ送り込む
-    (``tests/test_experiment_esp.py::test_noise_free_clone_fails_the_propagator_check``
-    がその誤診を実測として残してある)。
+    判定は**伝播器を作る時点**で行う (D-48)。誤診の実測は
+    ``tests/test_experiment_esp.py::test_noise_free_clone_fails_the_propagator_check``
+    に残してある。
 
     Raises:
         ValueError: ``esn`` の ``state_noise`` が 0 でない場合 (D-48)。
