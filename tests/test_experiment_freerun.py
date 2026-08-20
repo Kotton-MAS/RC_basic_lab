@@ -434,6 +434,22 @@ def test_estimate_lorenz_lyapunov_reports_the_sampling_interval() -> None:
     )
 
 
+def test_chaos_artifacts_go_to_their_own_directory() -> None:
+    """成果物は ``results/04_chaotic_freerun/`` に出す (D-51)。
+
+    要件書は ``results/`` 直下と書いていたが、01 が ``results/`` 直下を使って
+    いるので ``meta.json`` が衝突して黙って上書きされる (02・03 で同じ理由から
+    実験ごとのディレクトリへ分けた)。レジストリの既定出力先と実験スクリプトの
+    ``DEFAULT_OUT`` の一致は ``tests/test_main.py`` が全実験について回すので、
+    ここでは 04 の値そのものを固定する。
+    """
+    import main
+
+    assert main.EXPERIMENTS["04"].out_dir == Path("results/04_chaotic_freerun")
+    out_dirs = [spec.out_dir for spec in main.EXPERIMENTS.values()]
+    assert len(set(out_dirs)) == len(out_dirs), "既定の出力先が重複しています"
+
+
 def test_run_and_report_onestep_writes_the_declared_artifacts(tmp_path: Path) -> None:
     """成果物が ``ONESTEP_ARTIFACTS`` と一致し、列順が 01 の ``CSV_COLUMNS``。"""
     config = small_config()
