@@ -225,6 +225,38 @@ def validate_state_matrix_bounds(n_units: int, n_steps: int) -> None:
         )
 
 
+_MAX_SEQUENTIAL_RUNS = 2_000
+"""逐次で回す ESN シミュレーション本数 (CWE-834) の上書き不能な絶対上限。
+
+ESN の状態更新 (``ESN.run`` / 自走の ``free_run``) は逐次計算でベクトル化
+できない (仕様 §10-1) ので、実行時間は「回す本数」に正比例する。04 の
+4-A / 4-B は ``base.n_replicates`` を縛る検査がどこにも無く、この値を
+YAML の1行変更で任意倍にできた (reviewer-security 実測)。``experiment/
+stability.py`` の ``_MAX_CONDITIONS`` (4-C の条件数上限) と**同じ値・同じ
+threat model**。``config/chaos04.py`` / ``experiment/freerun.py`` は
+新しい ``_MAX_*`` を宣言しない
+(``tests/test_config_wiring_chaos.py::test_chaos_config_introduces_no_new_capacity_bound``)
+ので、``validate_state_matrix_bounds`` と同じくここに置き、両方の呼び出し元
+(``freerun.py`` は4-A/4-B、``stability.py`` は独自の条件数の積を別に持つ) が
+再利用する。
+"""
+
+
+def validate_sequential_run_count(n_runs: int) -> None:
+    """ESN シミュレーションを1本も回す前に、逐次実行の本数を検査する (CWE-834)。
+
+    Raises:
+        ValueError: 本数が 1 未満、または ``_MAX_SEQUENTIAL_RUNS`` 超過。
+    """
+    if n_runs < 1:
+        raise ValueError(f"逐次実行の本数が1本もありません: {n_runs}")
+    if n_runs > _MAX_SEQUENTIAL_RUNS:
+        raise ValueError(
+            f"逐次実行の本数が上限を超えています: {n_runs} > {_MAX_SEQUENTIAL_RUNS} "
+            "(ESN のシミュレーションは逐次計算なので実行時間はこの本数に比例する)"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class CapacityCondition:
     """容量測定の1条件。掃引の違いはどの軸を振るかだけである。
@@ -1142,5 +1174,6 @@ __all__ = [
     "run_length_sweep",
     "run_mc_sweep",
     "validate_n_units_bound",
+    "validate_sequential_run_count",
     "validate_state_matrix_bounds",
 ]

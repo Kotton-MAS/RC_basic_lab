@@ -52,6 +52,7 @@ from rc_basics_lab.experiment.attractor import (
 )
 from rc_basics_lab.experiment.capacity import (
     validate_n_units_bound,
+    validate_sequential_run_count,
     validate_state_matrix_bounds,
 )
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
@@ -198,41 +199,6 @@ def validate_free_run_bounds(free_run_steps: int, n_units: int) -> None:
             f"free_run_steps は 1 以上である必要があります: {free_run_steps}"
         )
     validate_state_matrix_bounds(n_units, free_run_steps)
-
-
-_MAX_SEQUENTIAL_RUNS = 2_000
-"""確保軸10: 04 が逐次で回す ESN シミュレーション本数 (4-A / 4-B) の絶対上限。
-
-ESN の状態更新 (``ESN.run`` / 自走の ``free_run``) は逐次計算でベクトル化
-できない (仕様 §10-1) ので、実行時間は「課題数 x ``base.n_replicates``」
-(4-A、``plan_replicate`` が状態行列を1本だけ作り3手法で共有するため)、または
-「課題数 x ``base.n_replicates`` x 手法数」(4-B、閉ループは手法ごとに独立な
-シミュレーション) に比例する。``base.n_replicates`` を縛る検査がどこにも
-無く、この値を YAML の1行変更で任意倍にできた (reviewer-security 実測)。
-
-``experiment/stability.py`` の ``_MAX_CONDITIONS`` (4-C の条件数上限) と
-**同じ値・同じ threat model** (CWE-834) だが、``stability.py`` は
-``freerun.py`` を import しているため (循環を避けるため) ここに複製する
-(``tasks/narma.py`` の ``_MAX_STATE_ELEMENTS`` 複製と同じ流儀)。本番は
-4-A が 2 x 10 = 20 本、4-B が 2 x 10 x 3 = 60 本で、上限 2000 は 4-B でも
-33 倍の余裕を残す。
-"""
-
-
-def validate_sequential_run_count(n_runs: int) -> None:
-    """確保軸10 を ESN シミュレーションを1本も回す前に検査する (CWE-834)。
-
-    Raises:
-        ValueError: 本数が 1 未満、または ``_MAX_SEQUENTIAL_RUNS`` 超過。
-    """
-    if n_runs < 1:
-        raise ValueError(f"逐次実行の本数が1本もありません: {n_runs}")
-    if n_runs > _MAX_SEQUENTIAL_RUNS:
-        raise ValueError(
-            f"逐次実行の本数が上限を超えています: {n_runs} > {_MAX_SEQUENTIAL_RUNS} "
-            "(課題数 x base.n_replicates [x 手法数]。ESN のシミュレーションは"
-            "逐次計算なので実行時間はこの本数に比例する)"
-        )
 
 
 def validate_standardization_window(standardize_steps: int, split: Split) -> None:
