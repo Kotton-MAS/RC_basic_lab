@@ -55,7 +55,11 @@ from rc_basics_lab.experiment.capacity import (
     validate_sequential_run_count,
     validate_state_matrix_bounds,
 )
-from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.report import (
+    META_JSON,
+    DataclassSummaryMixin,
+    write_meta_for,
+)
 from rc_basics_lab.experiment.runner import (
     CSV_COLUMNS,
     DELAY_LINE,
@@ -1181,7 +1185,7 @@ def freerun_profile_rows(
 
 
 @dataclass(frozen=True, slots=True)
-class ValidTimeSensitivity:
+class ValidTimeSensitivity(DataclassSummaryMixin):
     """閾値感度表の1行 (``meta.json`` の ``valid_time_sensitivity``)。
 
     ``docs/design.md`` §12 の感度表はここから機械照合する。閾値を1点だけ
@@ -1204,10 +1208,6 @@ class ValidTimeSensitivity:
     max_lyapunov: float
     n_rows: int
     n_censored: int
-
-    def to_summary(self) -> dict[str, float | int | str]:
-        """``meta.json`` に載せるプレーンな dict。"""
-        return dataclasses.asdict(self)
 
 
 def summarize_valid_time(
@@ -1241,7 +1241,7 @@ def summarize_valid_time(
 
 
 @dataclass(frozen=True, slots=True)
-class AttractorVerdict:
+class AttractorVerdict(DataclassSummaryMixin):
     """アトラクタ再現の判定 (D-46)。**視覚評価は結論に使わない**。
 
     「シャッフル代替より近い」が (課題, 手法) 群の**全行で**成り立つかを
