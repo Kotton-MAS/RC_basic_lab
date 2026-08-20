@@ -157,34 +157,29 @@ def base_config() -> Chaos04Config:
     )
 
 
-def _section_case(field: str, value: object, scope: str) -> WiringCase:
-    """課題固有の葉。**その課題の出力だけ**が変わることまで測る。"""
-    return case(field, value, scope=scope)
-
-
 CHAOS_WIRING_CASES: tuple[WiringCase, ...] = (
     # name は結果行に出ない純粋なメタ情報。meta.json に載ることを確かめる。
     case("name", "04-renamed", channel=CHANNEL_META),
     # --- Lorenz の生成パラメータ (Lorenz の出力だけが動く) ---
-    _section_case("lorenz.rk4_step", 0.001, TASK_NAME_LORENZ),
-    _section_case("lorenz.sample_interval", 8, TASK_NAME_LORENZ),
-    _section_case("lorenz.integration_burn_in", 150, TASK_NAME_LORENZ),
-    _section_case("lorenz.length", 650, TASK_NAME_LORENZ),
-    _section_case("lorenz.horizon", 3, TASK_NAME_LORENZ),
-    _section_case("lorenz.standardize_steps", 200, TASK_NAME_LORENZ),
+    section_case("lorenz.rk4_step", 0.001, TASK_NAME_LORENZ),
+    section_case("lorenz.sample_interval", 8, TASK_NAME_LORENZ),
+    section_case("lorenz.integration_burn_in", 150, TASK_NAME_LORENZ),
+    section_case("lorenz.length", 650, TASK_NAME_LORENZ),
+    section_case("lorenz.horizon", 3, TASK_NAME_LORENZ),
+    section_case("lorenz.standardize_steps", 200, TASK_NAME_LORENZ),
     # --- 04 の MG 課題の標準化 (MG の出力だけが動く) ---
-    _section_case("mackey_glass.standardize_steps", 220, TASK_NAME_MACKEY_GLASS),
+    section_case("mackey_glass.standardize_steps", 220, TASK_NAME_MACKEY_GLASS),
     # --- 自走の実行条件 (課題横断。4-A の行は1バイトも変わらない) ---
     case("freerun.warmup_steps", 25),
     case("freerun.free_run_steps", 60),
     case("freerun.stats_steps", 100),
     case("freerun.valid_time_threshold", 0.25),
     # --- 4-C / 4-D の掃引軸 (Lorenz だけを回すので Lorenz スコープ) ---
-    _section_case("stability.spectral_radius_grid", (1.1,), TASK_NAME_LORENZ),
-    _section_case("stability.leak_rate_grid", (0.8,), TASK_NAME_LORENZ),
-    _section_case("stability.state_noise_grid", (0.0, 1.0e-3), TASK_NAME_LORENZ),
-    _section_case("stability.n_replicates", 2, TASK_NAME_LORENZ),
-    _section_case("stability.surrogate_seed", 11, TASK_NAME_LORENZ),
+    section_case("stability.spectral_radius_grid", (1.1,), TASK_NAME_LORENZ),
+    section_case("stability.leak_rate_grid", (0.8,), TASK_NAME_LORENZ),
+    section_case("stability.state_noise_grid", (0.0, 1.0e-3), TASK_NAME_LORENZ),
+    section_case("stability.n_replicates", 2, TASK_NAME_LORENZ),
+    section_case("stability.surrogate_seed", 11, TASK_NAME_LORENZ),
 )
 
 
@@ -267,29 +262,6 @@ def baseline() -> Chaos04Config:
 def baseline_fingerprint(task: str | None = None) -> str:
     """基準の出力の指紋 (ケースごとに再計算しない)。"""
     return run_config(baseline(), task)
-
-
-def _leaf_value(config: object, leaf: str) -> object:
-    node: object = config
-    for part in leaf.split("."):
-        node = getattr(node, part)
-    return node
-
-
-def _changed_leaves(base: Chaos04Config, changed: Chaos04Config) -> set[str]:
-    return {
-        leaf
-        for leaf in leaf_paths(Chaos04Config)
-        if _leaf_value(base, leaf) != _leaf_value(changed, leaf)
-    }
-
-
-def _round_trip(config: Chaos04Config, tmp_path: Path, name: str) -> Chaos04Config:
-    """設定を YAML へ書き出して読み直す (``load_config_as`` の経路そのもの)。"""
-    path = tmp_path / f"{name}.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
-    path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
-    return load_config_as(path, Chaos04Config)
 
 
 def _meta_fingerprint(config: Chaos04Config) -> str:
