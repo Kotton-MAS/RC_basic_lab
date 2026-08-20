@@ -49,6 +49,7 @@ from rc_basics_lab.experiment.capacity_threshold import (
 from rc_basics_lab.experiment.narma import Narma10Results, run_narma10
 from rc_basics_lab.experiment.report import (
     META_JSON,
+    DataclassSummaryMixin,
     write_comparison_csv,
     write_meta_for,
 )
@@ -94,7 +95,7 @@ CAPACITY_ARTIFACTS: tuple[str, ...] = (
 
 
 @dataclass(frozen=True, slots=True)
-class SectionTiming:
+class SectionTiming(DataclassSummaryMixin):
     """1実験ぶんの実測時間の内訳 (``meta.json`` の ``wall_time_breakdown``)。
 
     **``wall_time_s`` は3-Cだけ意味が違う** (F-3b2-1-004/M4)。他の実験
@@ -127,10 +128,6 @@ class SectionTiming:
     wall_time_mc_s: float
     wall_time_ipc_s: float
     wall_time_s: float
-
-    def to_summary(self) -> dict[str, float | int | str]:
-        """``meta.json`` に載せるプレーンな dict。"""
-        return dataclasses.asdict(self)
 
 
 def summarize_timing(
