@@ -873,3 +873,143 @@ def test_design_doc_points_at_the_capacity_regeneration_command() -> None:
     assert "make saturation-03" in text
     assert "threshold_comparison" in text
     assert "capacity_profile.csv" in text
+
+
+# --- 04b-1 T4: カオス系の生成・Delta t の較正・lambda_max の推定 -------------
+
+CHAOS_RESULTS = ROOT / "results" / "04_chaotic_freerun"
+CHAOS_META = CHAOS_RESULTS / "meta.json"
+CHAOS_CSV = CHAOS_RESULTS / "onestep.csv"
+
+_CHAOS_GENERATION_HEADER = re.compile(r"^\|\s*項目\s*\|\s*値\s*\|\s*出どころ\s*\|")
+_CHAOS_CALIBRATION_HEADER = re.compile(
+    r"^\|\s*`sample_interval`\s*\|\s*[^|]*\|\s*1ステップ先 NRMSE"
+)
+_CHAOS_BOUND_HEADER = re.compile(r"^\|\s*#\s*\|\s*軸\s*\|\s*上限\s*\|\s*置き場所\s*\|")
+
+
+def _chaos_meta() -> dict[str, object]:
+    """04 の ``meta.json`` (4-A の一次資料)。"""
+    loaded: dict[str, object] = json.loads(CHAOS_META.read_text(encoding="utf-8"))
+    return loaded
+
+
+def test_chaos_generation_table_matches_the_config() -> None:
+    """§11 の Lorenz 生成表が ``LorenzConfig`` の既定と一致する (D-41)。
+
+    要件書は「積分法・刻み幅・サンプリング間隔を記録」と求めている。記録と
+    実装が食い違ったら、記録の方が嘘になる。
+    """
+    from rc_basics_lab.config import LorenzConfig
+
+    cfg = LorenzConfig()
+    _, table = _table_after(_CHAOS_GENERATION_HEADER)
+    documented = {cells[0]: cells[1] for cells in table}
+    assert "`rk4_step`" in " ".join(documented), documented
+    interval_row = next(
+        value for key, value in documented.items() if "sample_interval" in key
+    )
+    assert str(cfg.sample_interval) in interval_row
+    assert f"{cfg.rk4_step * cfg.sample_interval:g}" in interval_row.replace(" ", "")
+    step_row = next(value for key, value in documented.items() if "rk4_step" in key)
+    assert float(step_row) == cfg.rk4_step
+    burn_row = next(
+        value for key, value in documented.items() if "integration_burn_in" in key
+    )
+    assert str(cfg.integration_burn_in) in burn_row
+    assert str(cfg.integration_burn_in * cfg.sample_interval) in burn_row
+
+
+def test_chaos_calibration_table_records_the_adopted_and_rejected_values() -> None:
+    """Delta t の較正表に採用値と**落選値**の両方が載っている (仕様 §4 T4)。
+
+    「図が良く見えるまで黙って調整する」経路を塞ぐための記録なので、採用値
+    だけを書くのは記録として成立しない。採用行が実装の既定と一致することも
+    同時に見る。
+    """
+    from rc_basics_lab.config import LorenzConfig
+
+    _, table = _table_after(_CHAOS_CALIBRATION_HEADER)
+    intervals = {int(cells[0].strip("*").split("(")[0].strip()): cells for cells in table}
+    assert set(intervals) == {5, 10, 25}, intervals
+    adopted = [value for key, value in intervals.items() if "採用" in value[0]]
+    rejected = [value for key, value in intervals.items() if "落選" in value[0]]
+    assert len(adopted) == 1 and len(rejected) == 2
+    assert int(adopted[0][0].strip("*").split("(")[0].strip()) == (
+        LorenzConfig().sample_interval
+    )
+
+
+def test_chaos_lyapunov_record_matches_the_artifacts() -> None:
+    """§11 の lambda_max の記録が ``meta.json`` と設定の文献値に一致する (D-42)。"""
+    from rc_basics_lab.config import LORENZ_LYAPUNOV_REFERENCE
+
+    text = _text()
+    meta = _chaos_meta()
+    lyapunov = meta["lyapunov"]
+    assert isinstance(lyapunov, dict)
+    estimated = float(lyapunov["lyapunov_per_time"])
+    documented = re.search(r"lambda_max = (\d+\.\d+) \[1/時間\]", text)
+    assert documented, "lambda_max の実測値が §11 に書かれていません"
+    _assert_cell_matches(documented[1], estimated, "lyapunov_per_time")
+
+    relative = re.search(r"相対差は\n?\s*\*\*(\d+\.\d+)%\*\*", text)
+    assert relative, "文献値との相対差が §11 に書かれていません"
+    _assert_cell_matches(
+        relative[1], 100.0 * float(lyapunov["reference_rel_error"]), "rel_error"
+    )
+    assert f"**{LORENZ_LYAPUNOV_REFERENCE}**" in text, (
+        "文献値が §11 に書かれていません"
+    )
+    assert "Viswanath" in text, "文献値の出典が §11 に書かれていません"
+
+
+def test_chaos_wall_time_table_matches_the_meta_json() -> None:
+    """§11 の 4-A の実行時間表が ``meta.json`` と一致する。
+
+    実行時間は再生成のたびに動くので、表を更新せずに成果物だけ差し替えると
+    ここが落ちる。
+    """
+    meta = _chaos_meta()
+    breakdown = meta["wall_time_breakdown"]
+    assert isinstance(breakdown, dict)
+    _, table = _table_after(re.compile(r"^\|\s*区間\s*\|\s*実測\s*\|\s*予算\s*\|"))
+    expected = {
+        "真の軌道の生成 + lambda_max 推定": float(breakdown["lyapunov_s"]),
+        "4-A": float(breakdown["onestep_s"]),
+        "合計": _number(meta, "wall_time_s"),
+    }
+    seen = 0
+    for cells in table:
+        for label, value in expected.items():
+            if cells[0].startswith(label) or label in cells[0]:
+                _assert_cell_matches(
+                    cells[1].strip("*").removesuffix(" 秒"), value, label
+                )
+                seen += 1
+                break
+    assert seen == len(expected), table
+
+
+def test_chaos_allocation_bound_table_matches_the_module_constants() -> None:
+    """§11 の確保軸表が実装の上限と一致する (D-34。**04 で新しい上限を作らない**)。"""
+    import rc_basics_lab.tasks.chaotic as chaotic
+
+    _, table = _table_after(_CHAOS_BOUND_HEADER)
+    rows = {cells[0]: cells for cells in table}
+    assert set(rows) == {"1", "2", "3", "8"}, rows
+    assert "2e7" in rows["1"][2]
+    assert chaotic._MAX_INTEGRATION_STEPS == 20_000_000
+    assert "5e7" in rows["2"][2]
+    assert chaotic._MAX_TRAJECTORY_ELEMENTS == 50_000_000
+    assert "validate_state_matrix_bounds" in rows["3"][2]
+    assert "D-34" in rows["8"][2]
+
+
+def test_chaos_artifact_sizes_are_within_budget() -> None:
+    """§11 に書いた成果物サイズが実ファイルと桁で一致し、予算 5 MB の内側。"""
+    total = sum(path.stat().st_size for path in CHAOS_RESULTS.glob("*.csv"))
+    assert total < 5 * 1024 * 1024
+    documented = re.search(r"CSV 合計 \| \*\*(\d+) KB\*\*", _text())
+    assert documented, "§11 に CSV 合計サイズが書かれていません"
+    assert int(documented[1]) == round(total / 1024)
