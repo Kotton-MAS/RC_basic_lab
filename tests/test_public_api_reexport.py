@@ -130,41 +130,25 @@ def test_package_init_reexports_all_public_submodules(package_name: str) -> None
 
 
 DIAGNOSTICS_ALL = (
-    "DEFAULT_ESP",
-    "DEFAULT_IPC",
-    "DEFAULT_LYAPUNOV",
-    "DEFAULT_MAX_LYAPUNOV",
-    "DEFAULT_MEMORY_CAPACITY",
-    "DEFAULT_TIMESCALE",
-    "Diagnostic",
-    "DiagnosticContext",
-    "DiagnosticResult",
-    "EspConfig",
-    "IpcConfig",
-    "LyapunovConfig",
-    "MaxLyapunovConfig",
-    "MemoryCapacityConfig",
-    "StatePropagator",
-    "TimescaleConfig",
-    "autocorrelation_time",
-    "conditional_lyapunov",
-    "esp_convergence",
-    "max_lyapunov",
-    "state_mean_norm",
-    "state_pca",
-    "validate_diagnostic_input",
+    "base",
+    "dummy",
+    "esp",
+    "ipc",
+    "lyapunov",
+    "memory_capacity",
+    "state_space",
+    "timescale",
 )
-"""``rc_basics_lab.diagnostics.__all__`` のスナップショット (D-52)。
+"""``rc_basics_lab.diagnostics.__all__`` のスナップショット (D-52 / 05 公開面縮小)。
 
-04b-1 で ``lyapunov`` モジュールの3名 (``DEFAULT_MAX_LYAPUNOV`` /
-``MaxLyapunovConfig`` / ``max_lyapunov``) を足した。**関数名は
-``max_lyapunov``** で、モジュール名 ``lyapunov`` と衝突しないので
-``__all__`` に載せてよい (D-52)。
-
-04a T2 で**関数** ``ipc`` / ``memory_capacity`` の2名を外した。増減の
-**両側**を固定するのは、「2名が消えたこと」だけを見ると他の名前を巻き添えで
-落としても緑になり、「他が動いていないこと」だけを見ると2名が戻っても
-気づけないため。
+05 で公開面を縮小し、シンボルの再エクスポートを全廃してモジュール名だけを
+再エクスポートする形にした (root からシンボル利用が実測0件だったため。
+docs/削減候補-05.md §2 #2/#3)。以前は**関数** ``ipc`` / ``memory_capacity``
+だけを命名衝突 (D-52) を理由に外し、他のシンボル (``DEFAULT_ESP`` /
+``EspConfig`` など) は再エクスポートしたままだったが、05 でその非対称性ごと
+無くなった —— 今はどのシンボルも再エクスポートしないので、モジュール名との
+衝突はそもそも構造的に起こり得ない。増減の**両側**を固定するのは、変更を
+見落としたときにどちらの向きにも気づけるようにするため。
 """
 
 DIAGNOSTIC_FUNCTIONS_BY_MODULE = {
@@ -213,7 +197,7 @@ def test_package_attributes_are_modules_not_shadowed(package_name: str) -> None:
 
 
 def test_diagnostics_all_matches_the_recorded_snapshot() -> None:
-    """``diagnostics.__all__`` を増減の**両側**で固定する (D-52)。"""
+    """``diagnostics.__all__`` を増減の**両側**で固定する (D-52 / 05 公開面縮小)。"""
     package = importlib.import_module("rc_basics_lab.diagnostics")
     actual = tuple(package.__all__)
     assert actual == DIAGNOSTICS_ALL, (
@@ -221,8 +205,8 @@ def test_diagnostics_all_matches_the_recorded_snapshot() -> None:
         f"(増={sorted(set(actual) - set(DIAGNOSTICS_ALL))}, "
         f"減={sorted(set(DIAGNOSTICS_ALL) - set(actual))})"
     )
-    assert "ipc" not in actual and "memory_capacity" not in actual, (
-        "モジュール名と同名の関数が __all__ へ戻っています (D-52)"
+    assert all(isinstance(getattr(package, name), ModuleType) for name in actual), (
+        "diagnostics.__all__ の名前はすべてモジュールであるべきです (D-52)"
     )
 
 
