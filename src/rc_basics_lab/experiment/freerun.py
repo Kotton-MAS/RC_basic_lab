@@ -272,53 +272,103 @@ def _rows(array: FloatArray, selection: range) -> FloatArray:
     return block
 
 
-def fit_teacher_forced(
-    config: Chaos04Config, task_entry: TaskEntry, replicate: int
-) -> TeacherForcedReadout:
-    """教師強制で ESN 読み出しを学習する (01 の ``_evaluate`` と同じ2段)。
+def method_candidates(config: Chaos04Config, method: str) -> tuple[FeatureSpec, ...]:
+    """手法名 -> 候補の特徴仕様 (**手法の列挙は 01 の ``build_methods`` が単一の真実**)。
 
-    ``select_alpha`` (検証分割で alpha を選ぶ) -> ``fit_ridge`` (訓練区間で
-    係数を解く) の順序も、渡す行集合 (``plan.split``) も 01 と同一である。
-    ESN 手法の候補は ``ReservoirSpec`` 1本なので、01 の ``_select`` が持つ
-    候補ループだけが要らない。**同じ alpha が選ばれること**は
-    ``test_free_run_readout_matches_the_one_step_selection`` が 4-A の行と
-    突き合わせて実測する (経路が2本あることを主張だけで済ませない)。
+    04 側で ``PassthroughSpec()`` / ``DelayLineSpec(...)`` を書き写さないのは、
+    01 が候補を1本足したときに 04 の自走だけ古い候補を使い続ける事故を防ぐため
+    である (``plan.designs[method]`` の並びとここが必ず一致する)。
 
     Raises:
-        ValueError: 標準化の推定区間が訓練区間を越える場合 (D-41)、または
-            課題・分割側の値域違反。
+        ValueError: 04 が自走させない手法名の場合。
+    """
+    for item in build_methods(config.base):
+        if item.name == method:
+            return item.candidates
+    raise ValueError(f"01 の手法ではありません: {method!r}")
+
+
+def fit_teacher_forced(
+    config: Chaos04Config,
+    task_entry: TaskEntry,
+    replicate: int,
+    *,
+    method: str = ESN_METHOD,
+    plan: ReplicatePlan | None = None,
+) -> TeacherForcedReadout:
+    """教師強制で読み出しを学習する (01 の ``_evaluate`` と同じ2段)。
+
+    ``select_alpha`` (検証分割で候補と alpha を選ぶ) -> ``fit_ridge`` (訓練区間で
+    係数を解く) の順序も、渡す行集合 (``plan.split``) も、同点のときに先に
+    評価した候補を残す規律も 01 と同一である。**同じ (候補, alpha) が選ばれる
+    こと**は ``test_free_run_readout_matches_the_one_step_selection`` が 4-A の
+    行と突き合わせて実測する (経路が2本あることを主張だけで済ませない)。
+
+    Args:
+        config: 04 の設定。
+        task_entry: 課題 (ESN 設定を含む)。
+        replicate: レプリケート番号。
+        method: 学習する手法 (既定は ESN)。対照も同じ経路で学習する。
+        plan: すでに作ってある ``ReplicatePlan``。``None`` なら作る。
+            **同じ (課題, レプリケート) で3手法を回すときは1個を共有する** ——
+            01 の ``run_task(..., plan0=...)`` (3-C) と同じ形で、状態行列が
+            1本しか存在しないことを構造で保証する。
+
+    Raises:
+        ValueError: 標準化の推定区間が訓練区間を越える場合 (D-41)、ESN 手法の
+            候補が1本でない場合 (D-08)、または課題・分割側の値域違反。
     """
     base = config.base
     validate_n_units_bound(task_entry.esn.n_units)
-    plan = plan_replicate(base, task_entry, replicate)
+    if plan is None:
+        plan = plan_replicate(base, task_entry, replicate)
     validate_standardization_window(
         standardize_steps_for(config, task_entry.name), plan.split
     )
-    designs = plan.designs[ESN_METHOD]
-    if len(designs) != 1:
+    specs = method_candidates(config, method)
+    designs = plan.designs[method]
+    if method == ESN_METHOD and len(designs) != 1:
         raise ValueError(f"ESN 手法の候補は1本のはずです (D-08): {len(designs)} 本")
-    design = designs[0]
+    if len(designs) != len(specs):
+        raise ValueError(
+            f"候補数が一致しません: designs={len(designs)} specs={len(specs)}"
+        )
     split = plan.split
-    selection = select_alpha(
-        _rows(design.phi, split.train),
-        _rows(plan.task.y, split.train),
-        _rows(design.phi, split.val),
-        _rows(plan.task.y, split.val),
-        base.ridge.alpha_grid,
-        bias_column=design.bias_column,
-    )
+    y_train = _rows(plan.task.y, split.train)
+    y_val = _rows(plan.task.y, split.val)
+    best_index = -1
+    best_alpha = math.nan
+    best_val_nrmse = math.inf
+    for index, design in enumerate(designs):
+        selection = select_alpha(
+            _rows(design.phi, split.train),
+            y_train,
+            _rows(design.phi, split.val),
+            y_val,
+            base.ridge.alpha_grid,
+            bias_column=design.bias_column,
+        )
+        if selection.val_nrmse < best_val_nrmse:
+            best_index = index
+            best_alpha = selection.alpha
+            best_val_nrmse = selection.val_nrmse
+    if best_index < 0:  # pragma: no cover - 候補が空なら build_methods が落ちる
+        raise ValueError(f"候補の選択に失敗しました: {method!r}")
+    design = designs[best_index]
     coefficients = fit_ridge(
         _rows(design.phi, split.train),
-        _rows(plan.task.y, split.train),
-        selection.alpha,
+        y_train,
+        best_alpha,
         bias_column=design.bias_column,
     )
     return TeacherForcedReadout(
         plan=plan,
         design=design,
-        alpha=selection.alpha,
+        alpha=best_alpha,
         coefficients=coefficients,
-        val_nrmse=selection.val_nrmse,
+        val_nrmse=best_val_nrmse,
+        method=method,
+        spec=specs[best_index],
     )
 
 
