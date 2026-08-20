@@ -306,3 +306,33 @@
   rationale: "ADR 0001 §5 / 仕様 §2.4-4 / §3.3-4b。循環の実体は plotting/__init__ -> plotting.figures -> experiment.runner -> **experiment/__init__** -> experiment.pipeline -> plotting.figures (部分初期化) -> ImportError で、起きているのは『静的な辺』(plotting -> experiment: 行 dataclass の型・集計関数・記事メタ) と『動的な辺』(pipeline -> plotting: 図を描く関数を呼ぶだけ。型注釈にも定数にも現れない) を同じ module-level import 文で書いていることの積である。動的な辺だけを関数本体へ落とせば、公開 import 経路を1つも変えずに (D-49 の延長) 循環が消える。変更は3ファイル・6行の移動だけで済む。**plotting/__init__ を遅延化する案 (却下案A) は偽の緑を作る**: 仕様 §4 T2 が指定した受け入れ基準 test_plotting_can_be_imported_first は緑になるが、直後の属性アクセスで同じ ImportError が1回ぶん先へ移動するだけである。実測: 案A を実装して D-53 を取り消すと test_plotting_can_be_imported_first は**緑**になる一方 test_every_package_resolves_all_of_its_public_names_when_imported_first[plotting] は**赤のまま**だった (2 failed / 8 passed) —— 受け入れ基準を仕様より強くした理由そのものである。記事メタを article/ へ移す案は、plotting が行 dataclass だけでなく**関数** (mean_nrmse_by_washout / aggregate_nrmse) も import しているため循環を消せない。package 分離は最も正直だが公開 import 経路を変える (D-49 の逆) ので必要になってからでよい。関数内 import には D-53 に紐づくコメントを必ず添える (紐づけないと次の fixer が先頭へ戻して循環が復活する)。実測 (変異注入): import を module-level へ戻すと test_experiment_never_imports_plotting_at_module_level (AST 走査) と test_plotting_can_be_imported_first / test_every_package_resolves_all_of_its_public_names_when_imported_first[plotting] (subprocess) の**両方**が赤 (計 3 件)。AST 走査なので 04b-2 の freerun_pipeline.py は一覧への追記なしで自動被覆される。見直し条件は、作図層が実験層の**関数**に依存しなくなったとき、または合成層の関数内 import が10か所を超えたとき"
   guard_test: "tests/test_layer_boundaries.py::test_experiment_never_imports_plotting_at_module_level"
 
+
+# サイクル04b-1 (T4)。docs/plans/rc-basics-04.md §6 の D-41 / D-42 / D-44 /
+# D-50 / D-51。rule / rationale は仕様の草案ではなく**T4 が実装に合わせて
+# 訂正した版**が正本 (特に D-41 の Delta t は較正で 0.02 -> 0.01 に変わった)。
+# D-43 / D-45 / D-46 は 4-B / 4-C を担当する次サイクルが追記する。
+
+- id: D-41
+  rule: "Lorenz は (sigma, rho, beta) = (10, 28, 8/3) を古典的 RK4 で積分し sample_interval ごとにサンプルする。系パラメータは tasks/chaotic.py のモジュール定数とし設定フィールドにしない。Delta t は較正で決めた 0.01 (rk4_step=0.002 x sample_interval=5) を既定とする。標準化 (平均0・分散1) の係数は**訓練区間の先頭 standardize_steps 行から推定した1組**を u・y の全区間で使い、自走中も評価区間も再推定しない。Mackey-Glass は再実装せず tasks/mackey_glass.py の generate_mackey_glass へ委譲し、04 が足すのは標準化だけにする"
+  rationale: "仕様 §6 D-41 / §10-2。(a) 系パラメータを設定にすると、カオス域かどうかも文献値 lambda_max=0.9056 の意味も黙って変わる (tasks/narma.py の係数を設定にしない D-29 と同じ規律)。(b) **標準化係数を区間ごとに推定し直すと、モデルが当てられていない区間でも予測と真値の平均・分散が揃うため『予測が当たっているように見える』壊れ方をし、位相図でも有効予測時間でも検出できない**。係数を作れる場所を Standardizer.from_training_prefix 1箇所に閉じ、値として持ち回ることで、区間ごとの再推定が構造上書けないようにした。(c) u と y は同じ係数でなければならない —— 自走は出力をそのまま次時刻の入力へ戻すので、片方だけ別の係数だと単位が食い違う。(d) MG を再実装すると遅延微分方程式の積分・履歴の線形補間・tau/rk4_step の整数性検査が2箇所に分かれる。実測 (変異注入): beta を 8/3 -> 2.7 にすると独立実装 (solve_ivp, rtol/atol 1e-10) との相対差が 7.1e-03 (許容 1e-6) で 2 件赤、標準化を全区間から推定すると 2 件赤、y だけ別の係数にすると 1 件赤。Delta t の較正は sample_interval in {5,10,25} を代表条件 (Lorenz / N=200 / 10 レプリケート) で測り、受け入れ条件1 (自走がアトラクタを再現) と受け入れ条件3 (1ステップ先で ESN と遅延線の差が小さい) の両方が成立するのは 5 だけだった (10: 自走が 5/10 で発散、25: ESN が遅延線を 37 倍上回り条件3 が壊れる)。落選値の実測は docs/plans/rc-basics-04.md の T4 実装メモにある"
+  guard_test: "tests/test_tasks_chaotic.py::test_standardization_uses_the_training_prefix_coefficients_everywhere"
+
+- id: D-42
+  rule: "最大 Lyapunov 指数は Benettin 法による**数値推定を正本**とし、ctx.dt (= rk4_step x sample_interval) で割って時間あたりの値にする。文献値 (Viswanath 1998 の 0.9056) は MaxLyapunovConfig.reference_value として**照合にのみ**使い、推定には一切使わない。Benettin の反復は diagnostics/esp.py の conditional_lyapunov に一本化し、自律系用に書き直さない。公開関数名は max_lyapunov とし lyapunov にしない (D-52)"
+  rationale: "仕様 §6 D-42。文献値を正本にすると、積分刻み・サンプリング間隔・burn-in を取り違えても指標に現れず、図でも有効予測時間でも検出できない。数値推定を正本にすれば、これらの取り違えは推定値のずれとして必ず出る。自律系は『入力が無い = 伝播器が時刻に依存しない』場合であり条件付き Lyapunov 指数の特別な場合そのものなので、反復を書き直すと同じアルゴリズムが2箇所に分かれる (memory_capacity と ipc が _capacity を共有しているのと同じ形)。max_lyapunov が足すのは (a) 自律系向けの名前と params (b) Lyapunov 時間 1/lambda (c) 文献値との照合の3つだけで、いずれも反復の中身ではない。lyapunov_time は指数が正でないとき nan にする —— 1/lambda をそのまま返すと『負の Lyapunov 時間』が有効予測時間の分母に入る。実測: 本番設定 (軌道 8000 サンプル / burn-in 1000 サンプル / 再正規化間隔 10 サンプル / 摂動 delta=1e-8) で lambda_max = 0.9161 [1/時間]、文献値 0.9056 との相対差 1.16% (許容 5%)。変異注入: 文献値をそのまま推定値として返すと 1 件赤、ctx.dt での正規化をやめると 2 件赤、lyapunov_time を符号に関係なく 1/lambda にすると 1 件赤"
+  guard_test: "tests/test_diagnostics_lyapunov.py::test_estimated_lyapunov_matches_the_literature_value"
+
+- id: D-44
+  rule: "自走 (closed-loop) は**教師強制で学習した read-out 係数をそのままの配列オブジェクトとして**使う。readout/autoregressive.free_run は学習の入口 (fit_ridge / select_alpha) を1つも呼ばず、FreeRunResult.coefficients には渡された配列そのものを返す。自走のたびに学習し直す・教師強制と自走で別の係数や別の FeatureSpec を使うことを禁じる"
+  rationale: "仕様 §6 D-44 / §5 禁止する構造1・2。自走区間で学習し直すと、測っているのが『自走が上手くいくか』ではなく『自走区間に当てはめ直せるか』になり、実験の主張 (力学系そのものを学習しているか) が成り立たない。同一性 (is) で契約を書くのは、値の一致だけだと『同じ値を再計算する実装』が通り、シードや alpha 格子を変えた瞬間に黙って別物になるため。特徴の並びは自走中も build_design_matrix を通して組むので、教師強制と自走で並びが違う事故は構造上起きない。実測 (変異注入): free_run が係数を複製して返すようにすると 2 件赤 (readout 側の同一性テストと実験層の D-44 guard)。guard は同一性だけでなく『alpha を変えて学習し直した係数を渡すと予測列が変わる』ことも測るので、係数を無視して定数を吐く実装でも緑にならない"
+  guard_test: "tests/test_experiment_freerun.py::test_free_run_uses_the_teacher_forced_coefficients"
+
+- id: D-50
+  rule: "readout/autoregressive.py は rc_basics_lab.reservoir を module-level でも関数内でも推移的にも import しない。状態更新器は StateUpdater プロトコル (f(x, u) -> x) で受け取る。ESN を StateUpdater に適合させるアダプタ (esn_state_updater) と確保軸の検査は実験層 (experiment/freerun.py) が持つ"
+  rationale: "仕様 §6 D-50 / 要件書 受け入れ条件7 (移植性の担保。メモリスタ本編で再利用)。diagnostics が StatePropagator で reservoir から独立しているのと同じ構造で、ESN でも外部シミュレータでも実素子の測定ループでも同じ free_run がそのまま動く。**Protocol を満たすだけでは動く証明にならない**ので、guard は解析的に閉じた線形写像 (x[k] = A x[k-1] + B u[k], y = C x) で自走を回し、閉形式 y[k] = C x[1] (A+BC)^(k-1) と一致することまで測る。さらに ESN.__init__ / step / run を『呼ばれたら落ちる』ものへ差し替えた状態で完走させるので、内部でこっそり ESN を作る実装は緑にならない。推移的な引き込みは別プロセスで sys.modules を見て検出する (同一プロセスでは他のテストが import 済みの reservoir が残り検査が空虚になる)。実測 (変異注入): module-level に reservoir の import を1行足すと 2 件赤 (AST 走査とサブプロセス)"
+  guard_test: "tests/test_readout_autoregressive.py::test_free_run_works_with_an_external_state_generator"
+
+- id: D-51
+  rule: "実験04 の成果物は results/04_chaotic_freerun/ に出す (要件書の results/ 直下から変更)。main.EXPERIMENTS['04'].out_dir と experiments/04_chaotic_freerun/run_04.py:DEFAULT_OUT の両方がこの値であること"
+  rationale: "仕様 §3.2 / §6 D-51。results/ 直下は 01 が使っており meta.json のファイル名が衝突する —— --out を付けずに 04 を実行すると 01 の成果物を黙って上書きする (02・03 で実際に踏んで実験ごとのディレクトリへ分けた経緯がある)。既定出力先が2箇所 (レジストリと実験スクリプト) に手で二重定義されている点は 03 までと同じなので、一致は tests/test_main.py::test_run_script_default_out_matches_the_registry が全実験について機械的に回す"
+  guard_test: "tests/test_experiment_freerun.py::test_chaos_artifacts_go_to_their_own_directory"
