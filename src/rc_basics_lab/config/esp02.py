@@ -171,9 +171,8 @@ class EspMapConfig:
     """実験 2-C: rho x 入力強度 の ESP 成立領域 (記事の目玉)。
 
     ``input_scale`` は掃引中固定し、動かすのは信号側の ``sigma_grid`` だけ
-    (D-17)。同時に動かすと「信号を強くした」のか「重みを大きくした」のかを
-    分離できなくなる。``input_scale`` を含むリザバー構造は
-    ``Esp02Config.reservoir`` を参照する (F-02-1-004)。
+    (D-17)。``input_scale`` を含むリザバー構造は ``Esp02Config.reservoir`` を
+    参照する (F-02-1-004)。
     """
 
     rho_grid: tuple[float, ...] = DEFAULT_ESP_MAP_RHO_GRID
