@@ -402,6 +402,132 @@ def esn_state_updater(esn: ESN, rng: np.random.Generator | None = None) -> State
     return update
 
 
+def delay_line_state_updater(n_inputs: int) -> StateUpdater:
+    """遅延線を ``StateUpdater`` (D-50) に適合させるアダプタ (シフトレジスタ)。
+
+    遅延線には内部状態が無い、というのは**設計行列から見た話**にすぎない。
+    閉ループにすると「直前まで自分が吐いた出力」を保持する必要があり、それは
+    シフトレジスタという**状態**である。``x[k] = [u[k], u[k-1], ..., u[k-K]]``
+    と置けば ``[1, x[k]]`` (``ReservoirSpec(include_input=False)``) が
+    ``DelayLineSpec(n_lags=K)`` の ``[1, u[k], ..., u[k-K]]`` と**同じ列**に
+    なるので、教師強制で学んだ係数をそのまま流せる (D-44)。
+
+    これは受け入れ条件3 の後半 (「自走では対照が成立しない」) を**数値で**
+    測るための配線である。対照を自走させずに「原理的に不利」とだけ書くと、
+    主張が実測から切り離される。同時に、ESN を1行も参照しない外部状態生成器で
+    ``free_run`` が動くこと (D-50) の2つ目の実例でもある。
+
+    Args:
+        n_inputs: 入力次元 ``D_in`` (レジスタは ``D_in`` ずつずれる)。
+
+    Raises:
+        ValueError: ``n_inputs`` が 1 未満の場合。
+    """
+    if n_inputs < 1:
+        raise ValueError(f"n_inputs は 1 以上である必要があります: {n_inputs}")
+
+    def update(x: FloatArray, u: FloatArray) -> FloatArray:
+        shifted: FloatArray = np.concatenate((u, x[:-n_inputs]))
+        return shifted
+
+    return update
+
+
+def passthrough_state_updater() -> StateUpdater:
+    """線形ベースラインの ``StateUpdater`` (状態を持たない = 恒等写像)。
+
+    ``PassthroughSpec`` は状態を1列も使わないので、``free_run`` に渡す状態は
+    形だけのダミー1要素でよい。**恒等写像であること自体が主張**である ——
+    記憶を持たない手法を閉ループに入れると ``u[k+1] = W [1, u[k]]`` という
+    1次のアフィン写像になり、不動点へ落ちるか発散するかしかない
+    (要件書 位置づけ(b))。
+    """
+
+    def update(x: FloatArray, u: FloatArray) -> FloatArray:
+        return x
+
+    return update
+
+
+@dataclass(frozen=True, slots=True)
+class ClosedLoop:
+    """自走の初期条件一式 (手法ごとの違いを1か所に閉じる)。
+
+    Attributes:
+        updater: 状態を1ステップ進める写像 (D-50)。
+        spec: **閉ループで使う**特徴仕様。遅延線だけは学習時
+            (``DelayLineSpec``) と表現が違うが、``build_design_matrix`` が
+            組む列は同一である (``test_closed_loop_design_matches_the_teacher_
+            forced_row`` が実測)。
+        x0: 切り替え点での状態。
+        u0: 自走が最初に食う入力 (**モデル自身の予測**)。
+    """
+
+    updater: StateUpdater
+    spec: FeatureSpec
+    x0: FloatArray
+    u0: FloatArray
+
+
+def closed_loop_setup(
+    readout: TeacherForcedReadout,
+    switch_index: int,
+    *,
+    esn: ESN | None = None,
+    noise_rng: np.random.Generator | None = None,
+) -> ClosedLoop:
+    """手法名から自走の初期条件を組む (**手法ごとの分岐はここだけ**)。
+
+    ``u0`` は切り替え点の行に対する**モデル自身の予測**である。真値を与えると
+    自走が1ステップぶん無料の情報を得る (T4 実装メモ 5)。3手法とも同じ規律で
+    与えるので、対照が不利になる理由は「記憶が無いこと」だけになる。
+
+    Args:
+        readout: 教師強制で学習した読み出し。
+        switch_index: 切り替え点の行 index。
+        esn: ESN 手法のときに使うリザバー (他の手法では不要)。
+        noise_rng: ``state_noise > 0`` のときのノイズ用 Generator (D-36)。
+
+    Raises:
+        ValueError: ESN 手法なのに ``esn`` が無い、または未知の手法名の場合。
+    """
+    plan = readout.plan
+    u0: FloatArray = predict(
+        readout.design.phi[switch_index : switch_index + 1], readout.coefficients
+    )[0]
+    match readout.method:
+        case _ if readout.method == ESN_METHOD:
+            if esn is None:
+                raise ValueError("ESN 手法の自走には ESN が必要です")
+            return ClosedLoop(
+                updater=esn_state_updater(esn, noise_rng),
+                spec=FREE_RUN_SPEC,
+                x0=plan.states[switch_index],
+                u0=u0,
+            )
+        case _ if readout.method == DELAY_LINE:
+            n_inputs = plan.task.n_inputs
+            n_lags = (readout.design.phi.shape[1] - 1) // n_inputs - 1
+            window: FloatArray = plan.task.u[
+                switch_index - n_lags : switch_index + 1
+            ][::-1]
+            return ClosedLoop(
+                updater=delay_line_state_updater(n_inputs),
+                spec=ReservoirSpec(include_input=False),
+                x0=window.reshape(-1),
+                u0=u0,
+            )
+        case _ if readout.method == LINEAR:
+            return ClosedLoop(
+                updater=passthrough_state_updater(),
+                spec=PassthroughSpec(),
+                x0=np.zeros(1, dtype=np.float64),
+                u0=u0,
+            )
+        case _:
+            raise ValueError(f"04 が自走させない手法です: {readout.method!r}")
+
+
 @dataclass(frozen=True, slots=True)
 class FreeRunOutcome:
     """自走1本ぶんの結果 (4-B が統計を載せる土台)。
