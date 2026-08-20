@@ -753,6 +753,23 @@ def test_valid_time_rows_cover_at_least_ten_seeds() -> None:
     values = sorted(float(row["valid_time_lyapunov"]) for row in rows)
     assert values[0] > 1.0, f"有効予測時間が 1 Lyapunov 時間に届いていません: {values}"
 
+    # 成果物は**変異の前に**生成されているので、CSV を読むだけでは
+    # 「正規化をやめて生のステップ数を書く」変異を検出できない。計算を実際に
+    # 回す側の検査をここに足す (仕様 §5 禁止する構造5)。
+    config = small_config()
+    computed = [
+        row
+        for row in run_freerun_experiment(config, estimate_lorenz_lyapunov(config)).rows
+        if row.task == TASK_NAME_LORENZ
+    ]
+    assert computed
+    for row in computed:
+        assert row.valid_time_lyapunov == pytest.approx(
+            row.valid_time_steps * row.dt / row.lyapunov_time
+        )
+        assert row.valid_time == pytest.approx(row.valid_time_steps * row.dt)
+        assert row.valid_time_lyapunov != row.valid_time_steps
+
 
 def test_attractor_distance_separates_true_and_surrogate() -> None:
     """**受け入れ条件1 / 5**: 自走がアトラクタを再現する (D-46)。**図では測らない**。
