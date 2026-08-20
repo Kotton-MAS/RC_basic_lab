@@ -69,7 +69,7 @@
   ],
   "capacity_note": "注: 4-D の MC / IPC は自走と同じ状態行列 (Lorenz で駆動した ESN) に対して測っている。駆動が i.i.d. ではなく決定的な時系列なので遅延目標が互いに予測可能であり、mc_total / ipc_total は保存則 (<= N) を超える。絶対値は 03 の掃引と比較できず、読めるのは同じ駆動の下での条件間の相対比較だけである。",
   "cjk_font": "Hiragino Sans",
-  "commit": "775d7869d1958b208c67632d9fb3a7bcf8b40328",
+  "commit": "9d67d0451561d44923e989fd9f80d2ba37fcebc6",
   "config": {
     "base": {
       "delay_parity": {
@@ -258,9 +258,9 @@
   "platform": "macOS-26.3-arm64-arm-64bit",
   "python_version": "3.12.5",
   "regime_counts": {
-    "attractor": 217,
-    "diverged": 100,
-    "periodic": 3
+    "attractor": 203,
+    "diverged": 115,
+    "periodic": 2
   },
   "regime_counts_by_noise": {
     "0": {
@@ -268,18 +268,18 @@
       "diverged": 31
     },
     "0.0001": {
-      "attractor": 54,
-      "diverged": 26
+      "attractor": 52,
+      "diverged": 28
     },
     "0.001": {
-      "attractor": 57,
-      "diverged": 22,
+      "attractor": 55,
+      "diverged": 24,
       "periodic": 1
     },
     "0.01": {
-      "attractor": 57,
-      "diverged": 21,
-      "periodic": 2
+      "attractor": 47,
+      "diverged": 32,
+      "periodic": 1
     }
   },
   "scipy_version": "1.18.0",
@@ -288,11 +288,11 @@
     "split": 2,
     "task": 1
   },
-  "timestamp_utc": "2026-08-20T03:51:42.048687+00:00",
+  "timestamp_utc": "2026-08-20T05:05:17.242181+00:00",
   "valid_time_by_regime": {
-    "attractor": 2.793988170835381,
-    "diverged": 0.7923933664828211,
-    "periodic": 0.39390652900302087
+    "attractor": 2.830630638649615,
+    "diverged": 0.8427767597273936,
+    "periodic": 0.7099478139007934
   },
   "valid_time_sensitivity": [
     {
@@ -543,12 +543,12 @@
     0.5
   ],
   "wall_time_breakdown": {
-    "capacity_s": 53.56963366054697,
-    "figures_s": 0.8052465000073425,
-    "freerun_s": 16.067713249998633,
-    "lyapunov_s": 0.032255582977086306,
-    "onestep_s": 1.5014962089480832,
-    "stability_s": 152.82289158942876
+    "capacity_s": 54.888417798734736,
+    "figures_s": 0.9396416249801405,
+    "freerun_s": 16.257299582997803,
+    "lyapunov_s": 0.03364304202841595,
+    "onestep_s": 1.5755849999841303,
+    "stability_s": 146.59845032624435
   },
-  "wall_time_s": 224.80000983399805
+  "wall_time_s": 220.29375166702084
 }
