@@ -363,7 +363,11 @@ class FreeRunOutcome:
 
 
 def run_free_run(
-    config: Chaos04Config, task_entry: TaskEntry, replicate: int
+    config: Chaos04Config,
+    task_entry: TaskEntry,
+    replicate: int,
+    *,
+    n_steps: int | None = None,
 ) -> FreeRunOutcome:
     """教師強制で温めてから自走させる (自走の入口、D-44 / D-50)。
 
@@ -383,8 +387,18 @@ def run_free_run(
 
     Args:
         config: 04 の設定。
-        task_entry: ``chaos_task_entries`` が組んだ課題。
+        task_entry: ``chaos_task_entries`` が組んだ課題。**ESN 設定は
+            ``task_entry.esn`` が単一の真実**である (4-C は条件ごとに
+            ``spectral_radius`` / ``leak_rate`` / ``state_noise`` を差し替えた
+            entry を渡す)。教師強制の状態を作る ``plan_replicate`` も同じ
+            entry を見るので、「温めた ESN」と「自走する ESN」が食い違う経路が
+            構造上ない。
         replicate: レプリケート番号。
+        n_steps: 自走させるステップ数。``None`` なら ``freerun.free_run_steps``。
+            4-B は ``freerun.stats_steps`` を渡して**1本の軌道**を長く回し、
+            その先頭 ``free_run_steps`` を有効予測時間 (D-43)、全体を長時間統計
+            (D-46) に使う (自走を2回回すと同じ軌道を2度計算することになる)。
+            真の軌道と突き合わせる区間は常に ``free_run_steps`` ぶんである。
 
     Returns:
         ``FreeRunOutcome``。
@@ -395,8 +409,10 @@ def run_free_run(
     """
     started = time.perf_counter()
     freerun_cfg = config.freerun
-    esn_cfg = chaos_esn_config(config.base)
+    esn_cfg = task_entry.esn
+    steps = freerun_cfg.free_run_steps if n_steps is None else n_steps
     validate_free_run_bounds(freerun_cfg.free_run_steps, esn_cfg.n_units)
+    validate_free_run_bounds(steps, esn_cfg.n_units)
     if freerun_cfg.warmup_steps < 1:
         raise ValueError(
             f"warmup_steps は 1 以上である必要があります: {freerun_cfg.warmup_steps}"
@@ -437,7 +453,7 @@ def run_free_run(
         readout.coefficients,
         x0,
         u0,
-        freerun_cfg.free_run_steps,
+        steps,
     )
     truth: FloatArray = plan.task.y[switch_index + 1 : last_index + 1]
     wall_time_s = time.perf_counter() - started
@@ -447,7 +463,7 @@ def run_free_run(
         task_entry.name,
         replicate,
         switch_index,
-        freerun_cfg.free_run_steps,
+        steps,
         result.diverged,
         result.n_completed,
         readout.alpha,
