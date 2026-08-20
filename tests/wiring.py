@@ -1,4 +1,4 @@
-"""配線テストの共通機構 (01 の ``ExperimentConfig`` と 02 の ``Esp02Config`` で共有).
+"""配線テストの共通機構 (01〜04 の実験設定クラスで共有).
 
 本リポジトリ最大の失敗モードは**「設定したのに効いていない」**であり、これは
 出力が正常に見えるためレビューでは確率的にしか見つからない。防衛線は
@@ -11,6 +11,14 @@
 **何をここに置かないか**: 「出力」が何かは実験ごとに違う (01 は
 ``run_experiment`` の結果行、02 は診断の scalars や乱数列)。判定そのものは
 各テストファイルに置き、ここはケースの記述と設定の差し替えだけを担う。
+
+**02〜04 で追加され、3〜4ファイルに写経されていたもの**: 結果行の指紋
+(``fingerprint``)・葉フィールド単位の差分 (``changed_leaves`` / ``leaf_value``)・
+YAML 往復 (``round_trip``)・基底シードのケース (``seeds_case``)・セクション
+固有のケース (``section_case``)・``rc_basics_lab.experiment`` 配下のモジュール
+一覧 (``current_experiment_modules``)。これも同じ理由 (写経すると検出力の
+劣化に誰も気づかない) でここへ集約する。**正規化 (揮発列・行クラス・課題名の
+フィールド名) は実験ごとに違う**ため、それらは呼び出し側から引数で渡す。
 """
 
 from __future__ import annotations
@@ -31,6 +39,9 @@ CHANNEL_META = "meta"
 
 CHANNEL_ERROR = "error"
 """値域が1点しかなく、別の値は即座に例外になる (``activation`` など)。"""
+
+CHANNEL_SEEDS = "seeds"
+"""基底シードを変えると、そのストリームの乱数列だけが変わる。"""
 
 
 @dataclass(frozen=True, slots=True)
