@@ -292,18 +292,39 @@ def return_map_points(series: FloatArray, component: int = -1) -> FloatArray:
 
 
 _POINT_CHUNK = 2048
-"""点集合距離を計算するときの1度に持つ候補点数 (確保量を標本数に比例させない)。"""
+"""点集合距離を計算するときの1度に持つ候補点数 (確保量を標本数に比例させない)。
+
+``left`` 側・``right`` 側の**両方**をこの幅でブロック化する。以前は
+``right`` をブロック化しておらず、中間配列 ``block[:, None, :] -
+right[None, :, :]`` の形が ``(min(_POINT_CHUNK, |left|), |right|, 2)`` で
+``right`` の点数に線形に伸びていた (reviewer-security 実測: リターンマップの
+真の軌道側は ``lorenz.length`` に、自走側は ``stats_steps`` に比例するため、
+軸2 (``length * 3 <= 5e7``) を通した合法な設定でも |right|=80,000 で
+peak RSS 8.6 GB に達した)。**確保量を標本数に比例させない**という docstring
+の主張どおりにするため、``right`` 側も同じ幅でブロック化し、最近傍距離を
+running min で更新する。
+"""
 
 
 def _mean_nearest(left: FloatArray, right: FloatArray) -> float:
-    """``left`` の各点から ``right`` の最近傍までの距離の平均。"""
+    """``left`` の各点から ``right`` の最近傍までの距離の平均。
+
+    中間配列は常に ``(<= _POINT_CHUNK, <= _POINT_CHUNK, 2)`` に収まる
+    (``left`` / ``right`` のどちらが大きくても確保量は一定)。``right`` を
+    複数ブロックに分けても、各 ``left`` 点の最近傍距離はブロックごとの
+    running min として厳密に (浮動小数点の丸めなしに) 一致する。
+    """
     total = 0.0
     for start in range(0, left.shape[0], _POINT_CHUNK):
         block: FloatArray = left[start : start + _POINT_CHUNK]
-        distances: FloatArray = np.linalg.norm(
-            block[:, None, :] - right[None, :, :], axis=2
-        )
-        total += float(np.sum(np.min(distances, axis=1)))
+        nearest: FloatArray = np.full(block.shape[0], np.inf, dtype=np.float64)
+        for r_start in range(0, right.shape[0], _POINT_CHUNK):
+            r_block: FloatArray = right[r_start : r_start + _POINT_CHUNK]
+            distances: FloatArray = np.linalg.norm(
+                block[:, None, :] - r_block[None, :, :], axis=2
+            )
+            nearest = np.minimum(nearest, np.min(distances, axis=1))
+        total += float(np.sum(nearest))
     return total / float(left.shape[0])
 
 
