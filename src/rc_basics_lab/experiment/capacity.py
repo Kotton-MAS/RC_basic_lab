@@ -242,6 +242,30 @@ threat model**。``config/chaos04.py`` / ``experiment/freerun.py`` は
 """
 
 
+def validate_total_step_count(n_total_steps: int) -> None:
+    """逐次シミュレーションの総ステップ数 (積の軸) に絶対上限をかける (CWE-834)。
+
+    ``_MAX_STATE_ELEMENTS`` と**同じ値・同じ threat model**を再利用する
+    (状態行列の要素数も、逐次シミュレーションの総ステップ数 (例: 4-C の
+    「条件数 x stats_steps」) も、どちらも「単位コストが一定の量が多重に
+    積み重なる」という同型の脅威モデルである)。個別の軸 (条件数の上限・
+    ステップ数の上限) がそれぞれ上限内でも、**積**は両方の軸検査をすり抜けて
+    膨らみうる (reviewer-security 実測: 4-C は条件数 <= 2000・stats_steps
+    <= 1e6 をどちらも通したまま、積が 1,984,000,000 ステップ = 約13時間
+    (予算300秒) に達した)。
+
+    Raises:
+        ValueError: 総ステップ数が上限を超える場合。
+    """
+    if n_total_steps > _MAX_STATE_ELEMENTS:
+        raise ValueError(
+            "逐次シミュレーションの総ステップ数が上限を超えています: "
+            f"{n_total_steps} > {_MAX_STATE_ELEMENTS} "
+            "(例: 条件数 x stats_steps。個別の軸がそれぞれ上限内でも、積が"
+            "膨らむ経路をここで塞ぐ)"
+        )
+
+
 def validate_sequential_run_count(n_runs: int) -> None:
     """ESN シミュレーションを1本も回す前に、逐次実行の本数を検査する (CWE-834)。
 
@@ -1176,4 +1200,5 @@ __all__ = [
     "validate_n_units_bound",
     "validate_sequential_run_count",
     "validate_state_matrix_bounds",
+    "validate_total_step_count",
 ]
