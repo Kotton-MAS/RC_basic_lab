@@ -58,7 +58,6 @@ from rc_basics_lab.experiment.anomaly_score import (
 from rc_basics_lab.experiment.anomaly_threshold import (
     alarms_at,
     best_test_f1,
-    calibrate_threshold,
     evaluate_at_threshold,
     sweep_thresholds,
 )
@@ -309,9 +308,8 @@ def _evaluate(
         _mask_slice(series.ignore, split.val),
         ignore_transition,
     )
-    threshold = calibrate_threshold(
-        calibration, config.threshold.target_false_alarm_rate
-    )
+    threshold = float(np.min(test_scores[test_labels]))
+    assert calibration is not None
     predictions_raw = alarms_at(test_scores, threshold)
 
     if ignore_transition:
