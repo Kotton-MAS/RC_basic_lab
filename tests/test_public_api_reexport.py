@@ -104,6 +104,7 @@ DIAGNOSTICS_ALL = (
     "DEFAULT_ESP",
     "DEFAULT_IPC",
     "DEFAULT_LYAPUNOV",
+    "DEFAULT_MAX_LYAPUNOV",
     "DEFAULT_MEMORY_CAPACITY",
     "DEFAULT_TIMESCALE",
     "Diagnostic",
@@ -112,17 +113,24 @@ DIAGNOSTICS_ALL = (
     "EspConfig",
     "IpcConfig",
     "LyapunovConfig",
+    "MaxLyapunovConfig",
     "MemoryCapacityConfig",
     "StatePropagator",
     "TimescaleConfig",
     "autocorrelation_time",
     "conditional_lyapunov",
     "esp_convergence",
+    "max_lyapunov",
     "state_mean_norm",
     "state_pca",
     "validate_diagnostic_input",
 )
 """``rc_basics_lab.diagnostics.__all__`` のスナップショット (D-52)。
+
+04b-1 で ``lyapunov`` モジュールの3名 (``DEFAULT_MAX_LYAPUNOV`` /
+``MaxLyapunovConfig`` / ``max_lyapunov``) を足した。**関数名は
+``max_lyapunov``** で、モジュール名 ``lyapunov`` と衝突しないので
+``__all__`` に載せてよい (D-52)。
 
 04a T2 で**関数** ``ipc`` / ``memory_capacity`` の2名を外した。増減の
 **両側**を固定するのは、「2名が消えたこと」だけを見ると他の名前を巻き添えで
@@ -134,6 +142,7 @@ DIAGNOSTIC_FUNCTIONS_BY_MODULE = {
     "dummy": ("state_mean_norm",),
     "esp": ("conditional_lyapunov", "esp_convergence"),
     "ipc": ("ipc",),
+    "lyapunov": ("max_lyapunov",),
     "memory_capacity": ("memory_capacity",),
     "state_space": ("state_pca",),
     "timescale": ("autocorrelation_time",),

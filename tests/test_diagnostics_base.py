@@ -81,6 +81,23 @@ def _minimal_input_conditional_lyapunov(states: FloatArray) -> _MinimalInput:
     return states, None, None, DiagnosticContext(propagator=propagator)
 
 
+def _minimal_input_max_lyapunov(states: FloatArray) -> _MinimalInput:
+    """``max_lyapunov`` は ``ctx.propagator`` が必須 (委譲先と同じ条件)。
+
+    既定の ``renorm_interval`` は 10 なので、``_minimal_input_conditional_lyapunov``
+    と同じ「Jacobian が恒等」の伝播器で D-18 の整合検査を通したうえで、
+    区間が1本以上取れる長さの状態が要る (``_external_states()`` の T=300 で足りる)。
+    ``ctx.dt`` は既定 (1.0) のままにする —— 契約テストは ``func(X, u, y, ctx=ctx)``
+    としか呼ばないので、既定値で完走できることを確かめる方が guard として強い。
+    """
+
+    def propagator(x: FloatArray, t: int) -> FloatArray:
+        shifted: FloatArray = states[t + 1] + (x - states[t])
+        return shifted
+
+    return states, None, None, DiagnosticContext(propagator=propagator)
+
+
 def _minimal_input_memory_capacity(states: FloatArray) -> _MinimalInput:
     """``memory_capacity`` は ``u`` と (既定の閾値法のため) ``ctx.seed`` が必須。
 
@@ -129,6 +146,7 @@ MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov": (
         _minimal_input_conditional_lyapunov
     ),
+    "rc_basics_lab.diagnostics.lyapunov.max_lyapunov": _minimal_input_max_lyapunov,
     "rc_basics_lab.diagnostics.timescale.autocorrelation_time": (
         _minimal_input_no_extras
     ),
@@ -235,11 +253,12 @@ KNOWN_DIAGNOSTICS = (
     "rc_basics_lab.diagnostics.state_space.state_pca",
     "rc_basics_lab.diagnostics.esp.esp_convergence",
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov",
+    "rc_basics_lab.diagnostics.lyapunov.max_lyapunov",
     "rc_basics_lab.diagnostics.timescale.autocorrelation_time",
     "rc_basics_lab.diagnostics.memory_capacity.memory_capacity",
     "rc_basics_lab.diagnostics.ipc.ipc",
 )
-"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の2本)。
+"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の2本 + 04b-1 の1本)。
 
 件数まで固定するのは、列挙条件を壊して件数が減っても
 ``test_all_diagnostics_conform_to_d01_signature_contract`` が緑のまま通る
@@ -253,7 +272,8 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
     列挙条件 (戻り値アノテーションが DiagnosticResult の public callable) を
     間違えて0件になると、下の契約テストは何も検査せずに緑になってしまう。
     サイクル2 で ``esp`` / ``timescale`` の3本が加わって 2 から 5 に、
-    サイクル3a で ``memory_capacity`` と ``ipc`` が加わって 7 になった。
+    サイクル3a で ``memory_capacity`` と ``ipc`` が加わって 7 に、
+    04b-1 で ``max_lyapunov`` (D-42) が加わって 8 になった。
     """
     names = {qualname for qualname, _ in _iter_diagnostic_callables()}
     assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
@@ -262,7 +282,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
         f"(不足={sorted(set(KNOWN_DIAGNOSTICS) - names)}, "
         f"余剰={sorted(names - set(KNOWN_DIAGNOSTICS))})"
     )
-    assert len(names) == 7
+    assert len(names) == 8
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
