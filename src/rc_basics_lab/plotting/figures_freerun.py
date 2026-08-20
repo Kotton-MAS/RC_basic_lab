@@ -257,16 +257,15 @@ def plot_freerun_attractor(
                 points = profile_points(rows, task, KIND_PHASE, source)
                 if points.shape[0] == 0:
                     continue
-                # **線ではなく点で描く**。位相図の点列は確保軸6 で間引いて
-                # あるので、線でつなぐと間引きの弦が軌道の一部に見える
-                # (真の軌道が通っていない直線が図に出る)。
+                # 線でつなぐ。位相図の点列は確保軸6 で間引いてあるが、
+                # 間引き後も隣接点の間隔は Delta t x stride = 0.05 時間単位
+                # (Lorenz) しかないので、折れ線は軌道をなぞる。**点だけで描くと
+                # 蝶形の2枚翅が雲に潰れて読めなくなる** (実測)。
                 axis.plot(
                     points[:, 0],
                     points[:, 1],
-                    linestyle="none",
-                    marker=".",
-                    markersize=0.8,
-                    alpha=0.7,
+                    linewidth=0.5,
+                    alpha=0.8,
                     color=SOURCE_STYLE[source][0],
                     label=_source_label(source, style),
                 )
@@ -278,8 +277,7 @@ def plot_freerun_attractor(
             axis.set_ylabel(
                 style.label("第2成分 / 遅延座標", "component 2 / delay coordinate")
             )
-            legend = axis.legend(loc="best", fontsize=8, markerscale=12)
-            legend.set_title(None)
+            axis.legend(loc="best", fontsize=8)
         if drawn == 0:
             raise ValueError("位相図に描く点がありません")
         figure.suptitle(
