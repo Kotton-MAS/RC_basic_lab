@@ -2,8 +2,8 @@
 
 使い方::
 
-    uv run python -m rc_basics_lab.datasets.cli --dataset mgab
-    uv run python -m rc_basics_lab.datasets.cli --dataset all --data-dir data/05_anomaly
+    uv run python -m rc_basics_lab.datasets --dataset mgab
+    uv run python -m rc_basics_lab.datasets --dataset all --data-dir data/05_anomaly
 
 進捗は ``print`` ではなく ``logging`` で出す (ruff T20)。実験スクリプト
 (``experiments/04_chaotic_freerun/run_04.py``) と同じ薄さに保ち、取得・照合の

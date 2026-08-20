@@ -264,7 +264,7 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
         名指しの5つだけだと「`pathlib` は使っていない (`os.path` を使った)」「`open` は呼んでいない
         (`np.loadtxt` を呼んだ)」が通る (D-59 の rationale)
     11. **`make data-05` の実体を `datasets/cli.py` に置いた** (`experiments/05_anomaly_detection/` は
-        T5 の担当なので作っていない)。`uv run python -m rc_basics_lab.datasets.cli --dataset {mgab,ucr,all}`
+        T5 の担当なので作っていない)。`uv run python -m rc_basics_lab.datasets --dataset {mgab,ucr,all}`
     12. `AnomalyPreprocessor` は係数のほかに `normalize` と `n_steps` を**来歴として**持つ。
         5-C の格子点と 5-A の条件が同じ前処理を通っていることを、実験層が値で照合できるようにするため
   - 実測 (2026-08-20): 新規テスト **80 件** (`test_tasks_anomaly.py` 29 / `test_datasets_anomaly.py` 36 /

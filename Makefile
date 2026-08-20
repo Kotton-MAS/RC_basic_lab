@@ -89,7 +89,7 @@ figures-04:
 # UCR (ライセンス未指定・ZIP 184 MB) まで要るときは --dataset all を使う。
 # ci の構成には入れない —— pytest はネットワークに一切触れない (D-60)。
 data-05:
-	uv run python -m rc_basics_lab.datasets.cli --dataset mgab
+	uv run python -m rc_basics_lab.datasets --dataset mgab
 
 # ESP 判定の閾値感度 (esp_threshold_sensitivity.csv) を再生成する。
 # abs_tol 3点 x window 3点で 2-C の格子を判定し直すので figures-02 とは

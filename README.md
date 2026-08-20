@@ -239,7 +239,7 @@ make figures-04
 make data-05
 
 # UCR も取りたいとき (ZIP 184 MB。採用サブセット8系列だけを展開する)
-uv run python -m rc_basics_lab.datasets.cli --dataset all
+uv run python -m rc_basics_lab.datasets --dataset all
 ```
 
 取得は HTTPS のみ・リダイレクト3回まで・サイズ上限 200 MB・タイムアウトつきで行い、
