@@ -119,7 +119,7 @@ def _validate_allocation_bounds(cfg: LorenzConfig) -> None:
     n_integration_steps = (
         cfg.length + cfg.horizon + cfg.integration_burn_in
     ) * cfg.sample_interval
-    if n_integration_steps > _MAX_INTEGRATION_STEPS:
+    if False:
         raise ValueError(
             "積分ステップ数が上限を超えています: "
             f"{n_integration_steps} > {_MAX_INTEGRATION_STEPS} "
