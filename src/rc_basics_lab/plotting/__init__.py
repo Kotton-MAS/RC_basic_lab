@@ -8,6 +8,9 @@
 - ``figures_capacity``: 記事03の図5枚 (``fig_mc_sweep`` / ``fig_ipc_profile`` /
   ``fig_memory_nonlinearity`` / ``fig_ipc_conservation`` /
   ``fig_narma10_control``)
+- ``figures_freerun``: 記事04の図5枚 (``fig_onestep`` /
+  ``fig_freerun_attractor`` / ``fig_valid_time`` / ``fig_stability_map`` /
+  ``fig_freerun_stats``)
 
 pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI には
 ディスプレイが無いため、既定バックエンドに依存しない経路にそろえる。
@@ -27,6 +30,13 @@ from rc_basics_lab.plotting.figures_esp import (
     plot_leak_timescale,
     plot_washout_sensitivity,
 )
+from rc_basics_lab.plotting.figures_freerun import (
+    plot_freerun_attractor,
+    plot_freerun_stats,
+    plot_onestep,
+    plot_stability_map,
+    plot_valid_time,
+)
 from rc_basics_lab.plotting.labels import label
 from rc_basics_lab.plotting.style import (
     StyleContext,
@@ -42,13 +52,18 @@ __all__ = [
     "plot_comparison",
     "plot_esp_decay",
     "plot_esp_map",
+    "plot_freerun_attractor",
+    "plot_freerun_stats",
     "plot_ipc_conservation",
     "plot_ipc_profile",
     "plot_leak_timescale",
     "plot_mc_sweep",
     "plot_memory_nonlinearity",
     "plot_narma10_control",
+    "plot_onestep",
+    "plot_stability_map",
     "plot_state_space",
+    "plot_valid_time",
     "plot_washout_sensitivity",
     "rc_params_for",
     "setup_style",
