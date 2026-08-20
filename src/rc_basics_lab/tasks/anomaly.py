@@ -252,6 +252,21 @@ def _coefficients(prefix: FloatArray, normalize: str) -> tuple[FloatArray, Float
     )
 
 
+def _find_cut_search_cells(cfg: SyntheticAnomalyConfig) -> int:
+    """``_find_cut`` が確保する ``starts x spans`` の要素数 (``_validate`` 用)。
+
+    ``_find_cut`` 本体 (297-304行) の窓サイズ計算と同じ式を使う。``_validate``
+    は生成前に呼ばれ実際の ``raw.size`` を持たないが、通常経路の窓幅は
+    ``segment_length`` だけで決まるため、確保前にこの式だけで検査できる。
+    """
+    min_span = _REMOVED_SPAN_FACTORS[0] * cfg.segment_length
+    max_span = _REMOVED_SPAN_FACTORS[1] * cfg.segment_length
+    half_width = max(1, cfg.segment_length // 2)
+    starts_size = 2 * half_width + 1
+    spans_size = max_span - min_span + 1
+    return starts_size * spans_size
+
+
 def _validate(cfg: SyntheticAnomalyConfig) -> None:
     """合成源の設定を検査する (確保より前に落とす)。"""
     if cfg.n_anomalies < 1:
@@ -275,6 +290,13 @@ def _validate(cfg: SyntheticAnomalyConfig) -> None:
         raise ValueError(
             "合成源が要求する Mackey-Glass のサンプル数が上限を超えます: "
             f"{raw_samples} > {_MAX_RAW_SAMPLES}"
+        )
+    cells = _find_cut_search_cells(cfg)
+    if cells > _MAX_FIND_CUT_CELLS:
+        raise ValueError(
+            "_find_cut が確保する探索行列 (starts x spans) が大きすぎます "
+            f"(F-1-015): {cells} > {_MAX_FIND_CUT_CELLS} "
+            f"(segment_length={cfg.segment_length})"
         )
 
 
