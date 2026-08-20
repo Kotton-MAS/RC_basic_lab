@@ -63,6 +63,11 @@ class LorenzConfig:
         sample_interval: 何積分ステップごとにサンプルするか。
             サンプリング間隔は ``Delta t = rk4_step * sample_interval``。
             **Lyapunov 時間正規化の分母** (D-43) がこの値で動く。
+            既定 5 (``Delta t = 0.01``) は T4 の較正で選んだ値で、
+            {5, 10, 25} のうち受け入れ条件1 (自走がアトラクタを再現) と
+            受け入れ条件3 (1ステップ先で ESN と遅延線の差が小さい) の
+            **両方**が成立する唯一の点である (落選値の実測は
+            ``docs/plans/rc-basics-04.md`` の T4 実装メモ)。
         integration_burn_in: 捨てるサンプル数 (アトラクタへ乗るまでの過渡)。
             単位は**サンプル**で、積分ステップ数ではない (MG と同じ)。
         length: 課題の行数 T。
@@ -74,7 +79,7 @@ class LorenzConfig:
     """
 
     rk4_step: float = 0.002
-    sample_interval: int = 10
+    sample_interval: int = 5
     integration_burn_in: int = 1000
     length: int = 8000
     horizon: int = 1
