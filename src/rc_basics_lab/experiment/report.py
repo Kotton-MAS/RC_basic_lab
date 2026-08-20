@@ -25,7 +25,7 @@ import dataclasses
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, TypeVar
+from typing import TYPE_CHECKING, ClassVar
 
 from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.experiment.runner import CSV_COLUMNS, ResultRow
@@ -34,8 +34,6 @@ from rc_basics_lab.meta import collect_meta_for
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
-
-_RowT = TypeVar("_RowT", bound="DataclassInstance")
 
 COMPARISON_CSV = "comparison.csv"
 COMPARISON_SUMMARY_CSV = "comparison_summary.csv"
@@ -52,7 +50,9 @@ SUMMARY_CSV_COLUMNS: tuple[str, ...] = (
 """``comparison_summary.csv`` の列順。"""
 
 
-def write_rows_csv(rows: Sequence[_RowT], path: Path, columns: Sequence[str]) -> Path:
+def write_rows_csv[RowT: "DataclassInstance"](
+    rows: Sequence[RowT], path: Path, columns: Sequence[str]
+) -> Path:
     """dataclass の行列を CSV に書く (05 削減候補 #4 の共通ヘルパー)。
 
     9 箇所 (``report`` / ``esp_pipeline`` / ``capacity_pipeline`` / ``freerun`` /
