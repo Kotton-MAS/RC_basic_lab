@@ -223,12 +223,26 @@ _WRITE_CAPABLE_MODULE_ATTRS = {
     ("os", "write"),
     ("os", "replace"),
     ("os", "rename"),
+    ("os", "fdopen"),
     ("shutil", "move"),
+    ("numpy", "save"),
 }
-"""``<module>.<attr>(...)`` の形でファイルへ書ける危険な組。"""
+"""``<module>.<attr>(...)`` の形でファイルへ書ける危険な組。
 
-_WRITE_CAPABLE_BARE_ATTRS = {"write_bytes"}
-"""受け手を問わず危険な属性呼び出し (``anything.write_bytes(...)``)。"""
+(round4 reviewer-test 指摘、F-4-016) ``getattr(os, "replace")(a, b)`` のような
+**動的な属性解決**は追わない —— 静的 AST 解析は実行時にしか決まらない属性名を
+原理的に解決できず、これを追いかけようとすると終わりがない。この集合は
+「``<モジュール>.<属性名>`` の形でソースへ直接書かれているもの」に限る。
+"""
+
+_WRITE_CAPABLE_BARE_ATTRS = {"write_bytes", "write_text"}
+"""受け手を問わず危険な属性呼び出し (``anything.write_bytes(...)`` 等)。
+
+(round4 reviewer-test 指摘、F-4-016) ``.write(`` はここに含めない ——
+``_StagedSink.write`` への正規の呼び出し (``sink.write(chunk)``) まで拾って
+しまうため、``_write_capable_calls`` 側で ``_StagedSink`` を指す名前かどうかを
+個別に判定する。
+"""
 
 _ALLOWED_WRITE_FUNCTION_NAMES = {"_staged_write", "_open_unique_temp_file"}
 """``_StagedSink`` のメソッド以外で、ファイル書き込み系呼び出しを許す関数名。

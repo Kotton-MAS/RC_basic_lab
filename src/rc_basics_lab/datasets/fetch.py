@@ -23,6 +23,11 @@
 HTTP を開く部分は ``Opener`` として差し替えられる。pytest は
 **ネットワークに一切触れない** (D-60) ので、照合の検査はローカル fixture の
 opener で行う。
+
+**POSIX (macOS/Linux) 専用**: ``_staged_write``/``_StagedSink`` は
+``os.O_DIRECTORY``/``os.O_NOFOLLOW``/``dir_fd=`` に依存する (D-64/D-67)。
+これらは Windows の ``os`` モジュールには無く、本モジュールは Windows では
+動作しない。
 """
 
 from __future__ import annotations
@@ -119,10 +124,28 @@ def sha256_of(path: Path) -> str:
 
 
 def resolve_under(root: Path, relative: str) -> Path:
-    """``root`` の内側に解決される絶対パスを返す (外に出る指定は例外)。"""
+    """``root`` の内側に解決される絶対パスを返す (外に出る指定は例外)。
+
+    (reviewer-security 指摘、F-4-011) ``_staged_write`` の ``os.O_NOFOLLOW`` は
+    ``target.parent`` という**パスの最終成分だけ**を symlink 差し替えから守る。
+    ``relative`` がディレクトリ2階層以上 (例: ``a/b/c.csv``) になると、中間の
+    成分 (``a``) はこの保護の対象外になり、そこが symlink に差し替えられて
+    いても ``os.open(target.parent, ...)`` は素通りしてしまう。現行の
+    manifest は全行「ディレクトリ1つ + ファイル名」の1階層なので、``relative``
+    をここで1階層に制限し、``O_NOFOLLOW`` が実際に守れる形しか受け付けない
+    ことを不変条件にする —— openat 連鎖による一般解 (data_dir から1段ずつ
+    ``dir_fd=`` で降りる) も検討したが、攻撃者能力 (同一ユーザー内の別プロセス
+    が data_dir 配下に symlink を仕込めること) に対して複雑さが釣り合わない
+    ため採らない。
+    """
     candidate = PurePosixPath(relative)
     if candidate.is_absolute() or ".." in candidate.parts or not candidate.parts:
         raise UnsafeArchiveMemberError(f"data_dir の外を指す相対パスです: {relative!r}")
+    if len(candidate.parts) > 2:
+        raise UnsafeArchiveMemberError(
+            "relative_path はディレクトリ1つ + ファイル名までしか受け付けません "
+            f"(O_NOFOLLOW が守れる階層を超えています): {relative!r}"
+        )
     resolved = (root / Path(*candidate.parts)).resolve()
     if not resolved.is_relative_to(root.resolve()):
         raise UnsafeArchiveMemberError(
