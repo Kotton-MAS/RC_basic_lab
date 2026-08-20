@@ -2,7 +2,7 @@
 
 このファイルが守るのは4つ。
 
-1. **3態がノイズで変わる** (受け入れ条件4 / D-45) —— 成果物
+1. **3態が状態ノイズで変わる** (受け入れ条件4 / D-45) —— 成果物
    ``results/04_chaotic_freerun/stability.csv`` の行から判定する。図は見ない。
 2. **確保軸5 (条件数) が条件を1つも作る前に効く** (D-34)。
 3. **1条件につきリザバーは1つ、状態行列は1本** (仕様 §5 禁止する構造4)。
@@ -168,7 +168,7 @@ def test_condition_esn_config_moves_only_the_three_axes() -> None:
 def test_stability_never_uses_the_esp_condition_path() -> None:
     """4-C は 02 の比較軌道経路を1回も呼ばない (D-47 / ADR 0001 §3.4)。
 
-    ``state_noise`` を掃引軸に持つのに ``simulate_condition`` を通ると、
+    状態ノイズを掃引軸に持つのに ``simulate_condition`` を通ると、
     D-14 の3ストリーム分離の外から4本目の変動が混ざる。呼びたくなったら
     設計の逸脱である、という決定を実測で固定する。
     """
@@ -339,13 +339,13 @@ def _map_of(rows: list[dict[str, str]], noise: str) -> dict[tuple[str, str], str
 
 
 def test_noise_changes_the_regime_map() -> None:
-    """**受け入れ条件4**: ノイズ注入で3態の領域が変わる (D-45)。
+    """**受け入れ条件4**: 状態ノイズの注入で3態の領域が変わる (D-45)。
 
     成果物の行だけから判定する (図も目視も使わない、仕様 §5 禁止する構造6)。
-    ノイズ 0 のマップと最大ノイズのマップを格子点ごとに比べ、**少なくとも1点で
-    3態が変わる**ことを要求する。加えて「変わった向き」も記録として assert
-    する —— ノイズは自走を安定させる (発散していた点が発散しなくなる) 側に
-    効くことが要件書 設計判断3 の主張であり、逆向きに効いているなら結論を
+    状態ノイズが最小のマップと最大のマップを格子点ごとに比べ、少なくとも
+    1点で3態が変わることを要求する。加えて「変わった向き」も assert する ——
+    状態ノイズは自走を安定させる (発散していた点が発散しなくなる) 側に効く、
+    というのが要件書 設計判断3 の主張であり、逆向きに効いているなら結論を
     書き換えなければならない。
     """
     rows = committed_stability_rows()
@@ -353,15 +353,15 @@ def test_noise_changes_the_regime_map() -> None:
     assert len(noises) >= 2, noises
     lowest = _map_of(rows, noises[0])
     highest = _map_of(rows, noises[-1])
-    assert set(lowest) == set(highest), "格子がノイズ量で違います"
+    assert set(lowest) == set(highest), "格子が状態ノイズの量で違います"
     changed = {key for key in lowest if lowest[key] != highest[key]}
-    assert changed, "ノイズを変えても3態マップが1点も変わりません"
+    assert changed, "状態ノイズを変えても3態マップが 1 点も変わりません"
     stabilized = sum(
         1 for key in changed if lowest[key] == REGIMES[0] and highest[key] != REGIMES[0]
     )
     assert stabilized >= 1, (
-        "ノイズで発散が減った点が1つもありません "
-        f"(変化した点={sorted(changed)}, 低ノイズ={lowest}, 高ノイズ={highest})"
+        "状態ノイズで発散が減った点が 1 つもありません "
+        f"(変化した点={sorted(changed)} / 低={lowest} / 高={highest})"
     )
 
 
