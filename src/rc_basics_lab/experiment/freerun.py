@@ -221,6 +221,27 @@ def validate_standardization_window(standardize_steps: int, split: Split) -> Non
         )
 
 
+def task_sampling_interval(config: Chaos04Config, task_name: str) -> float:
+    """課題名 -> サンプリング間隔 Delta t [時間]。
+
+    Lorenz は 0.01 (``rk4_step`` 0.002 x ``sample_interval`` 5)、Mackey-Glass は
+    1.0 (0.1 x 10) で**2桁違う**。有効予測時間を時間の単位で報告するときも、
+    パワースペクトルの周波数軸を作るときもこの値で割るので、片方の Delta t を
+    両方に使うと 100 倍ずれた量を同じ列に書くことになる。
+
+    Raises:
+        ValueError: 04 の課題でない場合。
+    """
+    match task_name:
+        case _ if task_name == TASK_NAME_LORENZ:
+            return sampling_interval(config.lorenz)
+        case _ if task_name == TASK_NAME_MACKEY_GLASS:
+            mackey_glass = config.base.mackey_glass
+            return mackey_glass.rk4_step * mackey_glass.sample_interval
+        case _:
+            raise ValueError(f"04 の課題ではありません: {task_name!r}")
+
+
 def standardize_steps_for(config: Chaos04Config, task_name: str) -> int:
     """課題名 -> 標準化係数の推定に使う先頭サンプル数 (D-41)。"""
     match task_name:
@@ -1358,14 +1379,23 @@ def run_freerun_experiment(
     """
     started = time.perf_counter()
     validate_stats_bounds(config.freerun.stats_steps)
-    dt = sampling_interval(config.lorenz)
-    lyapunov_per_time = lyapunov.scalars["lyapunov_per_time"]
-    lyapunov_time = lyapunov.scalars["lyapunov_time"]
 
     evaluations: list[FreeRunEvaluation] = []
     profile: list[FreeRunProfileRow] = []
     for entry in chaos_task_entries(config):
         validate_state_matrix_bounds(entry.esn.n_units, task_length(config, entry.name))
+        dt = task_sampling_interval(config, entry.name)
+        # **lambda_max を推定してあるのは Lorenz だけ** (D-42)。MG の最大
+        # Lyapunov 指数は 04 では推定していない —— Benettin 法には遅延系の履歴
+        # (tau / h = 170 次元) を状態とする伝播器が要り、T4 が作ったのは Lorenz の
+        # ものだけである。**推定していない量を他の系の値で埋めない**ので、MG 行の
+        # Lyapunov 列と valid_time_lyapunov は nan になる (生の時間は出る)。
+        if entry.name == TASK_NAME_LORENZ:
+            lyapunov_per_time = lyapunov.scalars["lyapunov_per_time"]
+            lyapunov_time = lyapunov.scalars["lyapunov_time"]
+        else:
+            lyapunov_per_time = math.nan
+            lyapunov_time = math.nan
         for replicate in range(config.base.n_replicates):
             plan: ReplicatePlan | None = None
             for method in FREERUN_METHODS:
@@ -1568,6 +1598,7 @@ __all__ = [
     "summarize_attractor",
     "summarize_valid_time",
     "task_length",
+    "task_sampling_interval",
     "validate_free_run_bounds",
     "validate_standardization_window",
     "write_freerun_csv",
