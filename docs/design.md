@@ -1237,9 +1237,9 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 191 | 245 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 185 | 233 |
 | `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 176 | 213 |
-| `anomaly05.py` | 05 の合成異常源の設定 / `SyntheticAnomalyConfig` | 46 | 59 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 117 | 124 |
-| **合計** | — | **944** | **1165** |
+| `anomaly05.py` | 05 の合成異常源の設定 / `SyntheticAnomalyConfig` / `SyntheticMackeyGlassConfig` | 110 | 137 |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 121 | 128 |
+| **合計** | — | **1012** | **1247** |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
 機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は
@@ -1252,6 +1252,13 @@ T4 が `chaos04.py`（132 行）を新設し、04b-2 の T5 が 4-B / 4-C の設
 （`tasks/anomaly.py`）ではなくここに置くのは、既存の課題層が `tasks -> config`
 の一方向で、逆向きの辺を引くと `config/__init__` の初期化中に循環するため
 （実験1本ぶんの `Anomaly05Config` は 05 の T3 が同じモジュールへ足す）。
+T3 の着手前に `SyntheticMackeyGlassConfig`（`length` / `horizon` を持たない
+Mackey-Glass 生成パラメータ）と変換の唯一の口 `to_mackey_glass` を足して
+110 行にした（D-69 / D-70）—— 合成源が `length` / `horizon` を必ず上書きする
+ため、01 の `MackeyGlassConfig` を内包したままでは「YAML から設定できるのに
+出力が1バイトも変わらない死んだ葉」が2つ残っていた。**既定値**の単一の真実は
+01 側のままで（`_MACKEY_GLASS_DEFAULTS = MackeyGlassConfig()` から引く）、
+05 が絞ったのは葉の集合だけである。
 
 package 内の依存は**一方向**で、辺は3本しかない（`tests/test_config_package_layout.py`
 が AST で固定する）:

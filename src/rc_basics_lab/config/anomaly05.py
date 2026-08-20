@@ -43,7 +43,7 @@ _SYNTHETIC_HORIZON = 1
 
 @dataclass(frozen=True, slots=True)
 class SyntheticMackeyGlassConfig:
-    """合成異常源が使う Mackey-Glass 生成パラメータ (**``length`` / ``horizon`` を持たない**).
+    """合成源が使う MG 生成パラメータ (**``length`` / ``horizon`` を持たない**).
 
     01 の ``MackeyGlassConfig`` をそのまま内包していたときは、``length`` と
     ``horizon`` の2葉が ``generate_synthetic_anomalies`` に必ず上書きされる
