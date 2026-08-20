@@ -6,9 +6,8 @@
   重ね描き (Lorenz は (x, z)、1変数系は遅延座標埋め込み)。
 - ``plot_valid_time``: 有効予測時間 (Lyapunov 時間で正規化) のシード分布。
   対照 (線形・遅延線) も同じ軸に載せる (受け入れ条件3 の後半)。
-- ``plot_stability_map``: (rho x リーク率) の3態マップを状態ノイズ量ごとに
-  並べ、
-  右端に 4-D の容量 (MC) と有効予測時間の関係を置く (受け入れ条件4)。
+- ``plot_stability_map``: 状態ノイズ量ごとに (rho x リーク率) の3態マップを
+  並べ、右端に 4-D の容量 (MC) と有効予測時間の関係を置く (受け入れ条件4)。
 - ``plot_freerun_stats``: 長時間自走後のリターンマップとパワースペクトルの
   比較 (受け入れ条件5)。
 
@@ -435,7 +434,7 @@ def plot_stability_map(
 def _regime_panel(
     axis: Axes, rows: Sequence[StabilityRow], noise: float, style: StyleContext
 ) -> None:
-    """状態ノイズ1点ぶんの3態マップ (格子点を色で塗る)。"""
+    """状態ノイズ 1 点ぶんの3態マップ (格子点を色で塗る)。"""
     mapping = regime_map(rows, noise)
     rhos = sorted({key[0] for key in mapping})
     leaks = sorted({key[1] for key in mapping})
