@@ -807,9 +807,7 @@ def test_valid_time_rows_cover_at_least_ten_seeds() -> None:
         assert item.valid_time_lyapunov != item.valid_time_steps
 
 
-def test_censored_valid_time_propagates_through_the_pipeline_to_the_sensitivity_summary() -> (
-    None
-):
+def test_censored_valid_time_propagates_to_the_sensitivity_summary() -> None:
     """統合テスト: 打ち切りが実際に起きたとき、行の censored フラグと
     ``ValidTimeSensitivity.n_censored`` の両方に正しく伝播する (D-43)。
 
