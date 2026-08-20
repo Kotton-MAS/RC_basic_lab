@@ -1,9 +1,7 @@
 """実験設定 (YAML) の読み込み.
 
 frozen dataclass 群を単一の真実とし、YAML はそこへ値を流し込むだけにする。
-**未知キーは即座に ``ConfigError``** とする (D-09)。本連載は十数個のパラメータを
-YAML 化するため、キーのタイプミスが黙って無視されると「設定したのに効いていない」
-実験結果が生まれる。
+**未知キーは即座に ``ConfigError``** とする (D-09)。
 
 新しいセクションを足すときは dataclass にフィールドを追加するだけでよい
 (ローダはフィールド型から再帰的に構築する)。
@@ -12,15 +10,10 @@ YAML 化するため、キーのタイプミスが黙って無視されると「
 02 は ``Esp02Config``、03 は ``Capacity03Config`` を使う。ローダ本体は
 ``load_config_as(path, cls)`` として
 共有し、``load_config`` はその 01 向けの別名 (呼び出し互換のため署名を保つ)。
-02 のフィールドを ``ExperimentConfig`` に相乗りさせると
-``tests/test_config_wiring.py::test_each_parameter_changes_output``
-(「全フィールドが 01 のパイプライン出力を変える」) を満たせないフィールドが
-生まれ、逃がすための例外チャネルを増やすと配線漏れの検出力そのものが落ちる。
 
 診断の設定 dataclass (``EspConfig`` / ``LyapunovConfig`` / ``TimescaleConfig``
 / ``MemoryCapacityConfig`` / ``IpcConfig``) は ``diagnostics/`` 側に定義し、
-ここが import する。``config -> diagnostics``
-は許可された向きで、逆向きは D-12 が禁じている。
+ここが import する (D-12)。
 """
 
 from __future__ import annotations
