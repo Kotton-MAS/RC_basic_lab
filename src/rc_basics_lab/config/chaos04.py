@@ -18,10 +18,8 @@
 効いているか」が設定から読めなくなる。
 
 Lorenz のパラメータ (sigma, rho, beta) = (10, 28, 8/3) は設定フィールドに
-**しない** (D-41)。値を変えるとカオス域かどうかも lambda_max の照合値も
-変わり、``LORENZ_LYAPUNOV_REFERENCE`` の意味が失われる。系そのものを定義する
-定数は ``tasks/chaotic.py`` のモジュール定数に置く (``tasks/narma.py`` の
-係数を設定にしない D-29 と同じ流儀)。
+**しない** (D-41)。系そのものを定義する定数は ``tasks/chaotic.py`` の
+モジュール定数に置く。
 """
 
 from __future__ import annotations
@@ -42,8 +40,7 @@ Lorenz 系に対して lambda_max = 0.9056。
 
 **正本は数値推定である** (D-42)。この値は ``MaxLyapunovConfig.reference_value``
 として推定値の照合にだけ使い、Lyapunov 時間の正規化 (D-43) には
-``diagnostics/lyapunov.py`` が返す推定値を使う。文献値を正本にすると、
-積分刻み・サンプリング間隔・burn-in を取り違えても何も落ちない。
+``diagnostics/lyapunov.py`` が返す推定値を使う。
 
 **判定基準なので ``config`` 層に置く** (D-15: 系そのものを表す量は ``ctx``、
 判定基準は ``cfg``)。系の定義 (sigma, rho, beta) は ``tasks/chaotic.py`` にある。
