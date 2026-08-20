@@ -151,8 +151,9 @@ def rc_context_for(style: StyleContext) -> Iterator[None]:
 def require_rows(rows: Sequence[object]) -> None:
     """``rows`` が空なら ``ValueError`` を送出する.
 
-    作図関数の入口で個別に書かれていた ``if not rows: raise ValueError("rows が空です")``
-    の重複 (作図層12箇所) をまとめる。
+    作図関数の入口で個別に書かれていた
+    ``if not rows: raise ValueError("rows が空です")`` の重複 (作図層12箇所) を
+    まとめる。
     """
     if not rows:
         raise ValueError("rows が空です")
