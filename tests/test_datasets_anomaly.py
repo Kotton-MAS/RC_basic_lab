@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
 import zipfile
 from pathlib import Path
 
@@ -149,6 +151,113 @@ def test_ensure_file_does_not_open_anything_when_the_cache_is_valid(
         raise AssertionError(f"キャッシュがあるのに取得しようとしました: {url}")
 
     assert fetch.ensure_file(remote, data_dir=tmp_path, opener=forbidden) == target
+
+
+# --- TOCTOU (F-1-019) --------------------------------------------------------
+
+
+def test_partial_path_is_not_predictable(tmp_path: Path) -> None:
+    """``.part`` の名前は固定 (``f"{name}.part"``) ではなく予測不能である。
+
+    固定名は、同じ ``data_dir`` に書ける別プロセス・別ユーザーが「どのパスを
+    差し替えればよいか」を書き込み前から知っている TOCTOU の的になる
+    (F-1-019)。少なくとも旧来の固定名パターンとは一致せず、2回呼んでも
+    毎回違う名前になることを固定する。
+    """
+    target = tmp_path / "probe.bin"
+    first = fetch._make_partial_path(target)
+    first.unlink()
+    second = fetch._make_partial_path(target)
+    second.unlink()
+    assert first != second
+    assert first.name != f"{target.name}.part"
+    assert second.name != f"{target.name}.part"
+
+
+def test_replace_after_reverifying_rejects_bytes_swapped_before_replace(
+    tmp_path: Path,
+) -> None:
+    """``download()`` と ``extract_members()`` が共有する最終防衛線 (F-1-019)。
+
+    書き込みが完了した直後に ``.part`` の中身が差し替えられても、
+    ``os.replace`` 直前の再照合が検出し、一時ファイルも確定先も残さない。
+    """
+    partial = tmp_path / ".probe.bin.deadbeef.part"
+    target = tmp_path / "probe.bin"
+    partial.write_bytes(b"attacker-controlled-bytes")
+    expected = hashlib.sha256(b"legitimate-bytes").hexdigest()
+    with pytest.raises(fetch.ChecksumMismatchError, match="差し替え"):
+        fetch._replace_after_reverifying(
+            partial, target, expected, error_cls=fetch.ChecksumMismatchError
+        )
+    assert not partial.exists()
+    assert not target.exists()
+
+
+def test_download_and_extract_members_both_route_through_the_replace_guard() -> None:
+    """``download()`` と ``_extract_member()`` の両方が最終防衛線を通る。
+
+    片方だけ直して他方を「一貫性のため」据え置く事故を機械的に防ぐ
+    (F-1-019: 同じクラスの欠陥は全経路で潰す)。
+    """
+    tree = ast.parse(
+        Path(fetch.__file__).read_text(encoding="utf-8"), filename=fetch.__file__
+    )
+    functions = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+    }
+    for name in ("download", "_extract_member"):
+        called = {
+            call.func.id
+            for call in ast.walk(functions[name])
+            if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+        }
+        assert "_replace_after_reverifying" in called, (
+            f"{name} が最終防衛線 (_replace_after_reverifying) を通っていません"
+        )
+
+
+def test_download_is_rejected_when_the_part_file_is_swapped_mid_write(
+    tmp_path: Path,
+) -> None:
+    """予測不能な一時名でも、ディレクトリを監視 (glob) できる攻撃者は検出する。
+
+    F-1-019 の再現 (``.claude/tmp/repro_toctou.py``) が前提にしていた「固定名を
+    知っている」より強い攻撃者モデル —— 名前の予測不能性だけに頼らず、確定
+    直前にディスク上の実バイト列を再照合する経路がここで効くことを確認する。
+    """
+    legit = b"LEGIT-" * 200_000
+    evil = b"EVIL-" * 200_000
+    expected = hashlib.sha256(legit).hexdigest()
+
+    class _RacingResponse:
+        def __init__(self) -> None:
+            self._offset = 0
+
+        def read(self, amt: int = -1) -> bytes:
+            if self._offset >= len(legit):
+                return b""
+            chunk = legit[self._offset : self._offset + 4096]
+            self._offset += len(chunk)
+            if self._offset == len(chunk):  # 最初の読み出し直後に差し替える
+                for part in tmp_path.rglob("*.part"):
+                    part.write_bytes(evil)
+            return chunk
+
+        def close(self) -> None:
+            return None
+
+    remote = RemoteFile(
+        url="https://example.invalid/probe.bin",
+        sha256=expected,
+        relative_path="probe.bin",
+    )
+    with pytest.raises(ChecksumMismatchError, match="差し替え"):
+        fetch.download(
+            remote, data_dir=tmp_path, opener=lambda url, timeout: _RacingResponse()
+        )
+    assert not (tmp_path / "probe.bin").exists()
+    assert list(tmp_path.rglob("*.part")) == []
 
 
 # --- 取得の安全性 (仕様 §5 安全性観点) ---------------------------------------
