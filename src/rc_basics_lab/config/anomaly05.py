@@ -187,10 +187,8 @@ class AnomalyPreprocessConfig:
 class AnomalyReservoirConfig:
     """05 のリザバー構造と実行の粒度 (D-08: 検証分割で調整しない)。
 
-    01 の ``ESNConfig`` をそのまま内包しない —— ``bias_scale`` /
-    ``activation`` / ``state_noise`` は 05 の掃引軸ではなく、内包すると
-    「YAML から設定できるのに 05 の結論を1バイトも動かさない葉」が3つ増える
-    (D-69 が ``length`` / ``horizon`` を落としたのと同じ判断)。
+    01 の ``ESNConfig`` を内包しない —— ``bias_scale`` / ``activation`` /
+    ``state_noise`` は 05 の軸ではなく、内包すると死葉が3つ増える (D-69)。
 
     Attributes:
         n_units: リザバーのユニット数 N (5-D の掃引軸)。
@@ -212,11 +210,7 @@ class AnomalyReservoirConfig:
     n_replicates: int = 3
 
     def to_esn(self) -> ESNConfig:
-        """01 の ``ESNConfig`` を組み立てる**唯一の口** (``to_mackey_glass`` と同型)。
-
-        呼び出し側が自前で ``ESNConfig`` を書けると、そこで ``state_noise`` を
-        黙って別の値にする経路が復活する。
-        """
+        """``ESNConfig`` を組み立てる**唯一の口** (``to_mackey_glass`` と同型)。"""
         return ESNConfig(
             n_units=self.n_units,
             spectral_radius=self.spectral_radius,
@@ -230,9 +224,8 @@ class AnomalyReservoirConfig:
 class AnomalyRidgeConfig:
     """残差系スコアのリッジ回帰 (D-04: 全手法が同一格子を読む)。
 
-    01 の ``RidgeConfig`` を内包しないのは ``n_lags_grid`` のためである ——
-    05 の遅延線は ``preprocess.input_window`` で決まるので、内包すると
-    死んだ葉が1つ増える (D-69)。
+    01 の ``RidgeConfig`` を内包しないのは ``n_lags_grid`` のため —— 05 の
+    遅延線は ``preprocess.input_window`` で決まるので死葉になる (D-69)。
 
     Attributes:
         alpha_grid: 全手法・全系列が共有する単一の探索格子 (D-04)。
@@ -280,11 +273,10 @@ class AnomalyEvaluationConfig:
 class AnomalySeedConfig:
     """05 が使う4ストリームの基底シード (D-06 / D-14)。
 
-    01 の ``SeedConfig`` とは別クラスにする (D-13)。``control`` は一様乱数
-    対照が使う基底シードで、``EspSeedConfig.drive`` が ``SeedStream.TASK``
-    へ載るのと同じ流儀で **``SeedStream.PROBE`` へ載せる** ——
-    05 は初期状態プローブを使わないので空いており、``seeds.py`` に5本目の
-    ストリームを足さずに「対照だけを独立に振れる」を満たせる。
+    01 の ``SeedConfig`` とは別クラスにする (D-13)。``control`` は
+    ``EspSeedConfig.drive`` が ``SeedStream.TASK`` へ載るのと同じ流儀で
+    **``SeedStream.PROBE`` へ載せる** —— 05 は初期状態プローブを使わないので
+    空いており、5本目のストリームを足さずに対照だけを独立に振れる。
 
     Attributes:
         reservoir: リザバー重み (``SeedStream.RESERVOIR``)。
