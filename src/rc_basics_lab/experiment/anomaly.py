@@ -308,8 +308,9 @@ def _evaluate(
         _mask_slice(series.ignore, split.val),
         ignore_transition,
     )
-    threshold = float(np.min(test_scores[test_labels]))
-    assert calibration is not None
+    threshold = calibrate_threshold(
+        calibration, config.threshold.target_false_alarm_rate
+    )
     predictions_raw = alarms_at(test_scores, threshold)
 
     if ignore_transition:

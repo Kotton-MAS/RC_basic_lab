@@ -199,7 +199,7 @@ def build_score_specs(config: Anomaly05Config) -> Mapping[str, ScoreSpec]:
     「対照を外せない」の実体である。
     """
     window = config.preprocess.input_window
-    return {
+    specs: dict[str, ScoreSpec] = {
         ESN_RESIDUAL: RidgeResidualSpec(feature=ReservoirSpec()),
         DELAY_LINE_RESIDUAL: RidgeResidualSpec(feature=DelayLineSpec(n_lags=window)),
         PERSISTENCE_RESIDUAL: PersistenceSpec(),
@@ -207,6 +207,9 @@ def build_score_specs(config: Anomaly05Config) -> Mapping[str, ScoreSpec]:
         RANDOM_CONTROL: RandomControlSpec(),
         INPUT_NORM_CONTROL: InputNormControlSpec(),
     }
+    if not config.evaluation.report_point_adjust:
+        del specs[INPUT_NORM_CONTROL]
+    return specs
 
 
 def score_first_valid(spec: ScoreSpec) -> int:
