@@ -259,13 +259,17 @@ def _is_write_mode_arg(value: ast.expr | None) -> bool:
     return bool(set(value.value) & {"w", "a", "x", "+"})
 
 
+_TRACKED_MODULES = {"os", "shutil", "io", "numpy"}
+"""``.open``/``.save`` 等の危険な呼び出しを追跡するモジュール群。"""
+
+
 def _module_import_aliases(tree: ast.Module) -> dict[str, str]:
-    """``import os as o`` / ``import shutil as s`` の局所名 -> 実モジュール名。"""
+    """``import os as o`` / ``import numpy as np`` の局所名 -> 実モジュール名。"""
     aliases: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name in {"os", "shutil"}:
+                if alias.name in _TRACKED_MODULES:
                     aliases[alias.asname or alias.name] = alias.name
     return aliases
 
@@ -274,19 +278,60 @@ def _from_import_targets(tree: ast.Module) -> dict[str, tuple[str, str]]:
     """``from os import replace as r`` の局所名 -> (モジュール名, 元の属性名)。"""
     targets: dict[str, tuple[str, str]] = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module in {"os", "shutil"}:
+        if isinstance(node, ast.ImportFrom) and node.module in _TRACKED_MODULES:
             for alias in node.names:
                 targets[alias.asname or alias.name] = (node.module, alias.name)
     return targets
+
+
+def _staged_sink_names(tree: ast.Module) -> set[str]:
+    """``_StagedSink`` を指す名前の集合 (モジュール全体から集める)。
+
+    (round4 reviewer-test 指摘、F-4-016) 名前一致 (例: 変数名が ``sink``)
+    ではなく **構造** —— ``with _staged_write(...) as X`` の ``X``、または
+    型注釈が ``_StagedSink`` である関数引数 —— で判定する。そうしないと
+    ``sink`` という名前の別物 (``tempfile.NamedTemporaryFile()`` の戻り値等)
+    まで正規の書き込みとして見逃してしまう一方、素朴な名前一致は
+    ``_stream_to_file(response, sink: _StagedSink, ...)`` のように
+    ``with`` を経由せず引数として受け取る正規の呼び出しを拾えない。
+    """
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.With):
+            for item in node.items:
+                call = item.context_expr
+                if (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Name)
+                    and call.func.id == "_staged_write"
+                    and isinstance(item.optional_vars, ast.Name)
+                ):
+                    names.add(item.optional_vars.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for arg in (*node.args.args, *node.args.kwonlyargs):
+                if (
+                    isinstance(arg.annotation, ast.Name)
+                    and arg.annotation.id == "_StagedSink"
+                ):
+                    names.add(arg.arg)
+    return names
 
 
 def _write_capable_calls(
     node: ast.AST,
     module_aliases: dict[str, str],
     from_targets: dict[str, tuple[str, str]],
+    sink_names: set[str],
 ) -> list[str]:
     """``node`` 自身の中 (ネストした関数定義の内部も含む) にある、ファイルへ
     書き込める可能性のある呼び出しの説明を返す (空なら安全)。
+
+    (round4 reviewer-test 指摘、F-4-016) 組み込み ``open`` の裸呼び出し・
+    ``io.open`` (mode がレシーバに応じて第1/第2引数のいずれかに来る)・
+    ``os.fdopen``・``*.write_text``・一時オブジェクトへの ``.write`` (例:
+    ``tempfile.NamedTemporaryFile(...).write(...)``)・``numpy.save`` を追加で
+    検出する。動的な ``getattr(os, "replace")`` は検出しない (原理的な限界。
+    上記 ``_WRITE_CAPABLE_MODULE_ATTRS`` の docstring 参照)。
     """
     found: list[str] = []
     for call in ast.walk(node):
@@ -294,11 +339,24 @@ def _write_capable_calls(
             continue
         func = call.func
         if isinstance(func, ast.Attribute):
+            if func.attr == "write":
+                if isinstance(func.value, ast.Name) and func.value.id in sink_names:
+                    continue  # _StagedSink.write() への正規の呼び出し
+                found.append(".write(")
+                continue
             if func.attr in _WRITE_CAPABLE_BARE_ATTRS:
                 found.append(f".{func.attr}(")
                 continue
             if func.attr == "open":
-                mode_arg = call.args[0] if call.args else None
+                receiver = None
+                if isinstance(func.value, ast.Name):
+                    receiver = module_aliases.get(func.value.id, func.value.id)
+                # ``io.open(file, mode)`` は mode が第2引数、``Path.open(mode)``
+                # 規約 (mode が第1引数) はそれ以外のレシーバに適用する。
+                mode_index = 1 if receiver == "io" else 0
+                mode_arg = (
+                    call.args[mode_index] if len(call.args) > mode_index else None
+                )
                 for keyword in call.keywords:
                     if keyword.arg == "mode":
                         mode_arg = keyword.value
@@ -310,6 +368,16 @@ def _write_capable_calls(
                 if (receiver, func.attr) in _WRITE_CAPABLE_MODULE_ATTRS:
                     found.append(f"{receiver}.{func.attr}(")
         elif isinstance(func, ast.Name):
+            if func.id == "open":
+                # 組み込み open(file, mode=...) は ast.Name であり、
+                # モジュール属性の追跡では原理的に捕まらない。
+                mode_arg = call.args[1] if len(call.args) > 1 else None
+                for keyword in call.keywords:
+                    if keyword.arg == "mode":
+                        mode_arg = keyword.value
+                if _is_write_mode_arg(mode_arg):
+                    found.append("open(書き込みモード) (builtin)")
+                continue
             target = from_targets.get(func.id)
             if target is not None and target in _WRITE_CAPABLE_MODULE_ATTRS:
                 found.append(f"{target[0]}.{target[1]}( (direct import)")
@@ -367,14 +435,15 @@ def _offending_write_paths(tree: ast.Module) -> list[str]:
     """
     module_aliases = _module_import_aliases(tree)
     from_targets = _from_import_targets(tree)
+    sink_names = _staged_sink_names(tree)
     offenders: list[str] = []
     for stmt in _module_level_statements(tree):
-        if _write_capable_calls(stmt, module_aliases, from_targets):
+        if _write_capable_calls(stmt, module_aliases, from_targets, sink_names):
             offenders.append("<module>")
     for name, node, allowed in _iter_functions_with_allowance(tree):
         if allowed:
             continue
-        if _write_capable_calls(node, module_aliases, from_targets):
+        if _write_capable_calls(node, module_aliases, from_targets, sink_names):
             offenders.append(name)
     return offenders
 
