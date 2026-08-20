@@ -209,7 +209,7 @@ class _StagedSink:
     後始末をすべてこの fd 相対 (``dir_fd=`` 引数) で行う。一度ディレクトリ
     fd を握ってしまえば、その後にパス文字列としての ``target.parent`` が
     何に差し替えられようと、以降の操作は無関係に同じ実ディレクトリを指し
-    続ける。``target`` も ( 指摘) ``_staged_write`` から1回だけ渡され、
+    続ける。``target`` も (reviewer-architecture 指摘) ``_staged_write`` から1回だけ渡され、
     ``commit`` はもう ``target`` を引数に取らない —— 「どこへ確定させるか」
     が2つの真実に割れることが型で書けなくなる。
     """
@@ -228,7 +228,7 @@ class _StagedSink:
         """一時ファイルの絶対パス (表示・テストからの直接操作用)。
 
         ``commit()`` 自身はこのパスを一切使わず、常に ``self._dir_fd`` 相対の
-        ``self._partial_name`` を使う 。
+        ``self._partial_name`` を使う。
         """
         return self._target.parent / self._partial_name
 
@@ -269,7 +269,7 @@ class _StagedSink:
         確認し、不一致なら ``os.replace`` を行わずに送出する。確定
         (``os.replace``) も後始末に使う名前も ``self._dir_fd`` 相対でしか
         引かないので、``target.parent`` がパスとしてその後どう差し替えられ
-        ようと影響を受けない 。
+        ようと影響を受けない。
         """
         os.lseek(self._descriptor, 0, os.SEEK_SET)
         digest = hashlib.sha256()
@@ -334,7 +334,7 @@ def _open_unique_temp_file(dir_fd: int, target_name: str) -> tuple[int, str]:
 def _staged_write(target: Path) -> Iterator[_StagedSink]:
     """``target`` の親ディレクトリを ``dir_fd`` として固定し、以降の一時ファイル
     作成・書き込み・再照合・確定 (``os.replace``) までの1ライフサイクルを
-    すべてこの ``dir_fd`` 相対で行う 。
+    すべてこの ``dir_fd`` 相対で行う。
 
     (reviewer-architecture 指摘) 「作る → 書く → 検証して確定させる」という
     1つのライフサイクルが部品に割れていると、後始末 (``partial.unlink``) の
