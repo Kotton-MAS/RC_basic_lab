@@ -1015,3 +1015,217 @@ def test_chaos_artifact_sizes_are_within_budget() -> None:
     documented = re.search(r"CSV 合計 \| \*\*([\d,]+) KB\*\*", _text())
     assert documented, "§12.7 に CSV 合計サイズが書かれていません"
     assert int(documented[1].replace(",", "")) == round(total / 1024)
+
+
+# --- §12 (04b-2 T5): 自由走行の設計と実測 --------------------------------------
+
+_SENSITIVITY_HEADER = re.compile(
+    r"^\|\s*しきい値.*NRMSE 比.*\|\s*中央値 \[λ_max\^-1\]\s*\|"
+)
+_METHOD_TIME_HEADER = re.compile(
+    r"^\|\s*手法\s*\|\s*中央値\s*\|\s*最小\s*\|\s*最大\s*\|"
+)
+_VERDICT_HEADER = re.compile(r"^\|\s*課題\s*\|\s*手法\s*\|\s*代替より近い\s*\|")
+_REGIME_COUNT_HEADER = re.compile(
+    r"^\|\s*状態ノイズ\s*\|\s*発散\s*\|\s*周期軌道\s*\|\s*アトラクタ再現\s*\|"
+)
+_REGIME_RULE_HEADER = re.compile(r"^\|\s*順\s*\|\s*3態\s*\|\s*条件\s*\|\s*定数\s*\|")
+_STATS_STEPS_HEADER = re.compile(r"^\|\s*`stats_steps`\s*\|\s*時間単位\s*\|")
+_AXES_HEADER = re.compile(
+    r"^\|\s*#\s*\|\s*軸\s*\|\s*上限\s*\|\s*置き場所\s*\|\s*検査位置\s*\|"
+)
+_FULL_TIME_HEADER = re.compile(r"^\|\s*区間\s*\|\s*実測\s*\|\s*予算\s*\|")
+
+
+def _sensitivity_entries() -> list[dict[str, object]]:
+    return _entries(_chaos_meta(), "valid_time_sensitivity")
+
+
+def _bold(cell: str) -> str:
+    """``**0.4（採用）**`` のような装飾を落として中身だけにする。"""
+    return cell.strip("*").strip()
+
+
+def test_chaos_valid_time_sensitivity_table_matches_the_meta_json() -> None:
+    """§12.2 の閾値感度表が ``meta.json`` と一致する (D-43)。
+
+    仕様 §8 が {0.2, 0.3, 0.4, 0.5} の感度表を要求している。表を成果物から
+    切り離すと「その閾値だから出た結論」を否定できない。
+    """
+    entries = [
+        entry
+        for entry in _sensitivity_entries()
+        if entry["task"] == "lorenz" and entry["method"] == "esn"
+    ]
+    assert entries, "meta.json に Lorenz / ESN の感度が入っていません"
+    by_threshold = {float(str(entry["threshold"])): entry for entry in entries}
+    _, table = _table_after(_SENSITIVITY_HEADER)
+    documented = {float(_bold(row[0]).split("（")[0]): row for row in table}
+    assert set(documented) == set(by_threshold), (documented, by_threshold)
+    for threshold, row in documented.items():
+        entry = by_threshold[threshold]
+        for index, key in enumerate(
+            ("median_lyapunov", "min_lyapunov", "max_lyapunov"), start=1
+        ):
+            _assert_cell_matches(
+                _bold(row[index]), float(str(entry[key])), f"{threshold}/{key}"
+            )
+        assert int(_bold(row[4])) == int(str(entry["n_censored"]))
+
+
+def test_chaos_method_valid_time_table_matches_the_meta_json() -> None:
+    """§12.2 の手法別の表が ``meta.json`` (しきい値 0.4) と一致する。"""
+    from rc_basics_lab.config import Chaos04Config
+
+    threshold = Chaos04Config().freerun.valid_time_threshold
+    entries = {
+        str(entry["method"]): entry
+        for entry in _sensitivity_entries()
+        if entry["task"] == "lorenz" and entry["threshold"] == threshold
+    }
+    labels = {"線形": "linear", "遅延線": "delay_line", "ESN": "esn"}
+    _, table = _table_after(_METHOD_TIME_HEADER)
+    assert {_bold(row[0]) for row in table} == set(labels)
+    for row in table:
+        entry = entries[labels[_bold(row[0])]]
+        for index, key in enumerate(
+            ("median_lyapunov", "min_lyapunov", "max_lyapunov"), start=1
+        ):
+            _assert_cell_matches(_bold(row[index]), float(str(entry[key])), key)
+
+
+def test_chaos_attractor_verdict_table_matches_the_meta_json() -> None:
+    """§12.3 の距離表が ``meta.json`` の ``attractor_verdict`` と一致する (D-46)。"""
+    verdicts = {
+        (str(entry["task"]), str(entry["method"])): entry
+        for entry in _entries(_chaos_meta(), "attractor_verdict")
+    }
+    labels = {"線形": "linear", "遅延線": "delay_line", "ESN": "esn"}
+    tasks = {"Lorenz": "lorenz", "Mackey-Glass": "mackey_glass"}
+    _, table = _table_after(_VERDICT_HEADER)
+    assert len(table) == len(verdicts)
+    for row in table:
+        entry = verdicts[(tasks[_bold(row[0])], labels[_bold(row[1])])]
+        closer, total = (int(part) for part in _bold(row[2]).split("/"))
+        assert closer == int(str(entry["n_closer"]))
+        assert total == int(str(entry["n_rows"]))
+        for index, keys in (
+            (3, ("median_return_map", "median_return_map_surrogate")),
+            (4, ("median_spectrum", "median_spectrum_surrogate")),
+        ):
+            cells = [cell.strip() for cell in _bold(row[index]).split("/")]
+            for cell, key in zip(cells, keys, strict=True):
+                value = float(str(entry[key]))
+                if cell == "nan":
+                    assert value != value, key
+                else:
+                    _assert_cell_matches(cell, value, key)
+
+
+def test_chaos_regime_count_table_matches_the_meta_json() -> None:
+    """§12.5 の3態の内訳が ``meta.json`` と一致する (受け入れ条件4)。"""
+    counts = _chaos_meta()["regime_counts_by_noise"]
+    assert isinstance(counts, dict)
+    _, table = _table_after(_REGIME_COUNT_HEADER)
+    assert len(table) == len(counts)
+    for row in table:
+        key = f"{float(_bold(row[0])):g}"
+        actual = counts[key]
+        assert isinstance(actual, dict)
+        for index, regime in enumerate(("diverged", "periodic", "attractor"), start=1):
+            assert int(_bold(row[index])) == int(actual.get(regime, 0))
+
+
+def test_chaos_regime_rule_table_matches_the_module_constants() -> None:
+    """§12.4 の3態の判定表が実装の定数と一致する (D-45)。
+
+    「図から決めていない」の実体は、判定が定数と純関数だけで決まることである。
+    表と定数が食い違ったら、表の方が嘘になる。
+    """
+    from rc_basics_lab.experiment import attractor
+
+    _, table = _table_after(_REGIME_RULE_HEADER)
+    assert [row[0] for row in table] == ["1", "2", "3"]
+    assert str(attractor.AMPLITUDE_RATIO_MAX) in table[0][2]
+    assert "AMPLITUDE_RATIO_MAX" in table[0][3]
+    assert str(attractor.COLLAPSE_STD_RATIO) in table[1][2]
+    assert str(attractor.PERIODIC_AUTOCORR) in table[1][2]
+    assert attractor.COLLAPSE_STD_RATIO == 1.0 / attractor.AMPLITUDE_RATIO_MAX
+
+
+def test_chaos_stats_steps_table_records_the_adopted_and_rejected_lengths() -> None:
+    """§12.3 の ``stats_steps`` 較正表に採用値と**落選値**の両方が載っている。
+
+    Delta t の較正表 (§11) と同じ規律 —— 採用値だけを書くのは記録として成立
+    しない。「短い方がきれいな結果になる」ので、選び方を残さないと後から
+    「都合の良い長さを選んだ」と区別できない。
+    """
+    from rc_basics_lab.config import Chaos04Config
+
+    _, table = _table_after(_STATS_STEPS_HEADER)
+    lengths = {int(_bold(row[0]).split("（")[0].replace(",", "")) for row in table}
+    adopted = [row for row in table if "採用" in row[0]]
+    assert len(adopted) == 1, table
+    assert len(lengths) >= 3, lengths
+    assert (
+        int(_bold(adopted[0][0]).split("（")[0].replace(",", ""))
+        == Chaos04Config().freerun.stats_steps
+    )
+
+
+def test_chaos_allocation_axis_table_covers_axes_four_to_seven() -> None:
+    """§12.6 の確保軸表が軸4〜7 を1本ずつ挙げ、置き場所が実装と一致する。"""
+    from rc_basics_lab.experiment import attractor, stability
+
+    _, table = _table_after(_AXES_HEADER)
+    rows = {row[0]: row for row in table}
+    assert set(rows) == {"4", "5", "6", "7"}, rows
+    assert "attractor.py" in rows["4"][3]
+    assert "stability.py" in rows["5"][3]
+    assert "freerun.py" in rows["6"][3]
+    assert "attractor.py" in rows["7"][3]
+    assert attractor._MAX_STATS_STEPS == 1_000_000
+    assert stability._MAX_CONDITIONS == 2_000
+    assert "条件を作る前" in rows["5"][4]
+
+
+def test_chaos_full_wall_time_table_matches_the_meta_json() -> None:
+    """§12.7 の実行時間表が ``meta.json`` の区間別内訳と一致する。"""
+    meta = _chaos_meta()
+    breakdown = meta["wall_time_breakdown"]
+    assert isinstance(breakdown, dict)
+    expected = {
+        "真の軌道の生成": float(breakdown["lyapunov_s"]),
+        "4-A": float(breakdown["onestep_s"]),
+        "4-B": float(breakdown["freerun_s"]),
+        "4-C": float(breakdown["stability_s"]),
+        "4-D": float(breakdown["capacity_s"]),
+        "図5枚": float(breakdown["figures_s"]),
+        f"**合計{_LPAREN}`wall_time_s`{_RPAREN}**": _number(meta, "wall_time_s"),
+    }
+    header, table = _table_after(_FULL_TIME_HEADER)
+    # §11 にも同じヘッダの表があるので、区間が7つそろう方 (§12.7) を探す。
+    lines = _text().splitlines()
+    tables: list[list[list[str]]] = []
+    for index, line in enumerate(lines):
+        if not _FULL_TIME_HEADER.match(line):
+            continue
+        rows: list[list[str]] = []
+        for body in lines[index + 2 :]:
+            if not body.startswith("|"):
+                break
+            rows.append([cell.strip() for cell in body.strip("|").split("|")])
+        tables.append(rows)
+    assert header, header
+    full = max(tables, key=len)
+    assert len(full) >= len(expected), full
+    seen = 0
+    for row in full:
+        for label, value in expected.items():
+            if row[0].startswith(label):
+                _assert_cell_matches(_bold(row[1]).removesuffix(" 秒"), value, label)
+                seen += 1
+                break
+    assert seen == len(expected), full
+    assert _number(meta, "wall_time_s") < 900.0, "figures-04 が予算 900 秒を超えました"
+    assert table is not None
