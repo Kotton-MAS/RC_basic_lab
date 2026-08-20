@@ -24,7 +24,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import time
 from dataclasses import dataclass
@@ -48,7 +47,11 @@ from rc_basics_lab.experiment.freerun import (
     write_freerun_profile_csv,
     write_onestep_csv,
 )
-from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.report import (
+    META_JSON,
+    DataclassSummaryMixin,
+    write_meta_for,
+)
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.experiment.stability import (
     CAPACITY_CSV,
@@ -101,7 +104,7 @@ CSV が5枚あるのは仕様 §4 T5-4 の3枚より多い。増えた2枚には
 
 
 @dataclass(frozen=True, slots=True)
-class SectionTiming:
+class SectionTiming(DataclassSummaryMixin):
     """区間ごとの実測時間 (``meta.json`` の ``wall_time_breakdown``)。
 
     仕様 §5 が区間ごとに予算を切っているので、成果物だけで「どの区間が予算を
@@ -122,10 +125,6 @@ class SectionTiming:
     stability_s: float
     capacity_s: float
     figures_s: float
-
-    def to_summary(self) -> dict[str, float]:
-        """``meta.json`` に載せるプレーンな dict。"""
-        return dataclasses.asdict(self)
 
 
 @dataclass(frozen=True, slots=True)
