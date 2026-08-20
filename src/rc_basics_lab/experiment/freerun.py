@@ -1419,6 +1419,13 @@ def run_freerun_experiment(
     """
     started = time.perf_counter()
     validate_stats_bounds(config.freerun.stats_steps)
+    # 確保軸10 (逐次実行の本数)。4-B は手法ごとに独立な閉ループを回すので、
+    # 4-A (状態行列を3手法で共有) とは違い手法数も掛かる。
+    validate_sequential_run_count(
+        len(chaos_task_entries(config))
+        * config.base.n_replicates
+        * len(FREERUN_METHODS)
+    )
 
     evaluations: list[FreeRunEvaluation] = []
     profile: list[FreeRunProfileRow] = []
