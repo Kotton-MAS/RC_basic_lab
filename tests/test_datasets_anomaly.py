@@ -203,6 +203,47 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     assert list(tmp_path.glob("*.part")) == []
 
 
+def test_staged_write_operations_stay_pinned_to_the_directory_fd_after_the_path_is_replaced(
+    tmp_path: Path,
+) -> None:
+    """D-67: 一時ファイルの作成・再照合・確定は ``target.parent`` を都度パス
+    として開き直すのではなく、``_staged_write`` の冒頭で1回だけ取得した
+    ``dir_fd`` に固定される。
+
+    (reviewer-architecture 指摘、F-4-001) ``with`` に入った**後**で
+    ``target.parent`` という名前を「元のディレクトリを改名して逃がし、その
+    名前へ別ディレクトリへの symlink を差し込む」形で丸ごと差し替えても、
+    書き込み・再照合・確定 (``os.replace``) は最初に取得した ``dir_fd`` が
+    指す実ディレクトリ (差し替え後は改名先からしか辿れない) でだけ行われ、
+    symlink の指す先には1バイトも書かれない。``target.parent`` を都度パス
+    文字列として開き直す実装 (round3 以前) に戻すと、``os.stat``/``os.replace``
+    が symlink の指す先を辿ってしまい、このテストは赤くなる (fixer が
+    tempfile 上に複製した変異版で実測済み。.claude/decisions.yaml D-67 参照)。
+    """
+    parent = tmp_path / "sub"
+    parent.mkdir()
+    target = parent / "probe.bin"
+    payload = b"pinned-to-dir-fd"
+    expected = hashlib.sha256(payload).hexdigest()
+
+    moved_original = tmp_path / "sub-moved-out-of-the-way"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with fetch._staged_write(target) as sink:
+        # dir_fd はここまでで確定済み。この後で「target.parent」という名前
+        # そのものを丸ごと差し替える (実ディレクトリは moved_original から
+        # 引き続き辿れる。symlink 越しの outside は無関係の別ディレクトリ)。
+        os.rename(parent, moved_original)
+        os.symlink(outside, parent)
+        sink.write(payload)
+        sink.commit(expected, error_cls=fetch.DatasetError)
+
+    assert (moved_original / target.name).read_bytes() == payload
+    assert list(outside.iterdir()) == [], "symlink の指す先 (data_dir 外) に着弾した"
+    assert not target.exists(), "sub は今 symlink であり、その先には何も無いはず"
+
+
 # --- guard: ファイルへ書く経路の在り処 -------------------------------------
 #
 # round3 で reviewer-architecture / reviewer-security / reviewer-test の
@@ -490,10 +531,33 @@ _WRITE_PATH_BYPASS_SOURCES = {
     "async_function": ("async def sneaky():\n    os.replace('a', 'b')\n"),
     "shutil_move": ("def sneaky():\n    shutil.move('a', 'b')\n"),
     "os_rename": ("def sneaky():\n    os.rename('a', 'b')\n"),
+    "builtin_open_write_mode": (
+        'def sneaky(path):\n    handle = open(path, "wb")\n    handle.close()\n'
+    ),
+    "io_open_write_mode": (
+        'import io\ndef sneaky(path):\n    handle = io.open(path, "wb")\n'
+        "    handle.close()\n"
+    ),
+    "os_fdopen": (
+        'def sneaky(fd):\n    handle = os.fdopen(fd, "wb")\n    handle.close()\n'
+    ),
+    "path_write_text": ('def sneaky(path):\n    path.write_text("data")\n'),
+    "namedtemporaryfile_write": (
+        "import tempfile\n"
+        "def sneaky():\n"
+        '    tempfile.NamedTemporaryFile().write(b"data")\n'
+    ),
+    "numpy_save": ("import numpy\ndef sneaky(path, arr):\n    numpy.save(path, arr)\n"),
 }
-"""round3 で reviewer が実測した回避クラス (M1/M3/M4/M5/M8 系) をソース文字列
-として与え、``_offending_write_paths`` がそれぞれを実際に検出できることを
-固定する (guard の guard)。"""
+"""round3/round4 で reviewer が実測した回避クラス (M1/M3/M4/M5/M8 系、および
+round4 F-4-016 の7パターン) をソース文字列として与え、``_offending_write_paths``
+がそれぞれを実際に検出できることを固定する (guard の guard)。
+
+(round4 reviewer-test 指摘、F-4-016) ``getattr(os, "replace")(a, b)`` は
+このカタログに**含めない** —— 動的な属性解決は静的 AST 解析の原理的な限界で
+あり検出しない、という決定そのものなので、検出できないことを前提に除外して
+ある (含めると本テストが必ず落ちる)。
+"""
 
 
 @pytest.mark.parametrize("label", sorted(_WRITE_PATH_BYPASS_SOURCES))
