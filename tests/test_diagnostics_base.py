@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 import contextlib
 import importlib
 import inspect
@@ -17,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from ast_imports import imported_roots
 
 import rc_basics_lab.diagnostics as diagnostics_pkg
 from rc_basics_lab.diagnostics.base import (
@@ -603,17 +603,10 @@ def test_diagnostics_package_does_not_import_reservoir() -> None:
     assert sources, "診断モジュールが見つかりません"
     for source in sources:
         text = source.read_text(encoding="utf-8")
-        for node in ast.walk(ast.parse(text, filename=str(source))):
-            if isinstance(node, ast.Import):
-                names = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                names = [node.module or ""]
-            else:
-                continue
-            for name in names:
-                assert not name.startswith(FORBIDDEN_MODULE), (
-                    f"{source.name} が {name} を import しています"
-                )
+        for name in imported_roots(source, include_function_bodies=True):
+            assert not name.startswith(FORBIDDEN_MODULE), (
+                f"{source.name} が {name} を import しています"
+            )
         # 遅延 import や importlib 経由の抜け道も塞ぐ (docstring の言及は許す)
         assert f"import {FORBIDDEN_MODULE}" not in text
         assert f'"{FORBIDDEN_MODULE}"' not in text

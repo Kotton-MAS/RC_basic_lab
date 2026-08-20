@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from ast_imports import imported_roots
 from sklearn.metrics import average_precision_score
 
 from rc_basics_lab import metrics_detection
@@ -272,12 +273,10 @@ def test_metrics_detection_performs_no_io() -> None:
     このモジュール単体の性質は指標層のテストでも固定しておく。
     """
     tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            imported.add(node.module.split(".")[0])
+    imported = {
+        root.split(".")[0]
+        for root in imported_roots(MODULE_PATH, include_function_bodies=True)
+    }
     assert imported <= ALLOWED_IMPORT_ROOTS, f"想定外の import: {imported}"
 
     called = {
