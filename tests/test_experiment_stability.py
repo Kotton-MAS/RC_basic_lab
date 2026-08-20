@@ -145,6 +145,45 @@ def test_condition_count_is_the_product_of_the_grids_and_replicates() -> None:
     assert len(stability_conditions(config)) == 2 * 3 * 2 * 2
 
 
+# --- 確保軸5 x 軸4 の積 (reviewer-security 実測) ---------------------------------
+
+
+def test_stability_conditions_rejects_the_product_of_condition_count_and_stats_steps() -> (
+    None
+):
+    """条件数 x ``stats_steps`` の積が上限を超えると**条件を1つも作る前に**落ちる。
+
+    ``small_config`` は軸4 (``stats_steps``) も軸5 (条件数) もそれぞれ単独では
+    上限内の合法な設定である。条件数 (格子の積 x レプリケート) を単独では
+    ``_MAX_CONDITIONS`` の内側に収まる値まで増やしつつ、``stats_steps`` も
+    別途大きくすると、どちらの単独検査も通ったまま積だけが上限を超える
+    (両方を同時に大きくする設定変更は個別の軸の検査をすり抜ける、というのが
+    このプロジェクトで繰り返し踏んできた失敗形そのもの)。
+    """
+    config = dataclasses.replace(
+        small_config(),
+        freerun=dataclasses.replace(small_config().freerun, stats_steps=500_000),
+        stability=StabilityConfig(
+            spectral_radius_grid=tuple(float(index) for index in range(10)),
+            leak_rate_grid=tuple(float(index) for index in range(10)),
+            state_noise_grid=(0.0,),
+            n_replicates=4,
+        ),
+    )
+    n_conditions = 10 * 10 * 1 * 4
+    assert n_conditions <= stability_module._MAX_CONDITIONS
+
+    def forbidden(*args: object, **kwargs: object) -> StabilityCondition:
+        raise AssertionError("積の検査より先に条件を作っています")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(stability_module, "StabilityCondition", forbidden)
+        with pytest.raises(
+            ValueError, match="逐次シミュレーションの総ステップ数が上限"
+        ):
+            stability_conditions(config)
+
+
 # --- 掃引の組み立て -------------------------------------------------------------
 
 
