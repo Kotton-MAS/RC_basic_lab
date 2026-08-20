@@ -469,7 +469,8 @@ def test_every_function_that_stages_a_write_also_commits_it() -> None:
         if not committed:
             offenders.append(node.name)
     assert offenders == [], (
-        f"_staged_write を呼ぶが、その sink に対して commit() を呼ばない関数: {offenders}"
+        "_staged_write を呼ぶが、その sink に対して commit() を呼ばない関数: "
+        f"{offenders}"
     )
 
 
