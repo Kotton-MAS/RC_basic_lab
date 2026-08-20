@@ -108,7 +108,7 @@ def parse_filename(filename: str) -> UcrFileSpec:
     )
 
 
-def anomaly_slice(spec: UcrFileSpec) -> slice:
+def anomaly_slice(spec: UcrFileSpec) -> slice[int, int, int]:
     """0-based の異常区間 (**この1関数が index 解釈の単一の真実**)。
 
     1-indexed・``end`` 排他と読む。``labels[anomaly_slice(spec)] = True`` で
