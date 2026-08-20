@@ -1236,15 +1236,17 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `experiment01.py` | 01 の設定 dataclass 群 / `TASK_LENGTH_FIELDS` / `load_config` | 104 | 137 |
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 191 | 245 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 185 | 233 |
-| `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 132 | 164 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 113 | 120 |
-| **合計** | — | **850** | **1053** |
+| `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 176 | 213 |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 115 | 122 |
+| **合計** | — | **896** | **1104** |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
 機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は
 モジュール docstring 4本・import 文の再掲・`__init__.py` の再エクスポート 40 行ぶん
 であり、**設定 dataclass の定義とローダ本体は1行も変えていない**。その後 04b-1 の
-T4 が `chaos04.py`（132 行）を新設し、`__init__.py` が 6 名を再エクスポートした。
+T4 が `chaos04.py`（132 行）を新設し、04b-2 の T5 が 4-B / 4-C の設定
+（`FreeRunConfig.stats_steps` / `valid_time_threshold` / `StabilityConfig`）を
+足して 176 行にした。
 
 package 内の依存は**一方向**で、辺は3本しかない（`tests/test_config_package_layout.py`
 が AST で固定する）:
@@ -1259,7 +1261,8 @@ package 内の依存は**一方向**で、辺は3本しかない（`tests/test_c
 package 化**前と同一**で、分割前の `__all__`（36 名）は**1名も落ちていない**
 （D-49）。04b-1 の T4 が `Chaos04Config` / `LorenzConfig` /
 `MackeyGlassStandardizeConfig` / `FreeRunConfig` / `MaxLyapunovConfig` /
-`LORENZ_LYAPUNOV_REFERENCE` の 6 名を足したので、現在は 42 名である。増える側は
+`LORENZ_LYAPUNOV_REFERENCE` の 6 名を、T5 が `StabilityConfig` の 1 名を足した
+ので、現在は 43 名である。増える側は
 `tests/test_config_package_layout.py::CHAOS04_ADDITIONS` にリテラルで記録して
 あり、記録の無い追加は落ちる（減る側は従来どおり差分 0 を要求する）。
 
