@@ -40,7 +40,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import pkgutil
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import fields
 from functools import lru_cache
@@ -311,9 +310,7 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     section_case("ipc_sweep.n_steps", 1300, EXPERIMENT_IPC_SWEEP),
     # --- 3-B': 保存則。打ち切りとレプリケート数はこの実験だけを上書きする ---
     section_case("conservation.n_units_grid", (8, 12), EXPERIMENT_CONSERVATION),
-    section_case(
-        "conservation.state_noise_grid", (0.0, 0.05), EXPERIMENT_CONSERVATION
-    ),
+    section_case("conservation.state_noise_grid", (0.0, 0.05), EXPERIMENT_CONSERVATION),
     section_case("conservation.rho", 0.85, EXPERIMENT_CONSERVATION),
     section_case("conservation.leak_rate", 0.7, EXPERIMENT_CONSERVATION),
     section_case("conservation.sigma_u", 0.55, EXPERIMENT_CONSERVATION),
@@ -345,19 +342,12 @@ def fingerprint(rows: Sequence[CapacityRow], experiment: str | None = None) -> s
     ``experiment`` を渡すとその実験の行だけを見る。セクション固有の葉が
     他の実験の行を動かしていないことの確認に使う。
     """
-    selected = [
-        row for row in rows if experiment is None or row.experiment == experiment
-    ]
-    return json.dumps(
-        [
-            {
-                field.name: getattr(row, field.name)
-                for field in fields(CapacityRow)
-                if field.name not in VOLATILE_COLUMNS
-            }
-            for row in selected
-        ],
-        sort_keys=True,
+    return wiring_fingerprint(
+        rows,
+        CapacityRow,
+        volatile_columns=VOLATILE_COLUMNS,
+        field="experiment" if experiment is not None else None,
+        value=experiment,
     )
 
 
@@ -389,32 +379,6 @@ def _seed_fingerprints(config: Capacity03Config) -> dict[SeedStream, bytes]:
     }
 
 
-def _changed_leaves(base: Capacity03Config, changed: Capacity03Config) -> set[str]:
-    """2つの設定で値が異なる葉フィールドのパス集合。"""
-    return {
-        leaf
-        for leaf in leaf_paths(Capacity03Config)
-        if _leaf_value(base, leaf) != _leaf_value(changed, leaf)
-    }
-
-
-def _leaf_value(config: object, leaf: str) -> object:
-    node: object = config
-    for part in leaf.split("."):
-        node = getattr(node, part)
-    return node
-
-
-def _round_trip(
-    config: Capacity03Config, tmp_path: Path, name: str
-) -> Capacity03Config:
-    """設定を YAML へ書き出して読み直す (``load_config_as`` の経路そのもの)。"""
-    path = tmp_path / f"{name}.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
-    path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
-    return load_config_as(path, Capacity03Config)
-
-
 def _meta_fingerprint(config: Capacity03Config) -> str:
     """``meta.json`` に載る設定ダンプの指紋。"""
     meta = collect_meta_for(config, config.seeds)
@@ -439,8 +403,11 @@ def test_each_capacity_parameter_changes_output(
     changed_config = apply_case(base, wiring_case)
     assert changed_config != base, "差し替えが設定に反映されていません"
 
-    assert _round_trip(changed_config, tmp_path, "changed") == changed_config
-    assert _changed_leaves(base, changed_config) == {wiring_case.field}, (
+    assert (
+        round_trip(changed_config, tmp_path, "changed", Capacity03Config)
+        == changed_config
+    )
+    assert changed_leaves(base, changed_config) == {wiring_case.field}, (
         f"{wiring_case.field} の差し替えが他の葉にも波及しています"
     )
 
@@ -534,21 +501,12 @@ def test_all_capacity_config_fields_are_covered() -> None:
             assert path in expected, f"未知のパスです: {path}"
 
 
-def _current_experiment_modules() -> frozenset[str]:
-    """``rc_basics_lab.experiment`` 配下の公開モジュール名の実集合。"""
-    return frozenset(
-        info.name
-        for info in pkgutil.iter_modules(experiment_pkg.__path__)
-        if not info.name.startswith("_")
-    )
-
-
 def _implemented_consumers(task: str) -> tuple[str, ...]:
     """その段階の消費側で、既に実装されている関数名・モジュール名。"""
     import rc_basics_lab.experiment.capacity as capacity_module
 
     function_names, module_names = TASK_STAGE_CONSUMERS[task]
-    modules = _current_experiment_modules()
+    modules = current_experiment_modules()
     found = [
         name
         for name in function_names
