@@ -88,7 +88,7 @@ class PrecisionRecallCurve:
 
     Attributes:
         threshold: ``(N,)`` 降順の閾値 (入力スコアの相異なる値)。
-        precision: ``(N,)`` 各閾値での適合率。分母 0 の点は 0.0。
+        precision: ``(N,)`` 各閾値での適合率 ``TP / (TP + FP)``。
         recall: ``(N,)`` 各閾値での再現率 (非減少)。
     """
 
@@ -142,17 +142,11 @@ def precision_recall_curve(
         (distinct, np.array([sorted_scores.size - 1], dtype=distinct.dtype))
     )
     true_positive: FloatArray = np.cumsum(sorted_labels)[threshold_index]
-    predicted_positive: FloatArray = (1.0 + threshold_index - true_positive).astype(
-        np.float64
-    )
+    # 閾値 n までに陽性と予測した点数 = 降順に並べたときの先頭 (index + 1) 点。
+    # 同順位を1つの閾値に畳んでいるので必ず 1 以上であり、0 除算は起きない。
+    predicted_positive: FloatArray = (1.0 + threshold_index).astype(np.float64)
 
-    precision: FloatArray = np.zeros_like(true_positive)
-    np.divide(
-        true_positive,
-        predicted_positive,
-        out=precision,
-        where=predicted_positive != 0.0,
-    )
+    precision: FloatArray = true_positive / predicted_positive
     recall: FloatArray = true_positive / float(n_positive)
     return PrecisionRecallCurve(
         threshold=sorted_scores[threshold_index],
