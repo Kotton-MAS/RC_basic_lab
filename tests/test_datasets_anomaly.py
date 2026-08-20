@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import os
 import zipfile
 from pathlib import Path
 
@@ -229,6 +230,7 @@ def test_download_is_rejected_when_the_part_file_is_swapped_mid_write(
     legit = b"LEGIT-" * 200_000
     evil = b"EVIL-" * 200_000
     expected = hashlib.sha256(legit).hexdigest()
+    swapped = tmp_path / ".attacker-payload.bin"
 
     class _RacingResponse:
         def __init__(self) -> None:
@@ -240,8 +242,13 @@ def test_download_is_rejected_when_the_part_file_is_swapped_mid_write(
             chunk = legit[self._offset : self._offset + 4096]
             self._offset += len(chunk)
             if self._offset == len(chunk):  # 最初の読み出し直後に差し替える
+                # ``os.replace`` で inode ごと差し替える (``Path.write_bytes`` の
+                # ような同一 inode への上書きでは、元の記述子がその後も同じ
+                # inode へ書き続けるため攻撃が成立しない。実際の攻撃者は
+                # 別ファイルを作ってからパスへ rename する)。
                 for part in tmp_path.rglob("*.part"):
-                    part.write_bytes(evil)
+                    swapped.write_bytes(evil)
+                    os.replace(swapped, part)
             return chunk
 
         def close(self) -> None:
