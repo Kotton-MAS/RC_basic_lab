@@ -81,18 +81,24 @@ OVERRIDES: dict[str, object] = {
 
 
 def _fingerprint(series: AnomalySeries) -> str:
-    """``AnomalySeries`` の全成分をまとめた指紋。
+    """``AnomalySeries`` の**データ**をまとめた指紋 (値 / ラベル / ignore / train_end)。
 
     値だけを見ると ``ignore_margin`` のように**マスクしか変えない**葉を
-    取りこぼす (04 の 4-C が ``meta`` チャネルを別立てにしたのと同じ事情)。
-    ここでは値・ラベル・ignore・train_end・params を1本のダイジェストに畳む。
+    取りこぼす (04 の 4-C が ``meta`` チャネルを別立てにしたのと同じ事情) ので、
+    4成分すべてを1本のダイジェストに畳む。
+
+    **``params`` は入れない**。``generate_synthetic_anomalies`` は
+    ``params["tau"]`` に設定値をそのまま書き写すので、``params`` を指紋に含めると
+    「設定を読んで meta に転記しているだけで生成には効いていない」葉が緑で
+    通ってしまう。実測 (fixer): ``to_mackey_glass`` を ``tau`` だけ無視する版に
+    変異させると、``params`` 込みの指紋では 11 件すべて緑のまま通り、
+    データだけの指紋では ``mackey_glass.tau`` の1件が赤くなる。
     """
     digest = hashlib.sha256()
     digest.update(np.asarray(series.values).tobytes())
     digest.update(np.asarray(series.labels).tobytes())
     digest.update(np.asarray(series.ignore).tobytes())
     digest.update(str(series.train_end).encode("utf-8"))
-    digest.update(repr(sorted(series.params.items())).encode("utf-8"))
     return digest.hexdigest()
 
 
