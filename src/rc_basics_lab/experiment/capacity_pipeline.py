@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import csv
 import dataclasses
 import logging
 import time
@@ -52,6 +51,7 @@ from rc_basics_lab.experiment.report import (
     DataclassSummaryMixin,
     write_comparison_csv,
     write_meta_for,
+    write_rows_csv,
 )
 from rc_basics_lab.experiment.runner import ResultRow
 
@@ -183,13 +183,7 @@ class CapacityOutputs:
 
 def write_capacity_csv(rows: Sequence[CapacityRow], path: Path) -> Path:
     """条件ごとの容量を CSV に書く (列順は ``CapacityRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CAPACITY_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, CAPACITY_CSV_COLUMNS)
 
 
 def write_capacity_profile_csv(rows: Sequence[CapacityProfileRow], path: Path) -> Path:
@@ -200,13 +194,7 @@ def write_capacity_profile_csv(rows: Sequence[CapacityProfileRow], path: Path) -
     ``capacity.profile_rows`` が行う (書き出し側で条件を書くと、CSV と
     ``n_targets_kept`` の規準が別々にドリフトする)。
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CAPACITY_PROFILE_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, CAPACITY_PROFILE_CSV_COLUMNS)
 
 
 def _log_timings(timings: Sequence[SectionTiming]) -> None:
