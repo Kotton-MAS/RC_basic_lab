@@ -506,7 +506,7 @@ def test_synthetic_source_needs_no_config_from_the_datasets_layer() -> None:
 
 
 def test_find_cut_never_recomputes_np_std_internally() -> None:
-    """``_find_cut`` の本体に ``np.std`` の呼び出しが無いことを固定する (D-65 後半)。
+    """``_find_cut`` の本体に ``np.std`` の呼び出しが無いことを固定する (D-66)。
 
     D-65 の rule は2つの約束を束ねている: (1) 確保軸の上限
     (``_MAX_RAW_SAMPLES`` / ``_MAX_FIND_CUT_CELLS``、既存 guard がこちらを
@@ -536,5 +536,5 @@ def test_find_cut_never_recomputes_np_std_internally() -> None:
     ]
     assert std_calls == [], (
         "_find_cut の本体が np.std を呼んでいます (value_scale/slope_scale の "
-        "再計算が紛れ込んでいる可能性があります。D-65 後半)。"
+        "再計算が紛れ込んでいる可能性があります。D-66)。"
     )

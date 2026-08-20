@@ -14,7 +14,7 @@ import hashlib
 import os
 import zipfile
 from collections.abc import Iterator
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import IO
 
 import numpy as np
@@ -832,6 +832,31 @@ def test_download_never_writes_outside_the_data_dir(
         fetch.resolve_under(tmp_path, relative)
 
 
+def test_resolve_under_rejects_a_relative_path_deeper_than_one_directory(
+    tmp_path: Path,
+) -> None:
+    """``relative_path`` は1階層 (ディレクトリ1つ + ファイル名) までしか受け
+    付けない (reviewer-security 指摘、F-4-011)。
+
+    ``_staged_write`` の ``os.O_NOFOLLOW`` は ``target.parent`` という**パス
+    の最終成分だけ**を守るため、2階層以上になると中間成分の symlink 差し替え
+    を検出できない。manifest が実際にこの形しか使わないことを不変条件として
+    ここで固定する。
+    """
+    with pytest.raises(UnsafeArchiveMemberError, match="ディレクトリ1つ"):
+        fetch.resolve_under(tmp_path, "a/b/escape.csv")
+
+
+@pytest.mark.parametrize("relative", ["archive.zip", "mgab/1.csv"])
+def test_resolve_under_accepts_paths_at_most_one_directory_deep(
+    relative: str, tmp_path: Path
+) -> None:
+    """1階層 (``archive.zip``) と「ディレクトリ1つ + ファイル名」
+    (``mgab/1.csv``) はどちらも受理する (manifest の実際の形と一致)。"""
+    resolved = fetch.resolve_under(tmp_path, relative)
+    assert resolved.is_relative_to(tmp_path.resolve())
+
+
 def _make_zip(path: Path, members: dict[str, bytes]) -> None:
     with zipfile.ZipFile(path, "w") as bundle:
         for name, payload in members.items():
@@ -1237,6 +1262,23 @@ def test_ucr_manifest_records_the_archive_hash_and_size() -> None:
     assert len(header["archive_sha256"]) == 64
     assert int(header["archive_size_bytes"]) == 184066400
     assert header["source"] == ucr.ARCHIVE_URL
+
+
+def test_manifest_relative_paths_are_at_most_one_directory_deep() -> None:
+    """全 manifest 行の ``relative_path`` が1階層 (ディレクトリ1つ + ファイル名)
+    以下であることを不変条件として固定する (reviewer-security 指摘、F-4-011)。
+
+    ``resolve_under`` がこれを拒むようになった (2階層以上は
+    ``UnsafeArchiveMemberError``) 以上、実データの側もこの形しか使わない
+    ことをここで確認しておく —— manifest 側が2階層以上になった場合、
+    ``download()``/``ensure_file()`` が壊れるのではなく最初から拒否される
+    ことの裏付け。
+    """
+    for row in mgab.manifest().rows:
+        assert len(PurePosixPath(row["relative_path"]).parts) <= 2
+    for row in ucr.manifest().rows:
+        assert len(PurePosixPath(row["relative_path"]).parts) <= 2
+    assert len(PurePosixPath(ucr.ARCHIVE_RELATIVE_PATH).parts) <= 2
 
 
 # --- キャッシュがあるときだけ走る検査 (D-60) ---------------------------------
