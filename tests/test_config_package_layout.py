@@ -145,6 +145,16 @@ D-13 と正面から衝突する。したがって**減る側は差分0**を要�
 向きで再エクスポートしている。
 """
 
+ANOMALY05_ADDITIONS = ("SyntheticAnomalyConfig",)
+"""05 (T2) が ``config.__all__`` へ**足した**公開名。
+
+``CHAOS04_ADDITIONS`` と同じ扱い (減る側は差分0のまま、増える側はここに
+列挙したぶんだけ許す)。``SyntheticAnomalyConfig`` は合成異常源の設定で、
+``tasks/anomaly.py`` が読む —— 既存の課題層と同じ ``tasks -> config`` の向きを
+保つために課題層側ではなくここに置いてある (``config/anomaly05.py`` の
+モジュール docstring)。実験1本ぶんの ``Anomaly05Config`` は T3 が足す。
+"""
+
 SURVIVING_DIR_ONLY = ("annotations",)
 """分割後も ``dir(config)`` に残る ``PRE_SPLIT_DIR_ONLY`` の名前。
 
@@ -152,7 +162,7 @@ SURVIVING_DIR_ONLY = ("annotations",)
 書くので残る (このリポジトリの全モジュールが書いている慣習)。
 """
 
-EXPECTED_SUBMODULES = ("capacity03", "chaos04", "esp02", "experiment01")
+EXPECTED_SUBMODULES = ("anomaly05", "capacity03", "chaos04", "esp02", "experiment01")
 """分割で ``dir(config)`` に**増える**公開名 (実験サイクル単位のサブモジュール)。
 
 ``_common`` は ``_`` 始まりなので公開名には出ない。ここに書いていない名前が
@@ -166,10 +176,12 @@ ALLOWED_INTERNAL_EDGES = frozenset(
         ("__init__", "esp02"),
         ("__init__", "capacity03"),
         ("__init__", "chaos04"),
+        ("__init__", "anomaly05"),
         ("experiment01", "_common"),
         ("esp02", "experiment01"),
         ("capacity03", "experiment01"),
         ("chaos04", "experiment01"),
+        ("anomaly05", "experiment01"),
     }
 )
 """``config`` package 内で許可する import の辺 (``from`` -> ``to``)。
@@ -183,13 +195,16 @@ ALLOWED_INTERNAL_EDGES = frozenset(
   (3-C が 01 の ``run_task`` を再利用するための内包、D-31)
 - ``chaos04 -> experiment01``: ``Chaos04Config.base: ExperimentConfig``
   (4-A / 4-B が 01 の ``run_task`` を再利用するための内包、D-31 と同じ形)
+- ``anomaly05 -> experiment01``: ``SyntheticAnomalyConfig.mackey_glass:
+  MackeyGlassConfig`` (合成異常源の土台が MG。生成パラメータの単一の真実を
+  01 側に残すための内包で、04 が MG のパラメータを再定義しなかったのと同じ規律)
 
 サイクルのモジュール (``esp02`` / ``capacity03`` / ``chaos04``) は**互いを
 import しない**。3本はどれも 01 を内包する同じ形の辺で、向きが逆になることは
 無い (01 が 02・03・04 の設定を知ることは D-13 が禁じている)。
 """
 
-CYCLE_MODULES = ("esp02", "capacity03", "chaos04")
+CYCLE_MODULES = ("esp02", "capacity03", "chaos04", "anomaly05")
 """実験サイクル単位のモジュール (``experiment01`` を内包する側)。互いに独立。"""
 
 
@@ -247,18 +262,19 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
         "config.__all__ から分割前の公開名が消えています (D-49): "
         f"{sorted(set(PRE_SPLIT_ALL) - actual)}"
     )
-    assert actual - set(PRE_SPLIT_ALL) == set(CHAOS04_ADDITIONS), (
+    recorded_additions = set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS)
+    assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
         "config.__all__ が記録していない公開名を増やしています "
-        f"(予定外={sorted(actual - set(PRE_SPLIT_ALL) - set(CHAOS04_ADDITIONS))}, "
-        f"記録済みだが不在={sorted(set(CHAOS04_ADDITIONS) - actual)})"
+        f"(予定外={sorted(actual - set(PRE_SPLIT_ALL) - recorded_additions)}, "
+        f"記録済みだが不在={sorted(recorded_additions - actual)})"
     )
     assert len(config_pkg.__all__) == len(actual), "config.__all__ に重複があります"
     missing = [name for name in EXPECTED_ALL if not hasattr(config_pkg, name)]
     assert not missing, f"__all__ に在るが解決できない名前: {missing}"
 
 
-EXPECTED_ALL: tuple[str, ...] = PRE_SPLIT_ALL + CHAOS04_ADDITIONS
-"""``config.__all__`` に在るべき名前の全体 (分割前の 36 名 + 04 が足した 6 名)。"""
+EXPECTED_ALL: tuple[str, ...] = PRE_SPLIT_ALL + CHAOS04_ADDITIONS + ANOMALY05_ADDITIONS
+"""``config.__all__`` に在るべき名前の全体 (36 + 04 の 7 名 + 05 の 1 名)。"""
 
 
 @pytest.mark.parametrize("name", EXPECTED_ALL)
@@ -290,7 +306,9 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
 
     expected_removed = set(PRE_SPLIT_DIR_ONLY) - set(SURVIVING_DIR_ONLY)
     assert before - actual == expected_removed
-    assert actual - before == set(EXPECTED_SUBMODULES) | set(CHAOS04_ADDITIONS)
+    assert actual - before == (
+        set(EXPECTED_SUBMODULES) | set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS)
+    )
 
 
 def test_no_module_imported_the_dir_only_names_from_config() -> None:
@@ -351,8 +369,9 @@ def test_design_doc_records_the_same_line_budget() -> None:
 def test_config_package_has_exactly_the_expected_modules() -> None:
     """``config/`` の中身が ``_common`` + 実験サイクル3本 + ``__init__`` だけ。
 
-    04 T4 で ``chaos04.py`` (``Chaos04Config``) を足した。05 以降が
-    ``criticality05.py`` などを足すときも同じ場所が赤くなる。
+    04 T4 で ``chaos04.py`` (``Chaos04Config``) を、05 T2 で ``anomaly05.py``
+    (``SyntheticAnomalyConfig``) を足した。06 以降が新しいサイクルの
+    モジュールを足すときも同じ場所が赤くなる。
     """
     submodules = {info.name for info in pkgutil.iter_modules([str(PACKAGE_DIR)])}
     assert submodules == {"_common", *EXPECTED_SUBMODULES}
