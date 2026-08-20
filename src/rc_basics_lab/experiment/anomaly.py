@@ -400,7 +400,7 @@ def _evaluate(
     return replace(row, wall_time_s=elapsed), sweep
 
 
-def plan_replicate(
+def plan_anomaly_replicate(
     config: Anomaly05Config, source: SeriesSource, condition: AnomalyCondition
 ) -> AnomalyPlan:
     """1レプリケートぶんの系列・前処理・分割・6系統のスコアを作る。
@@ -478,7 +478,7 @@ def run_anomaly_replicate(
 
     行の並びは ``ANOMALY_METHODS`` の順で、**設定に関わらず6行**出る (D-61)。
     """
-    plan = plan_replicate(config, source, condition)
+    plan = plan_anomaly_replicate(config, source, condition)
     evaluated = [
         _evaluate(config, plan, condition, method) for method in ANOMALY_METHODS
     ]
@@ -542,7 +542,7 @@ __all__ = [
     "AnomalyOutcome",
     "AnomalyPlan",
     "AnomalyResults",
-    "plan_replicate",
+    "plan_anomaly_replicate",
     "preprocessor_id",
     "run_anomaly_headline",
     "run_anomaly_replicate",
