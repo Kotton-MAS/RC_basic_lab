@@ -187,6 +187,51 @@ def _stream_to_file(
     return digest.hexdigest(), total
 
 
+def _make_partial_path(target: Path) -> Path:
+    """``target`` と同じディレクトリに、予測不能な名前の一時ファイルを作る。
+
+    (F-1-019) 固定名 (``f"{target.name}.part"``) は書き込み中に横から
+    差し替えられる TOCTOU の的になる —— 同じ ``data_dir`` に書ける別プロセス・
+    別ユーザーが、正規のストリームからダイジェストが計算されている間にその
+    パスだけを別ファイルへ差し替えると、ダイジェストは正規のストリームから
+    計算されたまま、確定するファイルだけが攻撃者のものになる。
+    ``tempfile.mkstemp`` で名前を予測不能にし、攻撃者がまず「どのパスを
+    差し替えればよいか」を知ることそのものを難しくする。
+    """
+    descriptor, name = tempfile.mkstemp(
+        dir=target.parent, prefix=f".{target.name}.", suffix=".part"
+    )
+    os.close(descriptor)
+    return Path(name)
+
+
+def _replace_after_reverifying(
+    partial: Path,
+    target: Path,
+    expected_sha256: str,
+    *,
+    error_cls: type[DatasetError],
+) -> None:
+    """``os.replace`` の直前にディスク上の実バイト列を再照合してから確定させる。
+
+    (F-1-019) ここまでに計算した digest は「自分が書いたはずのバイト列」から
+    計算した値であり、``partial`` が確定させる実際のバイト列と同一である保証
+    にはならない。名前を予測不能にしても、書き込み完了から ``os.replace`` まで
+    の間に同じパスが差し替えられる余地をゼロにはできないため、確定させる
+    **直前**にディスクを読み直して同じ値かどうかを測る
+    (``download()`` と ``extract_members()`` の両方が通る、この層の最終防衛線)。
+    """
+    on_disk_sha256 = sha256_of(partial)
+    if on_disk_sha256 != expected_sha256:
+        partial.unlink(missing_ok=True)
+        raise error_cls(
+            "SHA256 が一致しません (確定直前にディスク上のバイト列が"
+            "差し替えられた可能性があります。キャッシュには残しません): "
+            f"expected={expected_sha256} actual={on_disk_sha256}"
+        )
+    os.replace(partial, target)
+
+
 def download(
     remote: RemoteFile,
     *,
@@ -216,12 +261,12 @@ def download(
     require_https(remote.url)
     target = resolve_under(data_dir, remote.relative_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    partial = target.with_name(f"{target.name}.part")
     open_url = opener if opener is not None else open_https
     try:
         response = open_url(remote.url, timeout)
     except HTTPError as error:  # pragma: no cover - ネットワーク経路
         raise DatasetError(f"取得に失敗しました: {remote.url} ({error})") from error
+    partial = _make_partial_path(target)
     try:
         digest, total = _stream_to_file(response, partial, max_bytes)
     except BaseException:
@@ -237,7 +282,9 @@ def download(
             f"url={remote.url} expected={remote.sha256} actual={digest} "
             f"size={total}"
         )
-    os.replace(partial, target)
+    _replace_after_reverifying(
+        partial, target, remote.sha256, error_cls=ChecksumMismatchError
+    )
     return target
 
 
