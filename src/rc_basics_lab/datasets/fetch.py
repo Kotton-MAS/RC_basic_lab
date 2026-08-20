@@ -401,7 +401,7 @@ def download(
         response = open_url(remote.url, timeout)
     except HTTPError as error:  # pragma: no cover - ネットワーク経路
         raise DatasetError(f"取得に失敗しました: {remote.url} ({error})") from error
-    # (reviewer-architecture / reviewer-security 指摘、)
+    # (reviewer-architecture / reviewer-security 指摘)
     # ``response`` の取得を ``with _staged_write(target)`` の**外側**に置いた
     # まま ``contextlib.closing`` で同じ ``with`` 文に並べる —— こうすると
     # ``_staged_write.__enter__`` (dir_fd/mkstemp 相当) が yield 前に失敗して

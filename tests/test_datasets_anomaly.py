@@ -203,7 +203,7 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     assert list(tmp_path.glob("*.part")) == []
 
 
-# --- guard: ファイルへ書く経路の在り処 () -------
+# --- guard: ファイルへ書く経路の在り処 -------------------------------------
 #
 # round3 で reviewer-architecture / reviewer-security / reviewer-test の
 # 3者から独立に指摘された穴: 旧2テストは「``os.replace`` の在り処」を
@@ -309,7 +309,7 @@ def _iter_functions_with_allowance(
 
     除外は名前一致ではなく **``_StagedSink`` クラス直下への所属**、または
     ``_ALLOWED_WRITE_FUNCTION_NAMES`` にある専用ヘルパー関数かどうかで決める
-    (/: 名前一致による除外は同名の別関数・別クラスで回避できる)。
+    (名前一致による除外は同名の別関数・別クラスで回避できる)。
     """
 
     def walk(
@@ -419,7 +419,7 @@ def test_the_write_path_guard_detects_known_bypasses(label: str) -> None:
 
     guard の述語をそのまま合成ソースへ適用して検出できることを確認しない
     限り、「全称」を名乗る docstring は主張だけで裏付けが無い
-    ( の指摘そのもの)。
+    (guard 自体が回避形を検出できることを実測で示す必要がある、という指摘そのもの)。
     """
     tree = ast.parse(_WRITE_PATH_BYPASS_SOURCES[label])
     offenders = _offending_write_paths(tree)
@@ -476,7 +476,7 @@ def test_every_function_that_stages_a_write_also_commits_it() -> None:
 def test_decoy_commit_call_does_not_satisfy_the_staged_write_guard() -> None:
     """``_staged_write`` の sink とは無関係な ``.commit()`` を decoy として
     持つ関数は、``test_every_function_that_stages_a_write_also_commits_it``
-    と同じ述語で検出されることを固定する ( の実測シナリオそのもの)。
+    と同じ述語で検出されることを固定する (reviewer-test が実測したシナリオそのもの)。
     """
     source = (
         "def sneaky(target, other):\n"
