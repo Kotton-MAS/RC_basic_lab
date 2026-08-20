@@ -370,6 +370,60 @@ def test_run_free_run_rejects_a_window_that_runs_past_the_series() -> None:
         run_free_run(config, lorenz_task_entry(config), 0)
 
 
+# --- 3b. 確保軸10 (逐次実行の本数、reviewer-security 実測) -------------------
+
+
+def test_onestep_rejects_the_sequential_run_count_before_any_replicate_runs() -> None:
+    """4-A の確保軸10 (課題数 x ``base.n_replicates``) が**確保より前に**落ちる。
+
+    ``small_config`` は合法な既存の軸 (課題長・alpha 格子・n_lags 格子・ESN
+    ユニット数など) をすべて通過する設定である。``base.n_replicates`` だけを
+    上限超に変えても、他の軸検査はどれも引っかからない (この検査が無ければ
+    ``run_task`` に到達して ESN のシミュレーションを回し始める)。
+    """
+    huge = dataclasses.replace(
+        small_config(),
+        base=dataclasses.replace(small_config().base, n_replicates=10_000),
+    )
+    with pytest.raises(ValueError, match="逐次実行の本数が上限"):
+        run_onestep(huge)
+
+
+def test_freerun_rejects_the_sequential_run_count_before_any_replicate_runs() -> None:
+    """4-B の確保軸10 (課題数 x ``base.n_replicates`` x 手法数) が**確保より前に**
+    落ちる。
+
+    4-B は手法ごとに独立な閉ループを回すため、同じ ``base.n_replicates`` でも
+    4-A より3倍多く数える。``small_config`` の他の軸 (``stats_steps`` 等) は
+    そのままなので、この検査だけが効いていることの実測になる。
+    """
+    config = small_config()
+    lyapunov = estimate_lorenz_lyapunov(config)
+    huge = dataclasses.replace(
+        config, base=dataclasses.replace(config.base, n_replicates=10_000)
+    )
+    with pytest.raises(ValueError, match="逐次実行の本数が上限"):
+        run_freerun_experiment(huge, lyapunov)
+
+
+def test_sequential_run_count_reuses_the_existing_capacity_guard() -> None:
+    """04 で新しい上限を作らず ``experiment/capacity.py`` の検査を使う。
+
+    上限が複数箇所にあると片方だけ緩められる。実測は「呼ばれていること」で
+    取る (``test_free_run_bound_reuses_the_existing_capacity_guard`` と同じ
+    流儀)。
+    """
+    calls: list[int] = []
+
+    def spy(n_runs: int) -> None:
+        calls.append(n_runs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(freerun_module, "validate_sequential_run_count", spy)
+        run_onestep(small_config())
+    assert calls == [4]  # 2課題 x base.n_replicates=2
+
+
 # --- 4. D-48 と D-36 の境界 ---------------------------------------------------
 
 
