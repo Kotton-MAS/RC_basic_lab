@@ -687,6 +687,28 @@ def test_profile_rows_are_thinned_to_the_declared_cap() -> None:
     assert {row.method for row in results.profile_rows} == {ESN_METHOD}
 
 
+def test_closer_than_surrogate_is_derived_from_the_two_distances() -> None:
+    """``closer_than_surrogate`` が**2指標の比較そのもの**である (D-46)。
+
+    成果物に対する受け入れ条件のテスト
+    (``test_attractor_distance_separates_true_and_surrogate``) は**コミット済みの
+    CSV** を読むので、判定を「常に True」に書き換える変異を検出できない
+    (CSV は変異の前に生成されている)。計算を実際に回す側のガードをここに置く。
+    対照の行は代替より近くならないので、常に True にする実装はここで落ちる。
+    """
+    config = small_config()
+    results = run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
+    for row in results.rows:
+        expected = (
+            row.return_map_distance < row.return_map_distance_surrogate
+            and row.spectrum_distance < row.spectrum_distance_surrogate
+        )
+        assert row.closer_than_surrogate is expected, row
+    assert not all(row.closer_than_surrogate for row in results.rows), (
+        "全行が代替より近いので、この検査は空虚です (対照が混ざっていない)"
+    )
+
+
 def test_sign_test_p_value_matches_the_closed_form() -> None:
     """符号検定の p 値 (D-46 の「有意に近い」の根拠)。"""
     assert sign_test_p_value(10, 10) == pytest.approx(1.0 / 1024.0)
