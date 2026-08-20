@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import csv
 import dataclasses
 import json
 from pathlib import Path
@@ -432,6 +433,31 @@ def test_estimate_lorenz_lyapunov_reports_the_sampling_interval() -> None:
     assert result.scalars["lyapunov_per_time"] == pytest.approx(
         result.scalars["lyapunov_per_step"] / expected
     )
+
+
+def test_committed_onestep_csv_shares_the_split_across_methods() -> None:
+    """**コミット済みの** ``onestep.csv`` でも D-05 が成り立っている。
+
+    縮小設定での検査 (``test_onestep_shares_the_split_across_methods_within_a_replicate``)
+    は経路を守るが、成果物そのものは見ていない。本番設定を再生成せずに
+    ``results/`` だけ差し替えると、公平性が崩れた行が入り込みうる。
+    """
+    path = Path(__file__).resolve().parents[1] / "results/04_chaotic_freerun/onestep.csv"
+    with path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "onestep.csv が空です"
+    assert list(rows[0]) == list(CSV_COLUMNS)
+    grouped: dict[tuple[str, str], set[tuple[str, ...]]] = {}
+    for row in rows:
+        grouped.setdefault((row["task"], row["replicate"]), set()).add(
+            (row["t0"], row["n_train"], row["n_val"], row["n_test"])
+        )
+    for key, shapes in grouped.items():
+        assert len(shapes) == 1, f"{key} で手法ごとに分割が違います: {shapes}"
+    assert {row["method"] for row in rows} == {LINEAR, DELAY_LINE, ESN_METHOD}
+    assert {row["task"] for row in rows} == {TASK_NAME_LORENZ, TASK_NAME_MACKEY_GLASS}
+    # シードは10本以上 (要件書 受け入れ条件2)。
+    assert len({row["replicate"] for row in rows}) >= 10
 
 
 def test_chaos_artifacts_go_to_their_own_directory() -> None:
