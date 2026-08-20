@@ -716,9 +716,21 @@ C_k = 1 - ||z_k - Phi w_k||^2 / ||z_k||^2        (w_k はリッジ回帰の閉�
 遅延が深いほど使える標本数が減り、容量が系統的に下がる —— これは測りたい現象
 （記憶の減衰）と**まったく同じ向き**に出るため、プロファイルの図を見ても気づけない。
 そこで `t0 = max(ctx.washout, 全目標の最大遅延)` を単一の基準点にし、全目標が
-同一の行集合 `X[t0:]` を共有する。窓の切り出しは `CapacityProblem.lagged(series,
-delay)` に1本だけ実装し（round 1 で MC・IPC 双方の複製をここへ統合、
-F-03-1-001）、`series[t0 - delay : t0 - delay + n_samples]` を返す。
+同一の行集合 `X[t0:]` を共有する。
+
+**行合わせの担い手は `RowAlignment` 1つである（04a T3 で D-24 を改訂）。**
+`t0` と `n_samples` **だけ**を持つ値で、(i) 基準点の算出 `RowAlignment.from_series(
+n_steps=..., washout=..., max_delay=...)`、(ii) `t0 >= T` の拒否、(iii) 遅延窓の
+切り出し `RowAlignment.lagged(series, delay)`（`series[t0 - delay : t0 - delay +
+n_samples]`）の3つをここ1箇所に置く。round 1（F-03-1-001）で統合したのは (iii) だけ
+で、(i)(ii) は `memory_capacity` と `ipc` に2箇所複製されたまま残っていた。
+`CapacityProblem` は `RowAlignment` を内包し、構築時に「状態から切り出した行数」と
+`rows.n_samples` の一致を検査する。
+
+`RowAlignment` が**状態行列にも Gram にも触れない**ことがこの型の存在理由である。
+行合わせだけを検査するテストは、以前は値を使わないダミーの状態行列（と、その特異な
+Gram）を構築していた。いまは `RowAlignment(t0=42, n_samples=458)` を直接作れば足りる
+（`test_row_alignment_needs_no_state_matrix`）。
 
 **Gram 共有カーネル（D-26）とブロック分解（round 1 で追加）。** 回帰の左辺
 `Phi = [1, X]` の Gram `Phi.T @ Phi` は条件ごとに1回だけ作り、目標が何本増えても
@@ -749,6 +761,17 @@ Gram は `[[T_eff, sum(X,0)], [sum(X,0).T, X.T @ X]]` にブロック分解で�
 `ValueError` にする。正規化は入力の**実測**の平均・標準偏差で行う（振幅に
 追従させるため、D-17 と両立する）。
 
+**この2つは対でのみ意味を持つので、04a T3 で `InputMeasure`（frozen / slots、
+`distribution` と `basis`）1値にまとめた。** `orthonormal_basis(u_lagged, degree,
+measure)` の第3引数は**既定値を持たない** —— これが D-28 の改訂の実体で、
+「片方だけ渡す」呼び方（改訂前は `distribution` に既定値 `uniform`、`basis` に
+既定値 `legendre` があった、F-03-1-006）を型検査の時点で書けなくする。未対応の組は
+`InputMeasure` の**構築時点**で `ValueError` になり、検査は1箇所しかない。
+設定層（`IpcConfig`）は YAML と `meta.json` の面を変えないため `basis` /
+`input_distribution` の**2つの文字列フィールドのまま**保ち、`ipc()` が入口で
+1度だけ畳む（設定 dataclass を1値へ置き換える案は、`results/` のバイト不変という
+04a T3 の唯一の証明手段を壊すため却下した。ADR 0002 §9-1）。
+
 | 項目 | 既定値 | コード上の出どころ |
 |---|---|---|
 | MC のリッジ正則化係数 `alpha`（D-25） | `1e-09` | `diagnostics.memory_capacity.MemoryCapacityConfig.alpha` |
@@ -774,10 +797,26 @@ round 1 レビューで発見された2件の BLOCKER（サロゲートの一括
 本節の記述を書いた時点（3a）ではまだ将来形だったが、一次資料は既に揃っており、
 この結果に対する**数値の考察は §11.2〜§11.5**（3b-2 T5）にある。
 
-**chunk_size は設定値を黙って下げうる（D-33、round 2 で追加）。** `chunk_size`
+**チャンク幅は性能軸と確保軸に分ける（D-33、04a T3 で改訂）。** 改訂前は1つの
+実効値（`CapacityProblem.effective_chunk_size`）が3つの用途 —— (A) 実目標の solve 幅、
+(B) サロゲートの solve 幅、(C) 代表目標ブロックの確保幅 —— に使われていたが、
+(C) には性能上の意味が一切無く、**運用者の性能ノブ `cfg.chunk_size` が確保上限を
+動かしていた**。いまは軸ごとに名前と導出元を分ける。
+
+| 軸 | メソッド | `cfg.chunk_size` を読むか | 何を決めるか |
+|---|---|---|---|
+| 性能軸 | `RowAlignment.solve_width(configured)` | **読む**（上限として） | 1回の solve に畳む目標の列数 (A)(B) |
+| 確保軸 | `RowAlignment.block_width(n_columns)` | **読まない** | 一度に実体化してよい列数 (C) |
+
+両軸とも `bounded_chunk_size` **1本の純関数**へ委譲する（128 MiB 予算を2箇所に
+持たない）。`params` に記録する `chunk_size_effective` は引き続き性能軸 (A) の値で、
+確保軸の実効値は記録しない。本番の値は変わらない（`min(4, 83) = 4` は改訂前の
+1ブロック4列と同一。全条件で `n_surrogate_targets` = 4 <= 予算列数 16〜847 を実測）。
+
+**性能軸は設定値を黙って下げうる。** `chunk_size`
 は結果を変えない性能パラメータだが、1チャンクの目標行列（`T_eff x
 chunk_size`）が `_MAX_CHUNK_BYTES`（128 MiB）を超える場合に限り、実装が
-`CapacityProblem.effective_chunk_size` 経由で `configured` より小さい実効値へ
+`RowAlignment.solve_width` 経由で `configured` より小さい実効値へ
 下げる（`configured` より大きくはしない）。この判断と根拠は round 1 の
 BLOCKER 修正（F-03-1-012/013）の副産物として `bounded_chunk_size` に実装
 されていたが、round 1 では正本（decisions.yaml / design.md / plan doc）の
@@ -796,7 +835,24 @@ D-29〜D-32 を予約しており、line 271 に D-29 = NARMA10 が既に記録�
 には上書き不能な絶対上限 `_MAX_VARIABLES_FOR_COUNT=20` を置き、
 `count_targets` の閉形式（`math.comb`）の組合せ爆発を縛る。3つとも
 `_validate_config`（延いては `count_targets` の先頭、F-03-3-018）で
-確保・列挙より前に検査する。round 2 でこの判断の根拠がコードコメントにしか
+確保・列挙より前に検査する。
+
+**`max_targets` は「目標数の上限」ではなく共有予算の終端である（04a T3 で
+D-34 の rule を改訂）。** 4段の絶対上限の外に、運用者が宣言する予算 `max_targets`
+が1本あり、これは**単位の違う複数の確保軸を1本で縛っている**。縛っている軸の
+列挙が正本で、`diagnostics.ipc.MAX_TARGETS_BOUNDED_AXES` に置く。
+
+| 軸 | 単位 | 本番の値（最深設定） | `max_targets`（200,000）に対する余裕 |
+|---|---|---|---|
+| `target_count`（目標数） | 本 | 4,075 | **49 倍** |
+| `heatmap_cells`（`ipc_heatmap` のセル数） | セル | 800 | **250 倍** |
+
+軸ごとに別の設定フィールドへ分けることは**行わない** —— 機能的な必要が無く
+（上表の余裕）、運用者が正しく設定すべきノブを1本増やすだけになる（`IpcConfig` に
+新フィールドを足すと `meta.json` に新キーが出て `results/` のバイト不変も崩れる。
+実測で確認済み）。**どちらかの余裕が10倍を切ったら分離を再検討する。**
+軸を足すときは列挙表とパラメトライズしたテストの両方に足す
+（`test_max_targets_bounded_axes_are_enumerated` が完全性を検査する）。round 2 でこの判断の根拠がコードコメントにしか
 無く、`design.md` も存在しない決定（D-29）を誤って参照していた
 （F-03-3-003）。
 
