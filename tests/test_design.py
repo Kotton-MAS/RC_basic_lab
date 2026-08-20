@@ -148,3 +148,38 @@ def test_negative_n_lags_raises() -> None:
 def test_too_short_series_raises() -> None:
     with pytest.raises(ValueError, match="短すぎます"):
         build_design_matrix(DelayLineSpec(n_lags=10), _inputs(n_steps=10))
+
+
+def test_design_matrix_rejects_the_allocation_axis_before_building_phi() -> None:
+    """``phi`` (``n_steps * n_features``) の確保軸が**確保より前に**落ちる。
+
+    実測 (reviewer-security): 04 (``experiments/04_chaotic_freerun``) の
+    ``lorenz.length`` と ``base.ridge.n_lags_grid`` はどちらも単独では
+    04 の他の確保軸 (積分ステップ数・真の軌道の要素数) を超えない値なのに、
+    設計行列の列数 (``n_lags * D_in + 1``) と掛け合わさると上限を超える
+    (``length=100_000, n_lags=1_000, D_in=3`` -> ``n_features=3_001``,
+    ``n_elements=300_100_000 > 2e8``)。この検査が無いと ``phi`` の実体化
+    (``np.full`` / ``np.concatenate``) まで到達し、``n_steps`` を巨大な
+    ``u`` を作らずに検証できる (``u`` 自体は 2.4 MB しかない)。
+    """
+    n_steps = 100_000
+    n_lags = 1_000
+    n_inputs = 3
+    u = np.zeros((n_steps, n_inputs))
+    with pytest.raises(ValueError, match="設計行列の要素数が上限"):
+        build_design_matrix(DelayLineSpec(n_lags=n_lags), u)
+
+
+def test_design_matrix_allows_the_axis_at_the_production_scale() -> None:
+    """本番規模 (04 の実 config と同じ桁) では確保軸の検査が誤発火しない。
+
+    ``length=8_000, n_lags=16, D_in=3`` は ``n_features=49``,
+    ``n_elements=392,000`` で上限 (2e8) の 500 分の1以下。検査を足したことで
+    正常系の成果物が変わらないことの実測 (成果物のバイト不変性の根拠の1つ)。
+    """
+    n_steps = 8_000
+    n_lags = 16
+    n_inputs = 3
+    u = np.zeros((n_steps, n_inputs))
+    design = build_design_matrix(DelayLineSpec(n_lags=n_lags), u)
+    assert design.phi.shape == (n_steps, 1 + n_inputs * (n_lags + 1))
