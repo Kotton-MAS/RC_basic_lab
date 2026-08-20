@@ -129,6 +129,43 @@ def test_package_init_reexports_all_public_submodules(package_name: str) -> None
     )
 
 
+MODULE_ONLY_PACKAGES = (
+    "experiment",
+    "diagnostics",
+    "plotting",
+    "readout",
+    "datasets",
+    "tasks",
+)
+"""``__init__.py`` が**モジュール名だけ**を再エクスポートするパッケージ (D-75)。
+
+root (``from rc_basics_lab.<pkg> import <シンボル>``) からのシンボル利用が
+実測0件だった6パッケージ (docs/削減候補-05.md §2 #2/#3)。``config`` は D-49 が
+``__all__`` を差分0で固定した本物の facade (54名中50名が実際に root から
+使われている) なので対象外。``reservoir`` は既に14行・3名で最小なので対象外。
+"""
+
+
+@pytest.mark.parametrize("package_name", MODULE_ONLY_PACKAGES)
+def test_module_only_packages_export_only_module_names(package_name: str) -> None:
+    """公開シンボルではなくモジュール名だけを再エクスポートする (D-75)。
+
+    ``test_package_attributes_are_modules_not_shadowed`` (D-52) は「サブモジュール
+    名と同名のシンボルで隠していないか」しか見ないため、サブモジュール名と
+    衝突しない新しいシンボル (例: ``run_task`` を再び ``__all__`` に足す) を
+    捕まえられない。このテストは ``__all__`` の集合を実際の公開サブモジュール
+    集合と**厳密に一致**させることで、モジュール名以外のものが混ざった瞬間に
+    赤くする。
+    """
+    package = importlib.import_module(f"rc_basics_lab.{package_name}")
+    expected = _public_submodule_names(package)
+    actual = set(package.__all__)
+    assert actual == expected, (
+        f"rc_basics_lab.{package_name}.__all__ がモジュール名の集合と一致しません "
+        f"(増={sorted(actual - expected)}, 減={sorted(expected - actual)})"
+    )
+
+
 DIAGNOSTICS_ALL = (
     "base",
     "dummy",
