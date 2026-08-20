@@ -19,9 +19,14 @@
   一致する**ことまで assert するのが要点で、一致を確かめずに接頭辞で除外すると、
   委譲先に無いフィールドをその下に足して被覆から逃がせてしまう。
 
-「出力」は **4-A の結果行 + 自走の結果**の組である。自走を含めるのは、
-``freerun.*`` が 4-A の行を1バイトも変えない (自走にしか効かない) ためで、
-4-A の行だけを見ると ``freerun.*`` の配線を実測できない。
+「出力」は **4-A の結果行 + 4-B の自走の行 + 4-C/4-D の掃引の行**の組である。
+自走と掃引を含めるのは、``freerun.*`` が 4-A の行を1バイトも変えず、
+``stability.*`` が 4-A も 4-B も変えないためで、4-A の行だけを見ると
+これらの配線を実測できない。
+
+``stability.*`` の葉は **Lorenz スコープ**として登録する。4-C / 4-D は Lorenz
+だけを回す (仕様 §8) ので、掃引の設定が Mackey-Glass の行を動かしていない
+ことまで測れる。
 """
 
 from __future__ import annotations
@@ -34,7 +39,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import numpy as np
 import pytest
 import yaml
 from wiring import (
@@ -62,15 +66,17 @@ from rc_basics_lab.config import (
     MemoryCapacityConfig,
     RidgeConfig,
     SplitConfig,
+    StabilityConfig,
     load_config_as,
 )
 from rc_basics_lab.diagnostics.ipc import count_targets
 from rc_basics_lab.experiment.freerun import (
-    chaos_task_entries,
-    run_free_run,
+    estimate_lorenz_lyapunov,
+    run_freerun_experiment,
     run_onestep,
 )
 from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.stability import run_stability_experiment
 from rc_basics_lab.meta import collect_meta_for
 from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
@@ -99,14 +105,11 @@ DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
 """
 
 TASK_LABELS: tuple[str, ...] = (TASK_NAME_LORENZ, TASK_NAME_MACKEY_GLASS)
-"""``scope`` に書ける課題名 (``ResultRow.task`` と ``FreeRunOutcome.task``)。"""
-
-_FREE_RUN_REPLICATE = 0
-"""指紋を取る自走のレプリケート (縮小設定なので1本で足りる)。"""
+"""``scope`` に書ける課題名 (``ResultRow.task`` と ``FreeRunRow.task``)。"""
 
 
 def base_config() -> Chaos04Config:
-    """秒未満で 4-A と自走を回せる縮小設定 (**構造は本番と同じ**)。
+    """4-A / 4-B / 4-C / 4-D を秒オーダーで回せる縮小設定 (**構造は本番と同じ**)。
 
     Lorenz と MG で ``length`` / ``standardize_steps`` を**別の値**にしてある
     のは、課題間で値を取り違える配線を落とすためである。
@@ -132,7 +135,25 @@ def base_config() -> Chaos04Config:
             standardize_steps=150,
         ),
         mackey_glass=MackeyGlassStandardizeConfig(standardize_steps=170),
-        freerun=FreeRunConfig(warmup_steps=10, free_run_steps=40),
+        freerun=FreeRunConfig(
+            warmup_steps=10,
+            free_run_steps=40,
+            stats_steps=80,
+            valid_time_threshold=0.4,
+        ),
+        stability=StabilityConfig(
+            spectral_radius_grid=(0.9,),
+            leak_rate_grid=(0.5,),
+            state_noise_grid=(0.0, 1.0e-2),
+            n_replicates=1,
+            surrogate_seed=4,
+        ),
+        mc=MemoryCapacityConfig(max_delay=12, n_surrogates=8),
+        ipc=IpcConfig(
+            max_delay_by_degree=(8, 4),
+            n_surrogates=8,
+            n_surrogate_targets=2,
+        ),
     )
 
 
@@ -156,6 +177,14 @@ CHAOS_WIRING_CASES: tuple[WiringCase, ...] = (
     # --- 自走の実行条件 (課題横断。4-A の行は1バイトも変わらない) ---
     case("freerun.warmup_steps", 25),
     case("freerun.free_run_steps", 60),
+    case("freerun.stats_steps", 100),
+    case("freerun.valid_time_threshold", 0.25),
+    # --- 4-C / 4-D の掃引軸 (Lorenz だけを回すので Lorenz スコープ) ---
+    _section_case("stability.spectral_radius_grid", (1.1,), TASK_NAME_LORENZ),
+    _section_case("stability.leak_rate_grid", (0.8,), TASK_NAME_LORENZ),
+    _section_case("stability.state_noise_grid", (0.0, 1.0e-3), TASK_NAME_LORENZ),
+    _section_case("stability.n_replicates", 2, TASK_NAME_LORENZ),
+    _section_case("stability.surrogate_seed", 11, TASK_NAME_LORENZ),
 )
 
 
@@ -172,39 +201,60 @@ def _onestep_fingerprint(rows: tuple[ResultRow, ...], task: str | None) -> objec
     ]
 
 
-def _round4(array: object) -> object:
-    """自走の予測を丸めた入れ子リストにする (指紋を JSON 化できる形へ)。"""
-    return np.round(np.asarray(array, dtype=np.float64), 10).tolist()
+def _freerun_fingerprint(config: Chaos04Config, task: str | None) -> list[object]:
+    """4-B の行の指紋 (実測時間の列だけ除く)。"""
+    lyapunov = estimate_lorenz_lyapunov(config)
+    results = run_freerun_experiment(config, lyapunov)
+    return [
+        {
+            item.name: getattr(row, item.name)
+            for item in fields(row)
+            if item.name != "wall_time_s"
+        }
+        for row in results.rows
+        if task is None or row.task == task
+    ]
+
+
+def _stability_fingerprint(config: Chaos04Config) -> list[object]:
+    """4-C の行と 4-D の容量の指紋 (実測時間の列だけ除く)。
+
+    4-C / 4-D は Lorenz だけを回すので、Mackey-Glass スコープの指紋には
+    含めない (含めると「MG の出力が変わっていない」という検査が、実際には
+    Lorenz の掃引を見ていることになる)。
+    """
+    lyapunov = estimate_lorenz_lyapunov(config)
+    results = run_stability_experiment(config, lyapunov)
+    return [
+        {
+            **{
+                item.name: getattr(outcome.row, item.name)
+                for item in fields(outcome.row)
+                if item.name != "wall_time_s"
+            },
+            "mc_total": outcome.capacity.mc_total,
+            "ipc_total": outcome.capacity.ipc_total,
+            "mc_threshold": outcome.capacity.mc_threshold,
+            "seed_surrogate": outcome.capacity.seed_surrogate,
+        }
+        for outcome in results.outcomes
+    ]
 
 
 def run_config(config: Chaos04Config, task: str | None = None) -> str:
-    """縮小設定で 4-A と自走を回し、出力の指紋を返す。
+    """縮小設定で 4-A / 4-B / 4-C / 4-D を回し、出力の指紋を返す。
 
     ``task`` を渡すとその課題の出力だけを見る。課題固有の葉が他方の課題を
     動かしていないことの確認に使う。
     """
     rows = tuple(run_onestep(config))
-    freerun: list[object] = []
-    for entry in chaos_task_entries(config):
-        if task is not None and entry.name != task:
-            continue
-        outcome = run_free_run(config, entry, _FREE_RUN_REPLICATE)
-        freerun.append(
-            {
-                "task": outcome.task,
-                "switch_index": outcome.switch_index,
-                "alpha": outcome.readout.alpha,
-                "n_completed": outcome.result.n_completed,
-                "diverged": outcome.result.diverged,
-                "predictions": _round4(outcome.result.predictions),
-                "truth": _round4(outcome.truth),
-            }
-        )
-    return json.dumps(
-        {"onestep": _onestep_fingerprint(rows, task), "freerun": freerun},
-        sort_keys=True,
-        default=str,
-    )
+    payload: dict[str, object] = {
+        "onestep": _onestep_fingerprint(rows, task),
+        "freerun": _freerun_fingerprint(config, task),
+    }
+    if task is None or task == TASK_NAME_LORENZ:
+        payload["stability"] = _stability_fingerprint(config)
+    return json.dumps(payload, sort_keys=True, default=str)
 
 
 @lru_cache(maxsize=1)
@@ -406,7 +456,9 @@ def test_empty_yaml_gives_chaos_defaults(tmp_path: Path) -> None:
             "mackey_glass:\n  tau: 17.0\n", "tau", id="mg_generation_parameter"
         ),
         pytest.param("lyapunov:\n  reference: 0.9\n", "reference", id="lyapunov_typo"),
-        pytest.param("freerun:\n  stats_steps: 100\n", "stats_steps", id="not_yet"),
+        pytest.param(
+            "stability:\n  rho_grid: [0.9]\n", "rho_grid", id="stability_typo"
+        ),
     ],
 )
 def test_unknown_chaos_keys_are_rejected(
