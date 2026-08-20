@@ -12,6 +12,14 @@
 単一の ``t0`` とし、全手法をまったく同じ行集合で学習・評価する (D-05)。
 ``first_valid`` より手前の行は **NaN** で埋める。0 埋めにすると、``t0`` の取り違えが
 「少しずれた学習結果」として静かに通ってしまうため。
+
+``build_design_matrix`` は ``phi`` を確保する**唯一の場所**なので、確保軸の
+検査もここに置く (F-04-1-001, CWE-789)。以前は 04 (``freerun.py``) が
+``lorenz.length`` と ``ridge.n_lags_grid`` から確保量を別途計算して検査して
+いたが、``phi`` の列数を決める規則 (``_layout_of``) が変わっても検査式は
+自動で追随しない。**確保する要素数そのものをここで数える**ことで、遅延線の
+``n_lags`` に限らずどの ``FeatureSpec`` が増えても・01/02/03/04 のどの呼び
+出し元からでも同じ1本の検査を通る。
 """
 
 from __future__ import annotations
@@ -24,6 +32,20 @@ from rc_basics_lab.types import FloatArray
 
 BIAS_NAME = "bias"
 """バイアス列の特徴名。``fit_ridge`` の無罰則列の判定に使う (D-03)。"""
+
+_MAX_DESIGN_MATRIX_ELEMENTS = 200_000_000
+"""``phi`` (``n_steps * n_features``) の上書き不能な絶対上限 (F-04-1-001, CWE-789)。
+
+``experiment/capacity.py`` の ``_MAX_STATE_ELEMENTS`` と**同じ値・同じ
+threat model** (状態行列も設計行列もどちらも ``float64`` の2次元配列で、
+確保量は行数 x 列数に比例する)。``readout`` は ``experiment`` を import
+できない (``types -> config/seeds/metrics -> reservoir/readout/tasks/
+diagnostics -> experiment`` の一方向、循環を避けるため) ので、新しい上限を
+作るのではなく**同じ値をここに複製する** (``tasks/narma.py`` の
+``_MAX_STATE_ELEMENTS`` 複製と同じ流儀)。本番最大 (04 の遅延線:
+``length=8000, n_lags=16, D_in=3`` で ``8000 * (16*3+1)`` = 392,000) は
+500 倍以上の余裕を残す。
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -223,9 +245,23 @@ def build_design_matrix(
         ``DesignMatrix``。列数は順に ``1+D``, ``1+D(k+1)``, ``1+D+N``。
 
     Raises:
-        ValueError: 形状不整合、または ``ReservoirSpec`` に ``states=None``。
+        ValueError: 形状不整合、``ReservoirSpec`` に ``states=None``、または
+            確保軸 (``phi`` の要素数) が上限を超える場合 (F-04-1-001)。
     """
     inputs, state_array, layout, first_valid = _validate_inputs(spec, u, states)
+    n_steps, n_inputs = inputs.shape
+    n_features = (
+        (1 if layout.bias else 0)
+        + len(layout.input_lags) * n_inputs
+        + (state_array.shape[1] if state_array is not None else 0)
+    )
+    n_elements = n_steps * n_features
+    if n_elements > _MAX_DESIGN_MATRIX_ELEMENTS:
+        raise ValueError(
+            "設計行列の要素数が上限を超えています: "
+            f"{n_elements} > {_MAX_DESIGN_MATRIX_ELEMENTS} "
+            "(n_steps * n_features。phi を確保する前に検査で落とす)"
+        )
     blocks, names = _assemble_blocks(layout, inputs, state_array)
     phi: FloatArray = np.concatenate(blocks, axis=1)
     return DesignMatrix(phi=phi, first_valid=first_valid, feature_names=tuple(names))
