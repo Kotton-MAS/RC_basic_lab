@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
@@ -387,7 +386,7 @@ def generate_synthetic_anomalies(
     _validate(cfg)
     max_span = _REMOVED_SPAN_FACTORS[1] * cfg.segment_length
     raw_samples = cfg.length + cfg.n_anomalies * (max_span + cfg.segment_length) + 2
-    raw_config = dataclasses.replace(cfg.mackey_glass, length=raw_samples, horizon=1)
+    raw_config = cfg.mackey_glass.to_mackey_glass(length=raw_samples)
     raw: FloatArray = generate_mackey_glass(raw_config, rng).u[:, 0]
     derivative: FloatArray = np.gradient(raw)
     value_scale = float(np.std(raw)) or 1.0
