@@ -145,7 +145,19 @@ D-13 と正面から衝突する。したがって**減る側は差分0**を要�
 向きで再エクスポートしている。
 """
 
-ANOMALY05_ADDITIONS = ("SyntheticAnomalyConfig", "SyntheticMackeyGlassConfig")
+ANOMALY05_ADDITIONS = (
+    "Anomaly05Config",
+    "AnomalyDatasetConfig",
+    "AnomalyEvaluationConfig",
+    "AnomalyPreprocessConfig",
+    "AnomalyReservoirConfig",
+    "AnomalyRidgeConfig",
+    "AnomalySeedConfig",
+    "AnomalyThresholdConfig",
+    "SyntheticAnomalyConfig",
+    "SyntheticMackeyGlassConfig",
+    "anomaly_stream_seed",
+)
 """05 (T2 / T3 準備) が ``config.__all__`` へ**足した**公開名。
 
 ``CHAOS04_ADDITIONS`` と同じ扱い (減る側は差分0のまま、増える側はここに
@@ -158,6 +170,12 @@ ANOMALY05_ADDITIONS = ("SyntheticAnomalyConfig", "SyntheticMackeyGlassConfig")
 ``MackeyGlassConfig`` から ``length`` / ``horizon`` の2葉を落とした器である
 (D-69)。合成源はこの2葉を必ず上書きするため、内包したままでは「YAML から
 設定できるのに出力が1バイトも変わらない死んだ葉」になっていた。
+
+残りの9名は T3 が足した実験1本ぶんの設定 (``Anomaly05Config`` と、その
+セクション7個 + ストリーム対応の関数 ``anomaly_stream_seed``)。セクションを
+01 の ``ESNConfig`` / ``RidgeConfig`` の再利用で済ませなかったのは、
+``bias_scale`` / ``activation`` / ``state_noise`` / ``n_lags_grid`` が 05 の
+軸ではなく、内包すると死葉が4つ増えるためである (D-69 と同じ判断)。
 """
 
 SURVIVING_DIR_ONLY = ("annotations",)

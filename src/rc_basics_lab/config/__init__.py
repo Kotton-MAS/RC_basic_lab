@@ -27,8 +27,17 @@ from __future__ import annotations
 
 from rc_basics_lab.config._common import ConfigError, load_config_as
 from rc_basics_lab.config.anomaly05 import (
+    Anomaly05Config,
+    AnomalyDatasetConfig,
+    AnomalyEvaluationConfig,
+    AnomalyPreprocessConfig,
+    AnomalyReservoirConfig,
+    AnomalyRidgeConfig,
+    AnomalySeedConfig,
+    AnomalyThresholdConfig,
     SyntheticAnomalyConfig,
     SyntheticMackeyGlassConfig,
+    anomaly_stream_seed,
 )
 from rc_basics_lab.config.capacity03 import (
     Capacity03Config,
@@ -85,6 +94,14 @@ __all__ = [
     "DEFAULT_ESP_MAP_SIGMA_GRID",
     "LORENZ_LYAPUNOV_REFERENCE",
     "TASK_LENGTH_FIELDS",
+    "Anomaly05Config",
+    "AnomalyDatasetConfig",
+    "AnomalyEvaluationConfig",
+    "AnomalyPreprocessConfig",
+    "AnomalyReservoirConfig",
+    "AnomalyRidgeConfig",
+    "AnomalySeedConfig",
+    "AnomalyThresholdConfig",
     "Capacity03Config",
     "CapacityDriveConfig",
     "CapacityReservoirConfig",
@@ -122,6 +139,7 @@ __all__ = [
     "TimescaleConfig",
     "TimescaleSweepConfig",
     "WashoutSweepConfig",
+    "anomaly_stream_seed",
     "esp_stream_seed",
     "load_config",
     "load_config_as",
