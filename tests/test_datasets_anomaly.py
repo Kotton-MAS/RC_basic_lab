@@ -203,7 +203,7 @@ def test_staged_write_commit_rejects_bytes_swapped_before_replace(
     assert list(tmp_path.glob("*.part")) == []
 
 
-def test_staged_write_operations_stay_pinned_to_the_directory_fd_after_the_path_is_replaced(
+def test_staged_write_stays_pinned_to_dir_fd_after_path_replaced(
     tmp_path: Path,
 ) -> None:
     """D-67: 一時ファイルの作成・再照合・確定は ``target.parent`` を都度パス
