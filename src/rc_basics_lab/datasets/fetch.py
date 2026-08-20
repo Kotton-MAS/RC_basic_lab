@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 import zipfile
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -342,6 +343,32 @@ def _is_symlink(info: zipfile.ZipInfo) -> bool:
     return (info.external_attr >> 16) & 0o170000 == 0o120000
 
 
+def _extract_member(
+    bundle: zipfile.ZipFile, info: zipfile.ZipInfo, target: Path
+) -> None:
+    """1 member を安全に取り出す (``download()`` と同型の TOCTOU 対策、F-1-019)。
+
+    展開したファイルも「ディスクに確定するバイト列が検証されていない」という
+    ``download()`` と同じ不変条件の対象である。予測可能な basename へ直接
+    書かず、``target.parent`` 内の予測不能な一時ファイルへ書いてから、
+    書き込み中に計算した digest でディスク上の実バイト列を再照合し、
+    ``os.replace`` で確定させる。
+    """
+    partial = _make_partial_path(target)
+    digest = hashlib.sha256()
+    try:
+        with bundle.open(info) as source, partial.open("wb") as sink:
+            for chunk in iter(lambda: source.read(_CHUNK_BYTES), b""):
+                digest.update(chunk)
+                sink.write(chunk)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    _replace_after_reverifying(
+        partial, target, digest.hexdigest(), error_cls=UnsafeArchiveMemberError
+    )
+
+
 def extract_members(
     archive: Path,
     members: Sequence[str],
@@ -357,7 +384,8 @@ def extract_members(
 
     Raises:
         UnsafeArchiveMemberError: member 名が安全でない、シンボリックリンク、
-            または展開後サイズが上限を超える。
+            展開後サイズが上限を超える、または確定直前のディスク再照合で
+            バイト列の差し替えを検出した場合 (F-1-019)。
     """
     if not destination.resolve().is_relative_to(data_dir.resolve()):
         raise UnsafeArchiveMemberError(
@@ -379,9 +407,7 @@ def extract_members(
                     f"{member!r} {info.file_size} > {max_member_bytes} byte"
                 )
             target = resolve_under(destination, name)
-            with bundle.open(info) as source, target.open("wb") as sink:
-                for chunk in iter(lambda: source.read(_CHUNK_BYTES), b""):
-                    sink.write(chunk)
+            _extract_member(bundle, info, target)
             written.append(target)
     return tuple(written)
 
