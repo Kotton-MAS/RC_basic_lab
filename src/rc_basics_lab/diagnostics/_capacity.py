@@ -75,6 +75,170 @@ _UNIFORM_HALF_WIDTH_IN_SIGMA = math.sqrt(3.0)
 """一様分布の半値幅と標準偏差の比 (``a = sqrt(3) * sigma_u``、D-17)。"""
 
 
+@dataclass(frozen=True, slots=True)
+class InputMeasure:
+    """入力測度 ``(input_distribution, basis)`` を1つにまとめた値 (D-28)。
+
+    この2つは**対でのみ意味を持つ**。「一様でない入力に Legendre を当てる」
+    のような未対応の組は容量を目標間で二重計上させ、保存則が「N をわずかに
+    超える」という穏やかな形で破れる (図では正常に見える)。かつては
+    ``orthonormal_basis(u, degree, distribution=UNIFORM, *, basis=LEGENDRE)``
+    のように**片方だけを既定値つきで**受けており、「片方だけ渡す」呼び方が
+    型検査を素通りした (F-03-1-006)。対を1つの値にして
+    ``orthonormal_basis`` の**既定値なしの第3引数**として受けることで、
+    その呼び方をそもそも書けなくする。
+
+    値域の検証を ``__post_init__`` で行うのは D-09 (設定 dataclass は純データ
+    で検証は使う側) に反しない —— ``InputMeasure`` は YAML から構築される
+    設定 dataclass ではなく、カーネル内で組み立てる値オブジェクトである。
+    設定層 (``IpcConfig``) は YAML と ``meta.json`` の面を変えないため
+    **2つの文字列フィールドのまま**保ち、``ipc()`` が入口で1度だけ畳む。
+
+    Attributes:
+        distribution: 宣言された入力分布 (``UNIFORM`` / ``NORMAL``)。
+        basis: 多項式基底 (``LEGENDRE`` / ``HERMITE``)。
+
+    Raises:
+        ValueError: 組が ``SUPPORTED_BASIS_PAIRS`` に無い場合 (**構築時点**)。
+    """
+
+    distribution: str
+    basis: str
+
+    def __post_init__(self) -> None:
+        if (self.distribution, self.basis) not in SUPPORTED_BASIS_PAIRS:
+            raise ValueError(
+                "(input_distribution, basis) の組が未対応です (D-28): "
+                f"({self.distribution!r}, {self.basis!r})。"
+                f" 対応する組: {SUPPORTED_BASIS_PAIRS}"
+            )
+
+
+UNIFORM_LEGENDRE = InputMeasure(UNIFORM, LEGENDRE)
+"""一様入力 x Legendre 基底 (既定の測度)。"""
+
+NORMAL_HERMITE = InputMeasure(NORMAL, HERMITE)
+"""正規入力 x 確率論的 Hermite 基底。"""
+
+SUPPORTED_MEASURES: tuple[InputMeasure, ...] = (UNIFORM_LEGENDRE, NORMAL_HERMITE)
+"""対応する測度の一覧 (``SUPPORTED_BASIS_PAIRS`` と1対1)。"""
+
+
+@dataclass(frozen=True, slots=True)
+class RowAlignment:
+    """MC / IPC が共有する行合わせ (D-24)。``t0`` と ``n_samples`` **だけ**を持つ。
+
+    行合わせの担い手をこの1つの値にまとめ、(i) 基準点 ``t0 = max(washout,
+    その診断の最大遅延)`` の算出、(ii) ``t0 >= T`` の拒否、(iii) 遅延窓の
+    切り出しの3つを診断ごとに複製せずここへ置く。F-03-1-001 で潰したのは
+    (iii) だけで、(i)(ii) は MC (``memory_capacity``) と IPC (``ipc``) の
+    2箇所に複製が残っていた。
+
+    **状態行列にも Gram にも触れない**のがこの型の存在理由である。行合わせ
+    だけを検査したいテストは、以前はダミーの状態行列 (特異な Gram ごと)
+    を構築する必要があった (``tests`` の ``_dummy_problem``)。
+    ``RowAlignment`` を直接構築すればその必要がない
+    (``test_row_alignment_needs_no_state_matrix``)。
+
+    チャンク幅の2軸 (D-33) もここに置く。どちらも ``n_samples`` だけの
+    関数であり、``bounded_chunk_size`` 1本の純関数へ委譲する
+    (128 MiB の予算を2箇所に持たないため)。
+
+    Attributes:
+        t0: ``X`` の何行目から使うか (D-24 の単一基準点)。
+        n_samples: 回帰に使う行数 ``T_eff``。全目標がこの行集合を共有する。
+    """
+
+    t0: int
+    n_samples: int
+
+    @classmethod
+    def from_series(
+        cls, *, n_steps: int, washout: int, max_delay: int
+    ) -> RowAlignment:
+        """基準点を算出して行合わせを作る。MC と IPC はこの1本だけを呼ぶ。
+
+        Args:
+            n_steps: 状態系列の長さ ``T``。
+            washout: ``ctx.washout``。
+            max_delay: その診断が使う最大遅延 (MC は ``cfg.max_delay``、
+                IPC は ``max(cfg.max_delay_by_degree)``)。
+
+        Raises:
+            ValueError: ``t0 >= n_steps`` で回帰に使える行が無い場合
+                (黙って切り詰めない)。
+        """
+        t0 = max(washout, max_delay)
+        if t0 >= n_steps:
+            raise ValueError(
+                "系列が短すぎます (D-24): "
+                f"t0=max(washout={washout}, max_delay={max_delay})={t0}"
+                f" >= T={n_steps}"
+            )
+        return cls(t0=t0, n_samples=n_steps - t0)
+
+    def lagged(self, series: FloatArray, delay: int) -> FloatArray:
+        """入力系列を D-24 の単一基準点に合わせて遅延 ``delay`` だけずらす。
+
+        ``series[t0 - delay : t0 - delay + n_samples]`` を返す。MC と IPC は
+        どちらも「遅延 k の目標は状態と同じ行集合 (``t0`` 始まり) に対応する」
+        という同じ規律 (D-24) の実体をこの1本の窓計算に依存する。かつては
+        MC (2箇所) と IPC (1箇所) がこの式を共有カーネルの外でそれぞれ書いて
+        おり、MC 側だけ複製が値レベルで検査されていなかった (F-03-1-001:
+        窓を1ステップずらしても MC のテスト22本が全て緑のまま通った)。ここに
+        1本だけ置くことで、以後どの容量診断が増えても複製が生まれない。
+
+        Args:
+            series: 1次元の系列 (入力の正規直交多項式など)。
+            delay: 遅延 (0 以上)。
+
+        Returns:
+            ``(n_samples,)`` のビュー。
+
+        Raises:
+            ValueError: ``series`` が1次元でない / ``delay`` が負 /
+                窓が ``series`` の範囲外になる場合。
+        """
+        if delay < 0:
+            raise ValueError(f"delay は 0 以上が必要です: {delay}")
+        values = np.asarray(series, dtype=np.float64)
+        if values.ndim != 1:
+            raise ValueError(f"series は1次元配列が必要です: {values.shape}")
+        start = self.t0 - delay
+        stop = start + self.n_samples
+        if start < 0 or stop > values.shape[0]:
+            raise ValueError(
+                "delay が範囲外です (D-24): "
+                f"t0={self.t0}, delay={delay}, series長={values.shape[0]},"
+                f" n_samples={self.n_samples}"
+            )
+        return values[start:stop]
+
+    def solve_width(self, configured: int) -> int:
+        """**性能軸** (D-33): 1回の solve に畳む目標の列数。
+
+        運用者が指定した ``cfg.chunk_size`` を上限とし、1チャンクが
+        ``_MAX_CHUNK_BYTES`` を超えるときだけ下げる。結果は1ビットも
+        変わらない。呼び出し側は ``cfg.chunk_size`` を直接使わずこの
+        メソッドを経由し、実効値を ``params['chunk_size_effective']`` に
+        記録する (F-03-2-001 / F-03-2-009)。
+        """
+        return bounded_chunk_size(configured, self.n_samples)
+
+    def block_width(self, n_columns: int) -> int:
+        """**確保軸** (D-33): 一度に実体化してよい列数。
+
+        ``cfg.chunk_size`` を**読まない**のがこのメソッドの存在理由である。
+        代表目標ブロック (``picked``) の一度の確保量には性能上の意味が無く、
+        運用者の性能ノブが確保上限を動かしてはならない。上限は
+        ``n_columns`` 自身 (それ以上は必要ない) と 128 MiB 予算だけで決まる。
+
+        Args:
+            n_columns: 実体化したい列数 (これを超えて確保する意味は無い)。
+        """
+        return bounded_chunk_size(n_columns, self.n_samples)
+
+
 @dataclass(frozen=True, slots=True, eq=False)
 class CapacityProblem:
     """容量測定の左辺 (状態のビューと Gram) を1回だけ作って保持する。
