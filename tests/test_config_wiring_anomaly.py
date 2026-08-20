@@ -26,12 +26,18 @@ from __future__ import annotations
 import ast
 import hashlib
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import pytest
 import yaml
-from wiring import apply_case, assert_yaml_has_all_leaves, case, leaf_paths, plain
+from wiring import (
+    apply_case,
+    assert_yaml_has_all_leaves,
+    case,
+    leaf_paths,
+    plain,
+)
 
 from rc_basics_lab.config import (
     MackeyGlassConfig,
@@ -40,6 +46,18 @@ from rc_basics_lab.config import (
     load_config_as,
 )
 from rc_basics_lab.tasks.anomaly import AnomalySeries, generate_synthetic_anomalies
+
+if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
+    pass
+
+CHANNEL_SOURCES = "sources"
+"""``dataset.source`` 専用のチャネル (実験固有、``wiring.py`` の想定どおり)。
+
+``source`` を変えると系列源の**型**が変わるが、実データ源はキャッシュが無い
+環境では回せない (D-60: pytest はネットワークに触れない)。そこで観測点を
+「``build_sources`` が返す源の型」に置く —— 系列そのものの差はキャッシュ
+依存になるので、CI で毎回測れる観測点はここしかない。
+"""
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src" / "rc_basics_lab"
