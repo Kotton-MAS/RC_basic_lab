@@ -26,6 +26,7 @@ YAML 化するため、キーのタイプミスが黙って無視されると「
 from __future__ import annotations
 
 from rc_basics_lab.config._common import ConfigError, load_config_as
+from rc_basics_lab.config.anomaly05 import SyntheticAnomalyConfig
 from rc_basics_lab.config.capacity03 import (
     Capacity03Config,
     CapacityDriveConfig,
@@ -113,6 +114,7 @@ __all__ = [
     "RidgeConfig",
     "SplitConfig",
     "StabilityConfig",
+    "SyntheticAnomalyConfig",
     "TimescaleConfig",
     "TimescaleSweepConfig",
     "WashoutSweepConfig",
