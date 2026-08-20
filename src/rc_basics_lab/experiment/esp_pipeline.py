@@ -20,7 +20,6 @@ sigma_u と rho の分布まで残すので、記事で多安定性を説明す�
 from __future__ import annotations
 
 import csv
-import dataclasses
 import logging
 import time
 from collections.abc import Sequence
@@ -37,7 +36,7 @@ from rc_basics_lab.experiment.esp import (
     run_esp_experiment,
     summarize_verdict_agreement,
 )
-from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.report import META_JSON, write_meta_for, write_rows_csv
 from rc_basics_lab.experiment.threshold import (
     ThresholdRow,
     run_threshold_sweep,
@@ -113,24 +112,12 @@ class EspOutputs:
 
 def write_esp_csv(rows: Sequence[EspRow], path: Path) -> Path:
     """条件ごとの診断結果を CSV に書く (列順は ``EspRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(ESP_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, ESP_CSV_COLUMNS)
 
 
 def write_washout_csv(rows: Sequence[WashoutRow], path: Path) -> Path:
     """2-D の結果を CSV に書く (列順は ``WashoutRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(WASHOUT_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows_csv(rows, path, WASHOUT_CSV_COLUMNS)
 
 
 def write_threshold_csv(
