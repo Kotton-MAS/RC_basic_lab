@@ -52,7 +52,6 @@ from rc_basics_lab.experiment.attractor import (
 )
 from rc_basics_lab.experiment.capacity import (
     validate_n_units_bound,
-    validate_sequential_run_count,
     validate_state_matrix_bounds,
 )
 from rc_basics_lab.experiment.report import META_JSON, write_meta_for
@@ -269,9 +268,9 @@ def run_onestep(config: Chaos04Config) -> list[ResultRow]:
     """
     # 確保軸10 (逐次実行の本数)。plan_replicate は状態行列を1本だけ作り3手法で
     # 共有するので、4-A の本数は「課題数 x base.n_replicates」で決まる。
-    validate_sequential_run_count(
-        len(chaos_task_entries(config)) * config.base.n_replicates
-    )
+    # MUTATED:     validate_sequential_run_count(
+    # MUTATED:         len(chaos_task_entries(config)) * config.base.n_replicates
+    # MUTATED:     )
     rows: list[ResultRow] = []
     for entry in chaos_task_entries(config):
         # D-34 の規律を 04 の確保軸にも効かせる。plan_replicate が状態行列と
@@ -1387,11 +1386,11 @@ def run_freerun_experiment(
     validate_stats_bounds(config.freerun.stats_steps)
     # 確保軸10 (逐次実行の本数)。4-B は手法ごとに独立な閉ループを回すので、
     # 4-A (状態行列を3手法で共有) とは違い手法数も掛かる。
-    validate_sequential_run_count(
-        len(chaos_task_entries(config))
-        * config.base.n_replicates
-        * len(FREERUN_METHODS)
-    )
+    # MUTATED:     validate_sequential_run_count(
+    # MUTATED:         len(chaos_task_entries(config))
+    # MUTATED:         * config.base.n_replicates
+    # MUTATED:         * len(FREERUN_METHODS)
+    # MUTATED:     )
 
     evaluations: list[FreeRunEvaluation] = []
     profile: list[FreeRunProfileRow] = []
