@@ -394,13 +394,9 @@ def _assert_cell_matches(cell: str, actual: float, label: str) -> None:
     丸め桁数をセルから読むので、表の見やすさ (有効数字) と厳密さを両立できる。
     1桁でも書き換えれば落ちる。
 
-    **ただし実行時間だけは例外**で、比が ``WALL_TIME_TOLERANCE`` 以内なら通す
-    (D-84)。実行環境で変わる値を厳密一致で縛ると、再生成のたびに文書を
-    書き換える義務が生まれるだけで、退行の検出には何も寄与しない。
+    **実行時間のセルにこれを使ってはいけない。** 実行環境で変わる値なので
+    ``_assert_wall_time_cell`` を使うこと (D-84)。
     """
-    if "wall_time" in label or label.endswith("_s"):
-        _assert_wall_time_cell(cell, actual, label)
-        return
     assert float(cell) == round(actual, _decimals(cell)), (
         f"{label}: design.md は {cell} / 一次資料は {actual!r}"
     )
@@ -807,13 +803,13 @@ def test_wall_time_table_matches_the_meta_json() -> None:
             for index, key in enumerate(
                 ("wall_time_state_s", "wall_time_mc_s", "wall_time_ipc_s"), start=2
             ):
-                _assert_cell_matches(cells[index], float(entry[key]), key)
-            _assert_cell_matches(
+                _assert_wall_time_cell(cells[index], float(entry[key]), key)
+            _assert_wall_time_cell(
                 cells[5].strip("*"), float(entry["wall_time_s"]), "wall_time_s"
             )
             seen += 1
         elif "しきい値比較" in cells[0]:
-            _assert_cell_matches(
+            _assert_wall_time_cell(
                 cells[5].strip("*"),
                 _number(comparison, "wall_time_s"),
                 "threshold_comparison.wall_time_s",
@@ -821,7 +817,7 @@ def test_wall_time_table_matches_the_meta_json() -> None:
             seen += 1
         elif "合計" in cells[0]:
             assert int(cells[1].strip("*")) == meta["n_rows"], cells
-            _assert_cell_matches(
+            _assert_wall_time_cell(
                 cells[5].strip("*"), _number(meta, "wall_time_s"), "meta.wall_time_s"
             )
             seen += 1
@@ -1011,7 +1007,7 @@ def test_chaos_wall_time_table_matches_the_meta_json() -> None:
     for cells in table:
         for label, value in expected.items():
             if cells[0].startswith(label):
-                _assert_cell_matches(
+                _assert_wall_time_cell(
                     cells[1].strip("*").removesuffix(" 秒"), value, label
                 )
                 seen += 1
@@ -1249,7 +1245,7 @@ def test_chaos_full_wall_time_table_matches_the_meta_json() -> None:
     for row in full:
         for label, value in expected.items():
             if row[0].startswith(label):
-                _assert_cell_matches(_bold(row[1]).removesuffix(" 秒"), value, label)
+                _assert_wall_time_cell(_bold(row[1]).removesuffix(" 秒"), value, label)
                 seen += 1
                 break
     assert seen == len(expected), full
