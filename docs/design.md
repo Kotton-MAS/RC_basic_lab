@@ -1707,3 +1707,94 @@ T4 の軸1・2・3・8 に続き、T5 は4本を**確保より前に**検査す�
 - **自走の安定化のためのハイパーパラメータ探索**はしていない。4-C は ρ・リーク率・
   状態ノイズの3軸を**掃引して報告する**だけで、「当たるまで構造 HP を回す」ことは
   D-08 が禁じている
+
+## 13. 異常検知（実験05）の設計と実測（05a / 05b、D-54〜D-63 / D-78〜D-82）
+
+### 13.1 データセットの選定基準（要件書 設計判断5）
+
+サーベイ（`docs/survey_異常検知データセット_05.md` §2）で 12 候補を実測して比較し、
+次の5基準で選んだ。**基準は「良い成績が出るか」を含まない** —— 含めると、
+選定そのものが結論の一部になる。
+
+| # | 基準 | 落ちた候補（実測） |
+|---|---|---|
+| 1 | **入手が申請なしで再現できる** | SWaT / WADI（申請フォーム必須）、Yahoo S5（HuggingFace gated・旧 URL は DNS 消滅） |
+| 2 | **ライセンスが確認でき、再配布しない形なら使える** | Exathlon（CC BY-NC-SA・非商用のみ）、TSB-UAD（SWaT / Yahoo 混入で再配布不可） |
+| 3 | **単変量**（多変量にすると前処理と集約の任意性が増える） | SKAB / SMD / Exathlon（多変量） |
+| 4 | **ラベルが区間**（点ラベル / 窓ラベルは point-adjust の議論と噛み合わない） | NAB（窓ラベル）、SMD（点ラベル） |
+| 5 | **CPU 予算に収まる** | Exathlon（24.6 GB）、UCR 全 250 系列（`make figures-05` の 900 秒に入らない） |
+
+採用は **MGAB（CC0-1.0、既定）** と **UCR Anomaly Archive のサブセット8系列**、
+および**合成源**（MGAB と同じ手続きで異常を挿入する。pytest はこれだけを使う。D-60）。
+UCR はライセンス未指定なので**データ本体を同梱しない**（D-58。README の
+「データセットのライセンスと取得手順」が単一の真実）。
+
+### 13.2 既定値とコード上の出どころ
+
+| 項目 | 既定値 | コード上の出どころ |
+|---|---|---|
+| 系列源（コード既定・合成） | `'synthetic'` | `config.anomaly05.AnomalyDatasetConfig.source` |
+| 系列の打ち切り長 `max_length` | `20000` | `config.anomaly05.AnomalyDatasetConfig.max_length` |
+| 学習区間の割合 `train_ratio` | `0.25` | `config.anomaly05.AnomalyDatasetConfig.train_ratio` |
+| 較正区間の割合 `calibration_ratio`（D-56） | `0.15` | `config.anomaly05.AnomalyDatasetConfig.calibration_ratio` |
+| 前処理の方式 `normalize`（D-57） | `'zscore'` | `config.anomaly05.AnomalyPreprocessConfig.normalize` |
+| 前処理係数を推定する行数 `standardize_steps` | `3000` | `config.anomaly05.AnomalyPreprocessConfig.standardize_steps` |
+| 入力窓 `input_window`（遅延線の k と移動統計の窓を兼ねる） | `16` | `config.anomaly05.AnomalyPreprocessConfig.input_window` |
+| スコアの後方移動平均 `score_smoothing` | `8` | `config.anomaly05.AnomalyPreprocessConfig.score_smoothing` |
+| リザバー規模 `n_units`（5-D の基準 N） | `200` | `config.anomaly05.AnomalyReservoirConfig.n_units` |
+| レプリケート数 `n_replicates` | `5` | `config.anomaly05.AnomalyReservoirConfig.n_replicates` |
+| 警報予算 `target_false_alarm_rate`（D-56） | `0.01` | `config.anomaly05.AnomalyThresholdConfig.target_false_alarm_rate` |
+| 5-B の掃引点数 `sweep_points` | `21` | `config.anomaly05.AnomalyThresholdConfig.sweep_points` |
+| PA%K の K [%]（D-55） | `(0.0, 20.0)` | `config.anomaly05.AnomalyEvaluationConfig.pa_k_grid` |
+| 5-C の正規化の格子 | `('zscore', 'minmax', 'robust')` | `config.anomaly05_sweep.AnomalyProtocolSweepConfig.normalize_grid` |
+| 5-D の N の格子 | `(25, 50, 100, 200)` | `config.anomaly05_sweep.AnomalySizeSweepConfig.n_units_grid` |
+| 印を付ける有意水準（D-78） | `0.05` | `experiment.anomaly_ranking.CONTROL_SIGN_TEST_ALPHA` |
+| 劣化点の割合（`n_units_at_90pct` の 90%） | `0.9` | `experiment.anomaly_sweep.DEGRADATION_FRACTION` |
+| 分割オフセットの上限（系列長の 1/x） | `100` | `experiment.anomaly.SPLIT_OFFSET_DIVISOR` |
+| 時系列図に残す点数の上限（系統あたり） | `3000` | `experiment.anomaly_pipeline.TIMELINE_MAX_POINTS` |
+
+**設定の葉にしていない4つ**（`CONTROL_SIGN_TEST_ALPHA` / `DEGRADATION_FRACTION` /
+`SPLIT_OFFSET_DIVISOR` / `TIMELINE_MAX_POINTS`）はすべて「値を動かすと**報告する量の
+名前が嘘になる**か、結論を1ビットも動かさない」ものである。葉にすると
+「水準を緩めて印を増やした図」が作れてしまう（D-78）。
+
+**`experiments/05_anomaly_detection/config.yaml` の既定はコード既定と別である**：
+記事の本番は実データ源 MGAB（系列 1〜3 / `max_length: 60000`）で回す。
+`max_length` を 60,000 に切っているのは 5-C の予算（< 250 秒）のためで、
+100,000 点のままだと 5-A が 11.8 秒 × 27 格子点 = 318 秒になり予算を割る（実測）。
+コード側の既定を合成のままにしてあるのは、**pytest がネットワークに一切触れない**
+ため（D-60）。
+
+### 13.3 実行時間の内訳（`make figures-05` の実測、MGAB 3系列 × 5レプリケート）
+
+| 区間 | 実測 [秒] | 予算 [秒] |
+|---|---|---|
+| 5-A + 5-B | 7.3 | 460 |
+| 時系列図の1例 | 0.5 | 30 |
+| 5-C（27 格子点） | 198.4 | 250 |
+| 5-D（N 4点） | 24.3 | 150 |
+| 図5枚 + CSV5枚の書き出し | 0.8 | 20 |
+| **合計** | **231.4** | **900** |
+
+**5-A と 5-B は分けて測っていない**。`run_anomaly_headline` が1回の評価の中で
+`anomaly.csv` の行と 5-B の掃引行の両方を作るためで、分けるには実験層の内側に
+計測を仕込むことになる。合算した予算（400 + 60 = 460 秒）で見る
+（`experiment.anomaly_pipeline.SECTION_BUDGETS_S` が単一の真実で、
+`meta.json` の `wall_time_budget_s` にそのまま載る）。
+
+### 13.4 実測（記事の結論）
+
+- **AUPRC で一様乱数対照から離れるのはリザバー残差だけ**（MGAB、15 対の片側符号検定）。
+  ESN 0.1602 ± 0.0130（対照比 2.83x、15/15、p = 3.1e-05）に対し、遅延線 0.0570 /
+  直前値 0.0559 / 移動統計 0.0560 / 入力ノルム 0.0558 は一様乱数 0.0567 と区別できない
+- **一様乱数の AUPRC は異常率に張り付いた**（0.0567 vs 0.0555）。これが
+  「主指標が point-adjust を通っていない」ことの実測的な証拠になる（D-54 / D-55）
+- **プロトコル 27 格子点のうち 23 点で順位が動いたが、逆転 62 組のうち
+  「両方に印がある」組は 0 組**で、ESN の順位は 27 点すべてで1位だった（D-78）。
+  順位の変動だけを報告すると**逆の結論**になる
+- **`n_units_at_90pct` = 100**（基準 N=200 の AUPRC 0.1602 に対し N=100 で 0.1392 =
+  0.869 倍、N=50 で 0.585 倍、N=25 で 0.469 倍）。全 24 行が `n_train=14800` で
+  学習量は揃っている（D-80）
+
+数値の正本は `results/05_anomaly_detection/`（`meta.json` と CSV5枚）で、
+README の表は `tests/test_readme_summary.py` が同じ CSV と機械照合する。
