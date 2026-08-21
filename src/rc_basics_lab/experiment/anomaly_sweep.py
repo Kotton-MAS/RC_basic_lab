@@ -121,152 +121,6 @@ class SizeSweepSummary:
     saturated: bool
 
 
-def sign_test_p_value(n_pairs: int, n_better: int) -> float:
-    """片側符号検定の p 値 (帰無仮説「対照より高い確率は 1/2」)。
-
-    Args:
-        n_pairs: 対の数。
-        n_better: そのうち評価対象が対照を上回った数。
-
-    Returns:
-        ``P(X >= n_better)`` (``X ~ Binomial(n_pairs, 0.5)``)。対が0なら 1.0。
-
-    Raises:
-        ValueError: 数が負、または ``n_better > n_pairs`` の場合。
-    """
-    if n_pairs < 0 or n_better < 0:
-        raise ValueError(f"対の数は 0 以上が必要です: {n_pairs}, {n_better}")
-    if n_better > n_pairs:
-        raise ValueError(f"n_better が n_pairs を超えています: {n_better} > {n_pairs}")
-    if n_pairs == 0:
-        return 1.0
-    tail = sum(math.comb(n_pairs, k) for k in range(n_better, n_pairs + 1))
-    return tail / float(2**n_pairs)
-
-
-def kendall_tau(first: Sequence[float], second: Sequence[float]) -> float:
-    """2つの並びの Kendall tau-b (同値を含む順位相関)。
-
-    Args:
-        first: 基準側の値 (大きいほど上位)。
-        second: 比較側の値。``first`` と同じ順 (同じ系統) で並べる。
-
-    Returns:
-        ``(C - D) / sqrt((n0 - n1)(n0 - n2))``。どちらかの並びが全同値で
-        分母が 0 になる場合は ``nan`` (順序が定義できない)。
-
-    Raises:
-        ValueError: 長さが違う、または2要素未満の場合。
-    """
-    if len(first) != len(second):
-        raise ValueError(f"長さが違います: {len(first)} != {len(second)}")
-    if len(first) < 2:
-        raise ValueError(f"2要素以上が必要です: {len(first)}")
-    concordant = discordant = tied_first = tied_second = 0
-    for left in range(len(first)):
-        for right in range(left + 1, len(first)):
-            delta_first = first[left] - first[right]
-            delta_second = second[left] - second[right]
-            if delta_first == 0.0:
-                tied_first += 1
-            if delta_second == 0.0:
-                tied_second += 1
-            if delta_first == 0.0 or delta_second == 0.0:
-                continue
-            if delta_first * delta_second > 0.0:
-                concordant += 1
-            else:
-                discordant += 1
-    n0 = len(first) * (len(first) - 1) // 2
-    denominator = math.sqrt(float((n0 - tied_first) * (n0 - tied_second)))
-    if denominator == 0.0:
-        return math.nan
-    return float(concordant - discordant) / denominator
-
-
-def _aggregate_one(method: str, rows: Sequence[AnomalyRow]) -> MethodAggregate:
-    values = np.asarray([row.auprc for row in rows], dtype=np.float64)
-    control = np.asarray([row.auprc_random for row in rows], dtype=np.float64)
-    n_pairs = int(values.size)
-    n_better = int(np.count_nonzero(values > control))
-    p_value = sign_test_p_value(n_pairs, n_better)
-    return MethodAggregate(
-        method=method,
-        auprc_mean=float(np.mean(values)),
-        auprc_sd=float(np.std(values, ddof=1)) if n_pairs > 1 else 0.0,
-        auprc_random_mean=float(np.mean(control)),
-        n_pairs=n_pairs,
-        n_better_than_control=n_better,
-        control_sign_p=p_value,
-        distinguishable=p_value <= CONTROL_SIGN_TEST_ALPHA,
-    )
-
-
-def aggregate_methods(rows: Sequence[AnomalyRow]) -> Mapping[str, MethodAggregate]:
-    """5-A の行を系統ごとに畳む (鍵の順は ``ANOMALY_METHODS``)。
-
-    対照 (``random_control`` / ``input_norm_control``) も畳む —— 掃引の集計で
-    落とせるようにすると、対照の無い順位表が作れてしまう (D-61)。
-
-    Raises:
-        ValueError: 行に現れる系統が ``ANOMALY_METHODS`` と一致しない場合。
-    """
-    grouped: dict[str, list[AnomalyRow]] = {}
-    for row in rows:
-        grouped.setdefault(row.method, []).append(row)
-    if set(grouped) != set(ANOMALY_METHODS):
-        raise ValueError(
-            "系統の集合が ANOMALY_METHODS と一致しません: "
-            f"{sorted(grouped)} != {sorted(ANOMALY_METHODS)}"
-        )
-    return {
-        method: _aggregate_one(method, grouped[method]) for method in ANOMALY_METHODS
-    }
-
-
-def _ranks(aggregates: Mapping[str, MethodAggregate]) -> dict[str, int]:
-    """``auprc_mean`` の降順の順位 (1 が最良、同値は同順位)。"""
-    means = {method: item.auprc_mean for method, item in aggregates.items()}
-    return {
-        method: 1 + sum(1 for other in means.values() if other > mean)
-        for method, mean in means.items()
-    }
-
-
-def _discordant_counts(
-    reference: Mapping[str, MethodAggregate], current: Mapping[str, MethodAggregate]
-) -> tuple[int, int]:
-    """基準と順序が逆転した系統対の数と、そのうち両方に印がある対の数。
-
-    「両方に印がある」は**両条件で**区別できることを要求する —— 片方の条件でだけ
-    対照から離れている系統の順位変化は、雑音と区別がつかない (D-78)。
-    """
-    methods = list(ANOMALY_METHODS)
-    discordant = 0
-    marked = 0
-    for left in range(len(methods)):
-        for right in range(left + 1, len(methods)):
-            first, second = methods[left], methods[right]
-            delta_reference = reference[first].auprc_mean - reference[second].auprc_mean
-            delta_current = current[first].auprc_mean - current[second].auprc_mean
-            if delta_reference == 0.0 or delta_current == 0.0:
-                continue
-            if delta_reference * delta_current > 0.0:
-                continue
-            discordant += 1
-            if all(
-                item.distinguishable
-                for item in (
-                    reference[first],
-                    reference[second],
-                    current[first],
-                    current[second],
-                )
-            ):
-                marked += 1
-    return discordant, marked
-
-
 def protocol_conditions(config: Anomaly05Config) -> tuple[ProtocolCondition, ...]:
     """5-C の格子点を列挙する (3軸の全組合せ)。
 
@@ -348,13 +202,13 @@ def _protocol_rows(
     reference: Mapping[str, MethodAggregate],
     is_headline: bool,
 ) -> tuple[ProtocolSweepRow, ...]:
-    ranks = _ranks(aggregates)
-    reference_ranks = _ranks(reference)
+    ranks = method_ranks(aggregates)
+    reference_ranks = method_ranks(reference)
     tau = kendall_tau(
         [reference[method].auprc_mean for method in ANOMALY_METHODS],
         [aggregates[method].auprc_mean for method in ANOMALY_METHODS],
     )
-    discordant, marked = _discordant_counts(reference, aggregates)
+    discordant, marked = discordant_counts(reference, aggregates)
     return tuple(
         ProtocolSweepRow(
             dataset=config.dataset.source,
