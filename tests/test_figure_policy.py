@@ -315,14 +315,18 @@ def test_the_mc_sweep_shows_the_capacity_normalised_by_the_bound(
     上限 200 と実測 10〜36 は対数軸でも離れすぎていて、「上限からどれだけ
     遠いか」が読めない。第2軸が消えたらここが落ちる。
     """
-    rows = mc_sweep_rows()
+    rows = mc_sweep_rows(leaks=(0.3,))
+    n_units = float(rows[0].n_units)
     plot_mc_sweep(rows, mc_sweep_profile(rows), tmp_path / "mc.png", style=CONTEXT)
-    figure = capture_figures[0]
-    axes = [*figure.axes, *(child for axis in figure.axes for child in axis.child_axes)]
-    labels = [axis.get_ylabel() for axis in axes]
-    assert any("MC / N" in label for label in labels), (
-        f"MC / N の軸がありません: {labels}"
-    )
+    panel = capture_figures[0].axes[0]
+    children = list(panel.child_axes)
+    assert len(children) == 1, f"第2軸が {len(children)} 本です"
+    # 目盛の範囲が主軸を N で割ったものになっている (ラベルではなく変換を見る)
+    low, high = panel.get_ylim()
+    assert children[0].get_ylim() == pytest.approx((low / n_units, high / n_units))
+    # 「右軸が何か」はパネルのタイトルに書く (第2軸は constrained layout の
+    # 管理外で、軸ラベルを付けると隣のパネルに重なるため)
+    assert "MC / N" in panel.get_title()
 
 
 # --- FIG-7 / D-88: 未計算と 0 を区別する ------------------------------------
