@@ -420,7 +420,7 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
     persistence 0.8810 / 移動統計 0.7607 / 一様乱数 0.6894 / 入力ノルム 0.7969 で、
     **AUPRC の 4.85 倍差が PA-F1 では 1.34 倍まで潰れる** (D-55 の根拠そのもの)
 
-- [ ] **T4: 実験5-C (プロトコル感度) / 5-D (N と性能)** — 想定所要 **M**
+- [x] **T4: 実験5-C (プロトコル感度) / 5-D (N と性能)** — 想定所要 **M** (完了 2026-08-21)
   - 何をするか: `experiment/anomaly_sweep.py`。5-C は `normalize × input_window × score_smoothing` の格子で
     手法順位を出し、**順位入替の有無を数値化** (Kendall tau と基準条件からの順位変化件数)。
     5-D は `n_units_grid` を掃引し、**基準 N の AUPRC の 90% を初めて割る N** を特定
