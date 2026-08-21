@@ -199,11 +199,15 @@ def test_narma10_reuses_run_task_and_shares_rows_across_methods(
 def test_narma10_alpha_grid_is_shared_across_methods(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """全 (手法, 候補) が ``narma.base.ridge.alpha_grid`` をそのまま受け取る。
+    """リッジの3手法が ``narma.base.ridge.alpha_grid`` をそのまま受け取る。
 
     本番 YAML では**その格子が 01 と同一**であることも突き合わせる。3-C の
     主張は「探索予算をそろえた比較」なので、01 と違う格子で回すと 01 の結果と
     並べて読めなくなる。
+
+    **例外は正則化なし水準 (D-90) の1つだけ**で、そこは alpha = 0 の1点。
+    例外が1つであることをここで数える —— 「手法ごとに格子を変えてよい」に
+    崩れると D-04 の探索予算の平等が静かに消えるため。
     """
     config = tiny_config()
     spy = _SelectAlphaSpy()
@@ -211,11 +215,22 @@ def test_narma10_alpha_grid_is_shared_across_methods(
     results = run_narma10(config)
 
     base = config.narma.base
+    shared = tuple(base.ridge.alpha_grid)
     # 線形1 + 遅延線 len(n_lags_grid) + ESN1 を全レプリケートぶん
-    expected_calls = base.n_replicates * (1 + len(TINY_N_LAGS_GRID) + 1)
-    assert len(spy.grids) == expected_calls
-    assert set(spy.grids) == {tuple(base.ridge.alpha_grid)}
-    assert {row.alpha for row in results.rows} <= set(base.ridge.alpha_grid)
+    expected_shared = base.n_replicates * (1 + len(TINY_N_LAGS_GRID) + 1)
+    # 正則化なし水準は遅延線と同じ候補数を alpha = 0 の1点で回す
+    expected_ols = base.n_replicates * len(TINY_N_LAGS_GRID)
+    assert spy.grids.count(shared) == expected_shared
+    assert spy.grids.count(DELAY_LINE_OLS_ALPHAS) == expected_ols
+    assert len(spy.grids) == expected_shared + expected_ols
+    assert set(spy.grids) == {shared, DELAY_LINE_OLS_ALPHAS}, (
+        "共有格子と正則化なし水準以外の alpha 格子が現れました (D-04 / D-90)"
+    )
+    ridge_alphas = {
+        row.alpha for row in results.rows if row.method != DELAY_LINE_OLS
+    }
+    assert ridge_alphas <= set(base.ridge.alpha_grid)
+    assert {row.alpha for row in results.rows if row.method == DELAY_LINE_OLS} == {0.0}
     # 遅延線が選ぶ k は格子の中 (探索予算の非対称は遅延線の側に大きい、D-08)
     assert {row.n_lags for row in results.rows if row.method == DELAY_LINE} <= set(
         base.ridge.n_lags_grid
