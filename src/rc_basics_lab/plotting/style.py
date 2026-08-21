@@ -25,6 +25,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 import matplotlib
 import numpy as np
@@ -159,7 +160,19 @@ def sequential_colors(count: int) -> FloatArray:
     return colors
 
 
-def reference_line_kwargs(index: int = 0) -> dict[str, object]:
+class ReferenceLineStyle(TypedDict):
+    """参照線に渡す描画引数 (``axhline`` / ``plot`` の keyword)。
+
+    ``dict[str, object]`` にすると ``**`` 展開が mypy strict で通らない
+    (``axhline`` の位置引数と衝突する)。キーを型で固定する。
+    """
+
+    color: str
+    linestyle: tuple[float, tuple[float, float]]
+    linewidth: float
+
+
+def reference_line_kwargs(index: int = 0) -> ReferenceLineStyle:
     """参照線の体裁 (色・破線・線幅) を返す (FIG-5、D-86)。
 
     ``axis.axhline(value, **reference_line_kwargs(), label=...)`` の形で使う。
@@ -167,11 +180,11 @@ def reference_line_kwargs(index: int = 0) -> dict[str, object]:
     **色は常に ``REFERENCE_COLOR``** である。
     """
     dashes = REFERENCE_DASHES[index % len(REFERENCE_DASHES)]
-    return {
-        "color": REFERENCE_COLOR,
-        "linestyle": (0.0, dashes),
-        "linewidth": REFERENCE_LINEWIDTH,
-    }
+    return ReferenceLineStyle(
+        color=REFERENCE_COLOR,
+        linestyle=(0.0, dashes),
+        linewidth=REFERENCE_LINEWIDTH,
+    )
 
 
 def replicates_field(replicates: Sequence[int]) -> str:
@@ -362,6 +375,7 @@ __all__ = [
     "REFERENCE_LINEWIDTH",
     "SAVEFIG_DPI",
     "SEQUENTIAL_CMAP",
+    "ReferenceLineStyle",
     "StyleContext",
     "add_footnote",
     "find_cjk_font",
