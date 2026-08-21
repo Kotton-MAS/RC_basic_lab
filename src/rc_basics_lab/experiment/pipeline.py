@@ -122,6 +122,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     # の循環になり ``import rc_basics_lab.plotting`` 単独が ImportError になる。
     # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
     # subprocess guard の両方が落ちる。
+    from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
     from rc_basics_lab.plotting.style import setup_style
 
@@ -133,7 +134,8 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     _log_state_space(reports)
 
     stats = aggregate_nrmse(rows)
-    style = setup_style()
+    # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
+    style = setup_style(commit=git_commit())
     paths = (
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),

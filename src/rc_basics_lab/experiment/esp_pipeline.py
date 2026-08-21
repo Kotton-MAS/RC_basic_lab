@@ -211,6 +211,7 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
     # 作図層の import を関数本体に置くのは D-53 (循環 import の解消)。
     # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
     # subprocess guard の両方が落ちる。
+    from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures_esp import (
         plot_esp_decay,
         plot_esp_map,
@@ -229,7 +230,8 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
     _log_agreement(agreement)
     _log_sensitivity(sensitivity)
 
-    style = setup_style()
+    # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
+    style = setup_style(commit=git_commit())
     paths = (
         write_esp_csv(rows, out_dir / ESP_DIAGNOSTICS_CSV),
         write_washout_csv(washout_rows, out_dir / WASHOUT_SENSITIVITY_CSV),

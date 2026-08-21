@@ -189,6 +189,7 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
     # 作図層の import を関数本体に置くのは D-53 (循環 import の解消)。
     # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
     # subprocess guard の両方が落ちる。
+    from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures_freerun import (
         plot_freerun_attractor,
         plot_freerun_stats,
@@ -211,7 +212,8 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
     stability = run_stability_experiment(config, lyapunov)
 
     figures_started = time.perf_counter()
-    style = setup_style()
+    # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
+    style = setup_style(commit=git_commit())
     paths = (
         write_onestep_csv(onestep_rows, out_dir / ONESTEP_CSV),
         write_freerun_csv(freerun.rows, out_dir / FREERUN_CSV),

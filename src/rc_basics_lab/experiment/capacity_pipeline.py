@@ -269,6 +269,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     # 作図層の import を関数本体に置くのは D-53 (循環 import の解消)。
     # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard と
     # subprocess guard の両方が落ちる。
+    from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures_capacity import (
         plot_ipc_conservation,
         plot_ipc_profile,
@@ -303,7 +304,8 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         )
     _log_timings(timings)
 
-    style = setup_style()
+    # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
+    style = setup_style(commit=git_commit())
     paths = (
         write_capacity_csv(rows, out_dir / CAPACITY_CSV),
         write_capacity_profile_csv(profile, out_dir / CAPACITY_PROFILE_CSV),

@@ -335,6 +335,7 @@ def run_and_report_anomaly(config: Anomaly05Config, out_dir: Path) -> AnomalyOut
     """
     # 作図層の import を関数本体に置くのは D-53 (循環 import の解消)。
     # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard が落ちる。
+    from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures_anomaly import (
         plot_pr_curves,
         plot_score_timeline,
@@ -367,7 +368,8 @@ def run_and_report_anomaly(config: Anomaly05Config, out_dir: Path) -> AnomalyOut
     size_s = time.perf_counter() - size_started
 
     figures_started = time.perf_counter()
-    style = setup_style()
+    # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
+    style = setup_style(commit=git_commit())
     paths = (
         write_anomaly_csv(config, headline.rows, out_dir / ANOMALY_CSV),
         write_rows_csv(
