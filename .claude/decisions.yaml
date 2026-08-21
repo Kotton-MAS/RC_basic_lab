@@ -535,3 +535,33 @@
   rule: "README 冒頭が主張する『実装済みの記事の範囲』は、実際に節がある実験と一致すること"
   rationale: "(T5 実装者の指摘) README 冒頭が『サイクル01〜03 の範囲を実装している』のまま、下に実験04・05 の節が並んでいた。**最初に読む3行が最も古い**という形のドリフトで、リポジトリを開いた人が最初に受け取る情報が間違っていた。同じ箇所に『D-01〜D-22』という記述もあり、実際は82件だった。このリポジトリは README の数値表を機械照合する仕組み (tests/test_readme_summary.py) を厚く持っており、それがこの連載の背骨なのに、**『何を実装したか』という一番大きな主張だけが誰にも検査されていなかった** —— 細かい数値は守られ、見出しレベルの主張は守られていない、という非対称があった。決定の件数は増え続けるので README には書かず、範囲だけを機械照合の対象にする。変異注入: 冒頭を『記事01〜03 の全範囲』に戻すと『主張する範囲 [01,02,03] と実際に節がある実験 [01,02,03,04,05] が食い違っています』で赤になることを実測した"
   guard_test: "tests/test_readme_summary.py::test_readme_claims_the_same_experiments_it_documents"
+
+# サイクル06 (図の設計方針 FIG-1〜FIG-7 のうち「実験を変えないもの」の実装)。
+# docs/図の設計方針_RC基礎編.md の FIG-3 / FIG-5 / FIG-6 / FIG-7 を約束にする。
+# 図は記事から切り離されて流通するので、**図の外に置いた情報は失われる**。
+# 「本文の注に書いてある」は、図が単体になった時点で嘘になる。
+
+- id: D-84
+  rule: "文献由来の参照線は、凡例テキストそのものに出典 (著者 年) を持たせる。出典が特定できていない参照値には [原典未特定] を付す。出典文字列は plotting/labels.py が単一の真実で、labels.cited(text, source) を通す (source が空なら描画前に ValueError)"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-3。参照線の値・図の注・原典未特定の明記は既に実装されていたが、**注は図が切り取られると消える**。記事の図は単体で流通するので、出典は凡例の中に入れないと読者に届かない。実測 (変更前): 3-A の凡例は『上限 MC <= N = 200』、3-B' は『上限 IPC_total = N (傾き1)』で、どちらにも出典が無く、3-C の参照線 (0.16 / 0.107) の『原典未特定』は supxlabel の注にしか無かった。cited() を関数にして空の出典を落とすのは、figures_capacity._reference_lines の『ラベルが欠けたら描画前に落とす』と同じ規律 (設計方針『実装上の置き場所』が『出典文字列も同じ検証対象に含める』と指定している)。出典は人名と年なので ja/en で変えない (SOURCE_UNIDENTIFIED だけは訳語がある対にした —— D-10 の英語フォールバックで日本語が図に残ると豆腐文字になるため)。変異注入: 3-A の上限線から cited(...) を外して素のラベルに戻すと guard_test が赤 (1 failed / 11 passed)"
+  guard_test: "tests/test_figure_policy.py::test_literature_reference_lines_carry_their_source_in_the_legend"
+
+- id: D-85
+  rule: "手法と色の対応は plotting/style.py の METHOD_COLORS (線形 / 遅延線(リッジ) / 遅延線(OLS) / ESN の4色) が単一の真実とし、連載5記事で共通にする。作図モジュールが matplotlib の tab: 色を直書きしない。未知の手法は method_color が ValueError で落とす"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-5。読者は5記事を続けて読み、記事をまたいで同じ対照群 (線形 / 遅延線 / ESN) を見る。実測 (変更前): 3-A は viridis、3-B は tab:blue + tab:orange、3-B' は plasma、3-C と 4-B は単色 tab:blue、05 だけが独自の6色パレットを持っており、同じ ESN が記事ごとに違う色だった。ESN の緑 (#1a9850) と遅延線の青 (#2166ac) は 05 の figures_anomaly.METHOD_COLORS と同じ値にしてある (05 が既に持っていた色を連載の正本に昇格させた)。delay_line_ols は**実験としてはまだ無い**が色だけ先に確保した —— 後から足すと既存4記事の配色がずれるため (3-C に OLS 水準を足すのは実験の追加なので、今回の範囲外)。既定色へのフォールバックを禁止するのは、手法を1つ足したときに『なぜか他と同じ色の系列が2本ある』図が静かに出るため。tab: 直書きの禁止まで含めて1つの約束にしているのは、対応表を style へ置いても各モジュールが自分で色を選び直せば約束が崩れるからである。変異注入: METHOD_COLORS の delay_line_ols を delay_line と同色にすると guard_test が赤 (1 failed / 11 passed)"
+  guard_test: "tests/test_figure_policy.py::test_method_colours_are_fixed_for_the_whole_series"
+
+- id: D-86
+  rule: "参照線・理論上限は style.REFERENCE_COLOR (黒) + 破線で描き、データ系列のどのパレットとも同色にしない。同じ図に参照線が複数あるときは色ではなく破線の刻み (REFERENCE_DASHES) で区別する"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-5『参照線・理論上限: 常に同一色＋破線。データ系列と絶対に同色にしない』。実測 (変更前): 参照線は tab:red / tab:green / tab:orange / #333333 に散っており、3-C では参照線の tab:green とデータ系列の色が同系だった。『測ったもの』と『引いた線』が体裁だけで区別できないと、読者は理論値を実測点の一つとして読む。黒を選んだのは、手法4色・05 の系統6色・04 の3態色・SOURCE_STYLE のいずれとも重ならない唯一の無彩色だったため (guard_test がこの非重複を毎回検算する)。2本以上のときに色を変えないのは、色を1本増やすたびにデータ系列と衝突する余地が増えるからで、代わりに刻みを変える (3-C の NMSE = 0.16 / 0.107)。変異注入: REFERENCE_COLOR を ESN の緑 (#1a9850) にすると guard_test が赤 (1 failed / 11 passed)"
+  guard_test: "tests/test_figure_policy.py::test_the_reference_colour_is_never_a_data_series_colour"
+
+- id: D-87
+  rule: "全ての図 (plotting/figures*.py の plot_* 関数) は、再現条件を図の隅の footnote へ ASCII 1行で焼き込む。組み立ては style.add_provenance / add_footnote の1か所に閉じ、条件をタイトルへ書かない。コミットハッシュは実験層が meta.git_commit() を1回呼んで setup_style(commit=...) へ渡す (作図層は git を呼ばない)"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-6。meta.json にある『どの条件で測ったか』は、図が単体で流通した時点で失われる。実測 (変更前): 条件をタイトルに書いている図が5枚 (3-A / 3-B / 3-B' / 2-B / 5-A の時系列) あり、書いている項目は図ごとにばらばら (N と sigma_u だけ / rho と a だけ / dataset と series と replicate)、残り16枚は条件を1つも載せていなかった。手書きだと揃わないので機械生成にし、AST で全 plot_* が footnote を書いていることを数える (図を1枚足したときに忘れる、がこの約束の壊れ方なので、描画を通さない静的検査のほうが確実)。レプリケートは seed_* 列ではなく**レプリケート番号**を載せる —— seed_* は基底シードで全レプリケートで同じ値である (実測: 03 の capacity.csv は 117 行すべて seed_reservoir=0)。**この決定は D-74 と競合する**: commit を焼き込むぶん PNG は生成時の HEAD に依存し、『再生成してバイト一致するか』では図の退行を判定できなくなる (CSV の wall_time_s 列・meta.json の timestamp_utc が既に同じ性質を持っており、PNG が最後のバイト安定な成果物だった)。それでも焼き込むのは、図だけを見た読者がコードの版に辿り着けることのほうが、削減レビューの判定材料より優先すると判断したためである。図の退行判定は指紋の差分の**理由**を見る運用に移す。変異注入: plot_ipc_profile から add_provenance の呼び出しを外すと guard_test を含む 3 件が赤 (3 failed / 9 passed)"
+  guard_test: "tests/test_figure_policy.py::test_every_figure_burns_in_its_reproduction_conditions"
+
+- id: D-88
+  rule: "ヒートマップで打ち切りの外 (未計算) のセルは、容量 0 と同じ色で塗らない。plotting/heatmap.masked_beyond_truncation でマスクし、Colormap.set_bad のグレーで描いて打ち切り境界を線で示す。打ち切りが分からないとき (max_delay_by_degree を渡さないとき) は未計算の領域を捏造しない"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-7。実測: fig_ipc_profile (3-B) は次数4 x 遅延60 = 240 セルのうち打ち切り (max_delay_by_degree = 60/20/10/6) の外が 144 セル (60%) あり、そこは 0 で埋められていた。見えている矩形ブロックは**打ち切り設定の形そのもの**であって系の性質ではないのに、読者はそれを『次数3 は遅延10 より先で容量が消える』と読む。長形式 (D-38) には正値セルしか無いので『未計算』と『しきい値を超えなかった 0』は行からは区別できない —— 打ち切りは設定にしかないため、作図関数の引数として実験層から渡す (CSV の列を増やすと成果物が変わるので採らなかった)。遅延軸を対数にするのは、打ち切りが次数ごとに一桁違い、線形軸では容量の大半が在る低遅延側が潰れるため。マスクを既定 (None) で無効にしてあるのは、打ち切りを知らない呼び出し側が『測っていない領域』を勝手に作らないようにするためである。変異注入: masked_beyond_truncation のマスク条件を反転すると guard_test を含む 2 件が赤 (2 failed / 10 passed)"
+  guard_test: "tests/test_figure_policy.py::test_the_ipc_profile_separates_uncomputed_cells_from_zero_capacity"
