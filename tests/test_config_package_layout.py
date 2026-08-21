@@ -239,6 +239,11 @@ ALLOWED_INTERNAL_EDGES = frozenset(
   ``MackeyGlassConfig`` を組み立てる (D-69 / D-70)。合成源の土台が MG である
   以上、**既定値の**単一の真実は 01 側に残す —— 04 が MG のパラメータを
   再定義しなかったのと同じ規律で、05 が絞ったのは値ではなく葉の集合である
+- ``anomaly05 -> anomaly05_sweep``: ``Anomaly05Config`` が 5-C / 5-D の格子を
+  節として内包する。逆向き (``anomaly05_sweep -> anomaly05``) を引かないのが
+  要点で、格子の既定値を ``AnomalyPreprocessConfig()`` から引こうとすると
+  この辺が生えて循環する —— 既定値はリテラルで書き写し、一致は
+  ``test_the_default_grids_contain_the_headline_condition`` が実測する
 
 サイクルのモジュール (``esp02`` / ``capacity03`` / ``chaos04``) は**互いを
 import しない**。3本はどれも 01 を内包する同じ形の辺で、向きが逆になることは

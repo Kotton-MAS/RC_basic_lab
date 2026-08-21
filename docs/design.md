@@ -1237,9 +1237,10 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 190 | 244 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` | 183 | 231 |
 | `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 170 | 207 |
-| `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` | 285 | 351 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 132 | 139 |
-| **合計** | — | **1189** | **1463** |
+| `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` | 297 | 363 |
+| `anomaly05_sweep.py` | 05 の掃引の格子 / `AnomalyProtocolSweepConfig` / `AnomalySizeSweepConfig` | 48 | 64 |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 138 | 145 |
+| **合計** | — | **1255** | **1545** |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
 機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は
