@@ -665,3 +665,31 @@ def test_readme_experiment_05_random_control_sits_on_the_anomaly_rate() -> None:
     rate = [float(row["anomaly_rate"]) for row in rows]
     assert float(match["control"]) == round(sum(control) / len(control), 4)
     assert float(match["rate"]) == round(sum(rate) / len(rate), 4)
+
+
+def test_readme_claims_the_same_experiments_it_documents() -> None:
+    """README 冒頭の「実装済みの範囲」が、実際の節見出しと一致すること (D-83)。
+
+    冒頭が「サイクル01〜03 の範囲を実装している」のまま、下に 04 と 05 の節が
+    並んでいる状態が実際に起きていた。**最初に読む3行が最も古い**という形の
+    ドリフトで、README を開いた人が最初に受け取る情報が間違っていた。
+
+    数値の照合 (この上の各テスト) は厚くしてあったのに、
+    「何を実装したか」という一番大きな主張だけが誰にも検査されていなかった。
+    """
+    text = README.read_text(encoding="utf-8")
+    documented = {
+        match.group(1) for match in re.finditer(r"^## 実験(\d{2})", text, re.MULTILINE)
+    }
+    # 01 は「3コマンドで再現する」の節が兼ねているので、節見出しが無くても実装済み。
+    documented.add("01")
+    claimed = re.search(r"記事(\d{2})〜(\d{2}) の全範囲", text)
+    assert claimed, (
+        "README 冒頭に「記事NN〜MM の全範囲を実装している」の記述がありません。"
+        "範囲を書き換えたなら、この検査の期待形式も合わせてください。"
+    )
+    span = {f"{n:02d}" for n in range(int(claimed.group(1)), int(claimed.group(2)) + 1)}
+    assert span == documented, (
+        f"README 冒頭が主張する範囲 {sorted(span)} と、"
+        f"実際に節がある実験 {sorted(documented)} が食い違っています。"
+    )

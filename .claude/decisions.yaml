@@ -530,3 +530,8 @@
   rule: "時系列図 (fig_score_timeline) が読む anomaly_timeline.csv は、5-A の(先頭の使える系列, レプリケート 0) をそのまま再実行して作る。閾値は再計算せず5-A の行が持つ値をそのまま載せ、図のためだけの条件・前処理・閾値規則を作らない"
   rationale: "図は成果物 CSV の行だけを読む (仕様 §5 禁止する構造7) ので、配列で表される『時系列上のスコア』にも書き出し先が要る (04 の freerun_profile.csv と同じ役割)。このとき図用に条件を作り直すと、記事の図と anomaly.csv の数値が別の実験のものになる —— しかも両方それらしく見えるので、レビューでは見つからない。閾値を calibrate_threshold で計算し直す実装も同型の危険で、較正区間の切り出し規則(ignore の落とし方) が実験層と作図用の2実装に割れる (D-57 と同じ壊れ方)。そこで run_anomaly_replicate の戻り値 (plan.scores と rows) だけから行を作る。シードは AnomalyCondition.draw だけで決まるので、再実行しても 5-A の行とビット単位で同じものになる。間引き (TIMELINE_MAX_POINTS) は元の index を保ち、間引いた結果として異常点が1点も残らない場合は ValueError にする(帯の無い時系列図が静かに出るのを防ぐ)。実測: MGAB 3系列の本番設定でtimeline は 6系統 x 2960 点 = 17,760 行、閾値は 6系統とも anomaly.csv と完全一致。変異注入: 閾値を固定値 0.5 に差し替えると guard_test が赤 (1 failed / 8 passed)"
   guard_test: "tests/test_anomaly_pipeline.py::test_the_timeline_matches_the_headline_row"
+
+- id: D-83
+  rule: "README 冒頭が主張する『実装済みの記事の範囲』は、実際に節がある実験と一致すること"
+  rationale: "(T5 実装者の指摘) README 冒頭が『サイクル01〜03 の範囲を実装している』のまま、下に実験04・05 の節が並んでいた。**最初に読む3行が最も古い**という形のドリフトで、リポジトリを開いた人が最初に受け取る情報が間違っていた。同じ箇所に『D-01〜D-22』という記述もあり、実際は82件だった。このリポジトリは README の数値表を機械照合する仕組み (tests/test_readme_summary.py) を厚く持っており、それがこの連載の背骨なのに、**『何を実装したか』という一番大きな主張だけが誰にも検査されていなかった** —— 細かい数値は守られ、見出しレベルの主張は守られていない、という非対称があった。決定の件数は増え続けるので README には書かず、範囲だけを機械照合の対象にする。変異注入: 冒頭を『記事01〜03 の全範囲』に戻すと『主張する範囲 [01,02,03] と実際に節がある実験 [01,02,03,04,05] が食い違っています』で赤になることを実測した"
+  guard_test: "tests/test_readme_summary.py::test_readme_claims_the_same_experiments_it_documents"
