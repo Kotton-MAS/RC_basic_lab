@@ -67,6 +67,8 @@ PLOTTING_DIR = Path(style.__file__).parent
 CITATION = re.compile(r"\[[^\]]*(?:\d{4}|source unidentified|原典未特定)[^\]]*\]")
 """凡例テキストに出典 (``[著者 年]`` / ``[原典未特定]``) が在るか。"""
 
+ROOT = Path(__file__).resolve().parents[1]
+
 CONTEXT = StyleContext(cjk_font=None, commit="0123456789abcdef")
 """英語ラベル + 既知のコミットで描く (実行環境の HEAD に依存させない)。"""
 
@@ -427,3 +429,87 @@ def test_the_ipc_profile_explains_why_the_even_degrees_are_empty(
     total = sum(row.capacity for row in profile)
     even = sum(row.capacity for row in profile if row.degree % 2 == 0)
     assert share == pytest.approx(even / total)
+
+
+# --- FIG-2: 各実験に文献照合が1枚以上あるか (D-96) -----------------------------
+
+#: 実験 -> その実験の図を描くモジュール (``src/rc_basics_lab/plotting/`` 相対)。
+FIGURE_MODULES: dict[str, tuple[str, ...]] = {
+    "01": ("figures.py",),
+    "02": ("figures_esp.py",),
+    "03": ("figures_capacity.py", "figures_narma_taps.py", "narma10_panel.py"),
+    "04": ("figures_freerun.py", "freerun_headlines.py"),
+    "05": ("figures_anomaly.py", "figures_anomaly_sweep.py"),
+}
+
+#: **文献照合図がまだ無い実験** (2026-08-21 の実測)。
+#: FIG-2 は「各記事に文献照合を最低1枚」を求めているが、引くべき文献値と条件が
+#: 特定できていない実験がある。**この集合は増やせない** —— 増えるということは
+#: 新しい実験を文献照合なしで足したということで、それを黙って通さない。
+#: 減らしたらここから外す (下の検査が外し忘れを拾う)。
+KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01", "02", "04", "05"})
+
+
+def _cites_literature(module: str) -> bool:
+    """そのモジュールが ``cited(...)`` で出典つきの参照線を描いているか。"""
+    path = ROOT / "src" / "rc_basics_lab" / "plotting" / module
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    return any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "cited"
+        for node in ast.walk(tree)
+    )
+
+
+def _experiments_with_citation() -> set[str]:
+    return {
+        experiment
+        for experiment, modules in FIGURE_MODULES.items()
+        if any(_cites_literature(module) for module in modules)
+    }
+
+
+def test_the_figure_modules_table_matches_the_package() -> None:
+    """対応表が実在のモジュールと一致する。
+
+    表が古いと下の2つの検査が黙って対象を取りこぼす。**測れない状態を
+    先に潰す** (D-93 と同じ規律)。
+    """
+    listed = {module for modules in FIGURE_MODULES.values() for module in modules}
+    package = ROOT / "src" / "rc_basics_lab" / "plotting"
+    missing = sorted(module for module in listed if not (package / module).is_file())
+    assert not missing, f"対応表にあるが実在しないモジュール: {missing}"
+
+
+def test_no_experiment_loses_its_literature_comparison() -> None:
+    """文献照合を持つ実験が減っていないこと (FIG-2 / D-96)。
+
+    実測 (2026-08-21): 03 だけが持つ (``figures_capacity`` の参照線3本と
+    ``figures_narma_taps`` の先行の動作点)。残り4本はまだ持っていない ——
+    引くべき文献値と条件 (N・入力次元・観測ノイズ) が未特定であり、
+    **無いものを引くわけにはいかない**。
+
+    そこで「持っていない実験の集合は増やせない」形にする。新しい実験を
+    文献照合なしで足すとここが赤くなり、既存の穴は見えたまま残る。
+    """
+    without = set(FIGURE_MODULES) - _experiments_with_citation()
+    new_gaps = sorted(without - KNOWN_WITHOUT_CITATION)
+    assert not new_gaps, (
+        f"文献照合図を持たない実験が増えました: {new_gaps}\n"
+        "FIG-2 は各記事に文献照合を最低1枚求めています "
+        "(docs/図の設計方針_RC基礎編.md)。\n"
+        "**KNOWN_WITHOUT_CITATION に追記して通すのはラチェットを外す操作です。**"
+    )
+
+
+def test_the_known_gaps_list_has_no_stale_entries() -> None:
+    """文献照合が付いた実験が既知の穴に残っていないこと。
+
+    残したままだと、その実験から参照線を消しても検査が通ってしまう。
+    """
+    stale = sorted(KNOWN_WITHOUT_CITATION & _experiments_with_citation())
+    assert not stale, (
+        f"文献照合が付いたのに既知の穴に残っています: {stale}\n"
+        "KNOWN_WITHOUT_CITATION から外してください (ラチェットが1段締まります)。"
+    )

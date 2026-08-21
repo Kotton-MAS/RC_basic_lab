@@ -30,7 +30,6 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
 
 import matplotlib
 import numpy as np
@@ -54,6 +53,13 @@ from rc_basics_lab.experiment.freerun import (
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.experiment.stability import StabilityRow, regime_map
+from rc_basics_lab.plotting.freerun_grids import (
+    label_of,
+    mean_std,
+    profile_points,
+    tasks_of,
+)
+from rc_basics_lab.plotting.freerun_headlines import valid_time_headline
 from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     StyleContext,
@@ -64,7 +70,6 @@ from rc_basics_lab.plotting.style import (
 )
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
-from rc_basics_lab.types import FloatArray
 
 TASK_LABELS: dict[str, tuple[str, str]] = {
     "lorenz": ("Lorenz", "Lorenz"),
@@ -101,63 +106,13 @@ _SOURCE_LABELS_EN: dict[str, str] = {
 }
 
 
-class _HasTask(Protocol):
-    """``task`` 列を持つ行 (課題の並びを取り出すためだけの構造的型)。"""
+def source_label(source: str, style: StyleContext) -> str:
+    """出典 (真の軌道 / 予測など) の表示ラベル。
 
-    @property
-    def task(self) -> str: ...
-
-
-def _label_of(table: dict[str, tuple[str, str]], key: str, style: StyleContext) -> str:
-    """対応表からラベルを引く。**未知のキーは描く前に落とす**。"""
-    if key not in table:
-        raise ValueError(f"ラベルの対応表にありません: {key!r}")
-    japanese, english = table[key]
-    return style.label(japanese, english)
-
-
-def _source_label(source: str, style: StyleContext) -> str:
-    return style.label(SOURCE_STYLE[source][1], _SOURCE_LABELS_EN[source])
-
-
-def _mean_std(values: Sequence[float]) -> tuple[float, float]:
-    """レプリケート平均と標準偏差 (母標準偏差、``ddof=0``)。"""
-    if not values:
-        raise ValueError("値が空です")
-    array = np.asarray(values, dtype=np.float64)
-    return float(np.mean(array)), float(np.std(array))
-
-
-def _tasks_of(rows: Sequence[_HasTask]) -> list[str]:
-    """行に現れる課題名 (出現順を保つ)。"""
-    seen: list[str] = []
-    for row in rows:
-        if row.task not in seen:
-            seen.append(row.task)
-    return seen
-
-
-def profile_points(
-    rows: Sequence[FreeRunProfileRow], task: str, kind: str, source: str
-) -> FloatArray:
-    """長形式の行から ``(x, y)`` の点列を復元する (**図の唯一の入力経路**)。
-
-    ``index`` の昇順に並べ替えるので、CSV の行順が変わっても描画順は変わらない。
+    ``SOURCE_STYLE`` / ``_SOURCE_LABELS_EN`` が 04 固有の定数なので、
+    ``freerun_grids`` へは出さずここに残す。
     """
-    selected = sorted(
-        (
-            row
-            for row in rows
-            if row.task == task and row.kind == kind and row.source == source
-        ),
-        key=lambda row: row.index,
-    )
-    if not selected:
-        return np.empty((0, 2), dtype=np.float64)
-    points: FloatArray = np.asarray(
-        [(row.x, row.y) for row in selected], dtype=np.float64
-    )
-    return points
+    return style.label(SOURCE_STYLE[source][1], _SOURCE_LABELS_EN[source])
 
 
 def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) -> Path:
@@ -170,7 +125,7 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
         ValueError: ``rows`` が空の場合。
     """
     require_rows(rows)
-    tasks = _tasks_of(rows)
+    tasks = tasks_of(rows)
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     positions = np.arange(len(methods), dtype=np.float64)
     with rc_context_for(style):
@@ -178,7 +133,7 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
         axis = figure.subplots(1, 1)
         for offset, task in enumerate(tasks):
             stats = [
-                _mean_std(
+                mean_std(
                     [
                         row.nrmse
                         for row in rows
@@ -195,12 +150,12 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
                 yerr=np.vstack([np.minimum(stds, means * 0.999), stds]),
                 fmt="o",
                 capsize=5,
-                label=_label_of(TASK_LABELS, task, style),
+                label=label_of(TASK_LABELS, task, style),
             )
         axis.set_yscale("log")
         axis.set_xticks(positions)
         axis.set_xticklabels(
-            [_label_of(METHOD_LABELS, method, style) for method in methods]
+            [label_of(METHOD_LABELS, method, style) for method in methods]
         )
         axis.set_xlim(-0.5, len(methods) - 0.5)
         n_replicates = len({row.replicate for row in rows})
@@ -235,7 +190,7 @@ def plot_freerun_attractor(
     Raises:
         ValueError: 位相図の行が1つも無い場合。
     """
-    tasks = _tasks_of(rows)
+    tasks = tasks_of(rows)
     if not tasks:
         raise ValueError("profile 行が空です")
     with rc_context_for(style):
@@ -257,10 +212,10 @@ def plot_freerun_attractor(
                     linewidth=0.5,
                     alpha=0.8,
                     color=SOURCE_STYLE[source][0],
-                    label=_source_label(source, style),
+                    label=source_label(source, style),
                 )
                 drawn += 1
-            axis.set_title(_label_of(TASK_LABELS, task, style))
+            axis.set_title(label_of(TASK_LABELS, task, style))
             axis.set_xlabel(
                 style.label("第1成分 (標準化)", "component 1 (standardized)")
             )
@@ -303,7 +258,7 @@ def plot_valid_time(
     normalized = [row for row in rows if math.isfinite(row.lyapunov_time)]
     if not normalized:
         raise ValueError("lyapunov_time が有限な行がありません")
-    tasks = _tasks_of(normalized)
+    tasks = tasks_of(normalized)
     rows = normalized
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     with rc_context_for(style):
@@ -318,16 +273,18 @@ def plot_valid_time(
         )
         figure.suptitle(
             style.label(
-                "実験 4-B: 自走が真の軌道からずれるまでの時間は数 Lyapunov 時間",
-                "Experiment 4-B: the free run stays valid for a few Lyapunov times",
+                f"実験 4-B: {valid_time_headline(rows, style)}",
+                f"Experiment 4-B: {valid_time_headline(rows, style)}",
             )
         )
         figure.supxlabel(
             style.label(
-                "注: lambda_max を数値推定してあるのは Lorenz だけなので、"
-                "Lyapunov 正規化した分布もその系に限る (D-42)。",
-                "Note: lambda_max is estimated numerically only for the Lorenz"
-                " system, so the normalized distribution is shown only there.",
+                "注: lambda_max の数値推定は Lorenz だけ (D-42)。"
+                "**文献の有効予測時間との照合は未了** (引くべき値と条件が未特定)"
+                "のため、この図が言えるのは水準ではなく手法間の差である。",
+                "Note: lambda_max is estimated only for Lorenz (D-42)."
+                " No literature valid time is plotted yet (value and conditions"
+                " unidentified), so this figure compares methods, not levels.",
             ),
             fontsize=8,
         )
@@ -385,11 +342,9 @@ def _valid_time_panel(
             fontsize=8,
         )
     axis.set_xticks(np.arange(len(methods), dtype=np.float64))
-    axis.set_xticklabels(
-        [_label_of(METHOD_LABELS, method, style) for method in methods]
-    )
+    axis.set_xticklabels([label_of(METHOD_LABELS, method, style) for method in methods])
     axis.set_xlim(-0.5, len(methods) - 0.5)
-    axis.set_title(_label_of(TASK_LABELS, task, style))
+    axis.set_title(label_of(TASK_LABELS, task, style))
     handles, labels = axis.get_legend_handles_labels()
     if handles:
         axis.legend(handles[:1], labels[:1], loc="best", fontsize=8)
@@ -427,7 +382,7 @@ def plot_stability_map(
                 marker="s",
                 linestyle="none",
                 color=REGIME_COLORS[regime],
-                label=_label_of(REGIME_LABELS, regime, style),
+                label=label_of(REGIME_LABELS, regime, style),
             )
             for regime in REGIMES
         ]
@@ -528,7 +483,7 @@ def plot_freerun_stats(
     Raises:
         ValueError: 描く点が1つも無い場合。
     """
-    tasks = _tasks_of(rows)
+    tasks = tasks_of(rows)
     if not tasks:
         raise ValueError("profile 行が空です")
     with rc_context_for(style):
@@ -545,7 +500,7 @@ def plot_freerun_stats(
                         s=12,
                         alpha=0.7,
                         color=SOURCE_STYLE[source][0],
-                        label=_source_label(source, style),
+                        label=source_label(source, style),
                     )
                     drawn += 1
                 spectrum = profile_points(rows, task, KIND_SPECTRUM, source)
@@ -555,10 +510,10 @@ def plot_freerun_stats(
                         np.maximum(spectrum[:, 1], 1.0e-12),
                         linewidth=1.0,
                         color=SOURCE_STYLE[source][0],
-                        label=_source_label(source, style),
+                        label=source_label(source, style),
                     )
                     drawn += 1
-            axes[0][column].set_title(_label_of(TASK_LABELS, task, style))
+            axes[0][column].set_title(label_of(TASK_LABELS, task, style))
             axes[0][column].set_xlabel(style.label("極大値 z_n", "maximum z_n"))
             axes[0][column].set_ylabel(
                 style.label("次の極大値 z_(n+1)", "next maximum z_(n+1)")
