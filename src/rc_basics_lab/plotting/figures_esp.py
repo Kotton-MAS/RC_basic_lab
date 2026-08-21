@@ -36,6 +36,7 @@ from rc_basics_lab.experiment.washout import (
     mean_nrmse_by_washout,
 )
 from rc_basics_lab.plotting.heatmap import cell_edges, grid_from_means
+from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -504,13 +505,6 @@ _TASK_LABELS: Mapping[str, tuple[str, str]] = {
 }
 """課題名の表示ラベル (D-10: ja/en の対)。未知の課題は名前をそのまま出す。"""
 
-_METHOD_LABELS: Mapping[str, tuple[str, str]] = {
-    "linear": ("線形", "linear"),
-    "delay_line": ("遅延線", "delay line"),
-    "esn": ("ESN", "ESN"),
-}
-"""手法名の表示ラベル (D-10)。"""
-
 
 _CONTROL_ALPHA = 0.40
 """対照 (主役でない課題) の線の不透明度。「薄く重ねる」の実体。"""
@@ -522,7 +516,7 @@ _CONTROL_LINEWIDTH = 1.2
 def _series_label(style: StyleContext, task: str, method: str) -> str:
     """凡例のラベル ``課題 x 手法``。"""
     task_ja, task_en = _TASK_LABELS.get(task, (task, task))
-    method_ja, method_en = _METHOD_LABELS.get(method, (method, method))
+    method_ja, method_en = METHOD_LABELS.get(method, (method, method))
     return style.label(f"{task_ja} x {method_ja}", f"{task_en} x {method_en}")
 
 
@@ -674,7 +668,7 @@ def _variation_note(sensitivity: WashoutSensitivity, style: StyleContext) -> str
         else ("レプリケート間のばらつき以下", "within the replicate spread")
     )
     task_ja, task_en = _TASK_LABELS.get(headline.task, (headline.task, headline.task))
-    method_ja, method_en = _METHOD_LABELS.get(
+    method_ja, method_en = METHOD_LABELS.get(
         headline.method, (headline.method, headline.method)
     )
     return style.label(

@@ -54,6 +54,7 @@ from rc_basics_lab.experiment.freerun import (
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.experiment.stability import StabilityRow, regime_map
+from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -63,13 +64,6 @@ from rc_basics_lab.plotting.style import (
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.types import FloatArray
-
-METHOD_LABELS: dict[str, tuple[str, str]] = {
-    LINEAR: ("線形", "linear"),
-    DELAY_LINE: ("遅延線", "delay line"),
-    ESN_METHOD: ("ESN", "ESN"),
-}
-"""手法名の表示 (01・03 の図と同じ対応表)。"""
 
 TASK_LABELS: dict[str, tuple[str, str]] = {
     "lorenz": ("Lorenz", "Lorenz"),

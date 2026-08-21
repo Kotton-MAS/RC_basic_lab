@@ -29,6 +29,7 @@ from rc_basics_lab.experiment.state_space import (
     StateSpaceReport,
 )
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
+from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -59,11 +60,6 @@ _TASK_LABELS: dict[str, tuple[str, str]] = {
         "遅延パリティ y[t]=u[t-1]u[t-2]",
         "Delay parity y[t]=u[t-1]u[t-2]",
     ),
-}
-_METHOD_LABELS: dict[str, tuple[str, str]] = {
-    "linear": ("線形", "linear"),
-    "delay_line": ("遅延線", "delay line"),
-    "esn": ("ESN", "ESN"),
 }
 _SPACE_LABELS: dict[str, tuple[str, str]] = {
     RAW_INPUT: ("生の入力", "raw input"),
@@ -150,7 +146,7 @@ def _style_task_axis(
         max(float(np.max(means + stds)), REFERENCE_NRMSE) * 3.0,
     )
     axis.set_xticks(positions)
-    axis.set_xticklabels([_lookup(_METHOD_LABELS, method, style) for method in methods])
+    axis.set_xticklabels([_lookup(METHOD_LABELS, method, style) for method in methods])
     axis.set_xlim(-0.5, len(methods) - 0.5)
     axis.set_title(_lookup(_TASK_LABELS, task, style))
     if show_ylabel:
