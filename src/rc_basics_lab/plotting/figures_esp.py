@@ -38,11 +38,10 @@ from rc_basics_lab.experiment.washout import (
 from rc_basics_lab.plotting.heatmap import cell_edges
 from rc_basics_lab.plotting.style import (
     StyleContext,
-    add_footnote,
+    add_provenance,
     method_color,
     rc_context_for,
     reference_line_kwargs,
-    replicates_field,
     require_rows,
     sequential_colors,
 )
@@ -72,13 +71,6 @@ _GALLICCHIO = (
 """2-C の副題 (仕様 §4 T3: 先行研究の再実演であることを図に明記する)。"""
 
 _CONVERGED_LABEL = ("ESP 成立率 (レプリケート平均)", "ESP rate (mean over replicates)")
-
-
-def _footnote(
-    figure: Figure, conditions: str, replicates: Sequence[int], style: StyleContext
-) -> None:
-    """再現条件を図の隅に焼き込む (FIG-6 / D-87)。"""
-    add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
 
 
 def _group_mean(
@@ -218,11 +210,11 @@ def plot_esp_decay(
                 " the slower the past decays",
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
             [outcome.row.replicate for outcome in outcomes],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -363,11 +355,11 @@ def plot_leak_timescale(
                 " timescale along the theory line",
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"N = {first.n_units}, rho = {first.rho:g}, sigma_u = {first.sigma_u:g}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -517,11 +509,11 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
                 + _GALLICCHIO[1],
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"N = {rows[0].n_units}, washout = {rows[0].washout}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -767,11 +759,11 @@ def plot_washout_sensitivity(
                 f"Experiment 2-D: sensitivity to the washout length\n{design_en}",
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"n_train = {rows[0].n_train}, pad_series = {sensitivity.pad_series}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 

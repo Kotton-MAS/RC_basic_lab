@@ -237,6 +237,22 @@ def add_footnote(figure: Figure, conditions: str, *, style: StyleContext) -> Non
     )
 
 
+def add_provenance(
+    figure: Figure,
+    conditions: str,
+    replicates: Sequence[int],
+    *,
+    style: StyleContext,
+) -> None:
+    """再現条件 + レプリケート数の footnote を書く (FIG-6 / D-87)。
+
+    ``figures_*.py`` が各自で組み立てると項目の並びが図ごとにずれるので、
+    **組み立てはここ1か所**にする。呼び出し側が渡すのは図ごとに違う条件文字列
+    (``N = 200, sigma_u = 0.1``) だけである。
+    """
+    add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
+
+
 def _available_font_names() -> frozenset[str]:
     """matplotlib が認識しているフォント名の集合。
 
@@ -378,6 +394,7 @@ __all__ = [
     "ReferenceLineStyle",
     "StyleContext",
     "add_footnote",
+    "add_provenance",
     "find_cjk_font",
     "footnote_text",
     "method_color",

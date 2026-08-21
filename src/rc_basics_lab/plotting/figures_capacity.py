@@ -79,11 +79,10 @@ from rc_basics_lab.plotting.style import (
     METHOD_COLORS,
     SEQUENTIAL_CMAP,
     StyleContext,
-    add_footnote,
+    add_provenance,
     method_color,
     rc_context_for,
     reference_line_kwargs,
-    replicates_field,
     require_rows,
     save_png,
     sequential_colors,
@@ -140,13 +139,6 @@ def _save(figure: Figure, path: Path) -> Path:
     "does not explicitly export" として拒否する)。
     """
     return save_png(figure, path)
-
-
-def _footnote(
-    figure: Figure, conditions: str, replicates: Sequence[int], style: StyleContext
-) -> None:
-    """再現条件を図の隅に焼き込む (FIG-6 / D-87)。"""
-    add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
 
 
 # --- 3-A: 線形メモリ容量の掃引 ---------------------------------------------
@@ -326,11 +318,11 @@ def plot_mc_sweep(
                 " yet stays below 20% of the bound N",
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -444,11 +436,11 @@ def plot_ipc_profile(
                 " and leaves the degree-1 part",
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}, a = {leak_rate:g}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -573,11 +565,11 @@ def plot_memory_nonlinearity(
                 " of the capacity",
             )
         )
-        _footnote(
+        add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -669,11 +661,11 @@ def plot_ipc_conservation(
             )
         )
         axis.legend(loc="upper left", fontsize=8)
-        _footnote(
+        add_provenance(
             figure,
             f"rho = {first.rho:g}, a = {first.leak_rate:g}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
@@ -811,11 +803,11 @@ def plot_narma10_control(
             style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
             fontsize=8,
         )
-        _footnote(
+        add_provenance(
             figure,
             f"n_train = {rows[0].n_train}, task = {rows[0].task}",
             [row.replicate for row in rows],
-            style,
+            style=style,
         )
         return _save(figure, path)
 
