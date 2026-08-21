@@ -26,11 +26,15 @@ UNKNOWN = "unknown"
 _GIT_TIMEOUT_S = 5.0
 
 
-def _git_commit() -> str:
+def git_commit() -> str:
     """HEAD のコミットハッシュ。取得できなければ ``"unknown"`` を返す。
 
     git が無い / リポジトリ外 / タイムアウトのいずれでも例外を投げない。
     メタ情報の収集で実験本体を落とさないため。
+
+    ``meta.json`` だけでなく**図の footnote** (FIG-6 / D-87) もこの値を使う。
+    作図層から git を呼ぶと図を描くたびに subprocess が起きるので、実験層で
+    1回呼んで ``setup_style(commit=...)`` へ渡す。
     """
     try:
         completed = subprocess.run(
@@ -73,7 +77,7 @@ def collect_meta_for(config: object, seeds: object) -> dict[str, object]:
         TypeError: ``config`` / ``seeds`` が dataclass インスタンスでない場合。
     """
     return {
-        "commit": _git_commit(),
+        "commit": git_commit(),
         "timestamp_utc": dt.datetime.now(dt.UTC).isoformat(),
         "package_version": __version__,
         "python_version": platform.python_version(),
@@ -95,4 +99,4 @@ def collect_meta(config: ExperimentConfig) -> dict[str, object]:
     return collect_meta_for(config, config.seeds)
 
 
-__all__ = ["UNKNOWN", "collect_meta", "collect_meta_for"]
+__all__ = ["UNKNOWN", "collect_meta", "collect_meta_for", "git_commit"]

@@ -70,4 +70,14 @@ def label(ja: str, en: str, *, cjk: bool) -> str:
     return ja if cjk else en
 
 
-__all__ = ["label"]
+__all__ = [
+    "DAMBRE_2012",
+    "GOUDARZI_2014",
+    "IPC_BOUND_SOURCE",
+    "JAEGER_2002",
+    "MC_BOUND_SOURCE",
+    "SOURCE_UNIDENTIFIED",
+    "VISWANATH_1998",
+    "cited",
+    "label",
+]
