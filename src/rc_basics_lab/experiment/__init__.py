@@ -62,6 +62,7 @@ from rc_basics_lab.experiment import (
 
 __all__ = [
     "anomaly",
+    "anomaly_ranking",
     "anomaly_rows",
     "anomaly_score",
     "anomaly_sources",
