@@ -48,8 +48,10 @@ from rc_basics_lab.config import (
     Anomaly05Config,
     AnomalyDatasetConfig,
     AnomalyPreprocessConfig,
+    AnomalyProtocolSweepConfig,
     AnomalyReservoirConfig,
     AnomalyRidgeConfig,
+    AnomalySizeSweepConfig,
     AnomalyThresholdConfig,
     MackeyGlassConfig,
     SyntheticAnomalyConfig,
@@ -69,6 +71,11 @@ from rc_basics_lab.experiment.anomaly_score import (
     RANDOM_CONTROL,
 )
 from rc_basics_lab.experiment.anomaly_sources import build_sources
+from rc_basics_lab.experiment.anomaly_sweep import (
+    run_protocol_sweep,
+    run_size_sweep,
+    summarize_size_sweep,
+)
 from rc_basics_lab.tasks.anomaly import AnomalySeries, generate_synthetic_anomalies
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
@@ -449,6 +456,24 @@ def _auprc_by_method(rows: Sequence[AnomalyRow]) -> dict[str, tuple[float, ...]]
 @lru_cache(maxsize=1)
 def _baseline() -> tuple[tuple[AnomalyRow, ...], tuple[ThresholdSweepRow, ...]]:
     return _reduced_result(REDUCED)
+
+
+def _sweep_fingerprint(config: Anomaly05Config) -> str:
+    """掃引の行 (格子点と集計) をまとめた指紋。
+
+    行数だけを見ると「格子の値だけ入れ替えた」ケース (``normalize_grid`` を
+    ``minmax`` から ``robust`` へ) を取りこぼす —— 行数は同じで中身が変わる。
+    """
+    digest = hashlib.sha256()
+    if config.protocol_sweep != REDUCED.protocol_sweep or config == REDUCED:
+        for row in run_protocol_sweep(config, build_sources(config)):
+            digest.update(repr(dataclasses.astuple(row)).encode("utf-8"))
+    if config.size_sweep != REDUCED.size_sweep or config == REDUCED:
+        size_rows = run_size_sweep(config, build_sources(config))
+        for row in size_rows:
+            digest.update(repr(dataclasses.astuple(row)).encode("utf-8"))
+        digest.update(repr(summarize_size_sweep(size_rows)).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def _case_named(field: str) -> WiringCase:
