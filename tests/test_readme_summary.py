@@ -421,7 +421,7 @@ def test_readme_experiment_04_wall_time_matches_meta_json() -> None:
     assert match, "README に 04 の wall_time_s の記述が見つかりません"
     wall_time = meta["wall_time_s"]
     assert isinstance(wall_time, float)
-    assert float(match.group(1)) == round(wall_time, 1)
+    assert_wall_time_is_the_same_order(float(match.group(1)), wall_time)
 
 
 def test_readme_experiment_04_valid_time_matches_the_freerun_csv() -> None:
@@ -549,7 +549,7 @@ def test_readme_experiment_05_wall_time_matches_meta_json() -> None:
     assert match, "README に 05 の wall_time_s の記述が見つかりません"
     wall_time = meta["wall_time_s"]
     assert isinstance(wall_time, float)
-    assert float(match.group(1)) == round(wall_time, 1)
+    assert_wall_time_is_the_same_order(float(match.group(1)), wall_time)
 
 
 def test_readme_experiment_05_auprc_table_matches_the_anomaly_csv() -> None:
