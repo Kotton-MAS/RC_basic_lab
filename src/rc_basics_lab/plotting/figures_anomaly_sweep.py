@@ -42,6 +42,7 @@ from rc_basics_lab.plotting.figures_anomaly import (
 )
 from rc_basics_lab.plotting.style import (
     StyleContext,
+    add_footnote,
     new_figure,
     rc_context_for,
     require_rows,
@@ -177,14 +178,21 @@ def build_protocol_sensitivity_figure(
     changed = len({_condition_key(row) for row in rows if row.rank_changed})
     figure.suptitle(
         style.label(
-            f"実験 5-C: プロトコルを変えると順位は動くか "
+            f"実験 5-C: 順位が動くのは対照と区別できない系統の中だけ "
             f"({len(_condition_keys(rows))} 格子点中 {changed} で変動。"
             "太い実線 = 一様乱数対照と区別できる系統)",
-            f"Experiment 5-C: rank changes across protocols "
-            f"({changed} of {len(_condition_keys(rows))} grid points changed;"
+            f"Experiment 5-C: the ranks that move belong to methods that are not"
+            f" distinguishable from the control"
+            f" ({changed} of {len(_condition_keys(rows))} grid points changed;"
             " thick solid = distinguishable from the random control)",
         )
     )
+    # 掃引の行はレプリケートを畳み込んだ集計なので replicate 列を持たない。
+    # 代わりに集計に使った (系列, レプリケート) 対の数を焼き込む (FIG-6)。
+    conditions = (
+        f"dataset = {rows[0].dataset}, {rows[0].n_pairs} pairs per grid point"
+    )
+    add_footnote(figure, conditions, style=style)
     return figure
 
 
@@ -267,10 +275,16 @@ def plot_size_vs_performance(
         axis.legend(loc="best", fontsize=7)
         figure.suptitle(
             style.label(
-                "実験 5-D: リザバーサイズと検知性能",
-                "Experiment 5-D: reservoir size vs detection performance",
+                "実験 5-D: N を削っても対照は動かず、ESN だけが N とともに落ちる",
+                "Experiment 5-D: shrinking N leaves the controls flat;"
+                " only the ESN degrades with N",
             )
         )
+        conditions = (
+            f"dataset = {rows[0].dataset}, n_train = {rows[0].n_train},"
+            f" {rows[0].n_pairs} pairs per N"
+        )
+        add_footnote(figure, conditions, style=style)
         return save_png(figure, path)
 
 
