@@ -446,3 +446,222 @@ def test_readme_experiment_04_noise_trend_matches_meta_json() -> None:
     total = counts[keys[0]]
     assert isinstance(total, dict)
     assert sum(int(value) for value in total.values()) == 80
+
+
+# --- 実験05 (05b T5) ----------------------------------------------------------
+
+ANOMALY_RESULTS = ROOT / "results" / "05_anomaly_detection"
+ANOMALY_META = ANOMALY_RESULTS / "meta.json"
+ANOMALY_CSV_PATH = ANOMALY_RESULTS / "anomaly.csv"
+ANOMALY_PROTOCOL_CSV_PATH = ANOMALY_RESULTS / "anomaly_protocol.csv"
+ANOMALY_SIZE_CSV_PATH = ANOMALY_RESULTS / "anomaly_size.csv"
+
+_ANOMALY_ROW_RE = re.compile(
+    r"^\|\s*\*{0,2}(?P<label>[^|*]+?)\*{0,2}\s*\|\s*"
+    r"\*{0,2}(?P<mean>[\d.]+)\s*±\s*(?P<sd>[\d.]+)\*{0,2}\s*\|\s*"
+    r"\*{0,2}(?P<ratio>[\d.]+)x\*{0,2}\s*\|\s*"
+    r"\*{0,2}(?:あり|なし)\s*\((?P<better>\d+)/(?P<pairs>\d+),"
+    r"\s*p=(?P<p_value>[\d.e+-]+)\)\*{0,2}\s*\|\s*$"
+)
+"""README の 05 の数値表の1行 (系統 / AUPRC / 対照比 / 印と根拠)。"""
+
+_ANOMALY_METHOD_BY_LABEL: dict[str, str] = {
+    "ESN 残差": "esn_residual",
+    "遅延線 残差": "delay_line_residual",
+    "直前値 残差": "persistence_residual",
+    "移動統計": "moving_statistics",
+    "一様乱数 (対照)": "random_control",
+    "入力ノルム (対照)": "input_norm_control",
+}
+
+_PROTOCOL_RE = re.compile(
+    r"\*\*(?P<conditions>\d+) 点中 (?P<changed>\d+) 点\*\*で変動、"
+    r"逆転した系統対は延べ \*\*(?P<pairs>\d+) 組\*\*"
+)
+_PROTOCOL_MARKED_RE = re.compile(r"組は 0*(?P<marked>\d+) 組")
+_SIZE_RE = re.compile(
+    r"基準 N=(?P<reference>\d+) の AUPRC (?P<reference_auprc>[\d.]+) に\s*"
+    r"対し N=(?P<degraded>\d+) で (?P<degraded_auprc>[\d.]+) "
+    r"\((?P<ratio>[\d.]+) 倍\)"
+)
+_F1_GAP_RE = re.compile(
+    r"は 90 行の平均 \*\*(?P<mean>[\d.]+)\*\* \(最大 (?P<max>[\d.]+)"
+)
+_N_TRAIN_RE = re.compile(r"全 (?P<rows>\d+) 行が `n_train=(?P<n_train>\d+)`")
+
+
+def _experiment_05_section() -> str:
+    """README の 05 節だけを切り出す。"""
+    text = README.read_text(encoding="utf-8")
+    start = text.index("## 実験05")
+    end = text.index("\n## ", start)
+    return text[start:end]
+
+
+def _anomaly_rows() -> list[dict[str, str]]:
+    with ANOMALY_CSV_PATH.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows, "results/05_anomaly_detection/anomaly.csv が空です"
+    return rows
+
+
+def _mean_sd(values: list[float]) -> tuple[float, float]:
+    """平均と標準偏差 (``ddof=1``。実験層の ``MethodAggregate`` と同じ規則)。"""
+    mean = sum(values) / len(values)
+    variance = sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+    return mean, math.sqrt(variance)
+
+
+def test_readme_mentions_the_experiment_05_artifacts_as_the_source() -> None:
+    """05 の数値の出どころ (生成物と再生成コマンド) が README にある。"""
+    text = _experiment_05_section()
+    assert "make figures-05" in text
+    assert "make data-05" in text
+    assert "fig_protocol_sensitivity" in text
+    assert "docs/design.md" in text
+
+
+def test_readme_experiment_05_wall_time_matches_meta_json() -> None:
+    """README に書いた `make figures-05` の実測時間が ``meta.json`` と一致する。"""
+    meta = json.loads(ANOMALY_META.read_text(encoding="utf-8"))
+    match = re.search(r"wall_time_s = ([\d.]+) 秒", _experiment_05_section())
+    assert match, "README に 05 の wall_time_s の記述が見つかりません"
+    wall_time = meta["wall_time_s"]
+    assert isinstance(wall_time, float)
+    assert float(match.group(1)) == round(wall_time, 1)
+
+
+def test_readme_experiment_05_auprc_table_matches_the_anomaly_csv() -> None:
+    """README の AUPRC 表が ``anomaly.csv`` から計算した値と一致する。
+
+    平均・標準偏差 (``ddof=1``)・一様乱数対照比・符号検定の根拠 (何対中いくつが
+    対照を上回ったか) の**4つとも**照合する。表の1列だけを合わせて他が古い、
+    という壊れ方を残さない。
+    """
+    rows = _anomaly_rows()
+    parsed = [
+        match
+        for line in _experiment_05_section().splitlines()
+        if (match := _ANOMALY_ROW_RE.match(line)) is not None
+    ]
+    assert len(parsed) == len(_ANOMALY_METHOD_BY_LABEL), (
+        f"05 の表が {len(parsed)} 行しかありません"
+    )
+    control = [
+        float(row["auprc_random"]) for row in rows if row["method"] == "esn_residual"
+    ]
+    control_mean = sum(control) / len(control)
+    for match in parsed:
+        method = _ANOMALY_METHOD_BY_LABEL[match["label"].strip()]
+        selected = [row for row in rows if row["method"] == method]
+        assert selected, method
+        mean, sd = _mean_sd([float(row["auprc"]) for row in selected])
+        assert float(match["mean"]) == round(mean, 4), method
+        assert float(match["sd"]) == round(sd, 4), method
+        assert float(match["ratio"]) == round(mean / control_mean, 2), method
+        better = sum(
+            1 for row in selected if float(row["auprc"]) > float(row["auprc_random"])
+        )
+        assert int(match["better"]) == better, method
+        assert int(match["pairs"]) == len(selected), method
+
+
+def test_readme_experiment_05_marks_match_the_protocol_csv() -> None:
+    """README の p 値と印が ``anomaly_protocol.csv`` の基準条件の行と一致する。"""
+    with ANOMALY_PROTOCOL_CSV_PATH.open(encoding="utf-8", newline="") as handle:
+        rows = [row for row in csv.DictReader(handle) if row["is_headline"] == "True"]
+    assert rows, "5-C に基準条件の行がありません"
+    by_method = {row["method"]: row for row in rows}
+    for line in _experiment_05_section().splitlines():
+        match = _ANOMALY_ROW_RE.match(line)
+        if match is None:
+            continue
+        method = _ANOMALY_METHOD_BY_LABEL[match["label"].strip()]
+        row = by_method[method]
+        documented_p = float(match["p_value"])
+        actual_p = float(row["control_sign_p"])
+        assert abs(documented_p - actual_p) <= 0.02 * actual_p, method
+        assert ("あり" in line) == (row["distinguishable"] == "True"), method
+
+
+def test_readme_experiment_05_protocol_counts_match_the_csv() -> None:
+    """README の「27点中23点で変動 / 逆転62組 / 両方に印0組」が CSV と一致する。
+
+    **この3つの数の並びが 5-C の結論そのもの**である (D-78)。延べの逆転数だけを
+    書き換えて印の数を古いままにすると、記事の主張が反転する。
+    """
+    with ANOMALY_PROTOCOL_CSV_PATH.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    conditions: dict[tuple[str, str, str], dict[str, str]] = {}
+    changed: set[tuple[str, str, str]] = set()
+    for row in rows:
+        key = (row["normalize"], row["input_window"], row["score_smoothing"])
+        conditions.setdefault(key, row)
+        if row["rank_changed"] == "True":
+            changed.add(key)
+    total_pairs = sum(int(row["n_discordant_pairs"]) for row in conditions.values())
+    marked_pairs = sum(
+        int(row["n_discordant_pairs_distinguishable"]) for row in conditions.values()
+    )
+    section = _experiment_05_section()
+    match = _PROTOCOL_RE.search(section)
+    assert match, "README に 5-C の順位変動の記述が見つかりません"
+    assert int(match["conditions"]) == len(conditions)
+    assert int(match["changed"]) == len(changed)
+    assert int(match["pairs"]) == total_pairs
+    marked = _PROTOCOL_MARKED_RE.search(section)
+    assert marked, "README に「両方に印がある組」の数が見つかりません"
+    assert int(marked["marked"]) == marked_pairs
+    esn_ranks = {row["rank"] for row in rows if row["method"] == "esn_residual"}
+    assert esn_ranks == {"1"}, "ESN が1位でない格子点があります (README を直す)"
+
+
+def test_readme_experiment_05_size_numbers_match_the_size_csv() -> None:
+    """README の 5-D の数値が ``anomaly_size.csv`` と一致する。"""
+    with ANOMALY_SIZE_CSV_PATH.open(encoding="utf-8", newline="") as handle:
+        every = list(csv.DictReader(handle))
+    by_units = {
+        int(row["n_units"]): row for row in every if row["method"] == "esn_residual"
+    }
+    section = _experiment_05_section()
+    match = _SIZE_RE.search(section)
+    assert match, "README に 5-D の劣化点の記述が見つかりません"
+    reference = by_units[int(match["reference"])]
+    degraded = by_units[int(match["degraded"])]
+    assert float(match["reference_auprc"]) == round(float(reference["auprc_mean"]), 4)
+    assert float(match["degraded_auprc"]) == round(float(degraded["auprc_mean"]), 4)
+    assert float(match["ratio"]) == round(float(degraded["auprc_ratio"]), 3)
+    assert degraded["below_reference_fraction"] == "True"
+    train = _N_TRAIN_RE.search(section)
+    assert train, "README に 5-D の学習量の記述が見つかりません"
+    assert int(train["rows"]) == len(every)
+    assert {row["n_train"] for row in every} == {train["n_train"]}
+
+
+def test_readme_experiment_05_f1_gap_matches_the_anomaly_csv() -> None:
+    """README の `f1_test_optimal - f1_calibrated` が ``anomaly.csv`` と一致する。"""
+    rows = _anomaly_rows()
+    gaps = [float(row["f1_test_optimal"]) - float(row["f1_calibrated"]) for row in rows]
+    match = _F1_GAP_RE.search(_experiment_05_section())
+    assert match, "README に 05 の f1 の差の記述が見つかりません"
+    assert float(match["mean"]) == round(sum(gaps) / len(gaps), 4)
+    assert float(match["max"]) == round(max(gaps), 4)
+    assert min(gaps) >= 0.0, "テスト側最適化のほうが低い行があります"
+
+
+def test_readme_experiment_05_random_control_sits_on_the_anomaly_rate() -> None:
+    """README の「乱数の AUPRC が異常率に張り付く」2つの数が CSV と一致する。
+
+    この一致が「主指標が point-adjust を通っていないこと」の実測的な証拠
+    (D-54 / D-55) なので、片方だけ古くなると証拠として機能しなくなる。
+    """
+    rows = _anomaly_rows()
+    match = re.search(
+        r"\*\*(?P<control>[\d.]+)\*\* vs 異常率\s*\n?\s*\*\*(?P<rate>[\d.]+)\*\*",
+        _experiment_05_section(),
+    )
+    assert match, "README に乱数対照と異常率の対比が見つかりません"
+    control = [float(row["auprc"]) for row in rows if row["method"] == "random_control"]
+    rate = [float(row["anomaly_rate"]) for row in rows]
+    assert float(match["control"]) == round(sum(control) / len(control), 4)
+    assert float(match["rate"]) == round(sum(rate) / len(rate), 4)
