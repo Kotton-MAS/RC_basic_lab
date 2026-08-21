@@ -35,6 +35,7 @@ from rc_basics_lab.experiment.washout import (
     WashoutSensitivity,
     mean_nrmse_by_washout,
 )
+from rc_basics_lab.plotting.heatmap import cell_edges
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_footnote,
@@ -107,22 +108,6 @@ def _grid(
             if value is not None:
                 grid[row_index, column_index] = value
     return grid
-
-
-def _edges(values: Sequence[float]) -> FloatArray:
-    """``pcolormesh`` 用のセル境界 (等間隔でない格子でも中心を保つ)。"""
-    centers: FloatArray = np.asarray(values, dtype=np.float64)
-    if centers.size == 1:
-        half = 0.5 if centers[0] == 0.0 else abs(float(centers[0])) * 0.5
-        edges: FloatArray = np.array(
-            [float(centers[0]) - half, float(centers[0]) + half], dtype=np.float64
-        )
-        return edges
-    inner = (centers[:-1] + centers[1:]) / 2.0
-    first = centers[0] - (inner[0] - centers[0])
-    last = centers[-1] + (centers[-1] - inner[-1])
-    built: FloatArray = np.concatenate(([first], inner, [last]))
-    return built
 
 
 # --- 2-A: ESP の減衰曲線 ---------------------------------------------------
@@ -400,7 +385,7 @@ def _plot_no_input_panel(
     """無入力 (sigma_u = 0) の列。駆動下の領域と同じ配色で別枠に出す。"""
     axis.pcolormesh(
         np.array([0.0, 1.0]),
-        _edges(rhos),
+        cell_edges(rhos),
         rates.reshape(-1, 1),
         cmap="RdYlBu",
         norm=norm,
@@ -434,7 +419,7 @@ def _plot_driven_panel(
     """
     mesh = axis.pcolormesh(
         np.arange(len(sigmas) + 1, dtype=np.float64),
-        _edges(rhos),
+        cell_edges(rhos),
         rates,
         cmap="RdYlBu",
         norm=norm,

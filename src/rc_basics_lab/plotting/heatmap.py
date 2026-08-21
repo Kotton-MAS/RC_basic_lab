@@ -12,7 +12,7 @@ D-77 の凍結対象 (861 行) で1行も増やせないためでもある。
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import matplotlib
 import numpy as np
@@ -97,10 +97,32 @@ def draw_truncation_edges(
     return drawn
 
 
+def cell_edges(values: Sequence[float]) -> FloatArray:
+    """``pcolormesh`` 用のセル境界 (等間隔でない格子でも中心を保つ)。
+
+    ``figures_esp`` から移した (2-C の ESP 地図と 3-B のヒートマップが同じ
+    「格子の中心から境界を作る」問題を持つため。D-77 の行数ラチェットで
+    ``figures_esp.py`` に置く場所が無くなったことが直接の契機)。
+    """
+    centers: FloatArray = np.asarray(values, dtype=np.float64)
+    if centers.size == 1:
+        half = 0.5 if centers[0] == 0.0 else abs(float(centers[0])) * 0.5
+        edges: FloatArray = np.array(
+            [float(centers[0]) - half, float(centers[0]) + half], dtype=np.float64
+        )
+        return edges
+    inner = (centers[:-1] + centers[1:]) / 2.0
+    first = centers[0] - (inner[0] - centers[0])
+    last = centers[-1] + (centers[-1] - inner[-1])
+    built: FloatArray = np.concatenate(([first], inner, [last]))
+    return built
+
+
 __all__ = [
     "TRUNCATION_EDGE_COLOR",
     "TRUNCATION_EDGE_WIDTH",
     "UNCOMPUTED_COLOR",
+    "cell_edges",
     "colormap_with_uncomputed",
     "draw_truncation_edges",
     "masked_beyond_truncation",
