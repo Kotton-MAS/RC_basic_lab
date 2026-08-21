@@ -24,6 +24,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from rc_basics_lab.config.anomaly05_sweep import (
+    AnomalyProtocolSweepConfig,
+    AnomalySizeSweepConfig,
+)
 from rc_basics_lab.config.experiment01 import DEFAULT_ALPHA_GRID, MackeyGlassConfig
 from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.seeds import SeedStream
@@ -303,13 +307,13 @@ def anomaly_stream_seed(seeds: AnomalySeedConfig, stream: SeedStream) -> int:
 
 @dataclass(frozen=True, slots=True)
 class Anomaly05Config:
-    """実験05 (5-A / 5-B) 1本ぶんの設定 (D-13)。
+    """実験05 (5-A / 5-B / 5-C / 5-D) 1本ぶんの設定 (D-13)。
 
     ``ExperimentConfig`` には1フィールドも足さない。5-C (プロトコル掃引) と
-    5-D (N 掃引) の格子は **T4 が足す** —— 掃引を回す実装が無い時点で
-    ``protocol_sweep`` / ``size_sweep`` を置くと、その葉は「値を変えても
-    出力が1バイトも変わらない」状態で全葉被覆テストに載り、D-69 が
-    ``length`` / ``horizon`` で潰したのと同じ死葉を自分で作ることになる。
+    5-D (N 掃引) の格子は T4 が掃引の実装 (``experiment/anomaly_sweep.py``)
+    と**同時に**足した —— 掃引を回す実装が無い時点で置くと、その葉は
+    「値を変えても出力が1バイトも変わらない」状態で全葉被覆テストに載り、
+    D-69 が ``length`` / ``horizon`` で潰したのと同じ死葉になる。
 
     Attributes:
         name: 実験名 (``meta.json`` に出るだけで結果行は変えない)。
@@ -322,6 +326,10 @@ class Anomaly05Config:
         ridge: 残差系スコアのリッジ格子 (D-04)。
         threshold: 運用閾値と参考値 (D-56)。
         evaluation: PA%K と ignore マスク (D-55)。
+        protocol_sweep: 5-C の格子。既定の格子は ``preprocess`` の既定値を
+            含む (含まない格子は ``run_protocol_sweep`` が ``ValueError``、
+            D-79)。
+        size_sweep: 5-D の格子。既定の格子は ``reservoir.n_units`` を含む。
         seeds: 4ストリームの基底シード。
     """
 
@@ -333,6 +341,10 @@ class Anomaly05Config:
     ridge: AnomalyRidgeConfig = field(default_factory=AnomalyRidgeConfig)
     threshold: AnomalyThresholdConfig = field(default_factory=AnomalyThresholdConfig)
     evaluation: AnomalyEvaluationConfig = field(default_factory=AnomalyEvaluationConfig)
+    protocol_sweep: AnomalyProtocolSweepConfig = field(
+        default_factory=AnomalyProtocolSweepConfig
+    )
+    size_sweep: AnomalySizeSweepConfig = field(default_factory=AnomalySizeSweepConfig)
     seeds: AnomalySeedConfig = field(default_factory=AnomalySeedConfig)
 
 
@@ -341,9 +353,11 @@ __all__ = [
     "AnomalyDatasetConfig",
     "AnomalyEvaluationConfig",
     "AnomalyPreprocessConfig",
+    "AnomalyProtocolSweepConfig",
     "AnomalyReservoirConfig",
     "AnomalyRidgeConfig",
     "AnomalySeedConfig",
+    "AnomalySizeSweepConfig",
     "AnomalyThresholdConfig",
     "SyntheticAnomalyConfig",
     "SyntheticMackeyGlassConfig",
