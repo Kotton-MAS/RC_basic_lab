@@ -118,6 +118,26 @@ def cell_edges(values: Sequence[float]) -> FloatArray:
     return built
 
 
+def grid_from_means(
+    means: Mapping[tuple[float, float], float],
+    columns: Sequence[float],
+    rows: Sequence[float],
+) -> FloatArray:
+    """``(len(rows), len(columns))`` の格子に並べ直す (欠測は nan)。
+
+    ``figures_esp`` から移した (2-C の ESP 地図が使う)。**欠測を 0 で埋めない**
+    のが要点で、nan にしておけば ``Colormap.set_bad`` の色で「測っていない」
+    として描かれる (FIG-7 と同じ約束)。
+    """
+    grid: FloatArray = np.full((len(rows), len(columns)), np.nan, dtype=np.float64)
+    for row_index, row_value in enumerate(rows):
+        for column_index, column_value in enumerate(columns):
+            value = means.get((column_value, row_value))
+            if value is not None:
+                grid[row_index, column_index] = value
+    return grid
+
+
 __all__ = [
     "TRUNCATION_EDGE_COLOR",
     "TRUNCATION_EDGE_WIDTH",
@@ -125,5 +145,6 @@ __all__ = [
     "cell_edges",
     "colormap_with_uncomputed",
     "draw_truncation_edges",
+    "grid_from_means",
     "masked_beyond_truncation",
 ]

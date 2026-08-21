@@ -35,7 +35,7 @@ from rc_basics_lab.experiment.washout import (
     WashoutSensitivity,
     mean_nrmse_by_washout,
 )
-from rc_basics_lab.plotting.heatmap import cell_edges
+from rc_basics_lab.plotting.heatmap import cell_edges, grid_from_means
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -85,21 +85,6 @@ def _group_mean(
         cell: float(np.mean(values)) if values else math.nan
         for cell, values in totals.items()
     }
-
-
-def _grid(
-    means: Mapping[tuple[float, float], float],
-    rhos: Sequence[float],
-    sigmas: Sequence[float],
-) -> FloatArray:
-    """``(len(sigmas), len(rhos))`` の格子に並べ直す (行が sigma_u)。"""
-    grid: FloatArray = np.full((len(sigmas), len(rhos)), math.nan, dtype=np.float64)
-    for row_index, sigma in enumerate(sigmas):
-        for column_index, rho in enumerate(rhos):
-            value = means.get((rho, sigma))
-            if value is not None:
-                grid[row_index, column_index] = value
-    return grid
 
 
 # --- 2-A: ESP の減衰曲線 ---------------------------------------------------
@@ -479,7 +464,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
             )
             _plot_no_input_panel(
                 axes[0][0],
-                _grid(converged, rhos, (0.0,))[0],
+                grid_from_means(converged, rhos, (0.0,))[0],
                 rhos,
                 norm,
                 style,
@@ -494,8 +479,8 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
         _plot_driven_panel(
             figure,
             driven_axis,
-            _grid(converged, rhos, driven).T,
-            _grid(lyapunov, rhos, driven).T,
+            grid_from_means(converged, rhos, driven).T,
+            grid_from_means(lyapunov, rhos, driven).T,
             rhos,
             driven,
             norm,
