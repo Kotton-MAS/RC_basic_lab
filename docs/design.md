@@ -1260,10 +1260,15 @@ Mackey-Glass 生成パラメータ）と変換の唯一の口 `to_mackey_glass` 
 出力が1バイトも変わらない死んだ葉」が2つ残っていた。**既定値**の単一の真実は
 01 側のままで（`_MACKEY_GLASS_DEFAULTS = MackeyGlassConfig()` から引く）、
 05 が絞ったのは葉の集合だけである。T3 は同じモジュールへ実験1本ぶんの
-`Anomaly05Config`（セクション7個 + `anomaly_stream_seed`）を足して 292 行に
-した。**上限（非空 300 行）まで 8 行**しかないので、5-C / 5-D の掃引設定を足す
-T4 はこのモジュールを割ることになる —— 上限は「次に到達した時点でもう1段割る
-判断を機械が要求する」ために置いてあり、緩めない（D-63 と同じ規律）。
+`Anomaly05Config`（セクション7個 + `anomaly_stream_seed`）を足して 285 行に
+した。**上限（非空 300 行）まで 15 行**しかなかったので、T4 は 5-C / 5-D の
+掃引設定（`AnomalyProtocolSweepConfig` / `AnomalySizeSweepConfig`）を
+`anomaly05_sweep.py` へ**割って**足した（`anomaly05.py` は節2つぶんの
+フィールドと docstring だけが増えて 297 行）—— 上限は「次に到達した時点で
+もう1段割る判断を機械が要求する」ために置いてあり、緩めない（D-63 と同じ
+規律）。依存は `anomaly05 -> anomaly05_sweep` の一方向で、逆向きを引かない
+ために格子の既定値はリテラルで書き写し、既定条件との一致を
+`test_the_default_grids_contain_the_headline_condition` が実測する（D-79）。
 
 package 内の依存は**一方向**で、辺は3本しかない（`tests/test_config_package_layout.py`
 が AST で固定する）:
