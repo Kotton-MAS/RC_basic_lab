@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 
 LINEAR = "linear"
 DELAY_LINE = "delay_line"
+DELAY_LINE_OLS = "delay_line_ols"
+"""正則化なし (alpha = 0) の遅延線。3-C だけの対照水準 (D-90)。"""
 ESN_METHOD = "esn"
 
 
@@ -55,10 +57,25 @@ class Method:
         name: CSV の ``method`` 列。
         candidates: 検証分割で選ぶ候補の特徴仕様。**構造ハイパーパラメータは
             ここに入らない** (D-08: 選んでよいのは alpha と遅延線の n_lags だけ)。
+        alphas: この手法だけが使う alpha 格子。``None`` なら
+            ``config.ridge.alpha_grid`` (D-04 の共有格子) をそのまま使う。
+            **既定は必ず None にすること** —— 手法ごとに格子を変えるのは
+            D-04 が禁じている「探索予算の不平等」そのものであり、例外は
+            ``.claude/decisions.yaml`` に記録した対照条件に限る (D-90)。
+        design_key: 設計行列を借りてくる手法名。``None`` なら自分の名前。
+            **同じ特徴行列を共有する対照** (正則化の有無だけが違う水準) を
+            作るための口で、借りる側は候補の中身を1行も持たない。
     """
 
     name: str
     candidates: tuple[FeatureSpec, ...]
+    alphas: tuple[float, ...] | None = None
+    design_key: str | None = None
+
+    @property
+    def designs_key(self) -> str:
+        """``ReplicatePlan.designs`` を引くキー。"""
+        return self.design_key if self.design_key is not None else self.name
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,7 +260,8 @@ def _evaluate(
     """1 (課題, 手法, レプリケート) を学習・評価して1行を返す。"""
     started = time.perf_counter()
     split = plan.split
-    best = _select(plan, plan.designs[method.name], config.ridge.alpha_grid)
+    alphas = config.ridge.alpha_grid if method.alphas is None else method.alphas
+    best = _select(plan, plan.designs[method.designs_key], alphas)
     bias_column = best.design.bias_column
     coefficients = fit_ridge(
         _rows(best.design.phi, split.train),
@@ -291,11 +309,33 @@ def _evaluate(
     return row
 
 
+def _validate_extra_methods(extra: Sequence[Method], base: Sequence[Method]) -> None:
+    """追加水準が**既存の3手法を書き換えていない**ことを実行前に落とす。
+
+    静かに壊れる形が2つある。名前が既存手法とぶつかると CSV の同じ
+    ``method`` 値に別条件の行が混ざり、図は平均を取って何も気づかない。
+    ``design_key`` の借り先が無いと ``KeyError`` になるが、それはレプリケート
+    ループの中まで進んでから落ちるので、どの水準が悪いのか分からない。
+    """
+    names = {method.name for method in base}
+    for method in extra:
+        if method.name in names:
+            raise ValueError(f"追加水準の名前が既存手法と衝突しています: {method.name}")
+        names.add(method.name)
+        if method.design_key is not None and method.design_key not in {
+            item.name for item in base
+        }:
+            raise ValueError(
+                f"{method.name} の design_key が存在しません: {method.design_key}"
+            )
+
+
 def run_task(
     config: ExperimentConfig,
     task_entry: TaskEntry,
     *,
     plan0: ReplicatePlan | None = None,
+    extra_methods: Sequence[Method] = (),
 ) -> list[ResultRow]:
     """1課題について (手法 x レプリケート) を回す。
 
@@ -304,12 +344,20 @@ def run_task(
             ``plan_replicate`` 呼び直しを省く (F-1-009: ``collect_state_space``
             と計算を共有するための明示的な受け渡し)。省略時はこれまでどおり
             内部で作る。
+        extra_methods: ``build_methods`` の3手法に**この課題だけ**足す水準。
+            既定は空で、01 の ``comparison.csv`` は 1 行も変わらない
+            (``build_methods`` に足すと 01 に行が増えて D-13 の分離が崩れる。
+            D-31 が NARMA10 を ``build_tasks`` に足さないのと同じ理由)。
+            設計行列は ``design_key`` で既存手法から借りるので、
+            ``plan_replicate`` の ``t0`` も分割も変わらない。
     """
     if config.n_replicates < 1:
         raise ValueError(
             f"n_replicates は 1 以上である必要があります: {config.n_replicates}"
         )
-    methods = build_methods(config)
+    base = build_methods(config)
+    _validate_extra_methods(extra_methods, base)
+    methods = (*base, *extra_methods)
     rows: list[ResultRow] = []
     for replicate in range(config.n_replicates):
         plan = (
@@ -351,6 +399,7 @@ def run_experiment(
 __all__ = [
     "CSV_COLUMNS",
     "DELAY_LINE",
+    "DELAY_LINE_OLS",
     "ESN_METHOD",
     "LINEAR",
     "Method",

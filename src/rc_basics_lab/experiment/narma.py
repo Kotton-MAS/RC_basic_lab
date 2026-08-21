@@ -37,7 +37,9 @@ from rc_basics_lab.experiment.capacity import (
 )
 from rc_basics_lab.experiment.runner import (
     DELAY_LINE,
+    DELAY_LINE_OLS,
     ESN_METHOD,
+    Method,
     ReplicatePlan,
     ResultRow,
     TaskEntry,
@@ -201,6 +203,36 @@ class Narma10Results:
     wall_time_s: float
 
 
+DELAY_LINE_OLS_ALPHAS: tuple[float, ...] = (0.0,)
+"""正則化なし水準の alpha 格子 (D-90)。**格子ではなく1点** (alpha = 0)。"""
+
+
+def narma10_extra_methods(base: ExperimentConfig) -> tuple[Method, ...]:
+    """3-C だけに足す「遅延線 (正則化なし OLS)」水準を返す (D-90)。
+
+    先行 (Goudarzi et al. 2014) の対照は**正則化なしの遅延線**だった。
+    現行の3手法はどれもリッジで、正則化の有無を動かした水準が1つも無い。
+    そのため「遅延線が ESN に勝つ」という 3-C の結果を読者が見ても、
+    それが正則化のおかげなのか遅延線という特徴のおかげなのかが分からない。
+
+    設計行列は ``DELAY_LINE`` から**借りる** (``design_key``)。同じ
+    ``n_lags_grid``・同じ特徴・同じ分割で、**alpha だけが違う**2水準にする
+    ためで、こうしないと差がどこから来たのか言えなくなる。
+
+    n_lags の検証選択は**残す**。Goudarzi の穴は「1,810 タップ固定 + 正則化
+    なし」だったが、ここで n_lags も固定してしまうと2つの軸を同時に動かす
+    ことになり、対照の意味が消える (D-08 は n_lags の選択を許している)。
+    """
+    return (
+        Method(
+            DELAY_LINE_OLS,
+            candidates=(),
+            alphas=DELAY_LINE_OLS_ALPHAS,
+            design_key=DELAY_LINE,
+        ),
+    )
+
+
 def run_narma10(config: Capacity03Config) -> Narma10Results:
     """実験 3-C を1回だけ回す (成績 + 容量)。
 
@@ -255,7 +287,9 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
     )
     wall_time_capacity_s = time.perf_counter() - started
 
-    rows = tuple(run_task(base, entry, plan0=plan0))
+    rows = tuple(
+        run_task(base, entry, plan0=plan0, extra_methods=narma10_extra_methods(base))
+    )
 
     esn = entry.esn
     row = capacity_row_from(
