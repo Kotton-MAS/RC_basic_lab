@@ -213,9 +213,9 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
         axis.legend(loc="best", fontsize=9)
         figure.suptitle(
             style.label(
-                "実験 4-A: 教師強制の1ステップ先予測では3手法の差が小さい",
-                "Experiment 4-A: with teacher forcing the three methods are"
-                " nearly indistinguishable",
+                "実験 4-A: 教師強制の1ステップ先予測では遅延線と ESN に差が出ない",
+                "Experiment 4-A: with teacher forcing the delay line and the ESN"
+                " are indistinguishable",
             )
         )
         conditions = f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}"
