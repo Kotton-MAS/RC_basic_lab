@@ -32,7 +32,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -53,13 +53,33 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
+from rc_basics_lab.plotting.heatmap import (
+    colormap_with_uncomputed,
+    draw_truncation_edges,
+    masked_beyond_truncation,
+)
+from rc_basics_lab.plotting.labels import (
+    DAMBRE_2012,
+    GOUDARZI_2014,
+    IPC_BOUND_SOURCE,
+    MC_BOUND_SOURCE,
+    METHOD_LABELS,
+    SOURCE_UNIDENTIFIED,
+    cited,
+)
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
     METHOD_COLORS,
+    SEQUENTIAL_CMAP,
     StyleContext,
+    add_footnote,
+    method_color,
     rc_context_for,
+    reference_line_kwargs,
+    replicates_field,
     require_rows,
     save_png,
+    sequential_colors,
 )
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
@@ -887,7 +907,11 @@ def plot_narma10_control(
             ),
             fmt="o",
             capsize=5,
-            color="tab:blue",
+            color="#666666",
+        )
+        # 点の色は手法の固定色 (FIG-5)。記事をまたいで ESN は緑、遅延線は青。
+        axis.scatter(
+            positions, means, c=[method_color(method) for method, _ in labels], zorder=3
         )
         _reference_lines(axis, style)
         for position, mean in zip(positions, means, strict=True):
@@ -913,9 +937,13 @@ def plot_narma10_control(
         axis.legend(loc="best", fontsize=8)
         figure.suptitle(
             style.label(
-                "実験 3-C: NARMA10 (同一分割・同一 alpha 格子。"
-                "探索予算は遅延線の方が大きい)",
-                "Experiment 3-C: NARMA10 (identical splits and alpha grid;"
+                "実験 3-C: 対照をリッジで公平にすると、遅延線が ESN を下回る\n"
+                f"{GOUDARZI_2014} の対照を公平化した再実験"
+                " (同一分割・同一 alpha 格子。探索予算は遅延線の方が大きい)",
+                "Experiment 3-C: with a ridge-regularised control,"
+                " the delay line beats the ESN\n"
+                f"A fairer control for {GOUDARZI_2014}"
+                " (identical splits and alpha grid;"
                 " the delay line searches the larger budget)",
             )
         )
@@ -923,11 +951,18 @@ def plot_narma10_control(
             style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
             fontsize=8,
         )
+        _footnote(
+            figure,
+            f"n_train = {rows[0].n_train}, task = {rows[0].task}",
+            [row.replicate for row in rows],
+            style,
+        )
         return _save(figure, path)
 
 
 __all__ = [
     "BOUND_MARGIN",
+    "NORMALIZED_AXIS_LABEL",
     "conservation_bound",
     "ipc_heatmap_means",
     "mc_profile_means",
