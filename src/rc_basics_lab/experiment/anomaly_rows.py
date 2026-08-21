@@ -1,7 +1,8 @@
-"""05 の成果物の行 dataclass と CSV 列 (4枚ぶん).
+"""05 の成果物の行 dataclass と CSV 列 (5枚ぶん).
 
 ``anomaly.csv`` / ``anomaly_threshold.csv`` (5-A / 5-B) に加えて、T4 が
-``anomaly_protocol.csv`` (5-C) と ``anomaly_size.csv`` (5-D) の行を足した。
+``anomaly_protocol.csv`` (5-C) と ``anomaly_size.csv`` (5-D) の行を、T5 が
+``anomaly_timeline.csv`` (時系列上のスコアと正解ラベル) の行を足した。
 掃引そのもの (格子の組み立てと集計) は ``experiment/anomaly_sweep.py`` にあり、
 ここは**成果物の形だけ**を持つ —— T3 が ``anomaly.py`` から行 dataclass を
 切り出したのと同じ分け方で、掃引の行を ``anomaly_sweep.py`` に置くと
@@ -210,6 +211,52 @@ def rows_as_dicts(rows: Sequence[AnomalyRow]) -> list[dict[str, object]]:
 
 
 @dataclass(frozen=True, slots=True)
+class TimelineRow:
+    """``anomaly_timeline.csv`` の1行 (1例のテスト区間の1点、5-A の可視化)。
+
+    ``fig_score_timeline.png`` が読む唯一の入力である。**図は成果物 CSV の行
+    だけを読む** (仕様 §5 禁止する構造7) ので、「時系列上のスコアと正解ラベル」
+    のように配列で表される量も行に落とす (04 の ``FreeRunProfileRow`` と同じ
+    役割)。
+
+    行を作る条件は **5-A の (先頭の系列, レプリケート 0) そのもの**である
+    (D-82)。図のためだけの別条件を作らない —— 別条件で描くと、記事の図と
+    ``anomaly.csv`` の数値が違う実験のものになる。
+
+    Attributes:
+        dataset: ``dataset.source``。
+        series: 系列名。
+        method: ``ANOMALY_METHODS`` のいずれか。**6系統すべての行を出す**
+            (D-61: 対照を図から外せない)。
+        replicate: レプリケート番号。
+        index: 系列上の行 index (**間引いても元の index を保つ**)。
+        score: 平滑化まで済んだ異常スコア。
+        is_anomaly: 正解ラベル。
+        is_ignored: 評価から外す点か (``AnomalySeries.ignore``)。
+        threshold: 較正区間から決めた運用閾値 (D-56)。図に運用線を引くため、
+            各行が持ち歩く (``ThresholdSweepRow.calibrated_threshold`` と同じ
+            流儀)。
+    """
+
+    dataset: str
+    series: str
+    method: str
+    replicate: int
+    index: int
+    score: float
+    is_anomaly: bool
+    is_ignored: bool
+    threshold: float
+
+
+ANOMALY_TIMELINE_CSV = "anomaly_timeline.csv"
+ANOMALY_TIMELINE_CSV_COLUMNS: tuple[str, ...] = tuple(
+    item.name for item in fields(TimelineRow)
+)
+"""``anomaly_timeline.csv`` の列順 (``TimelineRow`` の宣言順)。"""
+
+
+@dataclass(frozen=True, slots=True)
 class ProtocolSweepRow:
     """``anomaly_protocol.csv`` の1行 (1格子点 x 1系統、5-C)。
 
@@ -345,6 +392,8 @@ __all__ = [
     "ANOMALY_SIZE_CSV_COLUMNS",
     "ANOMALY_THRESHOLD_CSV",
     "ANOMALY_THRESHOLD_CSV_COLUMNS",
+    "ANOMALY_TIMELINE_CSV",
+    "ANOMALY_TIMELINE_CSV_COLUMNS",
     "F1_TEST_OPTIMAL_COLUMN",
     "PA_F1_PREFIX",
     "PA_F1_RANDOM_PREFIX",
@@ -352,6 +401,7 @@ __all__ = [
     "ProtocolSweepRow",
     "SizeSweepRow",
     "ThresholdSweepRow",
+    "TimelineRow",
     "anomaly_csv_columns",
     "anomaly_row_as_dict",
     "pa_columns",
