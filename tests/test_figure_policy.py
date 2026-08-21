@@ -134,16 +134,16 @@ def test_literature_reference_lines_carry_their_source_in_the_legend(
     plot_narma10_control(narma10_rows(), tmp_path / "c.png", style=CONTEXT)
     assert len(capture_figures) == 3
 
-    checked = 0
+    checked: set[str] = set()
     for figure in capture_figures:
-        lines = _reference_lines(figure)
-        assert lines, "参照線が1本も見つかりません (色の約束が壊れています)"
-        for line in lines:
-            label = str(line.get_label())
+        # 凡例は同じ線の複製 (proxy artist) を持つのでラベルの集合で数える
+        labels = {str(line.get_label()) for line in _reference_lines(figure)}
+        assert labels, "参照線が1本も見つかりません (色の約束が壊れています)"
+        for label in labels:
             assert CITATION.search(label), f"参照線に出典がありません: {label!r}"
-            checked += 1
+        checked |= labels
     # 3-A に1本 + 3-B' に1本 + 3-C に2本
-    assert checked == 4, f"検査した参照線が {checked} 本です"
+    assert len(checked) == 4, f"検査した参照線が {sorted(checked)} です"
 
 
 def test_cited_refuses_a_reference_line_without_a_source() -> None:
@@ -178,14 +178,15 @@ def test_no_plotting_module_picks_a_tab_colour_by_hand() -> None:
     選び直せば連載通しの約束は静かに崩れる。**直書きの禁止まで含めて**
     1つの約束である。
     """
+    literal = re.compile(r"[\"']tab:")
     offenders = {
         path.name: [
             line
             for line in path.read_text(encoding="utf-8").splitlines()
-            if "tab:" in line
+            if literal.search(line)
         ]
         for path in sorted(PLOTTING_DIR.glob("*.py"))
-        if "tab:" in path.read_text(encoding="utf-8")
+        if literal.search(path.read_text(encoding="utf-8"))
     }
     assert not offenders, f"matplotlib の tab: 色が直書きされています: {offenders}"
 
@@ -316,7 +317,9 @@ def test_the_mc_sweep_shows_the_capacity_normalised_by_the_bound(
     """
     rows = mc_sweep_rows()
     plot_mc_sweep(rows, mc_sweep_profile(rows), tmp_path / "mc.png", style=CONTEXT)
-    labels = [axis.get_ylabel() for axis in capture_figures[0].axes]
+    figure = capture_figures[0]
+    axes = [*figure.axes, *(child for axis in figure.axes for child in axis.child_axes)]
+    labels = [axis.get_ylabel() for axis in axes]
     assert any("MC / N" in label for label in labels), (
         f"MC / N の軸がありません: {labels}"
     )
