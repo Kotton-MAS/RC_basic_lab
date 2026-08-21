@@ -74,6 +74,16 @@ from rc_basics_lab.tasks.anomaly import AnomalySeries, generate_synthetic_anomal
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
 
+CHANNEL_SWEEP = "sweep"
+"""5-C / 5-D の格子専用のチャネル (実験固有)。
+
+``protocol_sweep`` / ``size_sweep`` の葉が変えるのは 5-A の行ではなく
+**掃引の行**である (``anomaly_protocol.csv`` / ``anomaly_size.csv`` の行数と、
+5-D の劣化点)。5-A の指紋で測ると「変えても変わらない」と出てしまうので、
+観測点を掃引側に置く。T3 がこの4葉を置かなかったのはこの観測点が無かった
+ためで、T4 が掃引の実装と同時に足した。
+"""
+
 CHANNEL_SOURCES = "sources"
 """``dataset.source`` 専用のチャネル (実験固有、``wiring.py`` の想定どおり)。
 
@@ -349,6 +359,12 @@ REDUCED = Anomaly05Config(
     reservoir=AnomalyReservoirConfig(n_units=30, washout=20, n_replicates=1),
     ridge=AnomalyRidgeConfig(alpha_grid=(1e-4, 1e-2, 1.0)),
     threshold=AnomalyThresholdConfig(sweep_points=5),
+    protocol_sweep=AnomalyProtocolSweepConfig(
+        normalize_grid=("zscore", "minmax"),
+        input_window_grid=(4, 8),
+        score_smoothing_grid=(2, 4),
+    ),
+    size_sweep=AnomalySizeSweepConfig(n_units_grid=(20, 25, 30)),
 )
 """秒オーダーで回せる縮小設定 (**構造は本番と同じ**)。実測 0.02 秒/回。
 
@@ -381,6 +397,10 @@ ANOMALY_CASES: tuple[WiringCase, ...] = (
     case("evaluation.report_point_adjust", False),
     case("evaluation.pa_k_grid", (0.0,)),
     case("evaluation.ignore_transition", False),
+    case("protocol_sweep.normalize_grid", ("zscore", "robust"), channel=CHANNEL_SWEEP),
+    case("protocol_sweep.input_window_grid", (8, 12, 16), channel=CHANNEL_SWEEP),
+    case("protocol_sweep.score_smoothing_grid", (1, 4), channel=CHANNEL_SWEEP),
+    case("size_sweep.n_units_grid", (30, 60), channel=CHANNEL_SWEEP),
     case("seeds.reservoir", 11, scope=ESN_RESIDUAL),
     case("seeds.task", 12),
     case("seeds.split", 13),

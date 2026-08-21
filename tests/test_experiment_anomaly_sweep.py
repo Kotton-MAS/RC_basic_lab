@@ -510,7 +510,9 @@ def test_the_size_sweep_requires_a_uniform_training_amount() -> None:
     5-A / 5-C は系列ごとの差をそのまま行に出せばよいので、この要求は 5-D だけ
     に置く。
     """
-    config = replace(SWEEP, dataset=replace(SWEEP.dataset, series=("a", "b")))
+    config = replace(
+        SWEEP, dataset=replace(SWEEP.dataset, series=("a", "b"), max_length=3000)
+    )
     uneven: Mapping[str, SeriesSource] = {
         "a": _FixedSeriesSource(n_steps=2000),
         "b": _FixedSeriesSource(n_steps=3000),
