@@ -51,17 +51,17 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
     NARMA10_REFERENCE_NOTE_EN,
 )
-from rc_basics_lab.experiment.runner import (
-    ResultRow,
-)
+from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting.capacity_grids import (
     BOUND_MARGIN,
     conservation_bound,
+    even_degree_note,
     ipc_heatmap_means,
     mc_profile_means,
+    mean_std,
     representative_leak_rate,
+    sweep_conditions,
 )
-from rc_basics_lab.plotting.capacity_grids import mean_std as _mean_std
 from rc_basics_lab.plotting.heatmap import (
     colormap_with_uncomputed,
     draw_truncation_edges,
@@ -192,7 +192,7 @@ def _plot_mc_total_panel(
     colors = sequential_colors(len(leaks))
     for index, leak in enumerate(leaks):
         stats = [
-            _mean_std(
+            mean_std(
                 [
                     row.mc_total
                     for row in rows
@@ -265,7 +265,7 @@ def _plot_mc_profile_panel(
             linewidth=1.4,
             label=style.label(f"rho = {rho:g}", f"rho = {rho:g}"),
         )
-        effective, _ = _mean_std(
+        effective, _ = mean_std(
             [
                 row.mc_effective_delay
                 for row in rows
@@ -325,7 +325,7 @@ def plot_mc_sweep(
                 " yet stays below 20% of the bound N",
             )
         )
-        conditions = f"N = {first.n_units}, sigma_u = {first.sigma_u:g}"
+        conditions = sweep_conditions(first)
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
@@ -437,9 +437,8 @@ def plot_ipc_profile(
                 " and leaves the degree-1 part",
             )
         )
-        conditions = (
-            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}, a = {leak_rate:g}"
-        )
+        figure.supxlabel(style.label(*even_degree_note(profile)), fontsize=8)
+        conditions = sweep_conditions(first, leak_rate)
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
@@ -467,11 +466,11 @@ def _plot_stack_panel(
         [row for row in rows if row.rho == rho and row.leak_rate == leak_rate]
         for rho in rhos
     ]
-    linear = [_mean_std([row.ipc_linear for row in group])[0] for group in selected]
+    linear = [mean_std([row.ipc_linear for row in group])[0] for group in selected]
     nonlinear = [
-        _mean_std([row.ipc_nonlinear for row in group])[0] for group in selected
+        mean_std([row.ipc_nonlinear for row in group])[0] for group in selected
     ]
-    total_std = [_mean_std([row.ipc_total for row in group])[1] for group in selected]
+    total_std = [mean_std([row.ipc_total for row in group])[1] for group in selected]
     axis.bar(
         positions,
         linear,
@@ -564,7 +563,7 @@ def plot_memory_nonlinearity(
                 " of the capacity",
             )
         )
-        conditions = f"N = {first.n_units}, sigma_u = {first.sigma_u:g}"
+        conditions = sweep_conditions(first)
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
@@ -618,7 +617,7 @@ def plot_ipc_conservation(
         axis = figure.subplots(1, 1)
         for index, noise in enumerate(noises):
             stats = [
-                _mean_std(
+                mean_std(
                     [
                         row.ipc_total
                         for row in rows
@@ -707,7 +706,7 @@ def plot_narma10_control(
     labels = narma10_method_labels(rows, style)
     positions = np.arange(len(labels), dtype=np.float64)
     stats = [
-        _mean_std([row.nmse for row in rows if row.method == method])
+        mean_std([row.nmse for row in rows if row.method == method])
         for method, _ in labels
     ]
     means = [mean for mean, _ in stats]

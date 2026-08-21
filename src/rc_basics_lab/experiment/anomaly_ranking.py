@@ -29,6 +29,7 @@ import numpy as np
 
 from rc_basics_lab.experiment.anomaly_rows import AnomalyRow
 from rc_basics_lab.experiment.anomaly_score import ANOMALY_METHODS
+from rc_basics_lab.metrics_significance import sign_test_p_value
 
 CONTROL_SIGN_TEST_ALPHA = 0.05
 """「一様乱数対照と区別できる」と印を付ける有意水準 (片側符号検定、D-78)。
@@ -62,34 +63,6 @@ class MethodAggregate:
     n_better_than_control: int
     control_sign_p: float
     distinguishable: bool
-
-
-def sign_test_p_value(n_pairs: int, n_better: int) -> float:
-    """片側符号検定の p 値 (帰無仮説「対照より高い確率は 1/2」)。
-
-    対応のある比較にするのが要点で、``auprc`` と ``auprc_random`` は**同じ行**
-    (同じ系列・同じレプリケート・同じ評価点) の2つの数である。平均どうしを
-    比べるより、対ごとの符号を数えるほうが系列間のばらつき (UCR では s.d. が
-    平均と同じ大きさ) に振り回されない。
-
-    Args:
-        n_pairs: 対の数。
-        n_better: そのうち評価対象が対照を上回った数。
-
-    Returns:
-        ``P(X >= n_better)`` (``X ~ Binomial(n_pairs, 0.5)``)。対が0なら 1.0。
-
-    Raises:
-        ValueError: 数が負、または ``n_better > n_pairs`` の場合。
-    """
-    if n_pairs < 0 or n_better < 0:
-        raise ValueError(f"対の数は 0 以上が必要です: {n_pairs}, {n_better}")
-    if n_better > n_pairs:
-        raise ValueError(f"n_better が n_pairs を超えています: {n_better} > {n_pairs}")
-    if n_pairs == 0:
-        return 1.0
-    tail = sum(math.comb(n_pairs, k) for k in range(n_better, n_pairs + 1))
-    return tail / float(2**n_pairs)
 
 
 def kendall_tau(first: Sequence[float], second: Sequence[float]) -> float:

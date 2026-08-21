@@ -178,9 +178,52 @@ def conservation_bound(units: Sequence[int]) -> tuple[FloatArray, FloatArray]:
 __all__ = [
     "BOUND_MARGIN",
     "conservation_bound",
+    "even_degree_share",
     "ipc_heatmap_means",
     "mc_profile_means",
     "mean_std",
     "n_replicates",
     "representative_leak_rate",
+    "sweep_conditions",
 ]
+
+
+def even_degree_share(profile: Sequence[CapacityProfileRow]) -> float:
+    """偶数次の容量が全体に占める割合 (D-94)。
+
+    ``fig_ipc_profile`` では次数2と4のセルが共通の色スケールで 0 と
+    見分けられない。**理由が図に無いと、読者は最初にそこで引っかかる**
+    (FIG-7 で「未計算」を 0 と区別できるようにした以上、「0 である理由」も
+    要る)。割合を数え直して注に埋めるので、掃引の設定が変われば注も変わる。
+    """
+    total = sum(row.capacity for row in profile)
+    if total <= 0.0:
+        return 0.0
+    even = sum(row.capacity for row in profile if row.degree % 2 == 0)
+    return even / total
+
+
+def even_degree_note(profile: Sequence[CapacityProfileRow]) -> tuple[str, str]:
+    """偶数次が空である理由の注 (日本語, 英語) を割合つきで返す (D-94)。"""
+    share = even_degree_share(profile)
+    return (
+        "注: 次数2・4 がほぼ空なのは、駆動入力が対称 (平均0の一様) で tanh が"
+        " 奇関数のため、偶数次の項が打ち消し合うからである"
+        f" (残る偶数次は全容量の {share:.1%}。厳密に 0 でないのはバイアス項が"
+        " 対称性をわずかに破るため)。",
+        "Note: degrees 2 and 4 are nearly empty because the drive is symmetric"
+        " (zero-mean uniform) and tanh is odd, so even-order terms cancel"
+        f" ({share:.1%} of the total capacity remains; the bias term breaks the"
+        " symmetry slightly).",
+    )
+
+
+def sweep_conditions(row: CapacityRow, leak_rate: float | None = None) -> str:
+    """footnote に載せる掃引条件の1行 (D-87)。
+
+    3-A / 3-B / 3-B' が同じ文字列を手書きで組んでいた。手書きだと図ごとに
+    載せる項目がずれる (実測: 条件を書いている図は5枚あり、項目は
+    ばらばらだった)。
+    """
+    text = f"N = {row.n_units}, sigma_u = {row.sigma_u:g}"
+    return text if leak_rate is None else f"{text}, a = {leak_rate:g}"

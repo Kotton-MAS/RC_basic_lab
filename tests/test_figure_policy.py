@@ -42,6 +42,10 @@ from rc_basics_lab.plotting import (
     heatmap,
     style,
 )
+from rc_basics_lab.plotting.capacity_grids import (
+    even_degree_note,
+    even_degree_share,
+)
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
     plot_ipc_profile,
@@ -381,3 +385,45 @@ def test_the_ipc_profile_separates_uncomputed_cells_from_zero_capacity(
         and line.get_color() == heatmap.TRUNCATION_EDGE_COLOR
     ]
     assert edges, "打ち切り境界の線が引かれていません"
+
+
+def test_the_ipc_profile_explains_why_the_even_degrees_are_empty(
+    tmp_path: Path, capture_figures: list[Figure]
+) -> None:
+    """3-B の図に「偶数次が空である理由」の注がある (D-94)。
+
+    FIG-7 で「未計算」を 0 と区別できるようにした以上、「0 である理由」も
+    要る —— 読者が最初に目を引かれるのは「なぜ次数2と4だけ空なのか」である。
+
+    注の割合は**行から数え直す**ので、掃引の設定が変われば注も変わる
+    (固定文は結果が変わったときに静かに嘘をつく。3-C のタイトルと同じ理由)。
+    **変異注入**: ``even_degree_share`` の偶奇判定を反転すると、注の割合が
+    偶数次ではなく奇数次のものになり、ここが落ちる。
+    """
+    rows = ipc_sweep_rows()
+    profile = ipc_sweep_profile(rows)
+    plot_ipc_profile(
+        rows,
+        profile,
+        tmp_path / "ipc.png",
+        style=CONTEXT,
+        max_delay_by_degree={1: 3, 2: 1},
+    )
+    figure = capture_figures[0]
+    # 言語に依存させない (CONTEXT は英語ラベル)。日英どちらでも同じ注が出る。
+    expected = CONTEXT.label(*even_degree_note(profile))
+    notes = [
+        text.get_text()
+        for text in figure.findobj(Text)
+        if isinstance(text, Text) and text.get_text() == expected
+    ]
+    assert notes, "偶数次が空である理由の注がありません。期待した文字列:\n" + expected
+    note = notes[0]
+    assert "tanh" in note and "symmetric" in note, note
+
+    # 割合が実測から生成されている (手書きの固定文なら一致しない)
+    share = even_degree_share(profile)
+    assert f"{share:.1%}" in note, (note, share)
+    total = sum(row.capacity for row in profile)
+    even = sum(row.capacity for row in profile if row.degree % 2 == 0)
+    assert share == pytest.approx(even / total)

@@ -365,6 +365,19 @@ def test_the_sign_test_matches_the_binomial_tail() -> None:
     assert sign_test_p_value(0, 0) == 1.0
     with pytest.raises(ValueError, match="超えています"):
         sign_test_p_value(3, 4)
+    with pytest.raises(ValueError, match="0 以上"):
+        sign_test_p_value(-1, 0)
+
+    # D-91: 04 と 05 が**同じ関数**を見ている (別実装が復活したら落ちる)。
+    # 統合前は境界の答えが違い (対が0のとき nan と 1.0)、どちらも記事の
+    # 数値を作っていた。
+    from rc_basics_lab.experiment import anomaly_ranking, freerun
+    from rc_basics_lab.metrics_significance import (
+        sign_test_p_value as canonical,
+    )
+
+    assert freerun.sign_test_p_value is canonical
+    assert anomaly_ranking.sign_test_p_value is canonical
 
 
 def test_the_aggregation_cannot_drop_the_controls() -> None:

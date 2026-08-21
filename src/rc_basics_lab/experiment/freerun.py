@@ -71,6 +71,7 @@ from rc_basics_lab.experiment.runner import (
     run_task,
 )
 from rc_basics_lab.experiment.split import Split
+from rc_basics_lab.metrics_significance import sign_test_p_value
 from rc_basics_lab.readout.autoregressive import (
     FreeRunResult,
     StateUpdater,
@@ -1264,18 +1265,6 @@ class AttractorVerdict(DataclassSummaryMixin):
     median_return_map_surrogate: float
     median_spectrum: float
     median_spectrum_surrogate: float
-
-
-def sign_test_p_value(n_rows: int, n_successes: int) -> float:
-    """片側符号検定の p 値 (帰無仮説: 成功確率 0.5)。
-
-    ``sum_(k >= n_successes) C(n, k) / 2**n``。10 行が全部同じ向きなら
-    約 0.001 で、「有意に近い」(D-46) の根拠を数値で残せる。
-    """
-    if n_rows < 1:
-        return math.nan
-    total = sum(math.comb(n_rows, k) for k in range(n_successes, n_rows + 1))
-    return total / float(2**n_rows)
 
 
 def _median_of(values: Sequence[float]) -> float:
