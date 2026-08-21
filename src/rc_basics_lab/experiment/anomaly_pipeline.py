@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import csv
 import logging
 import math
 import time
@@ -70,7 +71,6 @@ from rc_basics_lab.experiment.anomaly_sweep import (
     summarize_protocol_sweep,
     summarize_size_sweep,
 )
-from rc_basics_lab.experiment.anomaly_threshold import calibrate_threshold
 from rc_basics_lab.experiment.report import (
     META_JSON,
     DataclassSummaryMixin,
@@ -366,11 +366,7 @@ def run_and_report_anomaly(config: Anomaly05Config, out_dir: Path) -> AnomalyOut
     figures_started = time.perf_counter()
     style = setup_style()
     paths = (
-        write_rows_csv(
-            rows_as_dicts(headline.rows),  # type: ignore[arg-type]
-            out_dir / ANOMALY_CSV,
-            anomaly_csv_columns(config),
-        ),
+        write_anomaly_csv(config, headline.rows, out_dir / ANOMALY_CSV),
         write_rows_csv(
             headline.threshold_rows,
             out_dir / ANOMALY_THRESHOLD_CSV,
@@ -544,6 +540,6 @@ __all__ = [
     "build_timeline_rows",
     "f1_gap_summary",
     "preprocessor_uniqueness",
-    "preprocessor_uniqueness",
     "run_and_report_anomaly",
+    "write_anomaly_csv",
 ]
