@@ -189,8 +189,7 @@ def plot_esp_decay(
         axis.legend(loc="upper right", fontsize=8, ncols=2)
         figure.suptitle(
             style.label(
-                "実験 2-A: 無入力では rho が 1 に近いほど過去が消えるのが遅く、"
-                "rho > 1 では消えない",
+                "実験 2-A: 無入力では rho が 1 に近いほど減衰が遅く rho > 1 で消えない",
                 "Experiment 2-A: without input the past decays more slowly as"
                 " rho approaches 1, and stops decaying above rho = 1",
             )
@@ -334,8 +333,7 @@ def plot_leak_timescale(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 2-B: リーク率を下げると時定数は理論線と平行に伸びる"
-                " (実測は理論の約 1.4 倍)",
+                "実験 2-B: リーク率を下げると時定数は理論の約 1.4 倍で平行に伸びる",
                 "Experiment 2-B: lowering the leak rate stretches the timescale"
                 " parallel to the theory line (measured is about 1.4x)",
             )

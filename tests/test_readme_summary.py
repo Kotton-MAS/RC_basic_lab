@@ -22,6 +22,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+
+#: README に書いた実測時間と ``meta.json`` の許容比 (D-84)。
+#: **厳密一致で縛らない** —— ``wall_time_s`` は実行環境で変わるので、
+#: 誰がどのマシンで再生成しても落ちる検査になってしまう
+#: (実際に 87.69 → 88.0 → 95.18 と3回落ちた)。
+#: 一方で「この実験が10倍遅くなった」は拾いたいので、桁が変わる手前で止める。
+WALL_TIME_TOLERANCE = 2.0
+
+
+def assert_wall_time_is_the_same_order(documented: float, measured: float) -> None:
+    """README の実測時間が ``meta.json`` と同じ桁にあること (D-84)。"""
+    assert measured > 0, "meta.json の wall_time_s が正の値ではありません"
+    ratio = documented / measured
+    assert 1 / WALL_TIME_TOLERANCE <= ratio <= WALL_TIME_TOLERANCE, (
+        f"README の実測時間 {documented} 秒 と meta.json の {measured:.2f} 秒 が "
+        f"{ratio:.2f} 倍ずれています。\n"
+        "**実行環境の差では説明できない開き**なので、実験が重くなっていないか"
+        "確認してください (単なる再測定なら README の数値を更新してください)。"
+    )
+
+
 SUMMARY_CSV = ROOT / "results" / "comparison_summary.csv"
 
 _NRMSE_DECIMALS = 4
@@ -208,7 +229,7 @@ def test_readme_experiment_02_numbers_match_meta_json() -> None:
 
     agreement = meta["verdict_lyapunov_agreement"]
     headline = meta["washout_sensitivity"]["headline"]
-    assert found["wall_time_s"] == round(meta["wall_time_s"], 2)
+    assert_wall_time_is_the_same_order(found["wall_time_s"], meta["wall_time_s"])
     assert found["n_false_esp"] == agreement["n_false_esp"]
     assert found["n_local_but_not_global"] == agreement["n_local_but_not_global"]
     assert found["ratio"] == round(headline["ratio"], 5)
@@ -301,7 +322,7 @@ def test_readme_experiment_03_wall_time_matches_meta_json() -> None:
     assert match, "README に 03 の wall_time_s の記述が見つかりません"
     wall_time = meta["wall_time_s"]
     assert isinstance(wall_time, float)
-    assert float(match.group(1)) == round(wall_time, 2)
+    assert_wall_time_is_the_same_order(float(match.group(1)), wall_time)
 
 
 def test_readme_narma10_table_matches_the_committed_rows() -> None:
