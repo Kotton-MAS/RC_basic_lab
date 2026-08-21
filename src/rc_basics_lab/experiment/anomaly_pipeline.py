@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import logging
 import math
 import time
@@ -336,10 +337,12 @@ def run_and_report_anomaly(config: Anomaly05Config, out_dir: Path) -> AnomalyOut
     # 先頭へ戻すと tests/test_layer_boundaries.py の AST guard が落ちる。
     from rc_basics_lab.plotting.figures_anomaly import (
         plot_pr_curves,
-        plot_protocol_sensitivity,
         plot_score_timeline,
-        plot_size_vs_performance,
         plot_threshold_tradeoff,
+    )
+    from rc_basics_lab.plotting.figures_anomaly_sweep import (
+        plot_protocol_sensitivity,
+        plot_size_vs_performance,
     )
     from rc_basics_lab.plotting.style import setup_style
 
@@ -510,16 +513,16 @@ def _meta_extra(
         "f1_gap": f1_gap_summary(headline.rows),
         # 5-A の集計 (README の数値表の出どころ。印の根拠列も含む、D-78)。
         "headline_auprc": {
-            method: aggregates[method].to_summary() for method in ANOMALY_METHODS
+            method: dataclasses.asdict(aggregates[method]) for method in ANOMALY_METHODS
         },
         "anomaly_rate_mean": float(
             np.mean([row.anomaly_rate for row in headline.rows])
         ),
         "control_sign_test_alpha": CONTROL_SIGN_TEST_ALPHA,
         # 受け入れ条件4 / D-78: 順位入替の集計 (行から計算する)。
-        "protocol_summary": summarize_protocol_sweep(protocol_rows).to_summary(),
+        "protocol_summary": dataclasses.asdict(summarize_protocol_sweep(protocol_rows)),
         # 受け入れ条件5 / D-80: 劣化点と、格子の端が選ばれたかの区別。
-        "size_summary": summarize_size_sweep(size_rows).to_summary(),
+        "size_summary": dataclasses.asdict(summarize_size_sweep(size_rows)),
         # 図のラベル言語を決めた要因 (02〜04 の meta.json と同じ形)。
         "cjk_font": cjk_font,
     }

@@ -11,6 +11,10 @@
 - ``figures_freerun``: 記事04の図5枚 (``fig_onestep`` /
   ``fig_freerun_attractor`` / ``fig_valid_time`` / ``fig_stability_map`` /
   ``fig_freerun_stats``)
+- ``figures_anomaly``: 記事05の図のうち 5-A / 5-B の3枚 (``fig_pr_curves`` /
+  ``fig_score_timeline`` / ``fig_threshold_tradeoff``) と、印の体裁の単一の真実
+- ``figures_anomaly_sweep``: 記事05の掃引の2枚 (``fig_protocol_sensitivity`` /
+  ``fig_size_vs_performance``)。**印を必ず可視化する** (D-81)
 
 pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI には
 ディスプレイが無いため、既定バックエンドに依存しない経路にそろえる。
@@ -18,6 +22,8 @@ pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI �
 
 from rc_basics_lab.plotting import (
     figures,
+    figures_anomaly,
+    figures_anomaly_sweep,
     figures_capacity,
     figures_esp,
     figures_freerun,
@@ -27,6 +33,8 @@ from rc_basics_lab.plotting import (
 
 __all__ = [
     "figures",
+    "figures_anomaly",
+    "figures_anomaly_sweep",
     "figures_capacity",
     "figures_esp",
     "figures_freerun",

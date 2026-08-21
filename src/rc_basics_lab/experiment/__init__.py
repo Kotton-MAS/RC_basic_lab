@@ -30,10 +30,12 @@
   作るだけの純関数層
 - ``anomaly_sweep``: 実験 5-C (プロトコル感度) / 5-D (N と性能) の掃引
   (D-78 / D-79)。格子点ごとに 5-A をそのまま回して集計するだけの層
+- ``anomaly_pipeline``: 05 の成果物 (CSV5枚 + 図5枚 + meta.json) をそろえる経路
 """
 
 from rc_basics_lab.experiment import (
     anomaly,
+    anomaly_pipeline,
     anomaly_ranking,
     anomaly_rows,
     anomaly_score,
@@ -62,6 +64,7 @@ from rc_basics_lab.experiment import (
 
 __all__ = [
     "anomaly",
+    "anomaly_pipeline",
     "anomaly_ranking",
     "anomaly_rows",
     "anomaly_score",
