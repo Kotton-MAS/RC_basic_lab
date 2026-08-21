@@ -6,6 +6,7 @@
     uv run python main.py --experiment 02
     uv run python main.py --experiment 03
     uv run python main.py --experiment 04
+    uv run python main.py --experiment 05
 
 ``--experiment`` は ``experiments/`` 配下の実験番号。この層が知っているのは
 「どの設定 YAML を、どのローダで読み、どのパイプラインに渡すか」だけで、
@@ -23,12 +24,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import (
+    Anomaly05Config,
     Capacity03Config,
     Chaos04Config,
     Esp02Config,
     load_config,
     load_config_as,
 )
+from rc_basics_lab.experiment.anomaly_pipeline import run_and_report_anomaly
 from rc_basics_lab.experiment.capacity_pipeline import run_and_report_capacity
 from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
 from rc_basics_lab.experiment.freerun_pipeline import run_and_report_freerun
@@ -109,6 +112,21 @@ def _run_04(config_path: Path, out_dir: Path) -> None:
     run_and_report_freerun(config, out_dir)
 
 
+def _run_05(config_path: Path, out_dir: Path) -> None:
+    """実験05 (センサー時系列の異常検知。5-A / 5-B / 5-C / 5-D)。"""
+    config = load_config_as(config_path, Anomaly05Config)
+    logger.info(
+        "実験05 を実行します: %s (source=%s / 系列 %d 本 / max_length=%d / "
+        "n_replicates=%d)",
+        config_path,
+        config.dataset.source,
+        len(config.dataset.series),
+        config.dataset.max_length,
+        config.reservoir.n_replicates,
+    )
+    run_and_report_anomaly(config, out_dir)
+
+
 EXPERIMENTS: dict[str, ExperimentSpec] = {
     "01": ExperimentSpec(
         config_path=ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
@@ -130,10 +148,15 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
         run=_run_04,
         out_dir=Path("results/04_chaotic_freerun"),
     ),
+    "05": ExperimentSpec(
+        config_path=ROOT / "experiments" / "05_anomaly_detection" / "config.yaml",
+        run=_run_05,
+        out_dir=Path("results/05_anomaly_detection"),
+    ),
 }
 """実験番号 -> ``ExperimentSpec``。
 
-03〜05 を足すときは、その実験の設定クラスとパイプラインを呼ぶ ``_run_XX`` を
+実験を足すときは、その実験の設定クラスとパイプラインを呼ぶ ``_run_XX`` を
 書いてここに1行足す。**設定クラスを 01 の ``ExperimentConfig`` に相乗りさせ
 ない** (D-13)。相乗りさせると YAML の未知キー検査 (D-09) と配線テストの
 被覆が同時に壊れる。**``out_dir`` は実験ごとに異なる値にする** —— 揃えると

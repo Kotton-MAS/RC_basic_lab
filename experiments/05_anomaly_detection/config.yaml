@@ -1,0 +1,117 @@
+# 実験05: センサー時系列の異常検知 (5-A / 5-B / 5-C / 5-D)
+#
+# 未知キーは ConfigError で即座に落ちる (D-09)。
+#
+# 実験ごとに設定クラスを分ける (D-13)。このファイルは Anomaly05Config を埋める
+# もので、01 の ExperimentConfig / 02 の Esp02Config / 03 の Capacity03Config /
+# 04 の Chaos04Config とはローダ (load_config_as) だけを共有する。
+#
+# **記事の本番設定は実データ源 MGAB である** (記事のタイトルが「実データで
+# 使ってみる」なので、主図が合成データでは食い違う)。先に `make data-05` で
+# data/05_anomaly/mgab/ を作ること。SHA256 が一致しないファイルは例外になり
+# キャッシュにも残らない (D-58)。
+#
+# 一方で **Anomaly05Config() のコード上の既定は合成源のまま**である ——
+# pytest はネットワークに一切触れない (D-60)。既定を実データにすると、
+# 設定を渡さないテストがキャッシュの有無で挙動を変える。
+
+name: 05_anomaly_detection
+
+dataset:
+  # 源の実体への対応づけは experiment/anomaly_sources.py の build_sources
+  # 1箇所だけが持つ (源の具象名で分岐してよい唯一の場所、D-71)。
+  source: mgab
+  # MGAB の系列名は "1".."10" (manifests/mgab.csv)。3本で 3 系列 x 5
+  # レプリケート = 15 対になり、片側符号検定で印が付きうる下限 (5 対) に
+  # 十分な余裕がある (D-78)。
+  series: ["1", "2", "3"]
+  # 系列の打ち切り長 [点]。MGAB の系列は 100,000 点だが、**5-C の予算
+  # (< 250 秒) に収めるためここで切る** —— 100,000 点だと 5-A が 11.8 秒
+  # かかり、27 格子点で 318 秒になって 5-C の予算を割る (実測)。60,000 点では
+  # 5-A が 7.3 秒で 5-C が約 198 秒に収まる。仕様 §3 が「系列は
+  # dataset.max_length で打ち切ってよい」と定めた予算調整の第一の軸である。
+  # 打ち切っても最初の異常 (index 29,068〜32,908) は含まれる。
+  max_length: 60000
+  # 学習区間は「異常が1点も無いことが保証された前半」(AnomalySeries.train_end)
+  # の内側でなければならず、越える設定は ValueError になる (D-57)。
+  # 60,000 点 x 0.25 = 約 14,800 行で、3系列の train_end の最小 29,068 の
+  # 内側に収まる。
+  train_ratio: 0.25
+  # 運用閾値を決める区間 (D-56)。**較正区間のラベルは1ビットも読まない**。
+  calibration_ratio: 0.15
+
+# 合成源 (dataset.source: synthetic) のときだけ読まれる節。値は
+# Anomaly05Config の既定と同じ (MGAB と同じ手続きで異常を挿入する)。
+synthetic:
+  length: 20000
+  n_anomalies: 5
+  segment_length: 200
+  ignore_margin: 50
+  mackey_glass:
+    tau: 17.0
+    beta: 0.2
+    gamma: 0.1
+    exponent: 10
+    rk4_step: 0.1
+    sample_interval: 10
+    integration_burn_in: 1000
+
+# 全手法が共有する前処理とスコア整形 (D-57)。係数を作れる場所は
+# AnomalyPreprocessor.from_training_prefix 1本だけで、実験層は
+# 1レプリケート = 1インスタンスを全系統に配る。
+preprocess:
+  normalize: zscore
+  standardize_steps: 3000
+  input_window: 16
+  score_smoothing: 8
+
+reservoir:
+  n_units: 200
+  spectral_radius: 0.9
+  leak_rate: 0.3
+  input_scale: 0.5
+  density: 0.1
+  washout: 200
+  # 予算超過時に落としてよい唯一の値 (仕様 §3)。ただし 5 を割ると
+  # (系列 x レプリケート) の対が 15 -> 9 に減り、印の付きやすさが変わる
+  # (D-78: 5 対未満だとどの系統にも印が付かない)。
+  n_replicates: 5
+
+ridge:
+  # alpha 格子は全手法・全系列が共有する単一キー (D-04)。
+  alpha_grid: [1.0e-08, 1.0e-07, 1.0e-06, 1.0e-05, 1.0e-04, 1.0e-03,
+               1.0e-02, 1.0e-01, 1.0, 10.0, 100.0]
+
+threshold:
+  # 較正区間で許す警報率。閾値はこの分位点で決まり、テスト区間では固定する。
+  target_false_alarm_rate: 0.01
+  # f1_test_optimal は **別列** であって f1_calibrated を置き換えない (D-56)。
+  report_test_optimal: true
+  # 5-B の掃引の点数 (1条件あたりの anomaly_threshold.csv の行数)。
+  sweep_points: 21
+
+evaluation:
+  # PA%K を報告する。true のとき pa_f1_k* と pa_f1_random_k* が**必ず対で**
+  # 現れる (D-55: 一様乱数の PA-F1 を並べずに PA-F1 を出さない)。
+  report_point_adjust: true
+  pa_k_grid: [0.0, 20.0]
+  ignore_transition: true
+
+# 5-C の格子 (前処理・整形のプロトコルを振る3軸の全組合せ = 27 点)。
+# **preprocess の既定値を必ず含むこと** (含まないと ValueError、D-79)。
+protocol_sweep:
+  normalize_grid: [zscore, minmax, robust]
+  input_window_grid: [8, 16, 32]
+  score_smoothing_grid: [1, 8, 16]
+
+# 5-D の格子。**reservoir.n_units を必ず含むこと** (D-79)。
+size_sweep:
+  n_units_grid: [25, 50, 100, 200]
+
+seeds:
+  reservoir: 0
+  task: 1
+  split: 2
+  # 一様乱数対照 (SeedStream.PROBE に載る)。これを変えたときに動くのは
+  # 対照の auprc だけであることを配線テストが実測する (D-61)。
+  control: 5
