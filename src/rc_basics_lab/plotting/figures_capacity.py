@@ -124,6 +124,13 @@ def _save(figure: Figure, path: Path) -> Path:
     return save_png(figure, path)
 
 
+def _footnote(
+    figure: Figure, conditions: str, replicates: Sequence[int], style: StyleContext
+) -> None:
+    """再現条件を図の隅に焼き込む (FIG-6 / D-87)。"""
+    add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
+
+
 def _mean_std(values: Sequence[float]) -> tuple[float, float]:
     """レプリケート平均と標準偏差 (母標準偏差、``ddof=0``)。
 
@@ -274,10 +281,14 @@ def _plot_mc_total_panel(
     縦軸を対数にするのは、上限線 (本番 N=200) と実測 (10〜36) を1枚に載せる
     ためである。線形軸だと上限線を入れた瞬間に実測の差が潰れて、受け入れ条件1
     の「rho とともに伸びる」が読めなくなる。
+
+    対数軸にしても「上限からどれだけ遠いか」は目分量になるので、右側に
+    ``MC / N`` の第2軸を置く (FIG-4)。N が1つに定まるときだけ引く ——
+    格子に複数の N が混ざっていたら ``MC / N`` は一意に決まらない。
     """
     rhos = _unique_sorted([row.rho for row in rows])
     leaks = _unique_sorted([row.leak_rate for row in rows])
-    colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(leaks)))
+    colors = sequential_colors(len(leaks))
     for index, leak in enumerate(leaks):
         stats = [
             _mean_std(
@@ -724,7 +735,7 @@ def narma10_method_labels(
     methods = tuple(dict.fromkeys(row.method for row in rows))
     labels: list[tuple[str, str]] = []
     for method in methods:
-        pair = _METHOD_LABELS.get(method)
+        pair = METHOD_LABELS.get(method)
         text = method if pair is None else style.label(*pair)
         if method == DELAY_LINE:
             lags = sorted({row.n_lags for row in rows if row.method == method})
