@@ -762,7 +762,14 @@ def test_narma10_table_matches_the_committed_rows() -> None:
         records = list(csv.DictReader(handle))
     verdict = _capacity_meta()["narma10_verdict"]
     assert isinstance(verdict, dict)
-    labels = {"線形": "linear", "遅延線": "delay_line", "ESN": "esn"}
+    # 全角括弧は RUF001/RUF002 が弾くのでエスケープで書く (_SIGMA_HEAD と同じ)
+    paren_l, paren_r = "\uff08", "\uff09"
+    labels = {
+        "線形": "linear",
+        f"遅延線{paren_l}リッジ{paren_r}": "delay_line",
+        f"遅延線{paren_l}OLS{paren_r}": "delay_line_ols",
+        "ESN": "esn",
+    }
     _, table = _table_after(re.compile(r"^\|\s*手法\s*\|\s*NMSE\s*\|\s*NRMSE\s*\|"))
     assert len(table) == len(labels), table
     for cells in table:

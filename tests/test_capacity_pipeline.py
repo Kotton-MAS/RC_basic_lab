@@ -402,10 +402,20 @@ def test_meta_json_records_the_wall_time_breakdown(
             assert item[key] > 0.0, (item["experiment"], key)
     assert meta["n_rows"] == EXPECTED_ROWS
     assert meta["n_profile_rows"] > 0
-    assert meta["n_narma10_rows"] == 3 * 2  # 3手法 x 2レプリケート
+    assert meta["n_narma10_rows"] == 4 * 2  # 4手法 x 2レプリケート (D-90)
     # 3-C は向きを問わないが、どちらに転んでも同じ形で残る (仕様 §4 T4)
     verdict = meta["narma10_verdict"]
-    assert set(verdict["nmse_mean"]) == {"linear", "delay_line", "esn"}
+    assert set(verdict["nmse_mean"]) == {
+        "linear",
+        "delay_line",
+        "delay_line_ols",
+        "esn",
+    }
+    # D-90: 正則化の有無で結論が変わったかが成果物だけで読める
+    assert isinstance(verdict["delay_line_ols_beats_esn"], bool)
+    assert verdict["regularisation_changes_the_verdict"] == (
+        verdict["delay_line_ols_beats_esn"] != verdict["delay_line_beats_esn"]
+    )
     assert verdict["best_method"] in verdict["nmse_mean"]
     assert isinstance(verdict["delay_line_beats_esn"], bool)
     assert verdict["reference_nmse"] == {"linear_ceiling": 0.16, "nonlinear_rc": 0.107}

@@ -14,6 +14,7 @@
 - ``figures_anomaly``: 記事05の図のうち 5-A / 5-B の3枚 (``fig_pr_curves`` /
   ``fig_score_timeline`` / ``fig_threshold_tradeoff``) と、印の体裁の単一の真実
 - ``capacity_grids``: 記事03の図が読む「行 → 格子」の復元 (描画を含まない)
+- ``narma10_panel``: 実験 3-C の横軸ラベルと結論文の生成 (描画を含まない)
 - ``heatmap``: 打ち切り・欠測を 0 と別の色で描くための補助 (FIG-7 / D-88)
 - ``figures_anomaly_sweep``: 記事05の掃引の2枚 (``fig_protocol_sensitivity`` /
   ``fig_size_vs_performance``)。**印を必ず可視化する** (D-81)
@@ -32,6 +33,7 @@ from rc_basics_lab.plotting import (
     figures_freerun,
     heatmap,
     labels,
+    narma10_panel,
     style,
 )
 
@@ -45,5 +47,6 @@ __all__ = [
     "figures_freerun",
     "heatmap",
     "labels",
+    "narma10_panel",
     "style",
 ]

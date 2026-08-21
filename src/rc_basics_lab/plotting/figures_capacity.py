@@ -51,7 +51,9 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
     NARMA10_REFERENCE_NOTE_EN,
 )
-from rc_basics_lab.experiment.runner import DELAY_LINE, DELAY_LINE_OLS, ResultRow
+from rc_basics_lab.experiment.runner import (
+    ResultRow,
+)
 from rc_basics_lab.plotting.capacity_grids import (
     BOUND_MARGIN,
     conservation_bound,
@@ -70,9 +72,12 @@ from rc_basics_lab.plotting.labels import (
     GOUDARZI_2014,
     IPC_BOUND_SOURCE,
     MC_BOUND_SOURCE,
-    METHOD_LABELS,
     SOURCE_UNIDENTIFIED,
     cited,
+)
+from rc_basics_lab.plotting.narma10_panel import (
+    narma10_headline,
+    narma10_method_labels,
 )
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
@@ -659,28 +664,6 @@ def plot_ipc_conservation(
 # --- 3-C: 公平な対照での NARMA10 -------------------------------------------
 
 
-def narma10_method_labels(
-    rows: Sequence[ResultRow], style: StyleContext
-) -> tuple[tuple[str, str], ...]:
-    """横軸の (手法名, 表示ラベル) を出現順で返す。
-
-    遅延線のラベルには**検証分割で選ばれたタップ数 k** を入れる (D-08 が
-    選ぶことを許した唯一の構造パラメータであり、対照の強さそのもの)。
-    レプリケートごとに違う k が選ばれたら全部並べる —— 代表値を1つ選ぶと
-    「ばらついている」という事実が図から消える。
-    """
-    methods = tuple(dict.fromkeys(row.method for row in rows))
-    labels: list[tuple[str, str]] = []
-    for method in methods:
-        pair = METHOD_LABELS.get(method)
-        text = method if pair is None else style.label(*pair)
-        if method in {DELAY_LINE, DELAY_LINE_OLS}:
-            lags = sorted({row.n_lags for row in rows if row.method == method})
-            text = f"{text}\n(k = {', '.join(str(value) for value in lags)})"
-        labels.append((method, text))
-    return tuple(labels)
-
-
 def _reference_lines(axis: Axes, style: StyleContext) -> None:
     """参照線 NMSE = 0.16 / 0.107 を**注記つき**で引く (原典未特定)。
 
@@ -775,14 +758,13 @@ def plot_narma10_control(
         axis.legend(loc="best", fontsize=8)
         figure.suptitle(
             style.label(
-                "実験 3-C: 対照をリッジで公平にすると、遅延線が ESN を下回る\n"
-                f"{GOUDARZI_2014} の対照を公平化した再実験"
-                " (同一分割・同一 alpha 格子。探索予算は遅延線の方が大きい)",
-                "Experiment 3-C: with a ridge-regularised control,"
-                " the delay line beats the ESN\n"
-                f"A fairer control for {GOUDARZI_2014}"
-                " (identical splits and alpha grid;"
-                " the delay line searches the larger budget)",
+                f"実験 3-C: {narma10_headline(rows, style)}\n"
+                f"{GOUDARZI_2014} の対照 (正則化なし) を第4水準に足した"
+                " (同一分割・同一特徴。alpha だけが違う)",
+                f"Experiment 3-C: {narma10_headline(rows, style)}\n"
+                f"Adding the unregularised control of {GOUDARZI_2014}"
+                " as a fourth level"
+                " (identical splits and features; only alpha differs)",
             )
         )
         figure.supxlabel(

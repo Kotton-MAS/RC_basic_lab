@@ -164,9 +164,7 @@ def test_narma10_reuses_run_task_and_shares_rows_across_methods(
         extra_methods: Sequence[runner.Method] = (),
     ) -> list[ResultRow]:
         calls.append((cfg, task_entry, plan0))
-        return real_run_task(
-            cfg, task_entry, plan0=plan0, extra_methods=extra_methods
-        )
+        return real_run_task(cfg, task_entry, plan0=plan0, extra_methods=extra_methods)
 
     monkeypatch.setattr(narma_module, "run_task", spy)
     results = run_narma10(config)
@@ -236,9 +234,7 @@ def test_narma10_alpha_grid_is_shared_across_methods(
     assert set(spy.grids) == {shared, DELAY_LINE_OLS_ALPHAS}, (
         "共有格子と正則化なし水準以外の alpha 格子が現れました (D-04 / D-90)"
     )
-    ridge_alphas = {
-        row.alpha for row in results.rows if row.method != DELAY_LINE_OLS
-    }
+    ridge_alphas = {row.alpha for row in results.rows if row.method != DELAY_LINE_OLS}
     assert ridge_alphas <= set(base.ridge.alpha_grid)
     assert {row.alpha for row in results.rows if row.method == DELAY_LINE_OLS} == {0.0}
     # 遅延線が選ぶ k は格子の中 (探索予算の非対称は遅延線の側に大きい、D-08)

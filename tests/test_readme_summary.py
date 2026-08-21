@@ -256,8 +256,10 @@ _CAPACITY_META_KEYS: dict[str, str] = {
 }
 _NMSE_ROW_RE = re.compile(
     r"^\|\s*NMSE\s*\|\s*\*{0,2}([\d.]+)\*{0,2}\s*\|\s*\*{0,2}([\d.]+)\*{0,2}"
-    r"\s*\|\s*\*{0,2}([\d.]+)\*{0,2}\s*\|"
+    r"\s*\|\s*\*{0,2}([\d.]+)\*{0,2}\s*\|\s*\*{0,2}([\d.]+)\*{0,2}\s*\|"
 )
+_NMSE_TABLE_METHODS = ("linear", "delay_line", "delay_line_ols", "esn")
+"""README の NMSE 表の列順 (D-90 で正則化なし水準が3列目に入った)。"""
 _MC_RATIO_RE = re.compile(r"到達する最大は (?P<ratio>[\d.]+)%")
 _CAPACITY_VALUE_RE = re.compile(
     r"`(?P<name>mc_total|ipc_total|ipc_nonlinear) = (?P<value>[\d.]+)`"
@@ -332,9 +334,7 @@ def test_readme_narma10_table_matches_the_committed_rows() -> None:
         match = _NMSE_ROW_RE.match(line)
         if not match:
             continue
-        for method, cell in zip(
-            ("linear", "delay_line", "esn"), match.groups(), strict=True
-        ):
+        for method, cell in zip(_NMSE_TABLE_METHODS, match.groups(), strict=True):
             subset = [row for row in rows if row["method"] == method]
             assert subset, method
             expected = sum(float(row["nmse"]) for row in subset) / len(subset)

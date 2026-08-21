@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "b33fac5dcfc62b245089c433e4ffff05a536522e",
+  "commit": "2ee4aa4f1eb16338fc2cd60a23fbddb1d308b70f",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -194,14 +194,16 @@
     }
   },
   "matplotlib_version": "3.11.1",
-  "n_narma10_rows": 15,
+  "n_narma10_rows": 20,
   "n_profile_rows": 21812,
   "n_rows": 118,
   "narma10_verdict": {
-    "best_method": "delay_line",
+    "best_method": "delay_line_ols",
     "delay_line_beats_esn": true,
+    "delay_line_ols_beats_esn": true,
     "nmse_mean": {
       "delay_line": 0.15375010031359504,
+      "delay_line_ols": 0.15337183929690917,
       "esn": 0.267298647253092,
       "linear": 1.0181377822749034
     },
@@ -210,6 +212,7 @@
       "nonlinear_rc": 0.107
     },
     "reference_note": "注: 参照値 NMSE = 0.16 (非線形性なしの天井) / 0.107 (良好な非線形 RC、N = 50 規模) は複数の物理 RC 論文が引用する値で、原典は未特定である (要件_rc-basics-03 未確定1)。",
+    "regularisation_changes_the_verdict": false,
     "selected_n_lags": [
       25,
       30
@@ -288,42 +291,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 2.661004833993502
+    "wall_time_s": 2.7587384170037694
   },
-  "timestamp_utc": "2026-08-19T07:10:14.710505+00:00",
+  "timestamp_utc": "2026-08-21T04:35:46.252797+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 20.857516337244306,
-      "wall_time_mc_s": 2.9004844960873015,
-      "wall_time_s": 29.000567831739318,
-      "wall_time_state_s": 5.240283293707762
+      "wall_time_ipc_s": 21.07016550283879,
+      "wall_time_mc_s": 2.912118036998436,
+      "wall_time_s": 29.299169545061886,
+      "wall_time_state_s": 5.314531504001934
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 56.7232557911193,
-      "wall_time_mc_s": 6.563683078798931,
-      "wall_time_s": 74.48935925000114,
-      "wall_time_state_s": 11.19938958104467
+      "wall_time_ipc_s": 58.0859566659783,
+      "wall_time_mc_s": 6.56458974792622,
+      "wall_time_s": 76.23731949797366,
+      "wall_time_state_s": 11.583648083964363
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 185.678675666044,
-      "wall_time_mc_s": 15.486891583132092,
-      "wall_time_s": 220.49366358597763,
-      "wall_time_state_s": 19.324197167821694
+      "wall_time_ipc_s": 192.79702341172379,
+      "wall_time_mc_s": 16.275442460202612,
+      "wall_time_s": 229.24190179107245,
+      "wall_time_state_s": 20.16552274825517
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.13310858397744596,
-      "wall_time_mc_s": 0.016456125013064593,
-      "wall_time_s": 0.33189487498020753,
-      "wall_time_state_s": 0.03338995797093958
+      "wall_time_ipc_s": 0.1352464579977095,
+      "wall_time_mc_s": 0.016844541998580098,
+      "wall_time_s": 0.3395641670213081,
+      "wall_time_state_s": 0.03399391699349508
     }
   ],
-  "wall_time_s": 326.98266391601646
+  "wall_time_s": 337.8803234579973
 }
