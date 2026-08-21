@@ -78,31 +78,6 @@ class ProtocolCondition:
 
 
 @dataclass(frozen=True, slots=True)
-class MethodAggregate:
-    """1条件 x 1系統の集計 (行 dataclass ではなく計算の途中結果)。
-
-    Attributes:
-        method: 系統名。
-        auprc_mean: ``auprc`` の平均。
-        auprc_sd: ``auprc`` の標準偏差 (``ddof=1``。対が1つなら 0)。
-        auprc_random_mean: ``auprc_random`` の平均 (D-61)。
-        n_pairs: (系列, レプリケート) の対の数。
-        n_better_than_control: ``auprc > auprc_random`` だった対の数。
-        control_sign_p: 片側符号検定の p 値。
-        distinguishable: 一様乱数対照と区別できるか (D-78)。
-    """
-
-    method: str
-    auprc_mean: float
-    auprc_sd: float
-    auprc_random_mean: float
-    n_pairs: int
-    n_better_than_control: int
-    control_sign_p: float
-    distinguishable: bool
-
-
-@dataclass(frozen=True, slots=True)
 class ProtocolSweepSummary:
     """5-C の要約 (``meta.json`` に載る量。**行から計算する**)。
 
