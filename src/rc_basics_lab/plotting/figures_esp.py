@@ -156,9 +156,7 @@ def plot_esp_decay(
                 )
         axis.axhline(
             _DISTANCE_FLOOR,
-            color="tab:gray",
-            linestyle=":",
-            linewidth=1.0,
+            **reference_line_kwargs(1),
             label=style.label(
                 f"丸めの床 ({_DISTANCE_FLOOR:g}。これ以下は測れない)",
                 f"rounding floor ({_DISTANCE_FLOOR:g}; not measurable below)",
@@ -272,7 +270,8 @@ def _plot_timescale_panel(
         yerr=stds,
         fmt="o-",
         capsize=4,
-        color="tab:blue",
+        # リーク率の掃引そのものなので連続量の配色から取る (FIG-5)
+        color=sequential_colors(1)[0],
         label=style.label(
             "実測 tau (自己相関が 1/e を切るラグ)",
             "measured tau (lag where the ACF crosses 1/e)",

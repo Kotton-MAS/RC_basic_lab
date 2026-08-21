@@ -58,6 +58,7 @@ from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
+    method_color,
     rc_context_for,
     require_rows,
 )
@@ -77,6 +78,9 @@ REGIME_LABELS: dict[str, tuple[str, str]] = {
     REGIME_ATTRACTOR: ("アトラクタ再現", "attractor"),
 }
 """3態の表示 (``REGIMES`` の全要素を持つ。欠けたら描く前に落とす)。"""
+
+CENSORED_EDGE_COLOR = "#b2182b"
+"""打ち切られた観測の縁の色 (D-43。参照線の色とは別にする)。"""
 
 REGIME_COLORS: dict[str, str] = {
     REGIME_DIVERGED: "#b2182b",
@@ -357,7 +361,7 @@ def _valid_time_panel(
             position + jitter[~censored],
             values[~censored],
             s=28,
-            color="tab:blue",
+            color=method_color(method),
             alpha=0.8,
         )
         if bool(np.any(censored)):
@@ -367,7 +371,7 @@ def _valid_time_panel(
                 s=44,
                 marker="^",
                 facecolors="none",
-                edgecolors="tab:red",
+                edgecolors=CENSORED_EDGE_COLOR,
                 label=style.label("打ち切り (自走長に到達)", "censored (run ended)"),
             )
         median = float(np.median(values))

@@ -31,6 +31,9 @@ from rc_basics_lab.experiment.state_space import (
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
 from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
+    DELAY_LINE_METHOD,
+    ESN_METHOD,
+    METHOD_COLORS,
     StyleContext,
     add_provenance,
     method_color,
@@ -44,6 +47,9 @@ from rc_basics_lab.types import FloatArray
 
 REFERENCE_NRMSE = 1.0
 """平均予測と同等になる NRMSE (D-02)。図の水平基準線。"""
+
+UNKNOWN_SPACE_COLOR = "#777777"
+"""対応表に無い空間の色 (無彩色。データ系列の4色と重ならない)。"""
 
 _MAX_SCATTER_POINTS = 2000
 """散布図に描く最大点数 (超えたら等間隔に間引く。PNG の肥大を避ける)。"""
@@ -67,9 +73,14 @@ _SPACE_LABELS: dict[str, tuple[str, str]] = {
     RESERVOIR_STATE: ("リザバー状態", "reservoir state"),
 }
 _SPACE_COLORS: dict[str, str] = {
-    DELAY_EMBEDDED_INPUT: "tab:orange",
-    RESERVOIR_STATE: "tab:blue",
+    DELAY_EMBEDDED_INPUT: METHOD_COLORS[DELAY_LINE_METHOD],
+    RESERVOIR_STATE: METHOD_COLORS[ESN_METHOD],
 }
+"""空間の色は**対応する手法の色**に合わせる (FIG-5)。
+
+「入力の遅延埋め込み」は遅延線が使う特徴量、「リザバー状態」は ESN が使う
+特徴量なので、比較図と PCA 図で同じ色にすると記事をまたいで対応が読める。
+"""
 
 
 def _lookup(table: dict[str, tuple[str, str]], key: str, style: StyleContext) -> str:
@@ -265,7 +276,7 @@ def _scatter_space(
         scores[:, 1],
         s=3,
         alpha=0.3,
-        color=_SPACE_COLORS.get(space, "tab:gray"),
+        color=_SPACE_COLORS.get(space, UNKNOWN_SPACE_COLOR),
     )
     axis.set_xlabel("PC1")
     axis.set_ylabel("PC2")
