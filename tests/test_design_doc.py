@@ -402,6 +402,28 @@ def _assert_cell_matches(cell: str, actual: float, label: str) -> None:
     )
 
 
+#: CSV 合計サイズの予算 (design.md §11.5 が根拠として挙げている 5 MB)。
+CSV_BUDGET_B = 5 * 1024 * 1024
+
+#: サイズセルの許容比。**厳密一致で縛らない** —— CSV には ``wall_time`` 列が
+#: 入っており、実行環境で桁数が変わるとファイル全体のバイト数まで動く。
+#: 一方でこの表の役目は「CSV 合計が予算 5 MB に収まる根拠」を示すことなので、
+#: 桁が変わらない範囲で通し、予算そのものは別に検査する。
+SIZE_TOLERANCE = 1.05
+
+
+def _assert_size_cell(cell: str, actual: int, label: str) -> None:
+    """サイズのセルが実ファイルと**同じ桁**にあること。"""
+    documented = int(cell.removesuffix(" B").replace(",", ""))
+    assert actual > 0, f"{label}: 実ファイルが空です"
+    ratio = documented / actual
+    assert 1 / SIZE_TOLERANCE <= ratio <= SIZE_TOLERANCE, (
+        f"{label}: design.md は {documented} B / 実ファイルは {actual} B で "
+        f"{ratio:.3f} 倍ずれています。**wall_time 列の桁では説明できない差**なので、"
+        "行数や列が変わっていないか確認してください。"
+    )
+
+
 def _assert_wall_time_cell(cell: str, actual: float, label: str) -> None:
     """実行時間のセルが一次資料と**同じ桁**にあること (D-84)。"""
     documented = float(cell)
@@ -836,10 +858,13 @@ def test_artifact_size_table_matches_the_files() -> None:
         size = path.stat().st_size
         n_rows = sum(1 for _ in path.open(encoding="utf-8")) - 1
         assert int(cells[1]) == n_rows, cells
-        assert int(cells[2].removesuffix(" B").replace(",", "")) == size, cells
+        _assert_size_cell(cells[2], size, name)
         total += size
     documented_total = next(cells for cells in table if "CSV 合計" in cells[0])[2]
-    assert int(documented_total.strip("*").removesuffix(" B").replace(",", "")) == total
+    _assert_size_cell(documented_total.strip("*"), total, "CSV 合計")
+    assert total < CSV_BUDGET_B, (
+        f"CSV 合計が予算 {CSV_BUDGET_B} B を超えました: {total} B"
+    )
 
 
 def test_config_package_line_counts_in_the_design_doc_are_current() -> None:
@@ -1294,12 +1319,12 @@ def test_anomaly_wall_time_table_matches_the_meta_json() -> None:
         for prefix, key in _ANOMALY_TIME_SECTIONS.items():
             if not label.startswith(prefix):
                 continue
-            assert float(_bold(row[1])) == round(float(breakdown[key]), 1), prefix
+            _assert_wall_time_cell(_bold(row[1]), float(breakdown[key]), prefix)
             assert float(_bold(row[2])) == float(budgets[key]), prefix
             seen += 1
             break
         if label.startswith("合計"):
-            assert float(_bold(row[1])) == round(_number(meta, "wall_time_s"), 1)
+            _assert_wall_time_cell(_bold(row[1]), _number(meta, "wall_time_s"), "合計")
             assert float(_bold(row[2])) == _number(meta, "total_budget_s")
             seen += 1
     assert seen == len(_ANOMALY_TIME_SECTIONS) + 1, table
