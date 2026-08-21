@@ -244,21 +244,22 @@ def build_timeline_rows(
     )
     plan = outcome.plan
     test = plan.split.test
-    indices = range(test.start, test.stop, _thinning_stride(len(test)))
+    stride = _thinning_stride(len(test))
+    indices = range(test.start, test.stop, stride)
     labels: BoolArray = plan.series.labels
     ignore: BoolArray = plan.series.ignore
-    if not bool(np.any(labels[test.start : test.stop][:: _thinning_stride(len(test))])):
+    if not any(bool(labels[index]) for index in indices):
         raise ValueError(
             "間引いたテスト区間に異常点が1つも残りません "
             f"(系列 {name}、テスト {len(test)} 点、上限 {TIMELINE_MAX_POINTS} 点)"
         )
+    # **閾値は 5-A の行が持っている値をそのまま使う** (D-82)。ここで
+    # calibrate_threshold を呼び直すと、較正区間の切り出し規則が実験層と
+    # 作図用で2実装に割れる (D-57 と同じ壊れ方)。
+    thresholds = {row.method: row.threshold for row in outcome.rows}
     rows: list[TimelineRow] = []
     for method in ANOMALY_METHODS:
         scores: FloatArray = plan.scores[method].values
-        threshold = calibrate_threshold(
-            _calibration_scores(plan.scores[method].values, plan, config),
-            config.threshold.target_false_alarm_rate,
-        )
         rows.extend(
             TimelineRow(
                 dataset=config.dataset.source,
@@ -269,7 +270,7 @@ def build_timeline_rows(
                 score=float(scores[index]),
                 is_anomaly=bool(labels[index]),
                 is_ignored=bool(ignore[index]),
-                threshold=threshold,
+                threshold=thresholds[method],
             )
             for index in indices
         )
@@ -278,31 +279,28 @@ def build_timeline_rows(
         name,
         test.start,
         test.stop,
-        _thinning_stride(len(test)),
+        stride,
         len(rows),
     )
     return tuple(rows)
 
 
-def _calibration_scores(
-    scores: FloatArray, plan: object, config: Anomaly05Config
-) -> FloatArray:
-    """較正区間の可視スコア (``experiment/anomaly.py`` の ``_visible`` と同規則)。
+def write_anomaly_csv(
+    config: Anomaly05Config, rows: Sequence[AnomalyRow], path: Path
+) -> Path:
+    """``anomaly.csv`` を書く (**列が設定で増減する**ので専用の書き出し)。
 
-    ラベルを1ビットも読まない (D-56)。``plan`` を ``object`` で受けるのは
-    ``AnomalyPlan`` の import を増やさないためではなく、この関数が使うのが
-    ``split`` と ``series.ignore`` の2つだけであることを署名で示すためである。
+    ``report.write_rows_csv`` は ``dataclasses.asdict`` で固定列の行を書く
+    ヘルパーなので、``f1_test_optimal`` と PA%K の列が増減する 05 の主 CSV は
+    ここで書く。列順の単一の真実は ``anomaly_csv_columns`` のままで、値の
+    取り出しも ``anomaly_row_as_dict`` に閉じている (D-55)。
     """
-    from rc_basics_lab.experiment.anomaly import AnomalyPlan
-
-    assert isinstance(plan, AnomalyPlan)
-    window = plan.split.val
-    block: FloatArray = scores[window.start : window.stop]
-    if not config.evaluation.ignore_transition:
-        return block
-    mask: BoolArray = plan.series.ignore[window.start : window.stop]
-    kept: FloatArray = block[~mask]
-    return kept
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(anomaly_csv_columns(config)))
+        writer.writeheader()
+        writer.writerows(rows_as_dicts(rows))
+    return path
 
 
 def _log_timing(timing: SectionTiming, wall_time_s: float) -> None:
