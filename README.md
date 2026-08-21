@@ -27,6 +27,30 @@ uv run pytest -q
 uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml
 ```
 
+### Claude Code のフックを使う場合のみ: `settings.local.json`
+
+上の3コマンドには不要。**Claude Code のフック (claude-pdca-kit) を動かす場合だけ**必要になる。
+
+キットのフックは `PY=$(command -v python3)` で処理系を解決する。`pyenv` などが
+古い Python を先に解決すると、このリポジトリのコード (PEP 695 の型エイリアスを含む)
+を**構文解析できず、フックが無言で死ぬ**。実際に8サイクルこの状態が続いた (D-73)。
+
+処理系の解決はマシンごとに違うので、gitignore された `.claude/settings.local.json` に置く:
+
+```jsonc
+{
+  "env": {
+    // このリポジトリの .venv/bin を PATH の先頭に置く。
+    // ${PATH} の展開は効かないので、既存の PATH を全部列挙すること。
+    "PATH": "<このリポジトリの絶対パス>/.venv/bin:<既存の PATH をそのまま>"
+  }
+}
+```
+
+`printenv PATH` の出力をそのまま後ろに繋げばよい。設定後、
+`uv run pytest tests/test_hook_interpreter.py` が緑になれば正しく解決できている
+(`.venv` を作り直したときに先頭要素が dangling になっていないかも、このテストが見る)。
+
 3 番目は `make figures-01` でも同じ（`python main.py --experiment 01` も同じ経路）。
 `results/` に次の4点が出る:
 
