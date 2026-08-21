@@ -36,10 +36,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from itertools import product
 
-import numpy as np
-
 from rc_basics_lab.config import Anomaly05Config
 from rc_basics_lab.experiment.anomaly import run_anomaly_headline
+from rc_basics_lab.experiment.anomaly_ranking import (
+    MethodAggregate,
+    aggregate_methods,
+    kendall_tau,
+)
 from rc_basics_lab.experiment.anomaly_rows import (
     AnomalyRow,
     ProtocolSweepRow,
@@ -56,15 +59,6 @@ DEGRADATION_FRACTION = 0.9
 **設定の葉にしない** —— 報告する量の名前 ``n_units_at_90pct`` がこの値
 そのものなので、葉にすると列名が嘘になる (``SPLIT_OFFSET_DIVISOR`` と同じ
 判断)。定義を変えたいときは列名ごと変えること。
-"""
-
-CONTROL_SIGN_TEST_ALPHA = 0.05
-"""「一様乱数対照と区別できる」と印を付ける有意水準 (片側符号検定、D-78)。
-
-設定の葉にしない。印の根拠 (``n_pairs`` / ``n_better_than_control`` /
-``control_sign_p``) を行がすべて持ち歩くので、別の水準で読み直したい読者は
-CSV の3列から自分で判定できる —— 葉にすると「水準を緩めて印を増やした図」が
-作れてしまう。
 """
 
 
