@@ -1229,3 +1229,73 @@ def test_chaos_full_wall_time_table_matches_the_meta_json() -> None:
     assert seen == len(expected), full
     assert _number(meta, "wall_time_s") < 900.0, "figures-04 が予算 900 秒を超えました"
     assert table is not None
+
+
+# --- §13 (05b T5): 異常検知の設計と実測 ----------------------------------------
+
+ANOMALY_META = ROOT / "results" / "05_anomaly_detection" / "meta.json"
+
+_ANOMALY_TIME_HEADER = re.compile(
+    r"^\|\s*区間\s*\|\s*実測 \[秒\]\s*\|\s*予算 \[秒\]\s*\|"
+)
+_ANOMALY_TIME_SECTIONS: dict[str, str] = {
+    "5-A + 5-B": "headline_s",
+    "時系列図の1例": "timeline_s",
+    "5-C": "protocol_s",
+    "5-D": "size_s",
+    "図5枚": "figures_s",
+}
+
+
+def _anomaly_meta() -> dict[str, object]:
+    loaded: dict[str, object] = json.loads(ANOMALY_META.read_text(encoding="utf-8"))
+    return loaded
+
+
+def test_anomaly_wall_time_table_matches_the_meta_json() -> None:
+    """§13.3 の実行時間表が ``meta.json`` の区間別内訳・予算と一致する。
+
+    区間ごとの予算は ``experiment.anomaly_pipeline.SECTION_BUDGETS_S`` が単一の
+    真実で、``meta.json`` の ``wall_time_budget_s`` にそのまま載る。表だけを
+    書き換えて予算を緩める経路を残さない。
+    """
+    meta = _anomaly_meta()
+    breakdown = meta["wall_time_breakdown"]
+    budgets = meta["wall_time_budget_s"]
+    assert isinstance(breakdown, dict)
+    assert isinstance(budgets, dict)
+    header, table = _table_after(_ANOMALY_TIME_HEADER)
+    assert header and table is not None, "§13.3 の実行時間表が見つかりません"
+    seen = 0
+    for row in table:
+        label = _bold(row[0])
+        for prefix, key in _ANOMALY_TIME_SECTIONS.items():
+            if not label.startswith(prefix):
+                continue
+            assert float(_bold(row[1])) == round(float(breakdown[key]), 1), prefix
+            assert float(_bold(row[2])) == float(budgets[key]), prefix
+            seen += 1
+            break
+        if label.startswith("合計"):
+            assert float(_bold(row[1])) == round(_number(meta, "wall_time_s"), 1)
+            assert float(_bold(row[2])) == _number(meta, "total_budget_s")
+            seen += 1
+    assert seen == len(_ANOMALY_TIME_SECTIONS) + 1, table
+    assert _number(meta, "wall_time_s") < 900.0, "figures-05 が予算 900 秒を超えました"
+
+
+def test_the_design_doc_records_the_dataset_selection_criteria() -> None:
+    """§13.1 に選定基準の表があり、落選候補が名前で残っている (要件書 設計判断5)。
+
+    「なぜ MGAB と UCR なのか」を散文だけにすると、次のサイクルが別のデータを
+    足すときに基準が再現できない。落選の**理由と候補名**まで表に残す。
+    """
+    text = _text()
+    start = text.index("### 13.1")
+    end = text.index("### 13.2", start)
+    section = text[start:end]
+    rows = [line for line in section.splitlines() if line.startswith("| ")]
+    assert len(rows) >= 6, f"§13.1 の選定基準表が縮んでいます: {len(rows)} 行"
+    for name in ("SWaT", "Yahoo S5", "Exathlon", "NAB", "SMD"):
+        assert name in section, f"落選候補 {name} が §13.1 から消えています"
+    assert "MGAB" in section and "UCR" in section
