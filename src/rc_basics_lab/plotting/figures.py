@@ -29,7 +29,14 @@ from rc_basics_lab.experiment.state_space import (
     StateSpaceReport,
 )
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
-from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import (
+    StyleContext,
+    add_provenance,
+    method_color,
+    rc_context_for,
+    reference_line_kwargs,
+    require_rows,
+)
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.types import FloatArray
@@ -101,9 +108,7 @@ def _draw_reference_line(axis: Axes, style: StyleContext) -> None:
     """NRMSE = 1 (平均予測と同等) の水平基準線を描く (D-02)。"""
     axis.axhline(
         REFERENCE_NRMSE,
-        color="tab:red",
-        linestyle="--",
-        linewidth=1.0,
+        **reference_line_kwargs(),
         label=style.label(
             "NRMSE = 1 (平均予測と同等)",
             "NRMSE = 1 (same as predicting the mean)",
@@ -176,8 +181,10 @@ def _plot_task_panel(
         yerr=np.vstack([lower, stds]),
         fmt="o",
         capsize=5,
-        color="tab:blue",
+        color="#666666",
     )
+    # 点の色は手法の固定色 (FIG-5)。記事をまたいで ESN は緑、遅延線は青。
+    axis.scatter(positions, means, c=[method_color(m) for m in methods], zorder=3)
     _draw_reference_line(axis, style)
     _annotate_means(axis, positions, means)
     n_replicates = max(stats[(task, method)].n for method in methods)
@@ -229,9 +236,17 @@ def plot_comparison(
             )
         figure.suptitle(
             style.label(
-                "3ベースラインの比較 (同一分割・同一 alpha 格子)",
-                "Three baselines (identical splits and alpha grid)",
+                "実験 1: 非線形な遅延パリティを解けるのは ESN だけ"
+                " (同一分割・同一 alpha 格子)",
+                "Experiment 1: only the ESN solves the nonlinear delay parity"
+                " (identical splits and alpha grid)",
             )
+        )
+        add_provenance(
+            figure,
+            f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}",
+            [row.replicate for row in rows],
+            style=style,
         )
         return _save(figure, path)
 
@@ -297,7 +312,7 @@ def _plot_cumulative_ratio_panel(
             linestyle=":",
             linewidth=1.0,
         )
-    axis.axhline(0.95, color="tab:red", linestyle="--", linewidth=1.0)
+    axis.axhline(0.95, **reference_line_kwargs())
     axis.set_xlabel(style.label("主成分の数", "number of components"))
     axis.set_ylabel(style.label("累積寄与率", "cumulative explained variance"))
     raw = report.space(RAW_INPUT)
@@ -337,9 +352,16 @@ def plot_state_space(
             _plot_cumulative_ratio_panel(axes[index][2], report, style)
         figure.suptitle(
             style.label(
-                "入力空間とリザバー状態空間の PCA",
-                "PCA of the input space and the reservoir state space",
+                "実験 1: リザバー状態は入力の遅延埋め込みより高い次元へ広がる",
+                "Experiment 1: the reservoir state spans more dimensions"
+                " than the delay embedding of the input",
             )
+        )
+        add_provenance(
+            figure,
+            f"n_rows = {reports[0].n_rows}, n_lags = {reports[0].n_lags}",
+            [report.replicate for report in reports],
+            style=style,
         )
         return _save(figure, path)
 
