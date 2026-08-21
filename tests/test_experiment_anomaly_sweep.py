@@ -2,7 +2,7 @@
 
 仕様 (``docs/plans/rc-basics-05.md`` §4 T4) の受け入れ基準5項目に対応する:
 
-1. ``test_the_headline_grid_point_reproduces_the_5a_rows_exactly`` (基準1)
+1. ``test_sweep_reproduces_the_headline_condition_exactly`` (基準1)
 2. ``test_rank_change_indicators_live_in_the_rows`` (基準2)
 3. ``test_the_size_sweep_reports_the_degradation_point_and_its_saturation`` (基準3)
 4. ``test_changing_the_n_units_grid_moves_the_rows_and_the_degradation_point`` (基準4)
@@ -135,7 +135,7 @@ def _condition_of(row: ProtocolSweepRow) -> tuple[str, int, int]:
 # --- 受け入れ基準1: 基準の格子点が 5-A と厳密一致する -----------------------
 
 
-def test_the_headline_grid_point_reproduces_the_5a_rows_exactly() -> None:
+def test_sweep_reproduces_the_headline_condition_exactly() -> None:
     """``preprocess`` と一致する格子点の行が 5-A の行と**厳密一致**する (基準1)。
 
     前処理が2実装に割れる経路を塞ぐのが目的なので、値の一致だけでなく
