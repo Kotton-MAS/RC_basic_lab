@@ -32,7 +32,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -42,8 +42,6 @@ from matplotlib.colors import Normalize, PowerNorm
 from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.capacity import (
-    DIAGNOSTIC_IPC,
-    DIAGNOSTIC_MC,
     CapacityProfileRow,
     CapacityRow,
 )
@@ -53,6 +51,14 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
+from rc_basics_lab.plotting.capacity_grids import (
+    BOUND_MARGIN,
+    conservation_bound,
+    ipc_heatmap_means,
+    mc_profile_means,
+    representative_leak_rate,
+)
+from rc_basics_lab.plotting.capacity_grids import mean_std as _mean_std
 from rc_basics_lab.plotting.heatmap import (
     colormap_with_uncomputed,
     draw_truncation_edges,
@@ -84,14 +90,6 @@ from rc_basics_lab.plotting.style import (
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
 from rc_basics_lab.types import FloatArray
-
-BOUND_MARGIN = 0.1
-"""上限線 y=N (対角線) を格子の外へ伸ばす割合。
-
-``n_units`` が1点しかない縮退ケース (縮小設定) でも**線**として描けるように
-両端へ余白を取る。1点だけを結ぶと長さ 0 の線分になり、図の主張である
-「傾き1の対角線」が消える。
-"""
 
 _MIN_COLOR_MAX = 1.0e-12
 """ヒートマップの配色上限の下駄。
@@ -148,145 +146,6 @@ def _footnote(
 ) -> None:
     """再現条件を図の隅に焼き込む (FIG-6 / D-87)。"""
     add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
-
-
-def _mean_std(values: Sequence[float]) -> tuple[float, float]:
-    """レプリケート平均と標準偏差 (母標準偏差、``ddof=0``)。
-
-    レプリケートが1本しかない縮退ケースでも落ちないよう ``np.std`` を使う
-    (``statistics.stdev`` は n=1 で例外になる)。
-    """
-    if not values:
-        return math.nan, math.nan
-    array: FloatArray = np.asarray(values, dtype=np.float64)
-    return float(np.mean(array)), float(np.std(array))
-
-
-def _n_replicates(rows: Sequence[CapacityRow]) -> int:
-    """行に現れるレプリケートの本数。
-
-    長形式の行は**正値セルだけ**なので、容量が 0 のレプリケートは1行も
-    書かれていない。平均を「在る行の数」で割ると、0 のレプリケートを無視した
-    過大評価になる。分母はここ (``capacity.csv`` 側の行) から取る。
-    """
-    return max(len({row.replicate for row in rows}), 1)
-
-
-def _for_rows(
-    profile: Sequence[CapacityProfileRow], rows: Sequence[CapacityRow]
-) -> tuple[CapacityProfileRow, ...]:
-    """``rows`` と同じ実験ラベルの長形式の行だけに絞る。
-
-    3-A と 3-B は (rho, leak_rate) の格子が一部重なるため、実験ラベルで
-    絞らずに読むと別の実験のセルが図に混ざりうる。呼び出し側の絞り込み漏れを
-    ここで塞ぐ (絞り込み済みの並びを渡しても結果は変わらない)。
-    """
-    experiments = {row.experiment for row in rows}
-    return tuple(row for row in profile if row.experiment in experiments)
-
-
-def representative_leak_rate(
-    rows: Sequence[CapacityRow], value_of: Callable[[CapacityRow], float]
-) -> float:
-    """パネルに出す代表リーク率を選ぶ (``value_of`` の平均が最大のもの)。
-
-    3-A の右パネルと 3-B のヒートマップは1つのリーク率しか描けない。**総容量が
-    最も大きい動作点**を代表にするのは、その図が見せたい構造 (プロファイルの
-    伸び / 次数の配分) が最も読み取れる点だからである。同点のときは小さい方を
-    採り、選択が行の並び順に依存しないようにする。
-
-    ``key: str`` + ``getattr`` (列名を文字列指定) ではなく
-    ``Callable[[CapacityRow], float]`` にしてあるのは (F-3b1-1-007)、
-    ``getattr`` の戻り値は mypy が ``Any`` とみなすため列名のタイプミスや
-    ``CapacityRow`` のリネームが図の生成時 (``AttributeError``) まで検出
-    されなかったため。呼び出し側は ``lambda row: row.mc_total`` のように渡す。
-
-    Args:
-        rows: 1実験ぶんの行。
-        value_of: 比較に使う値を1行から取り出す関数
-            (``lambda row: row.mc_total`` / ``lambda row: row.ipc_total``)。
-
-    Raises:
-        ValueError: ``rows`` が空の場合。
-    """
-    require_rows(rows)
-    totals: dict[float, list[float]] = {}
-    for row in rows:
-        totals.setdefault(row.leak_rate, []).append(float(value_of(row)))
-    return min(totals, key=lambda leak: (-float(np.mean(totals[leak])), leak))
-
-
-def mc_profile_means(
-    rows: Sequence[CapacityRow], profile: Sequence[CapacityProfileRow], leak_rate: float
-) -> dict[float, FloatArray]:
-    """MC の遅延プロファイルを rho ごとにレプリケート平均する (D-38 の長形式から)。
-
-    長形式には正値セルしか無いので、``(n_delays,)`` の 0 配列に足し込んでから
-    レプリケート数で割る。``n_delays`` は ``capacity.csv`` 側の列
-    (``mc.max_delay``) を使う —— 長形式の最大遅延から決めると、条件によって
-    横軸の長さが変わって rho 間の比較ができなくなる。
-    """
-    n_delays = max((row.n_delays for row in rows), default=0)
-    divisor = float(_n_replicates(rows))
-    means = {
-        rho: np.zeros(n_delays, dtype=np.float64)
-        for rho in _unique_sorted([row.rho for row in rows])
-    }
-    for row in _for_rows(profile, rows):
-        if row.diagnostic != DIAGNOSTIC_MC or row.leak_rate != leak_rate:
-            continue
-        cells = means.get(row.rho)
-        if cells is None or not 1 <= row.delay <= n_delays:
-            continue
-        cells[row.delay - 1] += row.capacity / divisor
-    return means
-
-
-def ipc_heatmap_means(
-    rows: Sequence[CapacityRow], profile: Sequence[CapacityProfileRow], leak_rate: float
-) -> dict[float, FloatArray]:
-    """IPC の (次数 x 遅延) 容量を rho ごとにレプリケート平均する (D-38 の長形式から)。
-
-    形は全パネルで共通の ``(max(n_degrees), 最大遅延)`` にそろえる。遅延の
-    打ち切りは次数ごとに違う (本番は 60/20/10/6) ので、打ち切りの外は 0 のまま
-    残り、ヒートマップの中に打ち切りの形がそのまま出る。
-    """
-    n_degrees = max((row.n_degrees for row in rows), default=1)
-    cells = _for_rows(profile, rows)
-    n_delays = max(
-        (row.delay for row in cells if row.diagnostic == DIAGNOSTIC_IPC), default=1
-    )
-    divisor = float(_n_replicates(rows))
-    means = {
-        rho: np.zeros((n_degrees, n_delays), dtype=np.float64)
-        for rho in _unique_sorted([row.rho for row in rows])
-    }
-    for row in cells:
-        if row.diagnostic != DIAGNOSTIC_IPC or row.leak_rate != leak_rate:
-            continue
-        grid = means.get(row.rho)
-        if grid is None or not 1 <= row.degree <= n_degrees:
-            continue
-        grid[row.degree - 1, row.delay - 1] += row.capacity / divisor
-    return means
-
-
-def conservation_bound(units: Sequence[int]) -> tuple[FloatArray, FloatArray]:
-    """上限線 ``y = N`` (傾き1の対角線) の端点を返す (受け入れ条件2)。
-
-    描画とテストが**同じ1か所**からこの座標を取る。図の主張は
-    「``ipc_total`` はこの対角線を超えない」なので、線が消えたことを
-    ``test_conservation_figure_draws_the_bound_line`` が検出できる必要がある。
-
-    Raises:
-        ValueError: ``units`` が空の場合。
-    """
-    if not units:
-        raise ValueError("units が空です")
-    low = min(units) * (1.0 - BOUND_MARGIN)
-    high = max(units) * (1.0 + BOUND_MARGIN)
-    edge: FloatArray = np.array([low, high], dtype=np.float64)
-    return edge, edge
 
 
 # --- 3-A: 線形メモリ容量の掃引 ---------------------------------------------
