@@ -189,9 +189,7 @@ def build_protocol_sensitivity_figure(
     )
     # 掃引の行はレプリケートを畳み込んだ集計なので replicate 列を持たない。
     # 代わりに集計に使った (系列, レプリケート) 対の数を焼き込む (FIG-6)。
-    conditions = (
-        f"dataset = {rows[0].dataset}, {rows[0].n_pairs} pairs per grid point"
-    )
+    conditions = f"dataset = {rows[0].dataset}, {rows[0].n_pairs} pairs per grid point"
     add_footnote(figure, conditions, style=style)
     return figure
 
