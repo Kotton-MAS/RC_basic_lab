@@ -27,11 +27,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
+import numpy as np
 from matplotlib import font_manager
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from rc_basics_lab.plotting.labels import label
+from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
 
@@ -240,13 +242,18 @@ def find_cjk_font(candidates: Sequence[str] = CJK_FONT_CANDIDATES) -> str | None
     return None
 
 
-def setup_style() -> StyleContext:
+def setup_style(*, commit: str | None = None) -> StyleContext:
     """CJK フォントの有無を判定し ``StyleContext`` を返す。
 
     ``matplotlib.rcParams`` は書き換えない (F-1-008)。CJK フォントが見つから
     ない場合は ``logger.warning`` を出し、``cjk_available=False`` のコンテキスト
     を返す (呼び出し側は英語ラベルで描く)。実際の描画設定は ``rc_params_for``
     を経由して ``matplotlib.rc_context`` で一時適用する。
+
+    Args:
+        commit: footnote に焼き込む HEAD (FIG-6)。**git はここでは呼ばない**
+            —— 作図層が subprocess を持つと、テストが図を描くたびに git が
+            起動する。実験層 (``meta.git_commit()`` を1回呼ぶ側) から渡す。
     """
     cjk_font = find_cjk_font()
     if cjk_font is None:
@@ -254,9 +261,9 @@ def setup_style() -> StyleContext:
             "CJK フォントが見つかりません (候補: %s)。図のラベルを英語で描きます。",
             ", ".join(CJK_FONT_CANDIDATES),
         )
-        return StyleContext(cjk_font=None)
+        return StyleContext(cjk_font=None, commit=commit)
     logger.info("CJK フォントを使用します: %s", cjk_font)
-    return StyleContext(cjk_font=cjk_font)
+    return StyleContext(cjk_font=cjk_font, commit=commit)
 
 
 def rc_params_for(style: StyleContext) -> dict[str, object]:
@@ -341,15 +348,33 @@ def unique_sorted(values: Sequence[float]) -> tuple[float, ...]:
 
 __all__ = [
     "CJK_FONT_CANDIDATES",
+    "COMMIT_LENGTH",
+    "DELAY_LINE_METHOD",
+    "DELAY_LINE_OLS_METHOD",
+    "ESN_METHOD",
     "FIGURE_DPI",
+    "FOOTNOTE_COLOR",
+    "FOOTNOTE_FONTSIZE",
+    "LINEAR_METHOD",
+    "METHOD_COLORS",
+    "REFERENCE_COLOR",
+    "REFERENCE_DASHES",
+    "REFERENCE_LINEWIDTH",
     "SAVEFIG_DPI",
+    "SEQUENTIAL_CMAP",
     "StyleContext",
+    "add_footnote",
     "find_cjk_font",
+    "footnote_text",
+    "method_color",
     "new_figure",
     "rc_context_for",
     "rc_params_for",
+    "reference_line_kwargs",
+    "replicates_field",
     "require_rows",
     "save_png",
+    "sequential_colors",
     "setup_style",
     "unique_sorted",
 ]
