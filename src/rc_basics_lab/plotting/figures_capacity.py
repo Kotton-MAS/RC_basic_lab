@@ -51,7 +51,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
     NARMA10_REFERENCE_NOTE_EN,
 )
-from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
+from rc_basics_lab.experiment.runner import DELAY_LINE, DELAY_LINE_OLS, ResultRow
 from rc_basics_lab.plotting.capacity_grids import (
     BOUND_MARGIN,
     conservation_bound,
@@ -674,7 +674,7 @@ def narma10_method_labels(
     for method in methods:
         pair = METHOD_LABELS.get(method)
         text = method if pair is None else style.label(*pair)
-        if method == DELAY_LINE:
+        if method in {DELAY_LINE, DELAY_LINE_OLS}:
             lags = sorted({row.n_lags for row in rows if row.method == method})
             text = f"{text}\n(k = {', '.join(str(value) for value in lags)})"
         labels.append((method, text))

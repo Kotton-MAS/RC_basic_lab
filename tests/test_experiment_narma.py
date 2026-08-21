@@ -391,11 +391,18 @@ def test_verdict_records_either_direction() -> None:
     """``narma10_verdict`` はどちらが勝っても同じ形で残る (仕様 §4 T4)。"""
     results = run_narma10(tiny_config())
     verdict = results.verdict
-    assert set(verdict.nmse_mean) == {LINEAR, DELAY_LINE, ESN_METHOD}
+    assert set(verdict.nmse_mean) == {LINEAR, DELAY_LINE, DELAY_LINE_OLS, ESN_METHOD}
     assert verdict.best_method in verdict.nmse_mean
     assert verdict.nmse_mean[verdict.best_method] == min(verdict.nmse_mean.values())
     assert verdict.delay_line_beats_esn == (
         verdict.nmse_mean[DELAY_LINE] < verdict.nmse_mean[ESN_METHOD]
+    )
+    # D-90: 正則化の有無で結論が変わったかを1ビットで残す (図を見ずに照合できる)
+    assert verdict.delay_line_ols_beats_esn == (
+        verdict.nmse_mean[DELAY_LINE_OLS] < verdict.nmse_mean[ESN_METHOD]
+    )
+    assert verdict.regularisation_changes_the_verdict == (
+        verdict.delay_line_ols_beats_esn != verdict.delay_line_beats_esn
     )
     summary = verdict.to_summary()
     assert summary["reference_nmse"] == dict(NARMA10_REFERENCE_NMSE)
