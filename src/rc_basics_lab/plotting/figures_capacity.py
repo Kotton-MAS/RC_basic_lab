@@ -418,10 +418,8 @@ def plot_ipc_profile(
             meshes[-1],
             ax=list(axes[0]),
             label=style.label(
-                "容量 (しきい値後・レプリケート平均、色は平方根スケール。"
-                "灰色は打ち切りの外で未計算)",
-                "capacity (after thresholding, mean over reps; sqrt colour scale;"
-                " grey = beyond the truncation, not computed)",
+                "容量 (平方根スケール。灰色 = 未計算)",
+                "capacity (sqrt colour scale; grey = not computed)",
             ),
         )
         first = rows[0]

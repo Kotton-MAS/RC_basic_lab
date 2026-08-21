@@ -105,6 +105,9 @@ FOOTNOTE_FONTSIZE = 7
 FOOTNOTE_COLOR = "#555555"
 """footnote の色 (データではないので本文より薄くする)。"""
 
+FOOTNOTE_OFFSET = -0.01
+"""footnote を置く縦位置 (figure 座標。負 = 枠の外)。"""
+
 COMMIT_LENGTH = 7
 """footnote に載せるコミットハッシュの桁数。"""
 
@@ -226,12 +229,15 @@ def add_footnote(figure: Figure, conditions: str, *, style: StyleContext) -> Non
     条件を書く方式は図ごとに項目が揃わないので、**全図共通の footnote へ機械
     生成で移す**。
     """
+    # **図の枠の外**へ置く (y < 0)。constrained layout は figure.text を
+    # 配置に数えないので、y=0 に置くと一番下のパネルの軸ラベルに重なる (実測)。
+    # 保存は bbox_inches="tight" なので、外に出した分だけ余白が広がる。
     figure.text(
         1.0,
-        0.0,
+        FOOTNOTE_OFFSET,
         footnote_text(conditions, commit=style.commit),
         ha="right",
-        va="bottom",
+        va="top",
         fontsize=FOOTNOTE_FONTSIZE,
         color=FOOTNOTE_COLOR,
     )
@@ -392,6 +398,7 @@ __all__ = [
     "FIGURE_DPI",
     "FOOTNOTE_COLOR",
     "FOOTNOTE_FONTSIZE",
+    "FOOTNOTE_OFFSET",
     "LINEAR_METHOD",
     "METHOD_COLORS",
     "REFERENCE_COLOR",
