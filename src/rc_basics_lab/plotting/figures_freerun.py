@@ -220,12 +220,8 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
                 " nearly indistinguishable",
             )
         )
-        add_provenance(
-            figure,
-            f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}",
-            rows,
-            style=style,
-        )
+        conditions = f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -283,12 +279,8 @@ def plot_freerun_attractor(
                 " attractor after the input is switched off",
             )
         )
-        add_provenance(
-            figure,
-            f"tasks = {'/'.join(tasks)}",
-            rows,
-            style=style,
-        )
+        conditions = f"tasks = {'/'.join(tasks)}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -341,13 +333,11 @@ def plot_valid_time(
             ),
             fontsize=8,
         )
-        add_provenance(
-            figure,
+        conditions = (
             f"free_run = {rows[0].free_run_steps} steps,"
-            f" threshold = {rows[0].valid_time_threshold:g}",
-            rows,
-            style=style,
+            f" threshold = {rows[0].valid_time_threshold:g}"
         )
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -456,12 +446,8 @@ def plot_stability_map(
                 " region where the attractor is reproduced",
             )
         )
-        add_provenance(
-            figure,
-            f"N = {rows[0].n_units}, stats = {rows[0].stats_steps} steps",
-            rows,
-            style=style,
-        )
+        conditions = f"N = {rows[0].n_units}, stats = {rows[0].stats_steps} steps"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -593,12 +579,8 @@ def plot_freerun_stats(
                 " spectrum still overlap the true trajectory",
             )
         )
-        add_provenance(
-            figure,
-            f"tasks = {'/'.join(tasks)}",
-            rows,
-            style=style,
-        )
+        conditions = f"tasks = {'/'.join(tasks)}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 

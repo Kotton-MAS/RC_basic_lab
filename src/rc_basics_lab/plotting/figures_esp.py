@@ -195,11 +195,9 @@ def plot_esp_decay(
                 " the slower the past decays",
             )
         )
+        conditions = f"N = {first.n_units}, sigma_u = {first.sigma_u:g}"
         add_provenance(
-            figure,
-            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
-            [outcome.row for outcome in outcomes],
-            style=style,
+            figure, conditions, [outcome.row for outcome in outcomes], style=style
         )
         return _save(figure, path)
 
@@ -340,12 +338,10 @@ def plot_leak_timescale(
                 " timescale along the theory line",
             )
         )
-        add_provenance(
-            figure,
-            f"N = {first.n_units}, rho = {first.rho:g}, sigma_u = {first.sigma_u:g}",
-            rows,
-            style=style,
+        conditions = (
+            f"N = {first.n_units}, rho = {first.rho:g}, sigma_u = {first.sigma_u:g}"
         )
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -494,12 +490,8 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
                 + _GALLICCHIO[1],
             )
         )
-        add_provenance(
-            figure,
-            f"N = {rows[0].n_units}, washout = {rows[0].washout}",
-            rows,
-            style=style,
-        )
+        conditions = f"N = {rows[0].n_units}, washout = {rows[0].washout}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -744,12 +736,10 @@ def plot_washout_sensitivity(
                 f"Experiment 2-D: sensitivity to the washout length\n{design_en}",
             )
         )
-        add_provenance(
-            figure,
-            f"n_train = {rows[0].n_train}, pad_series = {sensitivity.pad_series}",
-            rows,
-            style=style,
+        conditions = (
+            f"n_train = {rows[0].n_train}, pad_series = {sensitivity.pad_series}"
         )
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 

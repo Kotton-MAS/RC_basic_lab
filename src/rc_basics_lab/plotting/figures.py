@@ -242,12 +242,8 @@ def plot_comparison(
                 " (identical splits and alpha grid)",
             )
         )
-        add_provenance(
-            figure,
-            f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}",
-            rows,
-            style=style,
-        )
+        conditions = f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -357,12 +353,8 @@ def plot_state_space(
                 " than the delay embedding of the input",
             )
         )
-        add_provenance(
-            figure,
-            f"n_rows = {reports[0].n_rows}, n_lags = {reports[0].n_lags}",
-            reports,
-            style=style,
-        )
+        conditions = f"n_rows = {reports[0].n_rows}, n_lags = {reports[0].n_lags}"
+        add_provenance(figure, conditions, reports, style=style)
         return _save(figure, path)
 
 

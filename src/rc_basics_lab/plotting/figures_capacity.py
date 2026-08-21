@@ -318,12 +318,8 @@ def plot_mc_sweep(
                 " yet stays below 20% of the bound N",
             )
         )
-        add_provenance(
-            figure,
-            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
-            rows,
-            style=style,
-        )
+        conditions = f"N = {first.n_units}, sigma_u = {first.sigma_u:g}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -436,12 +432,10 @@ def plot_ipc_profile(
                 " and leaves the degree-1 part",
             )
         )
-        add_provenance(
-            figure,
-            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}, a = {leak_rate:g}",
-            rows,
-            style=style,
+        conditions = (
+            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}, a = {leak_rate:g}"
         )
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -565,12 +559,8 @@ def plot_memory_nonlinearity(
                 " of the capacity",
             )
         )
-        add_provenance(
-            figure,
-            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
-            rows,
-            style=style,
-        )
+        conditions = f"N = {first.n_units}, sigma_u = {first.sigma_u:g}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -661,12 +651,8 @@ def plot_ipc_conservation(
             )
         )
         axis.legend(loc="upper left", fontsize=8)
-        add_provenance(
-            figure,
-            f"rho = {first.rho:g}, a = {first.leak_rate:g}",
-            rows,
-            style=style,
-        )
+        conditions = f"rho = {first.rho:g}, a = {first.leak_rate:g}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
@@ -803,12 +789,8 @@ def plot_narma10_control(
             style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
             fontsize=8,
         )
-        add_provenance(
-            figure,
-            f"n_train = {rows[0].n_train}, task = {rows[0].task}",
-            rows,
-            style=style,
-        )
+        conditions = f"n_train = {rows[0].n_train}, task = {rows[0].task}"
+        add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
 
