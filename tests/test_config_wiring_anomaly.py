@@ -458,22 +458,29 @@ def _baseline() -> tuple[tuple[AnomalyRow, ...], tuple[ThresholdSweepRow, ...]]:
     return _reduced_result(REDUCED)
 
 
-def _sweep_fingerprint(config: Anomaly05Config) -> str:
-    """掃引の行 (格子点と集計) をまとめた指紋。
+def _protocol_fingerprint(config: Anomaly05Config) -> str:
+    """5-C の行 (格子点 + 集計) をまとめた指紋。
 
     行数だけを見ると「格子の値だけ入れ替えた」ケース (``normalize_grid`` を
     ``minmax`` から ``robust`` へ) を取りこぼす —— 行数は同じで中身が変わる。
     """
     digest = hashlib.sha256()
-    if config.protocol_sweep != REDUCED.protocol_sweep or config == REDUCED:
-        for row in run_protocol_sweep(config, build_sources(config)):
-            digest.update(repr(dataclasses.astuple(row)).encode("utf-8"))
-    if config.size_sweep != REDUCED.size_sweep or config == REDUCED:
-        size_rows = run_size_sweep(config, build_sources(config))
-        for row in size_rows:
-            digest.update(repr(dataclasses.astuple(row)).encode("utf-8"))
-        digest.update(repr(summarize_size_sweep(size_rows)).encode("utf-8"))
+    for row in run_protocol_sweep(config, build_sources(config)):
+        digest.update(repr(dataclasses.astuple(row)).encode("utf-8"))
     return digest.hexdigest()
+
+
+def _size_outcome(config: Anomaly05Config) -> tuple[str, int]:
+    """5-D の行の指紋と劣化点 (``n_units_at_90pct``)。
+
+    仕様 §4 T4 の受け入れ基準4 が「行数**と** ``n_units_at_90pct`` が変わる」
+    を要求しているので、2つを別々に返して両方を測る。
+    """
+    rows = run_size_sweep(config, build_sources(config))
+    digest = hashlib.sha256()
+    for row in rows:
+        digest.update(repr(dataclasses.astuple(row)).encode("utf-8"))
+    return digest.hexdigest(), summarize_size_sweep(rows).n_units_at_90pct
 
 
 def _case_named(field: str) -> WiringCase:
@@ -520,6 +527,22 @@ def test_each_parameter_changes_output(wiring_case: WiringCase) -> None:
     """各葉の値変更が 5-A / 5-B の出力を変える (配線の実測)。"""
     changed_config = apply_case(REDUCED, wiring_case)
     assert changed_config != REDUCED, "差し替えが設定に反映されていません"
+
+    if wiring_case.channel == CHANNEL_SWEEP:
+        if wiring_case.field.startswith("size_sweep."):
+            base_digest, base_point = _size_outcome(REDUCED)
+            digest, point = _size_outcome(changed_config)
+            assert digest != base_digest, (
+                f"{wiring_case.field} を変えても 5-D の行が変わりません"
+            )
+            assert point != base_point, (
+                f"{wiring_case.field} を変えても n_units_at_90pct が変わりません"
+            )
+            return
+        assert _protocol_fingerprint(changed_config) != _protocol_fingerprint(
+            REDUCED
+        ), f"{wiring_case.field} を変えても 5-C の行が変わりません (配線漏れ)"
+        return
 
     if wiring_case.channel == CHANNEL_SOURCES:
         base_types = {type(item).__name__ for item in build_sources(REDUCED).values()}
