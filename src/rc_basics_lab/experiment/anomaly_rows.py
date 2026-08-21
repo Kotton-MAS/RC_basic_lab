@@ -209,15 +209,148 @@ def rows_as_dicts(rows: Sequence[AnomalyRow]) -> list[dict[str, object]]:
     return [anomaly_row_as_dict(row) for row in rows]
 
 
+@dataclass(frozen=True, slots=True)
+class ProtocolSweepRow:
+    """``anomaly_protocol.csv`` の1行 (1格子点 x 1系統、5-C)。
+
+    5-C が答えるのは「前処理・整形のプロトコルを変えると手法の順位が
+    入れ替わるか」である。**全系統の順位を記録したうえで、各系統に
+    「一様乱数対照と区別できるか」の印を付ける** (D-78) ——
+    対照と区別できない系統どうしの順位が入れ替わっても、それは
+    プロトコル感度ではなく雑音である。
+
+    条件そのものの量 (``kendall_tau`` / 不一致対の数) は、その格子点の
+    **全行が持ち歩く** (``ThresholdSweepRow.calibrated_threshold`` と同じ
+    流儀)。図は CSV の行だけを読むので、条件レベルの量を別ファイルに置くと
+    図が2枚の CSV を突き合わせることになる。
+
+    Attributes:
+        dataset: ``dataset.source``。
+        normalize: この格子点の ``preprocess.normalize``。
+        input_window: この格子点の ``preprocess.input_window``。
+        score_smoothing: この格子点の ``preprocess.score_smoothing``。
+        is_headline: この格子点が ``config.preprocess`` と一致する
+            (= 5-A と同じ条件) か。順位の基準もこの点である (D-79)。
+        method: ``ANOMALY_METHODS`` のいずれか。
+        auprc_mean: この格子点での ``auprc`` の平均 (系列 x レプリケート)。
+        auprc_sd: 同じ集合の標準偏差 (``ddof=1``。1点しかなければ 0)。
+        auprc_random_mean: 同じ行が持つ ``auprc_random`` の平均 (D-61)。
+        n_pairs: 集計に使った (系列, レプリケート) の対の数。
+        n_better_than_control: そのうち ``auprc > auprc_random`` だった対の数。
+        control_sign_p: 片側符号検定の p 値 (帰無仮説「対照より高い確率は
+            1/2」)。**印の根拠を行の中に置く**ための列。
+        distinguishable: ``control_sign_p <= CONTROL_SIGN_TEST_ALPHA`` か
+            (= 一様乱数対照と区別できるか、D-78)。
+        rank: この格子点での順位 (``auprc_mean`` の降順、1 が最良。同値は
+            同順位)。**対照を除外せず6系統すべてに付ける**。
+        reference_rank: 基準の格子点 (``is_headline``) での順位。
+        rank_changed: ``rank != reference_rank``。
+        reference_distinguishable: 基準の格子点での ``distinguishable``。
+            「区別できる系統どうしの入れ替わりか」を行だけで判定するために要る。
+        kendall_tau: 基準の格子点の順位との Kendall tau-b (条件の量)。
+        n_discordant_pairs: 基準と順序が逆転した系統対の数 (条件の量)。
+        n_discordant_pairs_distinguishable: そのうち**両方の系統が両条件で
+            対照と区別できる**対の数 (条件の量)。この数が記事の結論を分ける。
+    """
+
+    dataset: str
+    normalize: str
+    input_window: int
+    score_smoothing: int
+    is_headline: bool
+    method: str
+    auprc_mean: float
+    auprc_sd: float
+    auprc_random_mean: float
+    n_pairs: int
+    n_better_than_control: int
+    control_sign_p: float
+    distinguishable: bool
+    rank: int
+    reference_rank: int
+    rank_changed: bool
+    reference_distinguishable: bool
+    kendall_tau: float
+    n_discordant_pairs: int
+    n_discordant_pairs_distinguishable: int
+
+
+ANOMALY_PROTOCOL_CSV = "anomaly_protocol.csv"
+ANOMALY_PROTOCOL_CSV_COLUMNS: tuple[str, ...] = tuple(
+    item.name for item in fields(ProtocolSweepRow)
+)
+"""``anomaly_protocol.csv`` の列順 (``ProtocolSweepRow`` の宣言順)。"""
+
+
+@dataclass(frozen=True, slots=True)
+class SizeSweepRow:
+    """``anomaly_size.csv`` の1行 (1つの N x 1系統、5-D)。
+
+    5-D が答えるのは「N を削ると性能がどこで落ちるか」である。落ちる場所を
+    学習量不足と混ぜないため、**全系列が同じ ``n_train`` で回っていること**を
+    掃引の入口が検査する (D-78)。その値を行が持ち歩くので、成果物だけで
+    「学習量は揃っていた」を確認できる。
+
+    Attributes:
+        dataset: ``dataset.source``。
+        n_units: この行のリザバー規模 N。
+        method: ``ANOMALY_METHODS`` のいずれか。**N に依存しない系統
+            (対照を含む) も落とさない** (D-61)。図の基準線になる。
+        auprc_mean: ``auprc`` の平均 (系列 x レプリケート)。
+        auprc_sd: 同じ集合の標準偏差 (``ddof=1``)。
+        auprc_random_mean: ``auprc_random`` の平均 (D-61)。
+        n_pairs: 集計に使った対の数。
+        n_better_than_control: ``auprc > auprc_random`` だった対の数。
+        control_sign_p: 片側符号検定の p 値。
+        distinguishable: 一様乱数対照と区別できるか (D-78)。
+        reference_n_units: 基準 N (``reservoir.n_units``。5-A と同じ条件)。
+        auprc_reference: 基準 N でのその系統の ``auprc_mean``。
+        auprc_ratio: ``auprc_mean / auprc_reference`` (基準が 0 なら ``nan``)。
+        below_reference_fraction: ``auprc_ratio`` が
+            ``DEGRADATION_FRACTION`` (0.9) を下回るか。``n_units_at_90pct``
+            はこの列だけから決まる。
+        n_train: 学習行数。**全行で同一**であることを掃引の入口が要求する。
+    """
+
+    dataset: str
+    n_units: int
+    method: str
+    auprc_mean: float
+    auprc_sd: float
+    auprc_random_mean: float
+    n_pairs: int
+    n_better_than_control: int
+    control_sign_p: float
+    distinguishable: bool
+    reference_n_units: int
+    auprc_reference: float
+    auprc_ratio: float
+    below_reference_fraction: bool
+    n_train: int
+
+
+ANOMALY_SIZE_CSV = "anomaly_size.csv"
+ANOMALY_SIZE_CSV_COLUMNS: tuple[str, ...] = tuple(
+    item.name for item in fields(SizeSweepRow)
+)
+"""``anomaly_size.csv`` の列順 (``SizeSweepRow`` の宣言順)。"""
+
+
 __all__ = [
     "ANOMALY_CSV",
+    "ANOMALY_PROTOCOL_CSV",
+    "ANOMALY_PROTOCOL_CSV_COLUMNS",
     "ANOMALY_SCALAR_COLUMNS",
+    "ANOMALY_SIZE_CSV",
+    "ANOMALY_SIZE_CSV_COLUMNS",
     "ANOMALY_THRESHOLD_CSV",
     "ANOMALY_THRESHOLD_CSV_COLUMNS",
     "F1_TEST_OPTIMAL_COLUMN",
     "PA_F1_PREFIX",
     "PA_F1_RANDOM_PREFIX",
     "AnomalyRow",
+    "ProtocolSweepRow",
+    "SizeSweepRow",
     "ThresholdSweepRow",
     "anomaly_csv_columns",
     "anomaly_row_as_dict",
