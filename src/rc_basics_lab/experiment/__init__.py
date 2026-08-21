@@ -26,6 +26,8 @@
 - ``anomaly_sources``: ``dataset.source`` -> ``SeriesSource`` の辞書 (D-71)。
   ``experiment/`` で ``datasets`` を import する唯一のモジュール
 - ``anomaly``: 実験 5-A / 5-B の配線 (D-05 / D-57)
+- ``anomaly_sweep``: 実験 5-C (プロトコル感度) / 5-D (N と性能) の掃引
+  (D-78 / D-79)。格子点ごとに 5-A をそのまま回して集計するだけの層
 """
 
 from rc_basics_lab.experiment import (
@@ -33,6 +35,7 @@ from rc_basics_lab.experiment import (
     anomaly_rows,
     anomaly_score,
     anomaly_sources,
+    anomaly_sweep,
     anomaly_threshold,
     attractor,
     capacity,
@@ -59,6 +62,7 @@ __all__ = [
     "anomaly_rows",
     "anomaly_score",
     "anomaly_sources",
+    "anomaly_sweep",
     "anomaly_threshold",
     "attractor",
     "capacity",
