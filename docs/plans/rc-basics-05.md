@@ -522,6 +522,107 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
     7. `docs/design.md` §9 の既定値表に 05 の行が**コード上の出どころ付き**で追加され、
        既存の `test_design_doc.py` の照合を通る
     8. `uv run pytest -q` が green (ベースライン 964 passed から**減らない**)
+  - **T5 実装時に決めたこと** (仕様に書かれていなかった選択。次周の reviewer / fixer はここを読む):
+    1. **5枚目の CSV は `anomaly_timeline.csv`** にした。仕様は「CSV 5枚」とだけ書いて
+       いるが、5-A / 5-B / 5-C / 5-D の行は4枚しかない。5枚目が要るのは
+       **図が成果物 CSV の行だけを読む** (§5 禁止する構造7) からで、
+       `fig_score_timeline` が読む「時系列上のスコアと正解ラベル」に書き出し先が
+       いる (04 の `freerun_profile.csv` と同じ役割)。行 dataclass `TimelineRow` は
+       T4 の決定4 と同じ流儀で `anomaly_rows.py` に置いた (409 行)
+    2. **時系列図の1例は 5-A の (先頭の使える系列, レプリケート 0) を再実行して作る**
+       (D-82)。閾値は再計算せず `run_anomaly_replicate` が返した行の値をそのまま
+       載せる —— 較正区間の切り出し規則が実験層と作図用の2実装に割れるのを防ぐため。
+       間引きは `TIMELINE_MAX_POINTS = 3000` (系統あたり) で**元の index を保ち**、
+       間引いた結果として異常点が1点も残らなければ `ValueError` にする
+       (帯の無い時系列図が静かに出る経路を塞ぐ)。この定数は設定の葉にしない ——
+       図の見た目しか変えず結論を1ビットも動かさない (`SPLIT_OFFSET_DIVISOR` と同じ判断)
+    3. **5-A と 5-B の wall time を分離しなかった**。`run_anomaly_headline` が1回の
+       評価の中で `anomaly.csv` の行と 5-B の掃引行の両方を作るので、分けるには
+       実験層の内側に計測を仕込むことになる。`headline_s` に合算し、**予算も合算
+       (400 + 60 = 460 秒)** で見る。区間ごとの予算は `SECTION_BUDGETS_S` を単一の
+       真実にして `meta.json` の `wall_time_budget_s` に載せた —— 予算を成果物の外
+       (仕様の表だけ) に置くと、超えたときに表のほうを書き換えられる
+    4. **作図モジュールは2本に割った**。5枚を1本に書くと **673 行**で D-63 / D-77 の
+       上限 600 行を超えたため、5-C / 5-D の2枚を `plotting/figures_anomaly_sweep.py`
+       (281 行) へ切り出した。実測 `figures_anomaly.py` 459 / `figures_anomaly_sweep.py` 281。
+       **上限に当たったので割った**のであって上限は動かしていない (T3 の決定5 / T4 の決定5
+       と同じ)。系統の色・ラベルと**印の体裁は `figures_anomaly` が単一の真実**で、
+       掃引側は import して使う
+    5. **印の可視化を決定にした** (D-81)。D-78 は「行に印を持たせる」までしか決めて
+       おらず、図がその列を無視して全系統を同じ体裁で描いても何も落ちなかった ——
+       記事に載るのは CSV ではなく図なので、そこまで固定して初めて D-78 が効く。
+       線種・線幅・マーカーの塗り・凡例の文言の4つで区別し、5-C の図は
+       「逆転した系統対の延べ数」と「そのうち両方に印がある数」を**別の棒**で並べる。
+       検査できるようにするため `build_protocol_sensitivity_figure` (保存せずに
+       `Figure` を返す) を作図側に置き、guard_test は PNG ではなく artist を見る
+    6. **PR 曲線は 5-B の掃引行から描く**。スコアそのものは CSV に無い (書き出すと
+       6系統 x 全点になる) ため、曲線の点は「警報予算ごとの (適合率, 再現率) の
+       系列 x レプリケート平均」である。したがって**曲線の範囲は掃引した警報予算の
+       範囲に限られる** (既定では 1/21〜21/21)。軸ラベルにそう書いてある。
+       AUPRC そのものは 5-A の行から取る (曲線の下の面積ではない)
+    7. **`anomaly.csv` の書き出しはパイプラインに専用関数を置いた** (`write_anomaly_csv`)。
+       `report.write_rows_csv` は `dataclasses.asdict` で**固定列**の行を書くヘルパー
+       なので、`f1_test_optimal` と PA%K で列が増減する 05 の主 CSV は通せない。
+       列順の単一の真実は `anomaly_csv_columns`、値の取り出しは `anomaly_row_as_dict`
+       のままで、この関数は書き出しの手続きだけを持つ
+    8. **既定値表は §9 ではなく `docs/design.md` §13.2 に置いた**。§9 は ESP 判定の
+       既定値の節で、05 の行を混ぜると節の主題が壊れる。`test_design_doc.py` の
+       `_DEFAULTS_ROW` は**文書全体**から同じ形の行 (ラベル / 値 / コード上の出どころ)
+       を拾うので、受け入れ基準7 の「既存の照合を通る」は満たしている
+       (実測: 既定値表の行は 28 -> **47** に増え、19 行すべてがコードと照合された)。
+       §13.1 に選定基準 (仕様 §3(5))、§13.3 に実行時間の内訳を置き、後者も
+       `meta.json` と機械照合する (`test_anomaly_wall_time_table_matches_the_meta_json`)
+    9. **本番設定 (`experiments/05_anomaly_detection/config.yaml`) の `max_length` は
+       60,000** にした (ユーザー確定の「既定は MGAB」に対する予算調整)。MGAB の系列は
+       100,000 点だが、そのままだと 5-A が 11.8 秒 x 27 格子点 = **318 秒**で 5-C の
+       予算 (< 250 秒) を割る (実測)。60,000 点なら 5-A 7.3 秒 / 5-C 198.4 秒に収まり、
+       最初の異常 (index 29,068〜32,908) は含まれる。仕様 §3 が「系列は `max_length`
+       で打ち切ってよい」と定めた第一の軸をそのまま使った (`n_replicates` は削って
+       いない —— 削ると印の付きやすさが変わる、D-78)
+    10. **Python 側の既定は合成のまま**にした (ユーザー確定)。`Anomaly05Config()` を
+        MGAB にすると、設定を渡さないテストがキャッシュの有無で挙動を変える (D-60)。
+        `make figures-05` は `data-05` に依存させ、README と config.yaml の両方に
+        「本番は MGAB / コード既定は合成」と書いた
+    11. **`meta.json` に受け入れ条件の一次資料を集めた** (§5 の条件1〜5 を成果物だけで
+        判定できるようにするため): `preprocessor_uniqueness` (条件1: (系列, レプリケート)
+        内で `preprocessor_id` / `t0` が単一値か) / `f1_gap` (条件3) /
+        `protocol_summary` (条件4) / `size_summary` (条件5) / `headline_auprc`
+        (README の表の出どころ。印の根拠3列を含む) / `wall_time_budget_s`
+    12. **README の 05 の数値表は6系統 x 4量を機械照合する**。平均・標準偏差 (`ddof=1`)・
+        一様乱数対照比・符号検定の根拠 (何対中いくつ) の**4つとも**照合し、
+        p 値と印は `anomaly_protocol.csv` の基準条件の行と突き合わせる。
+        「表の1列だけ合っていて他が古い」を残さないため
+  - **実測 (2026-08-21)**: 新規テスト **49 件** (`test_anomaly_pipeline.py` 9 /
+    `test_plotting_anomaly.py` 10 / `test_readme_summary.py` +7 /
+    `test_design_doc.py` +21 (既定値表 19 行の parametrize + 2) /
+    `test_main.py` +1 (実験レジストリの parametrize が 05 を拾う)、
+    `uv run pytest -q` = **1374 passed / 54.2 秒** (T5 着手前のベースライン 1325 から 49 増、
+    既存の減少なし)。`mypy` strict (150 files) / `ruff check` / `ruff format --check` green。
+    `.claude/decisions.yaml` は **82 件** (D-81 / D-82。2件とも変異注入で赤を実測)。
+    `tests/test_module_line_budget.py` green (FROZEN への追記なし)。
+    **`results/01..04/` の 35 件はバイト不変** (`tests/artifact_manifest.csv` の差分は
+    05 の 11 行の**追加のみ**)。`make figures-05` の実測は
+    **5-A+5-B 7.3s / timeline 0.5s / 5-C 198.4s / 5-D 24.3s / 図 0.8s / 合計 231.4s**
+    (予算 900 秒、区間ごとの予算もすべて内側)
+  - **本番設定 (MGAB 3系列 x 5レプリケート = 90 行) の実測**:
+
+    | 系統 | AUPRC 平均 | s.d. | 対照比 | 印 (片側符号検定) |
+    |---|---|---|---|---|
+    | `esn_residual` | **0.1602** | 0.0130 | **2.83x** | **あり** (15/15, p=3.1e-05) |
+    | `delay_line_residual` | 0.0570 | 0.0118 | 1.01x | なし (9/15, p=0.304) |
+    | `persistence_residual` | 0.0559 | 0.0106 | 0.99x | なし (6/15, p=0.849) |
+    | `moving_statistics` | 0.0560 | 0.0111 | 0.99x | なし (7/15, p=0.696) |
+    | `random_control` | 0.0567 | 0.0120 | 1.00x | なし (0/15, p=1.000) |
+    | `input_norm_control` | 0.0558 | 0.0113 | 0.98x | なし (7/15, p=0.696) |
+
+    異常率 (評価点) = **0.0555**。一様乱数の AUPRC 0.0567 はこの値に張り付いており、
+    主指標が point-adjust を通っていないことの実測的な証拠になる。
+    5-C は **27 格子点中 23 点で順位が動いた**が、逆転した系統対 **62 組のうち
+    両方に印がある組は 0 組**で、**ESN の順位は 27 点すべてで1位**だった
+    (Kendall tau-b の最小 0.467)。5-D は **`n_units_at_90pct` = 100**
+    (N=200 で 0.1602 / N=100 で 0.1392 = 0.869 倍 / N=50 で 0.585 倍 /
+    N=25 で 0.469 倍、`saturated=False`)。全 24 行が `n_train=14800`。
+    `f1_test_optimal - f1_calibrated` は 90 行の平均 **0.0761** (最大 0.1182 / 負は 0 行)
 
 ## 5. 評価軸 (Check フェーズへ)
 
