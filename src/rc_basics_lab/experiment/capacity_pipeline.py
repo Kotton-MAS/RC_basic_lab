@@ -323,6 +323,11 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             _profile_of(results.ipc_sweep),
             out_dir / FIG_IPC_PROFILE,
             style=style,
+            # 打ち切りの外を「未計算」として 0 と別の色にするために渡す
+            # (FIG-7 / D-88)。設定にしか無い情報なので、行からは復元できない。
+            max_delay_by_degree=dict(
+                enumerate(config.ipc.max_delay_by_degree, start=1)
+            ),
         ),
         plot_memory_nonlinearity(
             _rows_of(results.ipc_sweep),
