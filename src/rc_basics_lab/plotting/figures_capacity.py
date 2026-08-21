@@ -55,6 +55,8 @@ from rc_basics_lab.experiment.narma import (
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
 from rc_basics_lab.plotting.style import (
+    DELAY_LINE_METHOD,
+    METHOD_COLORS,
     StyleContext,
     rc_context_for,
     require_rows,
@@ -88,16 +90,8 @@ _HEATMAP_GAMMA = 0.5
 片側が図から消える。スケールを変えたことは colorbar のラベルに明記する。
 """
 
-_HEATMAP_CMAP = "viridis"
-_STACK_COLORS = ("tab:blue", "tab:orange")
-"""積み上げ棒 (線形, 非線形) の色。"""
-
-_METHOD_LABELS: dict[str, tuple[str, str]] = {
-    "linear": ("線形", "linear"),
-    "delay_line": ("遅延線", "delay line"),
-    "esn": ("ESN", "ESN"),
-}
-"""3-C の横軸の手法名 (01 の ``figures.py`` と同じ対応表)。"""
+_STACK_COLORS = (METHOD_COLORS[DELAY_LINE_METHOD], "#e08214")
+"""積み上げ棒 (線形, 非線形) の色 (FIG-5: 単一の真実は ``style`` 側)。"""
 
 _REFERENCE_LABELS: dict[str, tuple[str, str]] = {
     "linear_ceiling": (
@@ -113,13 +107,9 @@ _REFERENCE_LABELS: dict[str, tuple[str, str]] = {
 
 **キーが増減したら図を描く前に落とす** (下記 ``_reference_lines``)。値だけを
 実験層に置いて凡例を図の側に持つと、参照点を1本足したときに図から静かに
-消える。
+消える。出典 (ここでは ``SOURCE_UNIDENTIFIED``) は ``cited`` が必ず付ける
+(FIG-3 / D-84)。
 """
-
-_REFERENCE_COLORS: dict[str, str] = {
-    "linear_ceiling": "tab:red",
-    "nonlinear_rc": "tab:green",
-}
 
 
 def _save(figure: Figure, path: Path) -> Path:

@@ -13,6 +13,21 @@ CI 上で豆腐文字 (□□□) の図が「正常に」生成されてしま�
 
 from __future__ import annotations
 
+METHOD_LABELS: dict[str, tuple[str, str]] = {
+    "linear": ("線形", "linear"),
+    "delay_line": ("遅延線 (リッジ)", "delay line (ridge)"),
+    "delay_line_ols": ("遅延線 (OLS)", "delay line (OLS)"),
+    "esn": ("ESN", "ESN"),
+}
+"""手法名の表示ラベル (ja / en の対、D-10)。
+
+キーは ``style.METHOD_COLORS`` と同じ集合であること
+(``test_plotting_style.py::test_method_labels_and_colours_cover_the_same_methods``)。
+遅延線に ``(リッジ)`` を付けるのは、先行 (Goudarzi et al. 2014) の遅延線が
+**正則化なし OLS** で、そこが 3-C の論点そのものだからである。読者が図だけを
+見たときに、どちらの遅延線かが分かる必要がある。
+"""
+
 JAEGER_2002 = "Jaeger 2002"
 DAMBRE_2012 = "Dambre 2012"
 GOUDARZI_2014 = "Goudarzi et al. 2014"
@@ -76,6 +91,7 @@ __all__ = [
     "IPC_BOUND_SOURCE",
     "JAEGER_2002",
     "MC_BOUND_SOURCE",
+    "METHOD_LABELS",
     "SOURCE_UNIDENTIFIED",
     "VISWANATH_1998",
     "cited",
