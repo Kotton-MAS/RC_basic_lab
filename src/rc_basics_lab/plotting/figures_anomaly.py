@@ -232,7 +232,12 @@ def plot_pr_curves(
                 f"anomaly rate {anomaly_rate:.3f} (expected for random scores)",
             ),
         )
-        axis.set_xlabel(style.label("再現率", "recall"))
+        axis.set_xlabel(
+            style.label(
+                "再現率 (5-B で掃引した警報予算の範囲)",
+                "recall (over the alarm budgets swept in 5-B)",
+            )
+        )
         axis.set_ylabel(style.label("適合率", "precision"))
         axis.set_xlim(0.0, 1.0)
         axis.set_ylim(0.0, None)

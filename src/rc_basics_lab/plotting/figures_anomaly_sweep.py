@@ -69,6 +69,12 @@ def _condition_keys(rows: Sequence[ProtocolSweepRow]) -> list[tuple[str, int, in
     return keys
 
 
+def _condition_tick(key: tuple[str, int, int]) -> str:
+    """格子点の目盛ラベル (正規化の頭3文字 / 入力窓 / 平滑化)。"""
+    normalize, window, smoothing = key
+    return f"{normalize[:3]}/{window}/{smoothing}"
+
+
 def _protocol_rank_panel(
     axis: Axes, rows: Sequence[ProtocolSweepRow], style: StyleContext
 ) -> None:
@@ -93,15 +99,13 @@ def _protocol_rank_panel(
             label=method_label(method, style, mark=reference),
         )
     axis.invert_yaxis()
+    # 凡例を置く余白を順位 1 の上に空ける (凡例が折れ線に重なると
+    # 「どの系統に印が付いているか」が読めなくなる)。
+    axis.set_ylim(len(ANOMALY_METHODS) + 0.6, -0.9)
     axis.set_yticks(range(1, len(ANOMALY_METHODS) + 1))
     axis.set_xticks(positions)
     axis.set_xticklabels(
-        [
-            f"{normalize[:3]}/{window}/{smoothing}"
-            for normalize, window, smoothing in keys
-        ],
-        rotation=90,
-        fontsize=6,
+        [_condition_tick(key) for key in keys], rotation=90, fontsize=6
     )
     axis.set_xlabel(
         style.label(
@@ -110,7 +114,7 @@ def _protocol_rank_panel(
         )
     )
     axis.set_ylabel(style.label("順位 (1 が最良)", "rank (1 = best)"))
-    axis.legend(loc="center right", fontsize=7)
+    axis.legend(loc="upper center", fontsize=6, ncols=2)
 
 
 def _protocol_reversal_panel(
@@ -143,7 +147,9 @@ def _protocol_reversal_panel(
         ),
     )
     axis.set_xticks(positions)
-    axis.set_xticklabels([])
+    axis.set_xticklabels(
+        [_condition_tick(key) for key in keys], rotation=90, fontsize=6
+    )
     axis.set_xlabel(
         style.label("プロトコル (左と同じ並び)", "protocol (same order as the left)")
     )
@@ -248,7 +254,7 @@ def plot_size_vs_performance(
             linewidth=1.0,
             label=style.label(
                 f"劣化点 N={summary.n_units_at_90pct}"
-                + ("(格子の下端)" if summary.saturated else ""),
+                + (" (格子の下端)" if summary.saturated else ""),
                 f"degradation point N={summary.n_units_at_90pct}"
                 + (" (grid lower end)" if summary.saturated else ""),
             ),
