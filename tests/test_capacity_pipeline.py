@@ -177,6 +177,8 @@ ipc:
   n_surrogate_targets: 2
 narma:
   length: 900
+  n_lags_sweep: [4, 40]
+  n_replicates_sweep: 2
   base:
     name: cli_smoke_narma
     n_replicates: 2
@@ -245,6 +247,8 @@ def tiny_config() -> Capacity03Config:
             max_delay_by_degree=(8, 4), n_surrogates=5, n_surrogate_targets=2
         ),
         narma=Narma10Config(
+            n_lags_sweep=(4, 40),
+            n_replicates_sweep=2,
             length=900,
             base=ExperimentConfig(
                 name="cli_smoke_narma",

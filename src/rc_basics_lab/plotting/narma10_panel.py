@@ -20,7 +20,7 @@ from rc_basics_lab.experiment.runner import (
     LINEAR,
     ResultRow,
 )
-from rc_basics_lab.plotting.labels import METHOD_LABELS
+from rc_basics_lab.plotting.labels import GOUDARZI_2014, METHOD_LABELS
 from rc_basics_lab.plotting.style import StyleContext
 
 
@@ -82,4 +82,25 @@ def narma10_headline(rows: Sequence[ResultRow], style: StyleContext) -> str:
     )
 
 
-__all__ = ["narma10_headline", "narma10_method_labels"]
+def narma10_subtitle(style: StyleContext) -> str:
+    """3-C の副題 (D-95)。
+
+    **動作点を書く** —— 先行 (Goudarzi et al. 2014) の対照は
+    「正則化なし かつ k ≈ n_train」であり、3-C の動作点は
+    ``k/n_train <= 0.01`` でそこに届いていない。副題が「先行の対照を足した」
+    とだけ書いていると、読者は先行の設計が検証されたと受け取る。
+    タップ数の軸は 3-C' (``figures_narma_taps``) が受け持つ。
+    """
+    return style.label(
+        f"{GOUDARZI_2014} の対照 (正則化なし) を第4水準に足した"
+        " (同一分割・同一特徴。alpha だけが違う)。"
+        "この動作点は k/n_train <= 0.01 で、先行の k/n ≈ 0.9 とは違う"
+        " —— タップ数の軸は 3-C' を参照",
+        f"Added the unregularised control of {GOUDARZI_2014} as a fourth level"
+        " (identical splits and features; only alpha differs)."
+        " This operating point has k/n_train <= 0.01, unlike the prior"
+        " k/n ~ 0.9 -- see 3-C' for the tap-count axis",
+    )
+
+
+__all__ = ["narma10_headline", "narma10_method_labels", "narma10_subtitle"]

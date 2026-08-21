@@ -12,7 +12,7 @@ help:
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
-	@echo "  figures-03   - Regenerate results/ for experiment 03 (2 CSV + 4 figures + meta)"
+	@echo "  figures-03   - Regenerate results/ for experiment 03 (4 CSV + 6 figures + meta)"
 	@echo "  figures-04   - Regenerate results/ for experiment 04 (5 CSV + 5 figures + meta)"
 	@echo "  figures-05   - Regenerate results/ for experiment 05 (5 CSV + 5 figures + meta; needs data-05)"
 	@echo "  data-05      - Download + verify (SHA256) the experiment 05 datasets into data/"
@@ -70,8 +70,9 @@ figures-02:
 	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics
 
 # 実験03の成果物 (capacity.csv / capacity_profile.csv / narma10.csv /
-# fig_mc_sweep.png / fig_ipc_profile.png / fig_memory_nonlinearity.png /
-# fig_ipc_conservation.png / fig_narma10_control.png / meta.json) を
+# narma10_taps.csv / fig_mc_sweep.png / fig_ipc_profile.png /
+# fig_memory_nonlinearity.png / fig_ipc_conservation.png /
+# fig_narma10_control.png / fig_narma10_taps.png / meta.json) を
 # results/03_capacity/ に再生成する。成果物の一覧の単一の真実は
 # experiment/capacity_pipeline.py の CAPACITY_ARTIFACTS (テストが突き合わせる)。
 # 系列長掃引 (capacity_length.csv) は含めない —— T=1e6 まで回すので単独で

@@ -69,7 +69,6 @@ from rc_basics_lab.plotting.heatmap import (
 )
 from rc_basics_lab.plotting.labels import (
     DAMBRE_2012,
-    GOUDARZI_2014,
     IPC_BOUND_SOURCE,
     MC_BOUND_SOURCE,
     SOURCE_UNIDENTIFIED,
@@ -78,6 +77,7 @@ from rc_basics_lab.plotting.labels import (
 from rc_basics_lab.plotting.narma10_panel import (
     narma10_headline,
     narma10_method_labels,
+    narma10_subtitle,
 )
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
@@ -756,15 +756,8 @@ def plot_narma10_control(
         )
         axis.legend(loc="best", fontsize=8)
         figure.suptitle(
-            style.label(
-                f"実験 3-C: {narma10_headline(rows, style)}\n"
-                f"{GOUDARZI_2014} の対照 (正則化なし) を第4水準に足した"
-                " (同一分割・同一特徴。alpha だけが違う)",
-                f"Experiment 3-C: {narma10_headline(rows, style)}\n"
-                f"Adding the unregularised control of {GOUDARZI_2014}"
-                " as a fourth level"
-                " (identical splits and features; only alpha differs)",
-            )
+            f"{style.label('実験 3-C', 'Experiment 3-C')}:"
+            f" {narma10_headline(rows, style)}\n{narma10_subtitle(style)}"
         )
         figure.supxlabel(
             style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),

@@ -46,6 +46,13 @@ from rc_basics_lab.experiment.capacity_threshold import (
     run_threshold_comparison,
 )
 from rc_basics_lab.experiment.narma import Narma10Results, run_narma10
+from rc_basics_lab.experiment.narma_taps import (
+    CSV_COLUMNS as NARMA10_TAPS_CSV_COLUMNS,
+)
+from rc_basics_lab.experiment.narma_taps import (
+    run_narma10_tap_sweep,
+    summarize_tap_sweep,
+)
 from rc_basics_lab.experiment.report import (
     META_JSON,
     DataclassSummaryMixin,
@@ -61,24 +68,28 @@ CAPACITY_CSV = "capacity.csv"
 CAPACITY_PROFILE_CSV = "capacity_profile.csv"
 CAPACITY_LENGTH_CSV = "capacity_length.csv"
 NARMA10_CSV = "narma10.csv"
+NARMA10_TAPS_CSV = "narma10_taps.csv"
 FIG_MC_SWEEP = "fig_mc_sweep.png"
 FIG_IPC_PROFILE = "fig_ipc_profile.png"
 FIG_MEMORY_NONLINEARITY = "fig_memory_nonlinearity.png"
 FIG_IPC_CONSERVATION = "fig_ipc_conservation.png"
 FIG_NARMA10_CONTROL = "fig_narma10_control.png"
+FIG_NARMA10_TAPS = "fig_narma10_taps.png"
 
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
     CAPACITY_PROFILE_CSV,
     NARMA10_CSV,
+    NARMA10_TAPS_CSV,
     FIG_MC_SWEEP,
     FIG_IPC_PROFILE,
     FIG_MEMORY_NONLINEARITY,
     FIG_IPC_CONSERVATION,
     FIG_NARMA10_CONTROL,
+    FIG_NARMA10_TAPS,
     META_JSON,
 )
-"""1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV3枚 + 図5枚 + meta)。
+"""1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV4枚 + 図6枚 + meta)。
 
 並びは 02 の ``ESP_ARTIFACTS`` と同じく「CSV -> 図 -> meta.json」で、
 ``run_and_report_capacity`` が返す ``paths`` の順序と一致する。宣言と実体が
@@ -277,11 +288,23 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         plot_memory_nonlinearity,
         plot_narma10_control,
     )
+    from rc_basics_lab.plotting.figures_narma_taps import (
+        plot_narma10_taps,
+    )
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
     results = run_capacity_experiment(config)
     narma = run_narma10(config)
+    # 3-C' (D-95): タップ数の軸。3-C 本体の行は1つも触らない。
+    # 空の掃引をここで落とすのは、成果物 (narma10_taps.csv / 図) が静かに
+    # 欠けるのを防ぐため —— 03 の成果物一覧はこの2つを含む。
+    if not config.narma.n_lags_sweep:
+        raise ValueError(
+            "narma.n_lags_sweep が空です (3-C' の成果物を作れません)。"
+            "掃引を止めたい場合も、意図を config に書いて格子を与えてください。"
+        )
+    taps = run_narma10_tap_sweep(config)
     # 受け入れ条件3 の一次資料。掃引とは別の1条件を回すので
     # wall_time_breakdown (実験ごとの内訳) には入らず、自分の wall_time_s を
     # threshold_comparison の中に持つ (全体の wall_time_s には含まれる)。
@@ -312,6 +335,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         # 列順は 01 の CSV_COLUMNS (= ResultRow の宣言順) をそのまま使う。
         # 3-C 専用の書き出しを作ると列順の単一の真実が2つになる (D-31)。
         write_comparison_csv(narma.rows, out_dir / NARMA10_CSV),
+        write_rows_csv(taps, out_dir / NARMA10_TAPS_CSV, NARMA10_TAPS_CSV_COLUMNS),
         plot_mc_sweep(
             _rows_of(results.mc_sweep),
             _profile_of(results.mc_sweep),
@@ -344,6 +368,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             out_dir / FIG_NARMA10_CONTROL,
             style=style,
         ),
+        plot_narma10_taps(taps, out_dir / FIG_NARMA10_TAPS, style=style),
         write_meta_for(
             config,
             config.seeds,
@@ -361,6 +386,8 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
                 # **原典未特定**である旨も一緒に書く。
                 "narma10_verdict": narma.verdict.to_summary(),
                 "n_narma10_rows": len(narma.rows),
+                "n_narma10_taps_rows": len(taps),
+                "narma10_tap_sweep": summarize_tap_sweep(taps),
                 # 受け入れ条件3: しきい値処理の有無で総容量がどれだけ変わるか
                 # (docs/design.md §11.2 の表の一次資料)。既定 (D-27) が
                 # どの行かは default_mc_mode / default_ipc_mode が名乗る。
@@ -422,7 +449,9 @@ __all__ = [
     "FIG_MC_SWEEP",
     "FIG_MEMORY_NONLINEARITY",
     "FIG_NARMA10_CONTROL",
+    "FIG_NARMA10_TAPS",
     "NARMA10_CSV",
+    "NARMA10_TAPS_CSV",
     "CapacityOutputs",
     "SectionTiming",
     "run_and_report_capacity",

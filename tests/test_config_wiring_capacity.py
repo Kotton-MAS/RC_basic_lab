@@ -108,6 +108,14 @@ if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
 
 CHANNEL_PENDING = "pending"
+
+CHANNEL_TAPS = "taps"
+"""3-C' のタップ数掃引 (``narma10_taps.csv``) だけを変える葉 (D-95)。
+
+``capacity.csv`` には行が出ないので ``CHANNEL_ROWS`` では測れない。
+専用のチャネルにするのは、「効かないフィールドを ROWS 以外に逃がす」経路を
+作らないためで、ここも**変えたら出力が変わる**ことを実測する。
+"""
 """消費側がまだ無い葉のチャネル (**T4 時点で該当なし**、``PENDING_SECTIONS``)。"""
 
 DELEGATED_SECTIONS: tuple[tuple[str, type], ...] = (
@@ -234,6 +242,8 @@ def base_config() -> Capacity03Config:
         # 値を取り違える配線を落とすため)。base は 01 の ExperimentConfig を
         # 内包した部分で、被覆は 01 側へ委譲する (DELEGATED_SECTIONS)。
         narma=Narma10Config(
+            n_lags_sweep=(4, 40),
+            n_replicates_sweep=2,
             length=900,
             base=ExperimentConfig(
                 name="capacity-wiring-narma",
@@ -331,6 +341,9 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
     # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
     section_case("narma.length", 400, EXPERIMENT_NARMA10),
+    # --- 3-C': タップ数掃引 (narma10_taps.csv だけを動かす) ---
+    case("narma.n_lags_sweep", (4, 30), channel=CHANNEL_TAPS),
+    case("narma.n_replicates_sweep", 3, channel=CHANNEL_TAPS),
 )
 
 
@@ -381,6 +394,20 @@ def _seed_fingerprints(config: Capacity03Config) -> dict[SeedStream, bytes]:
         stream: make_rng_for(seeds[stream], stream, 0).bytes(_N_BYTES)
         for stream in CAPACITY_SEED_STREAMS
     }
+
+
+def _taps_fingerprint(config: Capacity03Config) -> str:
+    """3-C' の掃引の行の指紋 (実測時間の列は外す)。"""
+    from rc_basics_lab.experiment.narma_taps import run_narma10_tap_sweep
+
+    rows = run_narma10_tap_sweep(config)
+    return json.dumps(
+        [
+            [row.n_lags, row.method, row.replicate, row.n_train, row.nmse]
+            for row in rows
+        ],
+        sort_keys=True,
+    )
 
 
 def _meta_fingerprint(config: Capacity03Config) -> str:
@@ -444,6 +471,15 @@ def test_each_capacity_parameter_changes_output(
     if wiring_case.channel == CHANNEL_ERROR:
         with pytest.raises(ValueError):
             run_case(wiring_case)
+        return
+
+    if wiring_case.channel == CHANNEL_TAPS:
+        # 掃引の行が変わり、かつ capacity.csv の行は変わらない
+        # (3-C' は 3-C 本体を1行も触らない、が D-95 の約束)
+        assert _taps_fingerprint(changed_config) != _taps_fingerprint(base)
+        assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
+            f"{wiring_case.field} が 3-C 本体の行まで変えています"
+        )
         return
 
     base_rows = baseline_rows()

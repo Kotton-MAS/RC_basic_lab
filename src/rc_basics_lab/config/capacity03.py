@@ -193,10 +193,19 @@ class Narma10Config:
     Attributes:
         length: NARMA10 系列の長さ [ステップ]。
         base: 掃引の土台となる 01 の設定 (課題以外は差し替えない)。
+        n_lags_sweep: 3-C' のタップ数掃引 (D-95)。**昇順・重複なし**。
+            各点は独立に ``plan_replicate`` を通るので ``t0`` も分割も
+            その k のものになる (``base.ridge.n_lags_grid`` とは別軸で、
+            そちらは 3-C 本体が検証分割で1つ選ぶための候補列である)。
+            空なら掃引を回さない。
+        n_replicates_sweep: 3-C' のレプリケート数。``None`` なら
+            ``base.n_replicates`` を継承する。
     """
 
     length: int = 8000
     base: ExperimentConfig = field(default_factory=ExperimentConfig)
+    n_lags_sweep: tuple[int, ...] = ()
+    n_replicates_sweep: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

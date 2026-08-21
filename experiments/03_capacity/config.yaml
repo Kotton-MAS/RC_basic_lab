@@ -112,6 +112,14 @@ narma:
   # 公平性の3決定 (D-04 同一 alpha 格子 / D-05 同一分割 / D-08 構造 HP を
   # 検証分割で選ばない) は 01 の経路がそのまま担保する。
   length: 8000
+  # 3-C' (D-95): タップ数の軸を振って、先行 (Goudarzi et al. 2014) の
+  # 動作点 k/n_train ≈ 1 まで届かせる。3-C 本体の n_lags_grid とは別軸で、
+  # 各点が独立に plan_replicate を通る (t0 も分割もその k のものになる)。
+  # 上限 2500 は「列数が行数以上になる」手前で止めたもの (実測: k=2600 で
+  # n_train=2600 になり scipy が singular matrix を送出。k=2500 で k/n=0.943)。
+  n_lags_sweep: [10, 30, 100, 300, 800, 1500, 2200, 2500]
+  # 掃引は傾向を見るものなので 3 本で足りる (3-C 本体は 5 本)。
+  n_replicates_sweep: 3
   base:
     name: 03_narma10
     n_replicates: 5
