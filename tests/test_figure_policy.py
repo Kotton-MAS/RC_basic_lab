@@ -56,6 +56,7 @@ from rc_basics_lab.plotting.style import (
     method_color,
     reference_line_kwargs,
 )
+from rc_basics_lab.types import BoolArray
 
 PLOTTING_DIR = Path(style.__file__).parent
 
@@ -358,14 +359,12 @@ def test_the_ipc_profile_separates_uncomputed_cells_from_zero_capacity(
     figure = capture_figures[0]
     meshes = [mesh for mesh in figure.findobj(QuadMesh) if isinstance(mesh, QuadMesh)]
     assert meshes, "ヒートマップがありません"
-    masked_cells = sum(
-        int(
-            np.ma.getmaskarray(
-                cast("np.ma.MaskedArray[object, object]", mesh.get_array())
-            ).sum()
-        )
-        for mesh in meshes
-    )
+    masked_cells = 0
+    for mesh in meshes:
+        values = mesh.get_array()
+        assert values is not None
+        mask: BoolArray = np.ma.getmaskarray(np.ma.asarray(values))
+        masked_cells += int(np.count_nonzero(mask))
     assert masked_cells > 0, "未計算のセルが1つもマスクされていません"
     # 未計算の色は配色 (viridis) のどの値とも違う無彩色
     bad = meshes[0].get_cmap().get_bad()
