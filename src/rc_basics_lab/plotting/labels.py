@@ -40,8 +40,8 @@ MC_BOUND_SOURCE = f"{JAEGER_2002} / {DAMBRE_2012}"
 IPC_BOUND_SOURCE = DAMBRE_2012
 """情報処理容量の保存則 ``IPC_total <= N`` の出典。"""
 
-SOURCE_UNIDENTIFIED = "原典未特定"
-"""出典を特定できていない参照値に付す印 (survey 未解決1)。
+SOURCE_UNIDENTIFIED: tuple[str, str] = ("原典未特定", "source unidentified")
+"""出典を特定できていない参照値に付す印 (survey 未解決1)。ja / en の対。
 
 **空欄にしない。** 「出典が無い」も情報であり、黙って値だけ引くと、後から
 出典が違っていたときに図の側から辿れない。

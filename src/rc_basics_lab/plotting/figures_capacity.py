@@ -721,7 +721,7 @@ def _reference_lines(axis: Axes, style: StyleContext) -> None:
             **reference_line_kwargs(index),
             label=cited(
                 style.label(japanese.format(value=value), english.format(value=value)),
-                SOURCE_UNIDENTIFIED,
+                style.label(*SOURCE_UNIDENTIFIED),
             ),
         )
 

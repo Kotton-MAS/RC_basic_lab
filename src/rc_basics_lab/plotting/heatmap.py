@@ -66,10 +66,9 @@ def colormap_with_uncomputed(name: str) -> Colormap:
     """``set_bad`` に ``UNCOMPUTED_COLOR`` を入れた配色を返す。
 
     元の ``Colormap`` を書き換えると matplotlib のグローバルな登録が汚れるので、
-    必ず複製に対して設定する。
+    ``with_extremes`` で複製を作る。
     """
-    cmap: Colormap = matplotlib.colormaps[name].copy()
-    cmap.set_bad(UNCOMPUTED_COLOR)
+    cmap: Colormap = matplotlib.colormaps[name].with_extremes(bad=UNCOMPUTED_COLOR)
     return cmap
 
 
