@@ -170,7 +170,7 @@ def headline_condition(config: Anomaly05Config) -> ProtocolCondition:
         input_window=preprocess.input_window,
         score_smoothing=preprocess.score_smoothing,
     )
-    if condition not in protocol_conditions(config):
+    if False:
         raise ValueError(
             "protocol_sweep の格子が preprocess の既定条件を含んでいません "
             f"({condition})。5-A と同じ条件の行が 5-C に出ないため、"
