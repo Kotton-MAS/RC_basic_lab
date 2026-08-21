@@ -22,7 +22,6 @@ import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.colors import Normalize
@@ -155,7 +154,7 @@ def plot_esp_decay(
     if not outcomes:
         raise ValueError("outcomes が空です")
     rhos = _unique_sorted([outcome.row.rho for outcome in outcomes])
-    colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(rhos)))
+    colors = sequential_colors(len(rhos))
 
     with rc_context_for(style):
         figure = _new_figure(7.5, 4.6)
@@ -257,9 +256,7 @@ def _plot_acf_panel(
             )
     axis.axhline(
         1.0 / math.e,
-        color="tab:red",
-        linestyle="--",
-        linewidth=1.0,
+        **reference_line_kwargs(),
         label=style.label("1/e (時定数の定義水準)", "1/e (level defining tau)"),
     )
     axis.set_xlabel(style.label("ラグ [ステップ]", "lag [steps]"))
@@ -306,8 +303,7 @@ def _plot_timescale_panel(
         axis.plot(
             [point[0] for point in theory_points],
             [point[1] for point in theory_points],
-            linestyle="--",
-            color="tab:orange",
+            **reference_line_kwargs(1),
             label=style.label(
                 "理論線 -1 / log(1 - a) (線形域)",
                 "theory -1 / log(1 - a) (linear regime)",
@@ -344,7 +340,7 @@ def plot_leak_timescale(
         raise ValueError("outcomes が空です")
     rows = [outcome.row for outcome in outcomes]
     leak_rates = _unique_sorted([row.leak_rate for row in rows])
-    colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(leak_rates)))
+    colors = sequential_colors(len(leak_rates))
 
     with rc_context_for(style):
         figure = _new_figure(11.0, 4.6)
@@ -527,11 +523,6 @@ _METHOD_LABELS: Mapping[str, tuple[str, str]] = {
 }
 """手法名の表示ラベル (D-10)。"""
 
-_METHOD_COLORS: Mapping[str, str] = {
-    "linear": "tab:gray",
-    "delay_line": "tab:orange",
-    "esn": "tab:blue",
-}
 
 _CONTROL_ALPHA = 0.40
 """対照 (主役でない課題) の線の不透明度。「薄く重ねる」の実体。"""
@@ -589,7 +580,7 @@ def _plot_absolute_panel(
             yerr=errors,
             fmt="o-" if headline else "s--",
             capsize=3,
-            color=_METHOD_COLORS.get(method, "tab:green"),
+            color=method_color(method),
             alpha=1.0 if headline else _CONTROL_ALPHA,
             linewidth=_HEADLINE_LINEWIDTH if headline else _CONTROL_LINEWIDTH,
             label=_series_label(style, task, method),
@@ -635,7 +626,7 @@ def _plot_relative_panel(
             yerr=errors / reference,
             fmt="o-" if headline else "s--",
             capsize=3,
-            color=_METHOD_COLORS.get(method, "tab:green"),
+            color=method_color(method),
             alpha=1.0 if headline else _CONTROL_ALPHA,
             linewidth=_HEADLINE_LINEWIDTH if headline else _CONTROL_LINEWIDTH,
             label=_series_label(style, task, method),
@@ -674,9 +665,7 @@ def _mark_reference(
     """01 の本番値に垂直線を引く (仕様 §4 T4)。"""
     axis.axvline(
         float(sensitivity.reference_washout),
-        color="tab:red",
-        linestyle=":",
-        linewidth=1.2,
+        **reference_line_kwargs(1),
         label=style.label(
             f"01 の本番値 (washout = {sensitivity.reference_washout})",
             f"production value used in 01 (washout = {sensitivity.reference_washout})",
