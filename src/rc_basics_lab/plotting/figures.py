@@ -355,9 +355,9 @@ def plot_state_space(
             _plot_cumulative_ratio_panel(axes[index][2], report, style)
         figure.suptitle(
             style.label(
-                "実験 1: リザバー状態は入力の遅延埋め込みより高い次元へ広がる",
-                "Experiment 1: the reservoir state spans more dimensions"
-                " than the delay embedding of the input",
+                "実験 1: リザバー状態は入力の遅延埋め込みより少ない主成分で説明できる",
+                "Experiment 1: the reservoir state needs fewer principal"
+                " components than the delay embedding of the input",
             )
         )
         conditions = f"n_rows = {reports[0].n_rows}, n_lags = {reports[0].n_lags}"

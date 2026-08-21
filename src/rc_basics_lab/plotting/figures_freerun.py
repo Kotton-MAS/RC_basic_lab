@@ -272,9 +272,9 @@ def plot_freerun_attractor(
             raise ValueError("位相図に描く点がありません")
         figure.suptitle(
             style.label(
-                "実験 4-B: 入力を切っても自走軌道は真のアトラクタの形を保つ",
-                "Experiment 4-B: the free run keeps the shape of the true"
-                " attractor after the input is switched off",
+                "実験 4-B: 入力を切っても ESN の自走軌道は真のアトラクタの形を保つ",
+                "Experiment 4-B: with the input switched off the ESN free run"
+                " keeps the shape of the true attractor",
             )
         )
         conditions = f"tasks = {'/'.join(tasks)}"
@@ -439,9 +439,10 @@ def plot_stability_map(
         )
         figure.suptitle(
             style.label(
-                "実験 4-C / 4-D: 状態ノイズを上げるとアトラクタ再現の領域が縮む",
-                "Experiments 4-C / 4-D: raising the state noise shrinks the"
-                " region where the attractor is reproduced",
+                "実験 4-C / 4-D: アトラクタを再現できる領域は"
+                "状態ノイズ 0.01 までほとんど動かない",
+                "Experiments 4-C / 4-D: the region that reproduces the attractor"
+                " barely moves up to a state noise of 0.01",
             )
         )
         conditions = f"N = {rows[0].n_units}, stats = {rows[0].stats_steps} steps"
@@ -571,10 +572,11 @@ def plot_freerun_stats(
             raise ValueError("長時間統計に描く点がありません")
         figure.suptitle(
             style.label(
-                "実験 4-B: 長時間自走してもリターンマップとスペクトルは"
-                "真の軌道と重なる",
+                "実験 4-B: 長時間自走後もリターンマップとスペクトルは"
+                "シャッフル代替よりはるかに真の軌道へ近い",
                 "Experiment 4-B: after a long free run the return map and the"
-                " spectrum still overlap the true trajectory",
+                " spectrum stay far closer to the truth than the shuffled"
+                " surrogate",
             )
         )
         conditions = f"tasks = {'/'.join(tasks)}"
