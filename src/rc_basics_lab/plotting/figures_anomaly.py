@@ -65,8 +65,10 @@ from rc_basics_lab.experiment.anomaly_score import (
 )
 from rc_basics_lab.plotting.style import (
     StyleContext,
+    add_provenance,
     new_figure,
     rc_context_for,
+    reference_line_kwargs,
     require_rows,
     save_png,
 )
@@ -224,9 +226,7 @@ def plot_pr_curves(
             )
         axis.axhline(
             anomaly_rate,
-            color="#333333",
-            linestyle=":",
-            linewidth=1.2,
+            **reference_line_kwargs(),
             label=style.label(
                 f"異常率 {anomaly_rate:.3f} (一様乱数の期待値)",
                 f"anomaly rate {anomaly_rate:.3f} (expected for random scores)",
@@ -244,10 +244,14 @@ def plot_pr_curves(
         axis.legend(loc="best", fontsize=8)
         figure.suptitle(
             style.label(
-                "実験 5-A: 検知性能の比較 (AUPRC は point-adjust を通していない)",
-                "Experiment 5-A: detection performance (AUPRC, no point adjustment)",
+                "実験 5-A: 一様乱数対照をはっきり超えるのは ESN 残差だけ"
+                " (AUPRC は point-adjust を通していない)",
+                "Experiment 5-A: only the ESN residual clearly beats the uniform"
+                " random control (AUPRC, no point adjustment)",
             )
         )
+        conditions = f"dataset = {rows[0].dataset}, n_train = {rows[0].n_train}"
+        add_provenance(figure, conditions, rows, style=style)
         return save_png(figure, path)
 
 
@@ -316,9 +320,7 @@ def plot_score_timeline(
             threshold = next(row.threshold for row in rows if row.method == method)
             axis.axhline(
                 threshold,
-                color="#333333",
-                linestyle="--",
-                linewidth=1.0,
+                **reference_line_kwargs(),
                 label=style.label("運用閾値 (較正区間)", "operating threshold"),
             )
             for first, last in spans:
@@ -329,14 +331,13 @@ def plot_score_timeline(
         example = rows[0]
         figure.suptitle(
             style.label(
-                f"実験 5-A: 異常スコアと正解ラベル ({example.dataset} / 系列 "
-                f"{example.series} / レプリケート {example.replicate}。"
-                "帯が正解の異常区間)",
-                f"Experiment 5-A: anomaly scores vs labels ({example.dataset} /"
-                f" series {example.series} / replicate {example.replicate};"
-                " shaded = true anomalies)",
+                "実験 5-A: 正解の帯 (異常区間) でスコアが跳ねる系統は限られる",
+                "Experiment 5-A: only some methods spike inside the true"
+                " anomaly spans (shaded)",
             )
         )
+        conditions = f"dataset = {example.dataset}, series = {example.series}"
+        add_provenance(figure, conditions, rows, style=style)
         return save_png(figure, path)
 
 
@@ -435,11 +436,14 @@ def plot_threshold_tradeoff(
             axis.legend(loc="best", fontsize=7)
         figure.suptitle(
             style.label(
-                "実験 5-B: 閾値のトレードオフ (星 = 較正区間だけで決めた運用点)",
-                "Experiment 5-B: threshold trade-off (star = operating point"
-                " calibrated without test labels)",
+                "実験 5-B: 警報予算を緩めた分だけ再現率が上がる"
+                " (星 = 較正区間だけで決めた運用点)",
+                "Experiment 5-B: recall rises in step with the alarm budget"
+                " (star = operating point calibrated without test labels)",
             )
         )
+        conditions = f"dataset = {rows[0].dataset}, n_test = {rows[0].n_test}"
+        add_provenance(figure, conditions, rows, style=style)
         return save_png(figure, path)
 
 
