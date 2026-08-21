@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.colors import Colormap
@@ -67,17 +68,9 @@ def colormap_with_uncomputed(name: str) -> Colormap:
     元の ``Colormap`` を書き換えると matplotlib のグローバルな登録が汚れるので、
     必ず複製に対して設定する。
     """
-    cmap = matplotlib_colormap(name).copy()
+    cmap: Colormap = matplotlib.colormaps[name].copy()
     cmap.set_bad(UNCOMPUTED_COLOR)
     return cmap
-
-
-def matplotlib_colormap(name: str) -> Colormap:
-    """名前から ``Colormap`` を引く (``matplotlib.colormaps`` への薄い委譲)。"""
-    import matplotlib
-
-    colormap: Colormap = matplotlib.colormaps[name]
-    return colormap
 
 
 def draw_truncation_edges(
@@ -112,5 +105,4 @@ __all__ = [
     "colormap_with_uncomputed",
     "draw_truncation_edges",
     "masked_beyond_truncation",
-    "matplotlib_colormap",
 ]
