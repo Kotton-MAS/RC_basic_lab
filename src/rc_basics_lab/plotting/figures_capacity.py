@@ -467,19 +467,27 @@ def _plot_heatmap_panel(
     style: StyleContext,
     *,
     show_ylabel: bool,
+    truncation: Mapping[int, int] | None,
 ) -> QuadMesh:
-    """1つの rho ぶんの (次数 x 遅延) ヒートマップ (配色は呼び出し側と共通)。"""
+    """1つの rho ぶんの (次数 x 遅延) ヒートマップ (配色は呼び出し側と共通)。
+
+    打ち切りの外は ``masked_beyond_truncation`` でマスクし、0 とは別のグレーで
+    描く (FIG-7 / D-88)。遅延軸は対数にする —— 打ち切りが次数ごとに 60/20/10/6
+    と一桁違うので、線形軸では低遅延側 (容量の大半が在る場所) が潰れる。
+    """
     n_degrees, n_delays = cells.shape
     mesh = axis.pcolormesh(
         np.arange(n_delays + 1, dtype=np.float64) + 0.5,
         np.arange(n_degrees + 1, dtype=np.float64) + 0.5,
-        cells,
-        cmap=_HEATMAP_CMAP,
+        masked_beyond_truncation(cells, truncation),
+        cmap=colormap_with_uncomputed(SEQUENTIAL_CMAP),
         norm=norm,
         shading="flat",
     )
+    draw_truncation_edges(axis, truncation, n_delays)
+    axis.set_xscale("log")
     axis.set_yticks(np.arange(1, n_degrees + 1, dtype=np.float64))
-    axis.set_xlabel(style.label("遅延 k [ステップ]", "delay k [steps]"))
+    axis.set_xlabel(style.label("遅延 k [ステップ・対数]", "delay k [steps, log]"))
     if show_ylabel:
         axis.set_ylabel(style.label("次数 d", "degree d"))
     axis.set_title(
@@ -496,12 +504,23 @@ def plot_ipc_profile(
     path: Path,
     *,
     style: StyleContext,
+    max_delay_by_degree: Mapping[int, int] | None = None,
 ) -> Path:
     """実験 3-B の (次数 x 遅延) ヒートマップを rho 別に並べる (受け入れ条件4)。
 
     パネルは代表リーク率 1本 x rho 4点。配色は全パネルで共通の上限を使う
     (パネルごとに正規化すると「rho を上げると非線形が減る」という主張が
     色の付け替えで消える)。
+
+    Args:
+        rows: 3-B の行。
+        profile: 3-B の長形式の行 (D-38)。
+        path: 出力先 PNG。
+        style: ``setup_style()`` の戻り値。
+        max_delay_by_degree: 次数ごとの遅延の打ち切り (``cfg`` 由来)。
+            与えると打ち切りの外を「未計算」のグレーに落とす (FIG-7 / D-88)。
+            **省略すると全セルが計算済みとして描かれる** —— 打ち切りが
+            分からないときに未計算の領域を捏造しないため。
 
     Raises:
         ValueError: ``rows`` が空の場合。
@@ -518,7 +537,13 @@ def plot_ipc_profile(
         axes = figure.subplots(1, len(rhos), squeeze=False)
         meshes = [
             _plot_heatmap_panel(
-                axes[0][index], means[rho], rho, norm, style, show_ylabel=index == 0
+                axes[0][index],
+                means[rho],
+                rho,
+                norm,
+                style,
+                show_ylabel=index == 0,
+                truncation=max_delay_by_degree,
             )
             for index, rho in enumerate(rhos)
         ]
@@ -526,18 +551,25 @@ def plot_ipc_profile(
             meshes[-1],
             ax=list(axes[0]),
             label=style.label(
-                "容量 (しきい値後・レプリケート平均、色は平方根スケール)",
-                "capacity (after thresholding, mean over reps; sqrt colour scale)",
+                "容量 (しきい値後・レプリケート平均、色は平方根スケール。"
+                "灰色は打ち切りの外で未計算)",
+                "capacity (after thresholding, mean over reps; sqrt colour scale;"
+                " grey = beyond the truncation, not computed)",
             ),
         )
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 3-B: 次数 x 遅延 で見た情報処理容量の配分"
-                f" (a = {leak_rate:g}, N = {first.n_units})",
-                "Experiment 3-B: information processing capacity by degree and delay"
-                f" (a = {leak_rate:g}, N = {first.n_units})",
+                "実験 3-B: rho を上げると次数3 の容量が失われ、残るのは次数1 になる",
+                "Experiment 3-B: raising rho destroys the degree-3 capacity"
+                " and leaves the degree-1 part",
             )
+        )
+        _footnote(
+            figure,
+            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}, a = {leak_rate:g}",
+            [row.replicate for row in rows],
+            style,
         )
         return _save(figure, path)
 
