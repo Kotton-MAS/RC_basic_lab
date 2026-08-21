@@ -36,6 +36,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 from matplotlib.axes import Axes
 from matplotlib.collections import QuadMesh
 from matplotlib.colors import Normalize, PowerNorm
@@ -165,12 +166,12 @@ def _add_normalized_axis(axis: Axes, n_units: float, style: StyleContext) -> Non
     if n_units <= 0.0:
         raise ValueError(f"n_units は正である必要があります: {n_units}")
 
-    def forward(values: FloatArray) -> FloatArray:
-        scaled: FloatArray = values / n_units
+    def forward(values: npt.ArrayLike) -> FloatArray:
+        scaled: FloatArray = np.asarray(values, dtype=np.float64) / n_units
         return scaled
 
-    def inverse(values: FloatArray) -> FloatArray:
-        scaled: FloatArray = values * n_units
+    def inverse(values: npt.ArrayLike) -> FloatArray:
+        scaled: FloatArray = np.asarray(values, dtype=np.float64) * n_units
         return scaled
 
     secondary = axis.secondary_yaxis("right", functions=(forward, inverse))
