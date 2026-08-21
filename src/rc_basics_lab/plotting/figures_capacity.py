@@ -144,7 +144,7 @@ def _save(figure: Figure, path: Path) -> Path:
 # --- 3-A: 線形メモリ容量の掃引 ---------------------------------------------
 
 
-NORMALIZED_AXIS_LABEL = ("MC / N (上限を 1 とした割合)", "MC / N (bound = 1)")
+NORMALIZED_AXIS_LABEL = ("MC / N", "MC / N")
 """``MC / N`` の第2軸のラベル (FIG-4)。テストがこの文字列で軸を探す。"""
 
 
