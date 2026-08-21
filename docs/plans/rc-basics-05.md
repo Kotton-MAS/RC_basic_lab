@@ -13,7 +13,8 @@
 |---|---|---|
 | **05a** | T1 (検知指標層) + T2 (データ層) | **完了**。レビュー4周、BLOCKER 0 / HIGH 15件をすべて修正 |
 | **05b** | T3 (実験5-A・5-B) | **完了** (2026-08-20)。実測は §4 T3 の末尾 |
-| **05b** | T4 (実験5-C・5-D) + T5 (パイプライン・図5枚・配線) | 未着手 |
+| **05b** | T4 (実験5-C・5-D) | **完了** (2026-08-21)。実測とチェックポイントは §4 T4 の末尾 |
+| **05b** | T5 (パイプライン・図5枚・配線) | 未着手 |
 
 **T4 に進む前に §4 T3 のチェックポイント表を読むこと** (リスク2 の判定材料)。
 ESN 0.3935 / 遅延線 0.1877 に対し一様乱数対照 0.0811 (異常率 0.0780) で、
@@ -432,6 +433,75 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
        **そのことが分かる値** (`nan` ではなく端の値 + `saturated: bool`) になる
     4. `size_sweep.n_units_grid` を変えると 5-D の行数と `n_units_at_90pct` が変わる
     5. 掃引の全条件が単一の `AnomalyPreprocessor` 生成経路を通る
+  - **T4 実装時に決めたこと** (仕様に書かれていなかった選択。次周の reviewer / fixer はここを読む):
+    1. **UCR の `train_end` 問題は (b) で解いた** —— 5-D は系列長が揃った源でだけ回す。ただし
+       「UCR を使わない」と散文で書くのではなく、**5-D の入口に「全系列が同じ学習量 (`n_train`)
+       で回っていること」という正の条件を置いて `ValueError`** にした (D-80)。源の名前で分岐しない
+       (D-71) ので、将来 UCR の分割を系列ごとに導く実装が入れば自動的に条件が満たされて回るようになる。
+       推奨されていた (a) (系列自身の `train_end` から分割を導く) を採らなかった理由は3つ:
+       (i) `dataset.train_ratio` が「何の割合か」が全源で変わり、**5-A の既定の数値が動く** ——
+       T3 のチェックポイント (記事の結論の土台) を測り直すことになる。
+       (ii) 学習区間が `train_end` を越える設定を「黙って切り詰める」形になり、T3 の決定12 が
+       明示的な `ValueError` にした判断を静かな縮小へ戻す。
+       (iii) T4 の触るファイル (`anomaly_sweep.py` + 設定) の外 (`experiment/anomaly.py` の分割) を
+       書き換えることになる。**5-C は UCR でも回る** (系列ごとの差は行にそのまま出るため)
+    2. **5-C の「印」は対応のある片側符号検定** (`auprc > auprc_random` の対を数える、p <= 0.05) に
+       した (D-78)。有意水準は設定の葉にしない —— 根拠3列 (`n_pairs` / `n_better_than_control` /
+       `control_sign_p`) が行にあるので読者は別の水準で再判定でき、葉にすると「水準を緩めて印を
+       増やした図」が作れる。**対が5つ未満だとどの系統にも印が付かない** (5対全勝で p=0.03125、
+       4対全勝で 0.0625) ので、`n_replicates` を削る判断は印の有無に直結する
+    3. **掃引の基準は 5-A と同じ条件であることを構造で要求した** (D-79)。格子が既定条件を
+       含まなければ `ValueError`。受け入れ基準1 は「一致する点があれば一致する」ではなく
+       「その点が必ず在る」まで固めないと、格子を1つずらすだけで検査が空振りする
+    4. **行 dataclass (`ProtocolSweepRow` / `SizeSweepRow`) は `anomaly_rows.py` に置いた**
+       (T3 が行と CSV 列をあそこへ集約した流儀のまま)。掃引側に置くと `anomaly_sweep.py` が
+       600 行 (D-63) に届く
+    5. **実験モジュールは7本になった**。`anomaly_sweep.py` を素直に書くと 686 行だったので、
+       順位と印の計算 (符号検定 / Kendall tau-b / 競技順位) を `anomaly_ranking.py` (246 行) へ
+       切り出した。実測 `anomaly_sweep.py` 510 / `anomaly_ranking.py` 246。**上限に当たったので
+       割った**のであって上限は動かしていない (T3 の決定5 と同じ)
+    6. **`config/anomaly05.py` は割った** (T3 の決定18 の指示)。掃引の格子2節を
+       `config/anomaly05_sweep.py` (非空 48 行) へ置き、`anomaly05.py` は非空 297 行 (上限 300)。
+       格子の既定値は**リテラルで書き写す** —— `AnomalyPreprocessConfig()` から引くと
+       `anomaly05_sweep -> anomaly05` の逆辺が生えて循環する。書き写しが崩れていないことは
+       `test_the_default_grids_contain_the_headline_condition` が実測する
+    7. **順位は6系統すべてに付け、条件レベルの量 (`kendall_tau` / 不一致対の数) は
+       その格子点の全行が持ち歩く** (`ThresholdSweepRow.calibrated_threshold` と同じ流儀)。
+       図が2枚の CSV を突き合わせずに済む。「対照と区別できる系統どうしの入れ替わり」は
+       `n_discordant_pairs_distinguishable` 列が直接答える
+    8. **5-D は N に依存しない系統 (対照を含む) の行も出す** (D-61)。図の基準線になり、
+       「対照は N で動かない」ことが成果物で確かめられる
+    9. **`n_units_at_90pct` は基準 N から下へたどって最初に 90% を割る N**。格子内に無ければ
+       格子の**下端**を返し `saturated=True` にする (`nan` にしない —— 「測れなかった」と
+       「格子が足りなかった」が区別できなくなる)。基準より上の N は行には出るが走査には入れない
+    10. **劣化の割合 0.9 は設定の葉にしない** (`DEGRADATION_FRACTION`)。報告する量の名前
+        `n_units_at_90pct` がその値そのもので、葉にすると列名が嘘になる
+  - **実測 (2026-08-21)**: 新規テスト **31 件** (`test_experiment_anomaly_sweep.py` 22 /
+    `test_config_wiring_anomaly.py` +9)、`uv run pytest -q` = **1325 passed / 44.6 秒**
+    (T4 着手前のベースライン 1294 から 31 増、既存の減少なし)。`mypy` strict / `ruff` green。
+    `results/01..04/` はバイト不変。`.claude/decisions.yaml` は **80 件** (D-78 / D-79 / D-80。
+    3件とも変異注入で赤を実測)。既定設定の 5-C = **100.3 秒** (予算 250 秒、27 格子点 x 6系統 =
+    162 行) / 5-D = **13.0 秒** (予算 150 秒、4 N x 6系統 = 24 行)
+  - **チェックポイント (5-C の順位入替、既定設定 = 合成源 3系列 x 5レプリケート x 27 格子点)**:
+
+    | 量 | 実測 |
+    |---|---|
+    | 順位が動いた格子点 | **27 中 21** |
+    | 順位が動いた (格子点, 系統) の行 | 61 |
+    | 逆転した系統対 (延べ) | **46 組** |
+    | そのうち**両方に印がある**組 | **0 組** |
+    | Kendall tau-b の最小値 | 0.467 |
+
+    基準条件 (= 5-A) で印が付くのは **ESN 残差 (15/15, p=3.05e-05)** と
+    **遅延線残差 (15/15, p=3.05e-05)** の2系統だけで、persistence (9/15, p=0.304) /
+    移動統計 (7/15, p=0.696) / 入力ノルム (10/15, p=0.151) / 一様乱数 (0/15, p=1.0) には
+    付かない。**ESN と遅延線の順位は 27 格子点すべてで不動** (1位・2位) であり、
+    観測された 46 組の逆転は**すべて印の無い4系統の内部**で起きている ——
+    印が無ければ「プロトコルを変えると順位が入れ替わる = プロトコルに敏感」という
+    誤った結論になっていた (D-78 の根拠そのもの)。
+    5-D は **`n_units_at_90pct` = 100** (基準 N=200 で AUPRC 0.3935、N=100 で 0.3365 =
+    0.855 倍、N=50 で 0.526 倍、N=25 で 0.319 倍。`saturated=False`)。
+    全 24 行が `n_train=4900` で、学習量は揃っている (D-80)
 
 - [ ] **T5: パイプライン・図5枚・配線・文書** — 想定所要 **L**
   - 何をするか: `experiment/anomaly_pipeline.py` (`ANOMALY_ARTIFACTS` / `run_and_report_anomaly` /
@@ -532,10 +602,10 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
 | `evaluation.report_point_adjust` | rows | `pa_f1` と `pa_f1_random` の**2列同時**の有無 |
 | `evaluation.pa_k_grid` | rows | **(T3 で訂正)** PA%K の**列数** (K ごとに `pa_f1_k{K}` / `pa_f1_random_k{K}` の2列)。行にすると同一条件の行が K の数だけ増え `auprc` の平均の重みが狂う |
 | `evaluation.ignore_transition` | rows | 評価点数 → `auprc` |
-| `protocol_sweep.normalize_grid` | rows | `anomaly_protocol.csv` の行数 (**T4 が設定ごと足す**。T3 は掃引の実装が無いので死葉になるため置いていない) |
-| `protocol_sweep.input_window_grid` | rows | 同上 |
-| `protocol_sweep.score_smoothing_grid` | rows | 同上 |
-| `size_sweep.n_units_grid` | rows | `anomaly_size.csv` の行数 + `n_units_at_90pct` |
+| `protocol_sweep.normalize_grid` | sweep | **(T4 で訂正)** `anomaly_protocol.csv` の**行の指紋** (格子点 + 集計)。行数だけを見ると「格子の値だけ入れ替えた」ケース (`minmax` -> `robust`) を取りこぼす |
+| `protocol_sweep.input_window_grid` | sweep | 同上 |
+| `protocol_sweep.score_smoothing_grid` | sweep | 同上 |
+| `size_sweep.n_units_grid` | sweep | `anomaly_size.csv` の行の指紋 **かつ** `n_units_at_90pct` (2つとも変わることを要求する) |
 | `seeds.reservoir` | rows | ESN 系統のみ変わる (対照は不変) |
 | `seeds.task` | rows | 合成源の系列 |
 | `seeds.split` | rows | `split_offset` |
@@ -593,6 +663,14 @@ id は既存の最大 D-53 の続き。guard_test は各タスクの受け入れ
   - 根拠: 実行時依存を4つに保つ (D-10 と同じ規律)。一方 AUPRC の自前実装は同順位の扱いで容易に間違え、
     間違いは「少し違う値」としてしか現れないため、独立オラクルなしの自前実装は危険
   - guard_test: `tests/test_metrics_detection.py::test_runtime_dependencies_do_not_include_scikit_learn`
+- **D-78** (T4 が追加): 5-C の順位は6系統すべてで計算し、対照と区別できない系統を除外しない。
+  区別可能性は行の印 (`distinguishable`) と根拠3列で表す (対応のある片側符号検定、p <= 0.05)
+  - guard_test: `tests/test_experiment_anomaly_sweep.py::test_every_ranked_method_carries_a_control_mark_and_its_evidence`
+- **D-79** (T4 が追加): 掃引の基準条件は 5-A と同じ条件とし、格子が既定条件を含まなければ `ValueError`
+  - guard_test: `tests/test_experiment_anomaly_sweep.py::test_the_sweeps_reject_a_grid_without_the_headline_condition`
+- **D-80** (T4 が追加): 5-D は全系列が同じ学習量 (`n_train`) で回っていることを要求する
+  (系列ごとに `train_end` が異なる源は 5-A / 5-C に限る)
+  - guard_test: `tests/test_experiment_anomaly_sweep.py::test_the_size_sweep_requires_a_uniform_training_amount`
 - **D-63**: 05 の実験層は着手時点で5モジュールに分け、1ファイル 600 行を上限とする。上限そのものを緩めない
   - 根拠: 実測 `freerun.py` 1620行 / `capacity.py` 1204 / `attractor.py` 715 / `stability.py` 631。
     行数は「後で割る」と必ず割られない。乱暴な代理指標だが、決定論的に落ちるという一点で散文より強い
