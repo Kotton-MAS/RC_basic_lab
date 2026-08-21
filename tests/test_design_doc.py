@@ -381,14 +381,40 @@ def _decimals(cell: str) -> int:
     return len(fraction)
 
 
+#: 実行時間セルの許容比 (D-84)。**厳密一致で縛らない** ——
+#: ``wall_time`` は実行環境で変わるので、誰がどのマシンで再生成しても落ちる
+#: 検査になってしまう (図のラベルを直しただけで design.md の4表が落ちた)。
+#: 一方で「この区間が10倍遅くなった」は拾いたいので、桁が変わる手前で止める。
+WALL_TIME_TOLERANCE = 2.0
+
+
 def _assert_cell_matches(cell: str, actual: float, label: str) -> None:
     """セルの表記を**その桁数に丸めた実測値**と厳密に比較する。
 
     丸め桁数をセルから読むので、表の見やすさ (有効数字) と厳密さを両立できる。
     1桁でも書き換えれば落ちる。
+
+    **ただし実行時間だけは例外**で、比が ``WALL_TIME_TOLERANCE`` 以内なら通す
+    (D-84)。実行環境で変わる値を厳密一致で縛ると、再生成のたびに文書を
+    書き換える義務が生まれるだけで、退行の検出には何も寄与しない。
     """
+    if "wall_time" in label or label.endswith("_s"):
+        _assert_wall_time_cell(cell, actual, label)
+        return
     assert float(cell) == round(actual, _decimals(cell)), (
         f"{label}: design.md は {cell} / 一次資料は {actual!r}"
+    )
+
+
+def _assert_wall_time_cell(cell: str, actual: float, label: str) -> None:
+    """実行時間のセルが一次資料と**同じ桁**にあること (D-84)。"""
+    documented = float(cell)
+    assert actual > 0, f"{label}: 一次資料の実行時間が正の値ではありません"
+    ratio = documented / actual
+    assert 1 / WALL_TIME_TOLERANCE <= ratio <= WALL_TIME_TOLERANCE, (
+        f"{label}: design.md は {cell} 秒 / 一次資料は {actual:.2f} 秒 で "
+        f"{ratio:.2f} 倍ずれています。**実行環境の差では説明できない開き**なので、"
+        "その区間が重くなっていないか確認してください。"
     )
 
 
