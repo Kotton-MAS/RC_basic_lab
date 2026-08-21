@@ -257,7 +257,7 @@ def build_timeline_rows(
     # **閾値は 5-A の行が持っている値をそのまま使う** (D-82)。ここで
     # calibrate_threshold を呼び直すと、較正区間の切り出し規則が実験層と
     # 作図用で2実装に割れる (D-57 と同じ壊れ方)。
-    thresholds = dict.fromkeys(ANOMALY_METHODS, 0.5)  # MUTATION
+    thresholds = {row.method: row.threshold for row in outcome.rows}
     rows: list[TimelineRow] = []
     for method in ANOMALY_METHODS:
         scores: FloatArray = plan.scores[method].values
