@@ -441,8 +441,8 @@ def plot_mc_sweep(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 3-A: 線形メモリ容量は rho = 1 付近で最大になるが"
-                "、上限 N の2割にも届かない",
+                "実験 3-A: 線形メモリ容量は rho = 1 付近で最大になるが、"
+                "上限 N の2割にも届かない",
                 "Experiment 3-A: linear memory capacity peaks near rho = 1"
                 " yet stays below 20% of the bound N",
             )
