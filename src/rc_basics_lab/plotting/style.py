@@ -11,6 +11,11 @@
 ``matplotlib.rcParams`` をプロセス全体に書き換えない (F-1-008)。実際の描画設定は
 ``rc_params_for`` が返す辞書を呼び出し側が ``matplotlib.rc_context`` に渡して
 描画中だけ一時適用する (``plotting/figures.py`` が行う)。
+
+**配色と footnote の単一の真実もここに置く** (図の設計方針 FIG-5 / FIG-6、
+D-85 / D-86 / D-87)。各 ``figures_*.py`` が自前で色を選ぶと、記事をまたいで
+同じ対照群が違う色で出る (実測: 3-A viridis / 3-B tab:blue+tab:orange /
+3-C 単色)。読者は5記事を続けて読むので、色の意味は連載通しで固定する。
 """
 
 from __future__ import annotations
