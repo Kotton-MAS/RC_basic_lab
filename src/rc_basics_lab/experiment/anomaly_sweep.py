@@ -25,6 +25,10 @@
 5-D の前提 (D-78): **全系列が同じ学習量 (``n_train``) で回っていること**を
 入口で検査する。系列ごとに ``train_end`` が違う源では、学習量不足による劣化と
 N 不足による劣化が混ざって測定そのものが壊れる。
+
+順位と印そのものの計算 (符号検定 / Kendall tau-b / 競技順位) は
+``anomaly_ranking.py`` にある —— 1本に書くと 686 行で D-63 の上限を超えた。
+ここに残っているのは**掃引の配線**だけである。
 """
 
 from __future__ import annotations
@@ -41,7 +45,9 @@ from rc_basics_lab.experiment.anomaly import run_anomaly_headline
 from rc_basics_lab.experiment.anomaly_ranking import (
     MethodAggregate,
     aggregate_methods,
+    discordant_counts,
     kendall_tau,
+    method_ranks,
 )
 from rc_basics_lab.experiment.anomaly_rows import (
     AnomalyRow,
@@ -489,21 +495,16 @@ def summarize_size_sweep(
 
 
 __all__ = [
-    "CONTROL_SIGN_TEST_ALPHA",
     "DEGRADATION_FRACTION",
-    "MethodAggregate",
     "ProtocolCondition",
     "ProtocolSweepSummary",
     "SizeSweepSummary",
-    "aggregate_methods",
     "apply_protocol_condition",
     "apply_size_condition",
     "headline_condition",
-    "kendall_tau",
     "protocol_conditions",
     "run_protocol_sweep",
     "run_size_sweep",
-    "sign_test_p_value",
     "summarize_protocol_sweep",
     "summarize_size_sweep",
 ]
