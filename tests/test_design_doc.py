@@ -1358,7 +1358,7 @@ def test_the_wall_time_tolerance_accepts_noise_and_rejects_a_drift() -> None:
     「実行環境の揺れは通す」と「桁が変わる差は落とす」の**両方**である。
     片方だけなら、厳密一致に戻すのと、検査を消すのと同じになる。
     """
-    from tests.test_readme_summary import assert_wall_time_is_the_same_order
+    from test_readme_summary import assert_wall_time_is_the_same_order
 
     # 環境差の範囲 (±40%) は通る —— 通らないと再生成のたびに文書を書き換える羽目になる
     _assert_wall_time_cell("7.0", 5.0, "noise")
