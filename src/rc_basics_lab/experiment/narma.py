@@ -135,13 +135,22 @@ class Narma10Verdict:
     Attributes:
         best_method: テスト NMSE のレプリケート平均が最小の手法。
         nmse_mean: 手法ごとの NMSE のレプリケート平均。
-        delay_line_beats_esn: 遅延線の平均 NMSE が ESN より小さいか。
+        delay_line_beats_esn: 遅延線 (リッジ) の平均 NMSE が ESN より小さいか。
+        delay_line_ols_beats_esn: **正則化なし**の遅延線が ESN より小さいか
+            (D-90)。この2つが食い違ったときが「先行 (Goudarzi et al. 2014) の
+            対照設計の穴」が結論を動かした場合で、記事の主張はそこに乗る。
+            ``None`` は正則化なし水準が回っていない場合。
+        regularisation_changes_the_verdict: 上の2つが食い違うか (D-90)。
+            **図を目で見ないと分からない**状態にしないための1ビットで、
+            README と meta.json はこの値を引く。
         selected_n_lags: 遅延線が検証分割で選んだタップ数 (昇順・重複なし)。
     """
 
     best_method: str
     nmse_mean: Mapping[str, float]
     delay_line_beats_esn: bool
+    delay_line_ols_beats_esn: bool | None
+    regularisation_changes_the_verdict: bool
     selected_n_lags: tuple[int, ...]
 
     def to_summary(self) -> dict[str, object]:
@@ -150,6 +159,10 @@ class Narma10Verdict:
             "best_method": self.best_method,
             "nmse_mean": dict(self.nmse_mean),
             "delay_line_beats_esn": self.delay_line_beats_esn,
+            "delay_line_ols_beats_esn": self.delay_line_ols_beats_esn,
+            "regularisation_changes_the_verdict": (
+                self.regularisation_changes_the_verdict
+            ),
             "selected_n_lags": list(self.selected_n_lags),
             "reference_nmse": dict(NARMA10_REFERENCE_NMSE),
             "reference_note": NARMA10_REFERENCE_NOTE,
@@ -170,12 +183,17 @@ def summarize_narma10(rows: Sequence[ResultRow]) -> Narma10Verdict:
     nmse_mean = {method: statistics.fmean(values) for method, values in grouped.items()}
     best = min(nmse_mean, key=lambda method: (nmse_mean[method], method))
     delay_line = nmse_mean.get(DELAY_LINE)
+    delay_line_ols = nmse_mean.get(DELAY_LINE_OLS)
     esn = nmse_mean.get(ESN_METHOD)
+    ridge_wins = delay_line is not None and esn is not None and delay_line < esn
+    ols_wins = None if delay_line_ols is None or esn is None else delay_line_ols < esn
     return Narma10Verdict(
         best_method=best,
         nmse_mean=nmse_mean,
-        delay_line_beats_esn=(
-            delay_line is not None and esn is not None and delay_line < esn
+        delay_line_beats_esn=ridge_wins,
+        delay_line_ols_beats_esn=ols_wins,
+        regularisation_changes_the_verdict=(
+            ols_wins is not None and ols_wins != ridge_wins
         ),
         selected_n_lags=tuple(
             sorted({row.n_lags for row in rows if row.method == DELAY_LINE})

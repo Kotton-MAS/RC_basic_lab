@@ -47,6 +47,7 @@ from rc_basics_lab.experiment.capacity import (
     measure_capacity,
 )
 from rc_basics_lab.experiment.narma import (
+    DELAY_LINE_OLS_ALPHAS,
     NARMA10_ESN_SECTION,
     NARMA10_REFERENCE_NMSE,
     NARMA10_REFERENCE_NOTE,
@@ -59,6 +60,7 @@ from rc_basics_lab.experiment.narma import (
 from rc_basics_lab.experiment.report import COMPARISON_CSV, write_comparison_csv
 from rc_basics_lab.experiment.runner import (
     DELAY_LINE,
+    DELAY_LINE_OLS,
     ESN_METHOD,
     LINEAR,
     ReplicatePlan,
@@ -159,9 +161,12 @@ def test_narma10_reuses_run_task_and_shares_rows_across_methods(
         task_entry: runner.TaskEntry,
         *,
         plan0: ReplicatePlan | None = None,
+        extra_methods: Sequence[runner.Method] = (),
     ) -> list[ResultRow]:
         calls.append((cfg, task_entry, plan0))
-        return real_run_task(cfg, task_entry, plan0=plan0)
+        return real_run_task(
+            cfg, task_entry, plan0=plan0, extra_methods=extra_methods
+        )
 
     monkeypatch.setattr(narma_module, "run_task", spy)
     results = run_narma10(config)
@@ -174,12 +179,17 @@ def test_narma10_reuses_run_task_and_shares_rows_across_methods(
     assert plan0 is results.plan0
 
     base = config.narma.base
-    assert len(results.rows) == 3 * base.n_replicates
-    assert {row.method for row in results.rows} == {LINEAR, DELAY_LINE, ESN_METHOD}
+    assert len(results.rows) == 4 * base.n_replicates
+    assert {row.method for row in results.rows} == {
+        LINEAR,
+        DELAY_LINE,
+        DELAY_LINE_OLS,
+        ESN_METHOD,
+    }
     assert {row.task for row in results.rows} == {TASK_NAME}
     for replicate in range(base.n_replicates):
         group = [row for row in results.rows if row.replicate == replicate]
-        assert len(group) == 3
+        assert len(group) == 4
         # D-05: 同一レプリケート内では基準点も分割サイズも全手法で共通
         assert len({(row.t0, row.n_train, row.n_val, row.n_test) for row in group}) == 1
 
