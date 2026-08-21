@@ -210,9 +210,16 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
         axis.legend(loc="best", fontsize=9)
         figure.suptitle(
             style.label(
-                "実験 4-A: 教師強制の1ステップ先予測 —— ここでは差が小さい",
-                "Experiment 4-A: one-step-ahead prediction with teacher forcing",
+                "実験 4-A: 教師強制の1ステップ先予測では3手法の差が小さい",
+                "Experiment 4-A: with teacher forcing the three methods are"
+                " nearly indistinguishable",
             )
+        )
+        add_provenance(
+            figure,
+            f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}",
+            [row.replicate for row in rows],
+            style=style,
         )
         return _save(figure, path)
 
@@ -266,10 +273,16 @@ def plot_freerun_attractor(
             raise ValueError("位相図に描く点がありません")
         figure.suptitle(
             style.label(
-                "実験 4-B: 自走軌道と真の軌道の位相図 (ウォームアップ後は入力を"
-                "与えていない)",
-                "Experiment 4-B: phase portrait of the free run vs the true system",
+                "実験 4-B: 入力を切っても自走軌道は真のアトラクタの形を保つ",
+                "Experiment 4-B: the free run keeps the shape of the true"
+                " attractor after the input is switched off",
             )
+        )
+        add_provenance(
+            figure,
+            f"tasks = {'/'.join(tasks)}",
+            [row.replicate for row in rows],
+            style=style,
         )
         return _save(figure, path)
 
@@ -310,9 +323,9 @@ def plot_valid_time(
         )
         figure.suptitle(
             style.label(
-                "実験 4-B: 有効予測時間 (誤差 NRMSE 比が閾値を超えるまで)",
-                "Experiment 4-B: valid prediction time (until the NRMSE ratio"
-                " exceeds the threshold)",
+                "実験 4-B: 自走が真の軌道からずれるまでの時間は数 Lyapunov 時間",
+                "Experiment 4-B: the free run stays valid for a few Lyapunov"
+                " times",
             )
         )
         figure.supxlabel(
@@ -323,6 +336,13 @@ def plot_valid_time(
                 " system, so the normalized distribution is shown only there.",
             ),
             fontsize=8,
+        )
+        add_provenance(
+            figure,
+            f"free_run = {rows[0].free_run_steps} steps,"
+            f" threshold = {rows[0].valid_time_threshold:g}",
+            [row.replicate for row in rows],
+            style=style,
         )
         return _save(figure, path)
 
@@ -427,10 +447,16 @@ def plot_stability_map(
         )
         figure.suptitle(
             style.label(
-                "実験 4-C / 4-D: 自走の3態マップ (状態ノイズ別) と容量との関係",
-                "Experiments 4-C / 4-D: regime map of the free run and its"
-                " relation to capacity",
+                "実験 4-C / 4-D: 状態ノイズを上げるとアトラクタ再現の領域が縮む",
+                "Experiments 4-C / 4-D: raising the state noise shrinks the"
+                " region where the attractor is reproduced",
             )
+        )
+        add_provenance(
+            figure,
+            f"N = {rows[0].n_units}, stats = {rows[0].stats_steps} steps",
+            [row.replicate for row in rows],
+            style=style,
         )
         return _save(figure, path)
 
@@ -557,11 +583,17 @@ def plot_freerun_stats(
             raise ValueError("長時間統計に描く点がありません")
         figure.suptitle(
             style.label(
-                "実験 4-B: 長時間自走後の統計量 (上: リターンマップ / "
-                "下: パワースペクトル)",
-                "Experiment 4-B: long-run statistics (top: return map,"
-                " bottom: power spectrum)",
+                "実験 4-B: 長時間自走してもリターンマップとスペクトルは"
+                "真の軌道と重なる",
+                "Experiment 4-B: after a long free run the return map and the"
+                " spectrum still overlap the true trajectory",
             )
+        )
+        add_provenance(
+            figure,
+            f"tasks = {'/'.join(tasks)}",
+            [row.replicate for row in rows],
+            style=style,
         )
         return _save(figure, path)
 
