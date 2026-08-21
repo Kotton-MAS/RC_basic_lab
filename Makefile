@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 data-05 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
+.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -14,6 +14,7 @@ help:
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
 	@echo "  figures-03   - Regenerate results/ for experiment 03 (2 CSV + 4 figures + meta)"
 	@echo "  figures-04   - Regenerate results/ for experiment 04 (5 CSV + 5 figures + meta)"
+	@echo "  figures-05   - Regenerate results/ for experiment 05 (5 CSV + 5 figures + meta; needs data-05)"
 	@echo "  data-05      - Download + verify (SHA256) the experiment 05 datasets into data/"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
@@ -88,6 +89,19 @@ figures-03:
 # 区間の一部だけの内訳で上書きしてしまうため。
 figures-04:
 	uv run python experiments/04_chaotic_freerun/run_04.py --config experiments/04_chaotic_freerun/config.yaml --out results/04_chaotic_freerun
+
+# 実験05 の成果物 (anomaly.csv / anomaly_threshold.csv / anomaly_timeline.csv /
+# anomaly_protocol.csv / anomaly_size.csv / fig_pr_curves.png /
+# fig_score_timeline.png / fig_threshold_tradeoff.png /
+# fig_protocol_sensitivity.png / fig_size_vs_performance.png / meta.json) を
+# results/05_anomaly_detection/ に再生成する。成果物の一覧の単一の真実は
+# experiment/anomaly_pipeline.py の ANOMALY_ARTIFACTS (テストが突き合わせる)。
+# **data-05 に依存する** —— 既定の設定 (config.yaml) は実データ源 MGAB で、
+# キャッシュが無ければ ValueError になる (記事のタイトルが「実データで使って
+# みる」なので、主図が合成データでは食い違う)。2回目以降はキャッシュを使うので
+# オフラインで回る。
+figures-05: data-05
+	uv run python experiments/05_anomaly_detection/run_05.py --config experiments/05_anomaly_detection/config.yaml --out results/05_anomaly_detection
 
 # 実験05 の外部データセットを data/05_anomaly/ へ取得し SHA256 で照合する
 # (D-58: データ本体はリポジトリに含めない。マニフェストは
