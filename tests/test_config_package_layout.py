@@ -150,9 +150,11 @@ ANOMALY05_ADDITIONS = (
     "AnomalyDatasetConfig",
     "AnomalyEvaluationConfig",
     "AnomalyPreprocessConfig",
+    "AnomalyProtocolSweepConfig",
     "AnomalyReservoirConfig",
     "AnomalyRidgeConfig",
     "AnomalySeedConfig",
+    "AnomalySizeSweepConfig",
     "AnomalyThresholdConfig",
     "SyntheticAnomalyConfig",
     "SyntheticMackeyGlassConfig",
@@ -176,6 +178,11 @@ ANOMALY05_ADDITIONS = (
 01 の ``ESNConfig`` / ``RidgeConfig`` の再利用で済ませなかったのは、
 ``bias_scale`` / ``activation`` / ``state_noise`` / ``n_lags_grid`` が 05 の
 軸ではなく、内包すると死葉が4つ増えるためである (D-69 と同じ判断)。
+
+``AnomalyProtocolSweepConfig`` / ``AnomalySizeSweepConfig`` は T4 が
+5-C / 5-D の掃引の実装と**同時に**足した2つ (``config/anomaly05_sweep.py``)。
+T3 が置かなかったのは、掃引が無い時点では「値を変えても出力が1バイトも
+変わらない死葉」になるためである (D-69)。
 """
 
 SURVIVING_DIR_ONLY = ("annotations",)
@@ -185,7 +192,14 @@ SURVIVING_DIR_ONLY = ("annotations",)
 書くので残る (このリポジトリの全モジュールが書いている慣習)。
 """
 
-EXPECTED_SUBMODULES = ("anomaly05", "capacity03", "chaos04", "esp02", "experiment01")
+EXPECTED_SUBMODULES = (
+    "anomaly05",
+    "anomaly05_sweep",
+    "capacity03",
+    "chaos04",
+    "esp02",
+    "experiment01",
+)
 """分割で ``dir(config)`` に**増える**公開名 (実験サイクル単位のサブモジュール)。
 
 ``_common`` は ``_`` 始まりなので公開名には出ない。ここに書いていない名前が
@@ -200,6 +214,8 @@ ALLOWED_INTERNAL_EDGES = frozenset(
         ("__init__", "capacity03"),
         ("__init__", "chaos04"),
         ("__init__", "anomaly05"),
+        ("__init__", "anomaly05_sweep"),
+        ("anomaly05", "anomaly05_sweep"),
         ("experiment01", "_common"),
         ("esp02", "experiment01"),
         ("capacity03", "experiment01"),
