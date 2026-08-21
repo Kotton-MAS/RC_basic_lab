@@ -35,7 +35,6 @@ import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import QuadMesh
@@ -689,11 +688,16 @@ def plot_memory_nonlinearity(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 3-B: rho とリーク率で動く線形/非線形の配分"
-                f" (N = {first.n_units}, sigma_u = {first.sigma_u:g})",
-                "Experiment 3-B: how rho and the leak rate move the linear /"
-                f" nonlinear split (N = {first.n_units}, sigma_u = {first.sigma_u:g})",
+                "実験 3-B: rho を上げると非線形容量の割合は下がる",
+                "Experiment 3-B: raising rho lowers the nonlinear share"
+                " of the capacity",
             )
+        )
+        _footnote(
+            figure,
+            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
+            [row.replicate for row in rows],
+            style,
         )
         return _save(figure, path)
 
@@ -713,11 +717,12 @@ def _draw_conservation_bound(
     axis.plot(
         x,
         y,
-        color="tab:red",
-        linestyle="--",
-        linewidth=1.2,
-        label=style.label(
-            "上限 IPC_total = N (傾き1)", "bound IPC_total = N (slope 1)"
+        **reference_line_kwargs(),
+        label=cited(
+            style.label(
+                "上限 IPC_total <= N (傾き1)", "bound IPC_total <= N (slope 1)"
+            ),
+            IPC_BOUND_SOURCE,
         ),
     )
 
@@ -737,7 +742,9 @@ def plot_ipc_conservation(
     require_rows(rows)
     units = sorted({row.n_units for row in rows})
     noises = _unique_sorted([row.state_noise for row in rows])
-    colors = matplotlib.colormaps["plasma"](np.linspace(0.0, 0.75, len(noises)))
+    # 状態ノイズは連続量なので viridis 系にそろえる (FIG-5)。以前は plasma で、
+    # 同じ「連続量の掃引」が記事の中で2種類の配色になっていた。
+    colors = sequential_colors(len(noises))
 
     with rc_context_for(style):
         figure = _new_figure(7.2, 5.0)
@@ -775,13 +782,19 @@ def plot_ipc_conservation(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 3-B': 情報処理容量の保存則 IPC_total <= N"
-                f" (rho = {first.rho:g}, a = {first.leak_rate:g})",
-                "Experiment 3-B': the capacity bound IPC_total <= N"
-                f" (rho = {first.rho:g}, a = {first.leak_rate:g})",
+                "実験 3-B': 状態ノイズを入れると IPC_total は上限 N から下へ離れる\n"
+                f"{DAMBRE_2012} の保存則の再実演",
+                "Experiment 3-B': state noise pushes IPC_total away from"
+                f" the bound N\nRe-enacting the capacity bound of {DAMBRE_2012}",
             )
         )
         axis.legend(loc="upper left", fontsize=8)
+        _footnote(
+            figure,
+            f"rho = {first.rho:g}, a = {first.leak_rate:g}",
+            [row.replicate for row in rows],
+            style,
+        )
         return _save(figure, path)
 
 
@@ -821,15 +834,14 @@ def _reference_lines(axis: Axes, style: StyleContext) -> None:
     missing = set(NARMA10_REFERENCE_NMSE) - set(_REFERENCE_LABELS)
     if missing:
         raise ValueError(f"参照線のラベルがありません: {sorted(missing)}")
-    for key, value in NARMA10_REFERENCE_NMSE.items():
+    for index, (key, value) in enumerate(NARMA10_REFERENCE_NMSE.items()):
         japanese, english = _REFERENCE_LABELS[key]
         axis.axhline(
             value,
-            color=_REFERENCE_COLORS.get(key, "tab:gray"),
-            linestyle="--",
-            linewidth=1.0,
-            label=style.label(
-                japanese.format(value=value), english.format(value=value)
+            **reference_line_kwargs(index),
+            label=cited(
+                style.label(japanese.format(value=value), english.format(value=value)),
+                SOURCE_UNIDENTIFIED,
             ),
         )
 
