@@ -139,7 +139,8 @@ tasks/anomaly.py     純関数のみ。合成データ生成 + AnomalySeries の
 | `experiment/anomaly.py` | 5-A の1条件 = (系列 × 手法 × レプリケート) → 行 | 450 (実測 551) |
 | `experiment/anomaly_rows.py` (T3 で追加) | 行 dataclass + CSV 列 (D-55 の列の対) | — (実測 223) |
 | `experiment/anomaly_sources.py` (T3 で追加) | `dataset.source` → `SeriesSource` の辞書。`experiment/` で `datasets` を import する唯一のモジュール | — (実測 68) |
-| `experiment/anomaly_sweep.py` | 5-C (プロトコル掃引 + 順位入替) と 5-D (N 掃引) | 400 |
+| `experiment/anomaly_sweep.py` | 5-C (プロトコル掃引 + 順位入替) と 5-D (N 掃引) の**配線** | 400 (実測 510) |
+| `experiment/anomaly_ranking.py` (T4 で追加) | 順位と「対照と区別できるか」の印 (D-78) の純関数層 | — (実測 246) |
 | `experiment/anomaly_pipeline.py` | `ANOMALY_ARTIFACTS` / `run_and_report_anomaly` / meta.json / 図 | 350 |
 
 **上限 600行/ファイルをテストで固定する** (D-63)。
@@ -476,8 +477,8 @@ YAML には `dataset.series: tuple[str, ...]` だけを置く。
        「格子が足りなかった」が区別できなくなる)。基準より上の N は行には出るが走査には入れない
     10. **劣化の割合 0.9 は設定の葉にしない** (`DEGRADATION_FRACTION`)。報告する量の名前
         `n_units_at_90pct` がその値そのもので、葉にすると列名が嘘になる
-  - **実測 (2026-08-21)**: 新規テスト **31 件** (`test_experiment_anomaly_sweep.py` 22 /
-    `test_config_wiring_anomaly.py` +9)、`uv run pytest -q` = **1325 passed / 44.6 秒**
+  - **実測 (2026-08-21)**: 新規テスト **31 件** (`test_experiment_anomaly_sweep.py` 20 /
+    `test_config_wiring_anomaly.py` 42 -> 53 のうち +11 は掃引の4葉と格子の検査)、`uv run pytest -q` = **1325 passed / 44.6 秒**
     (T4 着手前のベースライン 1294 から 31 増、既存の減少なし)。`mypy` strict / `ruff` green。
     `results/01..04/` はバイト不変。`.claude/decisions.yaml` は **80 件** (D-78 / D-79 / D-80。
     3件とも変異注入で赤を実測)。既定設定の 5-C = **100.3 秒** (予算 250 秒、27 格子点 x 6系統 =
