@@ -35,7 +35,16 @@ from rc_basics_lab.experiment.washout import (
     WashoutSensitivity,
     mean_nrmse_by_washout,
 )
-from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import (
+    StyleContext,
+    add_footnote,
+    method_color,
+    rc_context_for,
+    reference_line_kwargs,
+    replicates_field,
+    require_rows,
+    sequential_colors,
+)
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
@@ -62,6 +71,13 @@ _GALLICCHIO = (
 """2-C の副題 (仕様 §4 T3: 先行研究の再実演であることを図に明記する)。"""
 
 _CONVERGED_LABEL = ("ESP 成立率 (レプリケート平均)", "ESP rate (mean over replicates)")
+
+
+def _footnote(
+    figure: Figure, conditions: str, replicates: Sequence[int], style: StyleContext
+) -> None:
+    """再現条件を図の隅に焼き込む (FIG-6 / D-87)。"""
+    add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
 
 
 def _group_mean(
@@ -212,9 +228,16 @@ def plot_esp_decay(
         axis.legend(loc="upper right", fontsize=8, ncols=2)
         figure.suptitle(
             style.label(
-                "実験 2-A: スペクトル半径と ESP",
-                "Experiment 2-A: spectral radius and the echo state property",
+                "実験 2-A: 無入力では rho が 1 に近いほど過去が消えるのが遅い",
+                "Experiment 2-A: without input, the closer rho is to 1"
+                " the slower the past decays",
             )
+        )
+        _footnote(
+            figure,
+            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
+            [outcome.row.replicate for outcome in outcomes],
+            style,
         )
         return _save(figure, path)
 
@@ -350,11 +373,16 @@ def plot_leak_timescale(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 2-B: リーク率が変えるのは状態の時定数"
-                f" (rho = {first.rho:g}, sigma_u = {first.sigma_u:g})",
-                "Experiment 2-B: the leak rate sets the state timescale"
-                f" (rho = {first.rho:g}, sigma_u = {first.sigma_u:g})",
+                "実験 2-B: リーク率を下げると状態の時定数は理論線どおりに伸びる",
+                "Experiment 2-B: lowering the leak rate stretches the state"
+                " timescale along the theory line",
             )
+        )
+        _footnote(
+            figure,
+            f"N = {first.n_units}, rho = {first.rho:g}, sigma_u = {first.sigma_u:g}",
+            [row.replicate for row in rows],
+            style,
         )
         return _save(figure, path)
 
@@ -503,6 +531,12 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
                 "Experiment 2-C: strong input restores the ESP above rho = 1\n"
                 + _GALLICCHIO[1],
             )
+        )
+        _footnote(
+            figure,
+            f"N = {rows[0].n_units}, washout = {rows[0].washout}",
+            [row.replicate for row in rows],
+            style,
         )
         return _save(figure, path)
 
@@ -747,6 +781,12 @@ def plot_washout_sensitivity(
                 f"実験 2-D: washout 長への性能感度\n{design_ja}",
                 f"Experiment 2-D: sensitivity to the washout length\n{design_en}",
             )
+        )
+        _footnote(
+            figure,
+            f"n_train = {rows[0].n_train}, pad_series = {sensitivity.pad_series}",
+            [row.replicate for row in rows],
+            style,
         )
         return _save(figure, path)
 
