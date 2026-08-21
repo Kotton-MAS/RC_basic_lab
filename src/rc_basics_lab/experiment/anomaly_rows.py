@@ -1,8 +1,11 @@
-"""05 の成果物の行 dataclass と CSV 列 (``anomaly.csv`` / ``anomaly_threshold.csv``).
+"""05 の成果物の行 dataclass と CSV 列 (4枚ぶん).
 
-計算をせず、**成果物の形だけ**を持つ。分けてあるのは 05 の実験層が1ファイル
-600 行を上限にしているため (D-63) で、行の docstring (列の意味) が重いぶんを
-``anomaly.py`` から切り出した形である。
+``anomaly.csv`` / ``anomaly_threshold.csv`` (5-A / 5-B) に加えて、T4 が
+``anomaly_protocol.csv`` (5-C) と ``anomaly_size.csv`` (5-D) の行を足した。
+掃引そのもの (格子の組み立てと集計) は ``experiment/anomaly_sweep.py`` にあり、
+ここは**成果物の形だけ**を持つ —— T3 が ``anomaly.py`` から行 dataclass を
+切り出したのと同じ分け方で、掃引の行を ``anomaly_sweep.py`` に置くと
+あちらが 600 行 (D-63) に届く。
 
 このモジュールが構造で守っているのは D-55 の1点:
 

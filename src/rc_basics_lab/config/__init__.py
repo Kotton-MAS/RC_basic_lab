@@ -32,6 +32,10 @@ from rc_basics_lab.config.anomaly05 import (
     SyntheticMackeyGlassConfig,
     anomaly_stream_seed,
 )
+from rc_basics_lab.config.anomaly05_sweep import (
+    AnomalyProtocolSweepConfig,
+    AnomalySizeSweepConfig,
+)
 from rc_basics_lab.config.capacity03 import (
     Capacity03Config,
     CapacityDriveConfig,
@@ -91,9 +95,11 @@ __all__ = [
     "AnomalyDatasetConfig",
     "AnomalyEvaluationConfig",
     "AnomalyPreprocessConfig",
+    "AnomalyProtocolSweepConfig",
     "AnomalyReservoirConfig",
     "AnomalyRidgeConfig",
     "AnomalySeedConfig",
+    "AnomalySizeSweepConfig",
     "AnomalyThresholdConfig",
     "Capacity03Config",
     "CapacityDriveConfig",
