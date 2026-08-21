@@ -25,7 +25,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Protocol, TypedDict
 
 import matplotlib
 import numpy as np
@@ -237,10 +237,17 @@ def add_footnote(figure: Figure, conditions: str, *, style: StyleContext) -> Non
     )
 
 
+class HasReplicate(Protocol):
+    """``replicate`` 列を持つ行 (footnote が数えるためだけの構造的型)。"""
+
+    @property
+    def replicate(self) -> int: ...
+
+
 def add_provenance(
     figure: Figure,
     conditions: str,
-    replicates: Sequence[int],
+    rows: Sequence[HasReplicate],
     *,
     style: StyleContext,
 ) -> None:
@@ -248,9 +255,10 @@ def add_provenance(
 
     ``figures_*.py`` が各自で組み立てると項目の並びが図ごとにずれるので、
     **組み立てはここ1か所**にする。呼び出し側が渡すのは図ごとに違う条件文字列
-    (``N = 200, sigma_u = 0.1``) だけである。
+    (``N = 200, sigma_u = 0.1``) と、その図が読んだ行だけである。
     """
-    add_footnote(figure, f"{conditions}, {replicates_field(replicates)}", style=style)
+    field = replicates_field([row.replicate for row in rows])
+    add_footnote(figure, f"{conditions}, {field}", style=style)
 
 
 def _available_font_names() -> frozenset[str]:
@@ -391,6 +399,7 @@ __all__ = [
     "REFERENCE_LINEWIDTH",
     "SAVEFIG_DPI",
     "SEQUENTIAL_CMAP",
+    "HasReplicate",
     "ReferenceLineStyle",
     "StyleContext",
     "add_footnote",

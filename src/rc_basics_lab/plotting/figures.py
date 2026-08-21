@@ -245,7 +245,7 @@ def plot_comparison(
         add_provenance(
             figure,
             f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -360,7 +360,7 @@ def plot_state_space(
         add_provenance(
             figure,
             f"n_rows = {reports[0].n_rows}, n_lags = {reports[0].n_lags}",
-            [report.replicate for report in reports],
+            reports,
             style=style,
         )
         return _save(figure, path)

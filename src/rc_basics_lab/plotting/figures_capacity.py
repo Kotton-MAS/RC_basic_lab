@@ -321,7 +321,7 @@ def plot_mc_sweep(
         add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -439,7 +439,7 @@ def plot_ipc_profile(
         add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}, a = {leak_rate:g}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -568,7 +568,7 @@ def plot_memory_nonlinearity(
         add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -664,7 +664,7 @@ def plot_ipc_conservation(
         add_provenance(
             figure,
             f"rho = {first.rho:g}, a = {first.leak_rate:g}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -806,7 +806,7 @@ def plot_narma10_control(
         add_provenance(
             figure,
             f"n_train = {rows[0].n_train}, task = {rows[0].task}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)

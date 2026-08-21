@@ -198,7 +198,7 @@ def plot_esp_decay(
         add_provenance(
             figure,
             f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
-            [outcome.row.replicate for outcome in outcomes],
+            [outcome.row for outcome in outcomes],
             style=style,
         )
         return _save(figure, path)
@@ -343,7 +343,7 @@ def plot_leak_timescale(
         add_provenance(
             figure,
             f"N = {first.n_units}, rho = {first.rho:g}, sigma_u = {first.sigma_u:g}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -497,7 +497,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
         add_provenance(
             figure,
             f"N = {rows[0].n_units}, washout = {rows[0].washout}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -747,7 +747,7 @@ def plot_washout_sensitivity(
         add_provenance(
             figure,
             f"n_train = {rows[0].n_train}, pad_series = {sensitivity.pad_series}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)

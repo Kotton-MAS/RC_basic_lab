@@ -54,7 +54,12 @@ from rc_basics_lab.experiment.freerun import (
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.experiment.stability import StabilityRow, regime_map
-from rc_basics_lab.plotting.style import StyleContext, rc_context_for, require_rows
+from rc_basics_lab.plotting.style import (
+    StyleContext,
+    add_provenance,
+    rc_context_for,
+    require_rows,
+)
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
 from rc_basics_lab.types import FloatArray
@@ -218,7 +223,7 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
         add_provenance(
             figure,
             f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -281,7 +286,7 @@ def plot_freerun_attractor(
         add_provenance(
             figure,
             f"tasks = {'/'.join(tasks)}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -324,8 +329,7 @@ def plot_valid_time(
         figure.suptitle(
             style.label(
                 "実験 4-B: 自走が真の軌道からずれるまでの時間は数 Lyapunov 時間",
-                "Experiment 4-B: the free run stays valid for a few Lyapunov"
-                " times",
+                "Experiment 4-B: the free run stays valid for a few Lyapunov times",
             )
         )
         figure.supxlabel(
@@ -341,7 +345,7 @@ def plot_valid_time(
             figure,
             f"free_run = {rows[0].free_run_steps} steps,"
             f" threshold = {rows[0].valid_time_threshold:g}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -455,7 +459,7 @@ def plot_stability_map(
         add_provenance(
             figure,
             f"N = {rows[0].n_units}, stats = {rows[0].stats_steps} steps",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
@@ -592,7 +596,7 @@ def plot_freerun_stats(
         add_provenance(
             figure,
             f"tasks = {'/'.join(tasks)}",
-            [row.replicate for row in rows],
+            rows,
             style=style,
         )
         return _save(figure, path)
