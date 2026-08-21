@@ -273,6 +273,32 @@ def conservation_bound(units: Sequence[int]) -> tuple[FloatArray, FloatArray]:
 # --- 3-A: 線形メモリ容量の掃引 ---------------------------------------------
 
 
+NORMALIZED_AXIS_LABEL = ("MC / N (上限を 1 とした割合)", "MC / N (bound = 1)")
+"""``MC / N`` の第2軸のラベル (FIG-4)。テストがこの文字列で軸を探す。"""
+
+
+def _add_normalized_axis(axis: Axes, n_units: float, style: StyleContext) -> None:
+    """``MC / N`` の第2軸を右側に足す (FIG-4)。
+
+    上限 200 と実測 10〜36 は対数軸でも離れすぎていて、「上限からどれだけ
+    遠いか」が読めない。同じ目盛を N で割った軸を並べると、実測 36 が上限の
+    0.18 であることが図の中で読める。
+    """
+    if n_units <= 0.0:
+        raise ValueError(f"n_units は正である必要があります: {n_units}")
+
+    def forward(values: FloatArray) -> FloatArray:
+        scaled: FloatArray = values / n_units
+        return scaled
+
+    def inverse(values: FloatArray) -> FloatArray:
+        scaled: FloatArray = values * n_units
+        return scaled
+
+    secondary = axis.secondary_yaxis("right", functions=(forward, inverse))
+    secondary.set_ylabel(style.label(*NORMALIZED_AXIS_LABEL), fontsize=9)
+
+
 def _plot_mc_total_panel(
     axis: Axes, rows: Sequence[CapacityRow], style: StyleContext
 ) -> None:
@@ -309,16 +335,18 @@ def _plot_mc_total_panel(
             color=colors[index],
             label=style.label(f"a = {leak:g}", f"a = {leak:g}"),
         )
-    for n_units in sorted({row.n_units for row in rows}):
+    units = sorted({row.n_units for row in rows})
+    for index, n_units in enumerate(units):
         axis.axhline(
             float(n_units),
-            color="tab:red",
-            linestyle="--",
-            linewidth=1.2,
-            label=style.label(
-                f"上限 MC <= N = {n_units}", f"bound MC <= N = {n_units}"
+            **reference_line_kwargs(index),
+            label=cited(
+                style.label(f"上限 MC <= N = {n_units}", f"bound MC <= N = {n_units}"),
+                MC_BOUND_SOURCE,
             ),
         )
+    if len(units) == 1:
+        _add_normalized_axis(axis, float(units[0]), style)
     axis.set_yscale("log")
     axis.set_xlabel(style.label("スペクトル半径 rho", "spectral radius rho"))
     axis.set_ylabel(
@@ -330,7 +358,7 @@ def _plot_mc_total_panel(
         style.label("線形メモリ容量と上限 N", "Linear memory capacity and the bound N"),
         fontsize=10,
     )
-    axis.legend(loc="lower right", fontsize=8, ncols=2)
+    axis.legend(loc="lower right", fontsize=7, ncols=2)
 
 
 def _plot_mc_profile_panel(
@@ -348,7 +376,7 @@ def _plot_mc_profile_panel(
     """
     means = mc_profile_means(rows, profile, leak_rate)
     rhos = tuple(means)
-    colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, max(len(rhos), 1)))
+    colors = sequential_colors(len(rhos))
     for index, rho in enumerate(rhos):
         cells = means[rho]
         delays = np.arange(1, cells.shape[0] + 1, dtype=np.float64)
@@ -413,11 +441,17 @@ def plot_mc_sweep(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 3-A: スペクトル半径とリーク率が決める線形メモリ容量"
-                f" (N = {first.n_units}, sigma_u = {first.sigma_u:g})",
-                "Experiment 3-A: linear memory capacity versus rho and leak rate"
-                f" (N = {first.n_units}, sigma_u = {first.sigma_u:g})",
+                "実験 3-A: 線形メモリ容量は rho = 1 付近で最大になるが"
+                "、上限 N の2割にも届かない",
+                "Experiment 3-A: linear memory capacity peaks near rho = 1"
+                " yet stays below 20% of the bound N",
             )
+        )
+        _footnote(
+            figure,
+            f"N = {first.n_units}, sigma_u = {first.sigma_u:g}",
+            [row.replicate for row in rows],
+            style,
         )
         return _save(figure, path)
 
