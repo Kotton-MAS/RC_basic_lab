@@ -381,7 +381,7 @@ def _decimals(cell: str) -> int:
     return len(fraction)
 
 
-#: 実行時間セルの許容比 (D-84)。**厳密一致で縛らない** ——
+#: 実行時間セルの許容比 (D-89)。**厳密一致で縛らない** ——
 #: ``wall_time`` は実行環境で変わるので、誰がどのマシンで再生成しても落ちる
 #: 検査になってしまう (図のラベルを直しただけで design.md の4表が落ちた)。
 #: 一方で「この区間が10倍遅くなった」は拾いたいので、桁が変わる手前で止める。
@@ -395,7 +395,7 @@ def _assert_cell_matches(cell: str, actual: float, label: str) -> None:
     1桁でも書き換えれば落ちる。
 
     **実行時間のセルにこれを使ってはいけない。** 実行環境で変わる値なので
-    ``_assert_wall_time_cell`` を使うこと (D-84)。
+    ``_assert_wall_time_cell`` を使うこと (D-89)。
     """
     assert float(cell) == round(actual, _decimals(cell)), (
         f"{label}: design.md は {cell} / 一次資料は {actual!r}"
@@ -425,7 +425,7 @@ def _assert_size_cell(cell: str, actual: int, label: str) -> None:
 
 
 def _assert_wall_time_cell(cell: str, actual: float, label: str) -> None:
-    """実行時間のセルが一次資料と**同じ桁**にあること (D-84)。"""
+    """実行時間のセルが一次資料と**同じ桁**にあること (D-89)。"""
     documented = float(cell)
     assert actual > 0, f"{label}: 一次資料の実行時間が正の値ではありません"
     ratio = documented / actual
@@ -1346,3 +1346,37 @@ def test_the_design_doc_records_the_dataset_selection_criteria() -> None:
     for name in ("SWaT", "Yahoo S5", "Exathlon", "NAB", "SMD"):
         assert name in section, f"落選候補 {name} が §13.1 から消えています"
     assert "MGAB" in section and "UCR" in section
+
+
+# --- D-89: 実行環境で変わる数値の許容幅 --------------------------------------
+
+
+def test_the_wall_time_tolerance_accepts_noise_and_rejects_a_drift() -> None:
+    """実行時間・サイズの許容幅が**両方向に効いている**こと (D-89)。
+
+    緩めた検査は、緩めすぎれば何も測らなくなる。ここで固定するのは
+    「実行環境の揺れは通す」と「桁が変わる差は落とす」の**両方**である。
+    片方だけなら、厳密一致に戻すのと、検査を消すのと同じになる。
+    """
+    from tests.test_readme_summary import assert_wall_time_is_the_same_order
+
+    # 環境差の範囲 (±40%) は通る —— 通らないと再生成のたびに文書を書き換える羽目になる
+    _assert_wall_time_cell("7.0", 5.0, "noise")
+    _assert_wall_time_cell("5.0", 7.0, "noise")
+    assert_wall_time_is_the_same_order(7.0, 5.0)
+    _assert_size_cell("1,020 B", 1000, "noise")
+
+    # 桁が変わる差は落ちる —— 落ちないなら検査が無いのと同じ
+    for documented, actual in ((30.0, 5.0), (5.0, 30.0)):
+        with pytest.raises(AssertionError):
+            _assert_wall_time_cell(str(documented), actual, "drift")
+        with pytest.raises(AssertionError):
+            assert_wall_time_is_the_same_order(documented, actual)
+    with pytest.raises(AssertionError):
+        _assert_size_cell("2,000 B", 1000, "drift")
+
+    # 一次資料が壊れている (0 秒 / 空ファイル) ときは通さない
+    with pytest.raises(AssertionError):
+        _assert_wall_time_cell("1.0", 0.0, "broken")
+    with pytest.raises(AssertionError):
+        _assert_size_cell("1 B", 0, "broken")

@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
 
-#: README に書いた実測時間と ``meta.json`` の許容比 (D-84)。
+#: README に書いた実測時間と ``meta.json`` の許容比 (D-89)。
 #: **厳密一致で縛らない** —— ``wall_time_s`` は実行環境で変わるので、
 #: 誰がどのマシンで再生成しても落ちる検査になってしまう
 #: (実際に 87.69 → 88.0 → 95.18 と3回落ちた)。
@@ -32,7 +32,7 @@ WALL_TIME_TOLERANCE = 2.0
 
 
 def assert_wall_time_is_the_same_order(documented: float, measured: float) -> None:
-    """README の実測時間が ``meta.json`` と同じ桁にあること (D-84)。"""
+    """README の実測時間が ``meta.json`` と同じ桁にあること (D-89)。"""
     assert measured > 0, "meta.json の wall_time_s が正の値ではありません"
     ratio = documented / measured
     assert 1 / WALL_TIME_TOLERANCE <= ratio <= WALL_TIME_TOLERANCE, (
