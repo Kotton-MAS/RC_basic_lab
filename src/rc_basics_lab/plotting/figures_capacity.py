@@ -144,16 +144,16 @@ def _save(figure: Figure, path: Path) -> Path:
 # --- 3-A: 線形メモリ容量の掃引 ---------------------------------------------
 
 
-NORMALIZED_AXIS_LABEL = ("MC / N", "MC / N")
-"""``MC / N`` の第2軸のラベル (FIG-4)。テストがこの文字列で軸を探す。"""
-
-
-def _add_normalized_axis(axis: Axes, n_units: float, style: StyleContext) -> None:
+def _add_normalized_axis(axis: Axes, n_units: float) -> None:
     """``MC / N`` の第2軸を右側に足す (FIG-4)。
 
     上限 200 と実測 10〜36 は対数軸でも離れすぎていて、「上限からどれだけ
     遠いか」が読めない。同じ目盛を N で割った軸を並べると、実測 36 が上限の
     0.18 であることが図の中で読める。
+
+    **軸ラベルは付けない**。第2軸は constrained layout の管理外なので、
+    ラベルを付けると右隣のパネルの軸ラベルに重なる (実測)。「右軸が何か」は
+    パネルのタイトルに書く。
     """
     if n_units <= 0.0:
         raise ValueError(f"n_units は正である必要があります: {n_units}")
@@ -166,8 +166,7 @@ def _add_normalized_axis(axis: Axes, n_units: float, style: StyleContext) -> Non
         scaled: FloatArray = np.asarray(values, dtype=np.float64) * n_units
         return scaled
 
-    secondary = axis.secondary_yaxis("right", functions=(forward, inverse))
-    secondary.set_ylabel(style.label(*NORMALIZED_AXIS_LABEL), fontsize=9)
+    axis.secondary_yaxis("right", functions=(forward, inverse))
 
 
 def _plot_mc_total_panel(
@@ -217,7 +216,7 @@ def _plot_mc_total_panel(
             ),
         )
     if len(units) == 1:
-        _add_normalized_axis(axis, float(units[0]), style)
+        _add_normalized_axis(axis, float(units[0]))
     axis.set_yscale("log")
     axis.set_xlabel(style.label("スペクトル半径 rho", "spectral radius rho"))
     axis.set_ylabel(
@@ -226,7 +225,10 @@ def _plot_mc_total_panel(
         )
     )
     axis.set_title(
-        style.label("線形メモリ容量と上限 N", "Linear memory capacity and the bound N"),
+        style.label(
+            "線形メモリ容量と上限 N (右軸は MC / N)",
+            "Linear memory capacity and the bound N (right axis: MC / N)",
+        ),
         fontsize=10,
     )
     axis.legend(loc="lower right", fontsize=7, ncols=2)
@@ -794,7 +796,6 @@ def plot_narma10_control(
 
 __all__ = [
     "BOUND_MARGIN",
-    "NORMALIZED_AXIS_LABEL",
     "conservation_bound",
     "ipc_heatmap_means",
     "mc_profile_means",
