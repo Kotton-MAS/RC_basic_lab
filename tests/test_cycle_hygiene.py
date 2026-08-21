@@ -99,14 +99,6 @@ def test_every_experiment_records_the_commit_it_was_generated_from() -> None:
     assert not missing, f"commit を記録していない meta.json があります: {missing}"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "指摘 B-5: 実験ごとに再生成した時期が違うため、現状は 5 実験が 5 つの "
-        "commit を指している。連載の最終稿を作る前に一斉再生成してそろえる。"
-        "そろえたらこの xfail を外す (xpass すると落ちるので、外し忘れも気づける)"
-    ),
-    strict=True,
-)
 def test_all_artifacts_were_generated_from_the_same_commit() -> None:
     """全成果物が同一の commit から生成されていること (指摘 B-5)。
 
@@ -114,9 +106,13 @@ def test_all_artifacts_were_generated_from_the_same_commit() -> None:
     は見ていない。実測では 3-A / 3-C が ``2ee4aa4``、4-B が ``9565eca`` で、
     記事をまたいで並ぶ図が別バージョンのコードで生成されていた。
 
-    ``strict=True`` の ``xfail`` にしてあるので、**そろえた瞬間にこのテストが
-    xpass して落ちる**。そこでマーカーを外すことになり、「そろえたのに検査が
-    無効のまま」という状態が残らない。
+    導入時は 5 実験が 5 つの commit を指していたので ``strict=True`` の
+    ``xfail`` で入れた。**そろえた瞬間に xpass して落ち**、そこでマーカーを
+    外すことになる —— 「そろえたのに検査が無効のまま」を残さないための形で、
+    実際にその通りに外れた (一斉再生成で全実験が ``3dc7322`` になった)。
+
+    以降は普通の検査として働く。実験を1本だけ再生成すると赤くなるので、
+    **最終稿の前に一斉再生成する**という運用がここで固定される。
     """
     commits = _meta_commits()
     unique = sorted(set(commits.values()))
