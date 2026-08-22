@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import re
+import struct
 from pathlib import Path
 from types import ModuleType
 
@@ -102,7 +103,9 @@ from rc_basics_lab.plotting.narma10_panel import (
     REFERENCE_SOURCES,
 )
 from rc_basics_lab.plotting.style import (
+    MAX_ASPECT_RATIO,
     METHOD_COLORS,
+    MIN_ASPECT_RATIO,
     REFERENCE_COLOR,
     StyleContext,
     method_color,
@@ -835,4 +838,78 @@ def test_no_legend_spills_out_of_its_axes(
         f"凡例が軸からはみ出しています (軸 {spilled})。\n"
         "出典つきのラベルは長くなるので、幅の狭いパネルでは"
         "**凡例をやめて注へ移してください** (FIG-14 / D-106)。"
+    )
+
+
+# --- FIG-13: アスペクト比を範囲に収める (D-108) --------------------------------
+
+#: **範囲の外にある図** (2026-08-22 の実測)。この集合は増やせない。
+#: 直したら外す (下の陳腐化検査が外し忘れを拾う)。
+ASPECT_RATIO_EXCEPTIONS: frozenset[str] = frozenset(
+    {
+        # 4.03 : 1。パネルを2段に折る必要がある
+        "fig_stability_map.png",
+        # 3.84 : 1。同上
+        "fig_ipc_profile.png",
+        # 0.87 : 1 (縦長)。横に折るか系列を減らす
+        "fig_score_timeline.png",
+    }
+)
+
+
+def _png_aspect(path: Path) -> float:
+    """PNG の横縦比 (ヘッダから読む。画像を展開しない)。"""
+    header = path.read_bytes()[16:24]
+    width, height = struct.unpack(">II", header)
+    return width / height
+
+
+def _artifact_pngs() -> list[Path]:
+    return sorted((ROOT / "results").rglob("*.png"))
+
+
+def test_the_aspect_ratio_exception_list_has_no_stale_entries() -> None:
+    """例外リストが実在の図を指していること (FIG-13 / D-108)。
+
+    実在しない図が残っていると、その分だけ黙って例外を増やせる。
+    """
+    names = {path.name for path in _artifact_pngs()}
+    missing = sorted(ASPECT_RATIO_EXCEPTIONS - names)
+    assert not missing, f"例外リストに実在しない図があります: {missing}"
+    fixed = sorted(
+        name
+        for name in ASPECT_RATIO_EXCEPTIONS & names
+        if MIN_ASPECT_RATIO
+        <= _png_aspect(next(p for p in _artifact_pngs() if p.name == name))
+        <= MAX_ASPECT_RATIO
+    )
+    assert not fixed, (
+        f"範囲に収まったのに例外リストに残っています: {fixed}\n"
+        "ASPECT_RATIO_EXCEPTIONS から外してください (ラチェットが1段締まります)。"
+    )
+
+
+def test_no_new_figure_falls_outside_the_aspect_ratio_range() -> None:
+    """図の横縦比が ``MIN``〜``MAX`` に収まること (FIG-13 / D-108)。
+
+    実測 (2026-08-22): 23 枚が **21 種類**の比にばらけ、0.87 : 1 から
+    4.03 : 1 まであった。記事に順に並べたとき、図ごとに幅と高さが変わって
+    視線のリズムが崩れる。
+
+    **既存の範囲外3枚は凍結してある。** 直すにはパネル構成を変える必要が
+    あり、それは FIG-12 の統合と同じ回にやるほうが手戻りが少ない。
+    ここが止めるのは**新しく範囲外の図を足すこと**である。
+    """
+    offenders = {
+        path.name: round(_png_aspect(path), 2)
+        for path in _artifact_pngs()
+        if path.name not in ASPECT_RATIO_EXCEPTIONS
+        and not (MIN_ASPECT_RATIO <= _png_aspect(path) <= MAX_ASPECT_RATIO)
+    }
+    assert not offenders, (
+        f"横縦比が範囲外の図があります: {offenders}\n"
+        f"許容は {MIN_ASPECT_RATIO} 〜 {MAX_ASPECT_RATIO} : 1 です。"
+        "**超えるならパネルを2段に折り、縦長なら横に折ってください** "
+        "(FIG-13 / D-108)。\n"
+        "**ASPECT_RATIO_EXCEPTIONS に追記して通すのはラチェットを外す操作です。**"
     )

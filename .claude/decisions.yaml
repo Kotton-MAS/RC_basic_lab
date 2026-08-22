@@ -650,3 +650,8 @@
   rule: "凡例は軸の内側に収める。収まらない場合は凡例をやめ、出典を図の注 (supxlabel) へ移す。tests/test_figure_policy.py::test_no_legend_spills_out_of_its_axes が幅の狭いパネルを持つ 2-C で実測する"
   rationale: "docs/図の設計方針_RC基礎編.md 第3版 FIG-14。**この欠陥は自分で作った。** D-104 で 2-C の無入力パネルに出典つきの参照線を凡例で足したところ、FIG-3 が出典を凡例テキストに入れる規約なので1行が長くなり、幅の狭いパネル (width_ratios で細くしてある) に対して**軸の 4.19 倍**の幅になった。実物では凡例が左へはみ出して y 軸の目盛り (0.4) を潰しており、読めない状態だった。実測 (01/02/04 の全図): 軸の外へ出ている凡例は 2-C の1件、線と重なっている凡例は 11 軸 (fig_esp_decay 15 本 / fig_leak_timescale 18 本 など)。方針文書が提案した『軸の内側に収まっているか』の検査は**はみ出しは捕まえるが重なりは捕まえない** —— fig_horizon は bbox 上は内側で、参照線が凡例を貫いている。ここでは先に実害の大きいはみ出しを機械化し、重なりは figures_esp / figures_freerun の凡例位置の見直しとあわせて別途扱う (掃引図は系列数が多く、凡例をどこに置いても線に載るため、位置の調整ではなく凡例の外出しが要る)。変異注入: 注へ移した出典を凡例へ戻すと guard_test が赤"
   guard_test: "tests/test_figure_policy.py::test_no_legend_spills_out_of_its_axes"
+
+- id: D-108
+  rule: "図の横縦比は 1.0 〜 3.2 : 1 に収める。標準サイズは plotting/style.FIGURE_SIZES (single / wide / banner) が単一の真実。範囲外の既存図は tests/test_figure_policy.py の ASPECT_RATIO_EXCEPTIONS に凍結し、この集合は増やせない"
+  rationale: "docs/図の設計方針_RC基礎編.md 第3版 FIG-13。実測 (2026-08-22): 成果物の PNG 23 枚が **21 種類**の比にばらけ、fig_score_timeline の 0.87 : 1 (縦長) から fig_stability_map の 4.03 : 1 まであった。記事に順に並べたとき図ごとに幅と高さが変わり、視線のリズムが崩れる。上限 3.2 は banner (3 : 1) に丸め誤差ぶんの余裕を足した値で、下限 1.0 は『縦長は使わない』の機械表現である。既存の範囲外3枚 (stability_map 4.03 / ipc_profile 3.84 / score_timeline 0.87) を凍結して先に進むのは、直すにはパネル構成そのものを変える必要があり、それは FIG-12 の統合と同じ回にやるほうが手戻りが少ないためである。ここが止めるのは**新しく範囲外の図を足すこと**で、凍結リストは減る方向にしか動かせない。判定を PNG のヘッダから読むのは、成果物そのものを測るためである (figsize の宣言値を見ると bbox_inches='tight' の効果が入らず、実物と食い違う)。変異注入: MAX_ASPECT_RATIO を 10 にすると陳腐化検査が赤 (3枚とも範囲に収まったと判定される)"
+  guard_test: "tests/test_figure_policy.py::test_no_new_figure_falls_outside_the_aspect_ratio_range"
