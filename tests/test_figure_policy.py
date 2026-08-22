@@ -23,10 +23,13 @@ from types import ModuleType
 
 import numpy as np
 import pytest
+from matplotlib.axes import Axes
 from matplotlib.collections import QuadMesh
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.text import Text
+from test_esp_pipeline import TINY_CONFIG as _ESP_TINY
+from test_esp_pipeline import _write as _esp_write
 from test_plotting_anomaly import anomaly_rows, threshold_rows
 from test_plotting_capacity import (
     conservation_rows,
@@ -38,6 +41,9 @@ from test_plotting_capacity import (
 )
 from test_plotting_freerun import freerun_rows
 
+from rc_basics_lab.config import Esp02Config, load_config_as
+from rc_basics_lab.experiment.esp import EXPERIMENT_ESP_MAP
+from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
 from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
@@ -46,6 +52,7 @@ from rc_basics_lab.experiment.narma import (
 from rc_basics_lab.plotting import (
     figures_anomaly,
     figures_capacity,
+    figures_esp,
     figures_freerun,
     figures_horizon,
     heatmap,
@@ -66,6 +73,7 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_mc_sweep,
     plot_narma10_control,
 )
+from rc_basics_lab.plotting.figures_esp import plot_esp_map
 from rc_basics_lab.plotting.figures_freerun import plot_valid_time
 from rc_basics_lab.plotting.figures_horizon import (
     JAEGER_CONDITIONS,
@@ -771,4 +779,60 @@ def _horizon_rows() -> tuple[HorizonRow, ...]:
             wall_time_s=0.1,
         )
         for index in range(3)
+    )
+
+
+# --- FIG-14: 凡例が軸からはみ出さない (D-106) ---------------------------------
+
+#: 凡例が**軸の外へ出ている**軸 (2026-08-22 の実測)。
+#: この集合は増やせない。減らしたら外す。
+#: 幅比が 1 を超えると、軸ラベルや隣のパネルを潰す (実測: fig_esp_map の
+#: 無入力パネルで 4.19 倍になり、y 軸の目盛りが読めなくなっていた)。
+LEGENDS_OUTSIDE_THE_AXES: frozenset[str] = frozenset()
+
+
+def _legend_fits(axis: Axes) -> bool:
+    """凡例が軸の内側に収まっているか (FIG-14)。"""
+    legend = axis.get_legend()
+    if legend is None:
+        return True
+    legend_box = legend.get_window_extent()
+    axis_box = axis.get_window_extent()
+    return bool(
+        legend_box.x0 >= axis_box.x0 - 1
+        and legend_box.x1 <= axis_box.x1 + 1
+        and legend_box.y0 >= axis_box.y0 - 1
+        and legend_box.y1 <= axis_box.y1 + 1
+    )
+
+
+def test_no_legend_spills_out_of_its_axes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """凡例が軸からはみ出していないこと (FIG-14 / D-106)。
+
+    **重なりは目視でしか見つからないので機械に置く** (方針文書 FIG-14)。
+    実際に起きた形: 出典つきのラベル (FIG-3 で長くなる) を幅の狭いパネルの
+    凡例に置いたところ、**軸の 4.19 倍**の幅になり、はみ出して y 軸の
+    目盛りを潰した。直し方は凡例をやめて出典を注へ移すこと。
+
+    ここで描くのは、幅の狭いパネルを持つ 2-C (``plot_esp_map``) である ——
+    そこが実際に壊れた図であり、同じ壊れ方をもう一度作らないための検査になる。
+    """
+    config = load_config_as(_esp_write(tmp_path, _ESP_TINY), Esp02Config)
+    outputs = run_and_report_esp(config, tmp_path / "out")
+    rows = [row for row in outputs.rows if row.experiment == EXPERIMENT_ESP_MAP]
+    assert rows, "2-C の行が出ませんでした"
+    captured = _capture_saves(monkeypatch, figures_esp, "_save")
+    plot_esp_map(rows, tmp_path / "map.png", style=CONTEXT)
+    assert captured, "図が保存されませんでした"
+    figure = captured[0]
+    figure.canvas.draw()
+    spilled = [
+        index for index, axis in enumerate(figure.axes) if not _legend_fits(axis)
+    ]
+    assert not spilled, (
+        f"凡例が軸からはみ出しています (軸 {spilled})。\n"
+        "出典つきのラベルは長くなるので、幅の狭いパネルでは"
+        "**凡例をやめて注へ移してください** (FIG-14 / D-106)。"
     )

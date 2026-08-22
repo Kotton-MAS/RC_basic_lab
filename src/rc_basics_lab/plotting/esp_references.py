@@ -21,6 +21,12 @@ from rc_basics_lab.plotting.style import (
 )
 from rc_basics_lab.types import FloatArray
 
+GALLICCHIO = (
+    "Gallicchio (2019) Chasing the Echo State Property の再実演",
+    "Re-enacting Gallicchio (2019), Chasing the Echo State Property",
+)
+"""2-C の副題 (仕様 §4 T3: 先行研究の再実演であることを図に明記する)。"""
+
 ZERO_INPUT_ESP_BOUNDARY = 1.0
 """無入力で ESP が失われる rho の境界 (D-104)。
 
@@ -51,27 +57,39 @@ ZERO_INPUT_ESP_CONDITIONS: tuple[str, str] = (
 """
 
 
+def zero_input_boundary_note(style: StyleContext) -> str:
+    """無入力の境界線の出典を**注として**返す (FIG-14 / D-104)。
+
+    凡例にしない。無入力パネルは幅が狭く、出典つきのラベル (FIG-3 で長くなる)
+    を凡例に置くと**軸の 4.19 倍の幅**になり、はみ出して軸ラベルまで潰す
+    (実測)。FIG-14 の規約「凡例が収まらないなら注へ移す」に従う。
+    """
+    return cited_measurement(
+        style.label(
+            f"左の破線は無入力の境界 rho = {ZERO_INPUT_ESP_BOUNDARY:g}",
+            f"the dashed line on the left is the zero-input boundary"
+            f" rho = {ZERO_INPUT_ESP_BOUNDARY:g}",
+        ),
+        YILDIZ_2012,
+        style.label(*ZERO_INPUT_ESP_CONDITIONS),
+    )
+
+
 def draw_zero_input_boundary(axis: Axes, style: StyleContext) -> None:
     """無入力パネルに文献の境界線を引く (D-104)。
 
     **無入力パネルにだけ**引く。駆動下のパネルへ延ばすと、この図が
     否定しようとしている通説 (rho < 1 が ESP の条件) そのものになる。
+
+    凡例は付けない —— 出典は ``zero_input_boundary_note`` が図の注へ出す。
     """
+    del style
     axis.axhline(
         ZERO_INPUT_ESP_BOUNDARY,
         color=REFERENCE_COLOR,
         dashes=REFERENCE_DASHES[0],
         linewidth=1.2,
-        label=cited_measurement(
-            style.label(
-                f"無入力の境界 rho = {ZERO_INPUT_ESP_BOUNDARY:g}",
-                f"zero-input boundary rho = {ZERO_INPUT_ESP_BOUNDARY:g}",
-            ),
-            YILDIZ_2012,
-            style.label(*ZERO_INPUT_ESP_CONDITIONS),
-        ),
     )
-    axis.legend(loc="lower center", fontsize=6)
 
 
 def plot_no_input_panel(
@@ -101,8 +119,10 @@ def plot_no_input_panel(
 
 
 __all__ = [
+    "GALLICCHIO",
     "ZERO_INPUT_ESP_BOUNDARY",
     "ZERO_INPUT_ESP_CONDITIONS",
     "draw_zero_input_boundary",
     "plot_no_input_panel",
+    "zero_input_boundary_note",
 ]
