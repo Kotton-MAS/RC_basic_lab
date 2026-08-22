@@ -1036,26 +1036,25 @@ def test_committed_artifacts_match_the_declared_list() -> None:
 
 
 def test_the_literature_vpt_threshold_is_in_the_sensitivity_grid() -> None:
-    """文献の VPT 定義に対応する閾値が感度格子に入っていること (D-101)。
+    """文献比較に使う閾値が感度格子に入っていること (D-101)。
 
-    RC のカオス予測で広く使われる有効予測時間 (VPT) は
-    **正規化二乗差**が 0.4 を超えるまでと定義される
-    (Platt et al. 2022, Neural Networks)。こちらの有効予測時間は
-    **NRMSE 比**が閾値を超えるまでである (D-43)。
-    同じ「0.4」でも別の量を測っているので、そのまま並べると
-    **定義の違いに気づかないまま比較したことになる**。
+    一次資料は Platt et al. (2022) *Neural Networks* 153:530 で、VPT は
+    ``RMSE(t) = sqrt((1/D) sum_i [(u_i^f - u_i)/sigma_i]^2) > eps`` を初めて
+    超える時刻、``eps`` は「arbitrarily to 0.3」と定義されている。
+    **平方根が入っている**ので、こちらの NRMSE 比 (D-43) と同じ次元であり、
+    換算は要らない —— 比較点は**格子に元から入っていた 0.3** である。
 
-    換算した点 (``sqrt(0.4)``) を格子に入れておくと、
-    ``meta.json`` の ``valid_time_sensitivity`` に必ず出るので、
-    文献と並べるときに使う列が存在する状態が保たれる。
+    最初にこの検査を書いたときは二次情報 (arXiv:2508.06730 の要約) を信じて
+    「正規化二乗差 0.4」だと思い込み、``sqrt(0.4)`` を格子に足していた。
+    **一次資料を読んだら定義が違った。** 数値主張は一次資料で裏を取る。
 
-    実測 (本番、Lorenz / ESN / 10 レプリケート): こちらの閾値 0.4 では
-    中央値 4.83、文献の定義に対応する 0.632 では 5.26 [1/lambda_max]。
+    実測 (本番、Lorenz / ESN / 10 レプリケート): 閾値 0.3 で中央値 4.74、
+    採用値 0.4 で 4.83 [1/lambda_max]。
     """
-    assert pytest.approx(math.sqrt(0.4)) == LITERATURE_VPT_THRESHOLD
+    assert pytest.approx(0.3) == LITERATURE_VPT_THRESHOLD
     assert LITERATURE_VPT_THRESHOLD in VALID_TIME_THRESHOLD_GRID, (
-        "文献の VPT 定義に対応する閾値が格子から外れています。"
-        "外すと、文献と並べるときに換算し忘れる経路が戻ります (D-101)。"
+        "文献比較に使う閾値が格子から外れています。"
+        "外すと、文献と並べるときに使う列が消えます (D-101)。"
     )
-    # 換算前の 0.4 と取り違えない (二乗の分だけ必ず大きい)
-    assert LITERATURE_VPT_THRESHOLD > 0.4
+    # 換算 (sqrt(0.4)) は不要。戻ってきたら気づけるようにしておく。
+    assert LITERATURE_VPT_THRESHOLD < 0.4

@@ -69,7 +69,7 @@
   ],
   "capacity_note": "注: 4-D の MC / IPC は自走と同じ状態行列 (Lorenz で駆動した ESN) に対して測っている。駆動が i.i.d. ではなく決定的な時系列なので遅延目標が互いに予測可能であり、mc_total / ipc_total は保存則 (<= N) を超える。絶対値は 03 の掃引と比較できず、読めるのは同じ駆動の下での条件間の相対比較だけである。",
   "cjk_font": "Hiragino Sans",
-  "commit": "68fcff89e3b3d05bc632b39341698a4b0a1a84d7",
+  "commit": "a0cef27cf4de1724fd6ed8dc431c84fe1f92566f",
   "config": {
     "base": {
       "delay_parity": {
@@ -288,7 +288,7 @@
     "split": 2,
     "task": 1
   },
-  "timestamp_utc": "2026-08-22T07:41:04.472094+00:00",
+  "timestamp_utc": "2026-08-22T08:07:45.020694+00:00",
   "valid_time_by_regime": {
     "attractor": 2.830630638649615,
     "diverged": 0.8427767597273936,
@@ -336,16 +336,6 @@
       "threshold": 0.5
     },
     {
-      "max_lyapunov": 0.6412431867491039,
-      "median_lyapunov": 0.29313974251387603,
-      "method": "delay_line",
-      "min_lyapunov": 0.12824863734982078,
-      "n_censored": 0,
-      "n_rows": 10,
-      "task": "lorenz",
-      "threshold": 0.6324555320336759
-    },
-    {
       "max_lyapunov": 5.569655107763644,
       "median_lyapunov": 3.710049866191243,
       "method": "esn",
@@ -384,16 +374,6 @@
       "n_rows": 10,
       "task": "lorenz",
       "threshold": 0.5
-    },
-    {
-      "max_lyapunov": 6.375789399676803,
-      "median_lyapunov": 5.262774439819431,
-      "method": "esn",
-      "min_lyapunov": 3.6917286322841263,
-      "n_censored": 0,
-      "n_rows": 10,
-      "task": "lorenz",
-      "threshold": 0.6324555320336759
     },
     {
       "max_lyapunov": 0.06412431867491039,
@@ -436,16 +416,6 @@
       "threshold": 0.5
     },
     {
-      "max_lyapunov": 0.2106941899318484,
-      "median_lyapunov": 0.10534709496592419,
-      "method": "linear",
-      "min_lyapunov": 0.05496370172135175,
-      "n_censored": 0,
-      "n_rows": 10,
-      "task": "lorenz",
-      "threshold": 0.6324555320336759
-    },
-    {
       "max_lyapunov": NaN,
       "median_lyapunov": NaN,
       "method": "delay_line",
@@ -484,16 +454,6 @@
       "n_rows": 10,
       "task": "mackey_glass",
       "threshold": 0.5
-    },
-    {
-      "max_lyapunov": NaN,
-      "median_lyapunov": NaN,
-      "method": "delay_line",
-      "min_lyapunov": NaN,
-      "n_censored": 0,
-      "n_rows": 10,
-      "task": "mackey_glass",
-      "threshold": 0.6324555320336759
     },
     {
       "max_lyapunov": NaN,
@@ -538,16 +498,6 @@
     {
       "max_lyapunov": NaN,
       "median_lyapunov": NaN,
-      "method": "esn",
-      "min_lyapunov": NaN,
-      "n_censored": 0,
-      "n_rows": 10,
-      "task": "mackey_glass",
-      "threshold": 0.6324555320336759
-    },
-    {
-      "max_lyapunov": NaN,
-      "median_lyapunov": NaN,
       "method": "linear",
       "min_lyapunov": NaN,
       "n_censored": 0,
@@ -584,32 +534,21 @@
       "n_rows": 10,
       "task": "mackey_glass",
       "threshold": 0.5
-    },
-    {
-      "max_lyapunov": NaN,
-      "median_lyapunov": NaN,
-      "method": "linear",
-      "min_lyapunov": NaN,
-      "n_censored": 0,
-      "n_rows": 10,
-      "task": "mackey_glass",
-      "threshold": 0.6324555320336759
     }
   ],
   "valid_time_threshold_grid": [
     0.2,
     0.3,
     0.4,
-    0.5,
-    0.6324555320336759
+    0.5
   ],
   "wall_time_breakdown": {
-    "capacity_s": 54.78769342089072,
-    "figures_s": 0.8835823750123382,
-    "freerun_s": 16.554985750000924,
-    "lyapunov_s": 0.03396758297458291,
-    "onestep_s": 1.5319556249305606,
-    "stability_s": 148.01844428712502
+    "capacity_s": 54.19241041399073,
+    "figures_s": 0.8854642080841586,
+    "freerun_s": 16.20293545804452,
+    "lyapunov_s": 0.03247816697694361,
+    "onestep_s": 1.5133302500471473,
+    "stability_s": 147.17991941911168
   },
-  "wall_time_s": 221.811460332945
+  "wall_time_s": 220.00724641699344
 }
