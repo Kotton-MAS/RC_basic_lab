@@ -119,7 +119,12 @@ def test_all_artifacts_were_generated_from_the_same_commit() -> None:
     assert len(unique) == 1, (
         f"成果物の生成 commit がそろっていません ({len(unique)} 種類):\n"
         + "\n".join(f"  {path}: {commit[:7]}" for path, commit in commits.items())
-        + "\n全実験を一斉再生成してください (make figures-01 .. figures-05)。"
+        + "\n\n**一斉再生成は auto-commit を切って回してください**:\n"
+        "    PDCA_KIT_AUTO_COMMIT=off make figures-01 figures-02 "
+        "figures-03 figures-04 figures-05\n"
+        "切らずに回すと、SubagentStop の auto-commit が途中で HEAD を動かし、"
+        "実験ごとに違う commit が焼き込まれてこの検査が落ちます "
+        "(実測: 4 回連続で踏んだ)。"
     )
 
 

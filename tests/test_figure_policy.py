@@ -59,12 +59,12 @@ from rc_basics_lab.plotting import (
     figures_horizon,
     heatmap,
     style,
+    waveforms,
 )
 from rc_basics_lab.plotting.capacity_grids import (
     even_degree_note,
     even_degree_share,
 )
-from rc_basics_lab.plotting import waveforms
 from rc_basics_lab.plotting.figures_anomaly import (
     RANDOM_SCORE_F1_CONDITIONS,
     RANDOM_SCORE_PLAIN_F1,
@@ -863,7 +863,7 @@ def _png_aspect(path: Path) -> float:
     """PNG の横縦比 (ヘッダから読む。画像を展開しない)。"""
     header = path.read_bytes()[16:24]
     width, height = struct.unpack(">II", header)
-    return width / height
+    return float(width) / float(height)
 
 
 def _artifact_pngs() -> list[Path]:
