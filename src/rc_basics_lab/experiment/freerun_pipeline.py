@@ -64,6 +64,7 @@ from rc_basics_lab.experiment.stability import (
 )
 from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.tasks.chaotic import sampling_interval
+from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
 
@@ -197,22 +198,23 @@ def _timeline_source(results: FreeRunResults) -> FreeRunEvaluation | None:
     return None
 
 
-def _plot_timeline(
+def _timeline_inputs(
     results: FreeRunResults,
-    lyapunov: object,
-    path: Path,
-    style: StyleContext,
-) -> Path:
-    """4-B の時系列図を書く (D-107)。
+) -> tuple[FloatArray, FloatArray, str, float, float]:
+    """時系列図に渡す (真値, 自走, 手法, 有効ステップ, Lyapunov 時間) を組む。
 
-    ``_timeline_source`` が選ぶ 1 本を描く。選び方は固定である。
+    ``plotting`` の型に触れないのは D-53 のためである。図を描くのは
+    呼び出し側で、ここは**選び方と単位だけ**を決める。
 
-    ``style`` を ``object`` で受けるのは、``StyleContext`` を型のためだけに
-    module-level で import すると D-53 の検査が落ちるためである
-    (この検査は TYPE_CHECKING ブロックも module-level と数える)。
+    Args:
+        results: 4-B の自走の結果。
+
+    Returns:
+        ``plot_freerun_timeline`` にそのまま渡せる 5 つ組。
+
+    Raises:
+        ValueError: 固定した 1 本 (lorenz / esn) が見つからない場合。
     """
-    from rc_basics_lab.plotting.figures_freerun_time import plot_freerun_timeline
-
     evaluation = _timeline_source(results)
     if evaluation is None:
         raise ValueError("時系列図に使う自走が見つかりません (lorenz / esn)")
@@ -222,8 +224,6 @@ def _plot_timeline(
     trajectory = evaluation.trajectory[:, 0]
     truth = evaluation.truth_aligned[:, 0]
     length = int(min(trajectory.size, truth.size))
-    trajectory = trajectory[:length]
-    truth = truth[:length]
     row = evaluation.row
     # **valid_time はステップではなく時間単位である。** 縦線はステップ軸に
     # 引くので valid_time_steps を使う (実測: 混同して 6 ステップ目に線が出た
@@ -233,15 +233,12 @@ def _plot_timeline(
         if row.valid_time_lyapunov
         else float("nan")
     )
-    return plot_freerun_timeline(
-        truth,
-        trajectory,
-        path,
-        method=row.method,
-        task_label=("Lorenz", "Lorenz"),
-        valid_steps=float(row.valid_time_steps),
-        lyapunov_time=steps_per_lyapunov,
-        style=style,
+    return (
+        truth[:length],
+        trajectory[:length],
+        row.method,
+        float(row.valid_time_steps),
+        steps_per_lyapunov,
     )
 
 
@@ -269,6 +266,7 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
         plot_stability_map,
         plot_valid_time,
     )
+    from rc_basics_lab.plotting.figures_freerun_time import plot_freerun_timeline
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -286,6 +284,7 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
     figures_started = time.perf_counter()
     # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
     style = setup_style(commit=git_commit())
+    truth, trajectory, method, valid_steps, lyapunov_time = _timeline_inputs(freerun)
     paths = (
         write_onestep_csv(onestep_rows, out_dir / ONESTEP_CSV),
         write_freerun_csv(freerun.rows, out_dir / FREERUN_CSV),
@@ -301,7 +300,16 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
         plot_valid_time(freerun.rows, out_dir / FIG_VALID_TIME, style=style),
         # FIG-11 追加図4 (D-107)。位相図と valid time はあるのに
         # **時間軸の図が無かった** —— 「いつ外れるか」は時間軸でしか見えない。
-        _plot_timeline(freerun, lyapunov, out_dir / FIG_FREERUN_TIMELINE, style),
+        plot_freerun_timeline(
+            truth,
+            trajectory,
+            out_dir / FIG_FREERUN_TIMELINE,
+            method=method,
+            task_label=("Lorenz", "Lorenz"),
+            valid_steps=valid_steps,
+            lyapunov_time=lyapunov_time,
+            style=style,
+        ),
         plot_stability_map(
             stability.rows,
             stability.capacity_rows,
