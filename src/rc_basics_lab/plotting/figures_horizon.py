@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
+from matplotlib.axes import Axes
 
 from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
 from rc_basics_lab.plotting.labels import JAEGER_HAAS_2004, cited_measurement
@@ -22,11 +22,7 @@ from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
-    add_provenance,
     method_color,
-    new_figure,
-    rc_context_for,
-    save_png,
 )
 
 JAEGER_LOG10_NRMSE84 = -4.2
@@ -54,18 +50,22 @@ JAEGER_CONDITIONS: tuple[str, str] = (
 """
 
 
-def plot_horizon(
-    rows: Sequence[HorizonRow], path: Path, *, style: StyleContext
-) -> Path:
-    """実験 01': 自走 84 ステップ先の誤差を文献値と並べる。
+def draw_horizon_panel(
+    axis: Axes, rows: Sequence[HorizonRow], style: StyleContext
+) -> Sequence[float]:
+    """実験 01' (自走 84 ステップ先の誤差) を **1 つの軸に**描く。
+
+    単独の figure をやめてパネルにしたのは FIG-12 による。点は 5 個しかなく、
+    単独図では y 軸が3桁ぶん空き、**凡例が参照線と重なって
+    「このリポジトリ (N = 200)」が読めなかった**。
 
     Args:
+        axis: 描画先。
         rows: ``run_horizon`` の出力。
-        path: 出力先の PNG。
-        style: 配色・言語・commit。
+        style: 配色・言語。
 
     Returns:
-        書き出した PNG のパス。
+        有限な ``log10_nrmse_horizon`` の並び (見出しの生成に使う)。
 
     Raises:
         ValueError: ``rows`` が空の場合。
@@ -77,76 +77,91 @@ def plot_horizon(
         for row in rows
         if math.isfinite(row.log10_nrmse_horizon)
     ]
-    with rc_context_for(style):
-        figure = new_figure(7.4, 5.0)
-        axis = figure.subplots(1, 1)
-        method = rows[0].method
-        axis.plot(
-            [row.replicate for row in rows],
-            [row.log10_nrmse_horizon for row in rows],
-            "o",
+    method = rows[0].method
+    axis.plot(
+        [row.replicate for row in rows],
+        [row.log10_nrmse_horizon for row in rows],
+        "o",
+        color=method_color(method) if method in METHOD_COLORS else None,
+        markersize=8,
+        label=style.label(
+            f"このリポジトリ (N = {rows[0].n_units})",
+            f"this repository (N = {rows[0].n_units})",
+        ),
+    )
+    if logs:
+        axis.axhline(
+            float(np.mean(logs)),
             color=method_color(method) if method in METHOD_COLORS else None,
-            markersize=8,
-            label=style.label(
-                f"このリポジトリ (N = {rows[0].n_units})",
-                f"this repository (N = {rows[0].n_units})",
-            ),
+            linestyle="-",
+            linewidth=1.0,
         )
-        if logs:
-            axis.axhline(
-                float(np.mean(logs)),
-                color=method_color(method) if method in METHOD_COLORS else None,
-                linestyle="-",
-                linewidth=1.0,
-            )
-        for value, text_ja, text_en, dashes in (
-            (
-                JAEGER_LOG10_NRMSE84,
-                "文献の ESN",
-                "the cited ESN",
-                REFERENCE_DASHES[0],
-            ),
-            (
-                JAEGER_PREVIOUS_LOG10,
-                "同論文が挙げる従来手法 (700 倍悪い)",
-                "the prior techniques it cites (700x worse)",
-                REFERENCE_DASHES[1],
-            ),
-        ):
-            axis.axhline(
-                value,
-                color=REFERENCE_COLOR,
-                dashes=dashes,
-                linewidth=1.2,
-                label=cited_measurement(
-                    style.label(f"{text_ja} {value:.2f}", f"{text_en} {value:.2f}"),
-                    JAEGER_HAAS_2004,
-                    style.label(*JAEGER_CONDITIONS),
-                ),
-            )
-        axis.set_xlabel(style.label("レプリケート", "replicate"))
-        axis.set_ylabel(
-            style.label(
-                f"log10 NRMSE ({HORIZON_STEPS} ステップ先の1点)",
-                f"log10 NRMSE (single point, {HORIZON_STEPS} steps ahead)",
-            )
+    for value, text_ja, text_en, dashes in (
+        (
+            JAEGER_LOG10_NRMSE84,
+            "文献の ESN",
+            "the cited ESN",
+            REFERENCE_DASHES[0],
+        ),
+        (
+            JAEGER_PREVIOUS_LOG10,
+            "同論文が挙げる従来手法 (700 倍悪い)",
+            "the prior techniques it cites (700x worse)",
+            REFERENCE_DASHES[1],
+        ),
+    ):
+        axis.axhline(
+            value,
+            color=REFERENCE_COLOR,
+            dashes=dashes,
+            linewidth=1.2,
+            # **凡例には短いラベルだけを置く** (FIG-14)。出典と条件を凡例へ
+            # 入れると幅が軸の4倍になり、隣のパネルまで潰した (実測)。
+            # 出典は figure の注記 (``horizon_reference_note``) が受け持つ。
+            label=style.label(f"{text_ja} {value:.2f}", f"{text_en} {value:.2f}"),
         )
-        axis.set_xticks([row.replicate for row in rows])
-        axis.legend(loc="best", fontsize=7)
-        figure.suptitle(
-            f"{style.label('実験 01', 'Experiment 01')}': {_headline(logs, style)}\n"
-            + style.label(
-                "1ステップ先を学習した同じ読み出しを自走させた (学習し直していない)",
-                "the same one-step readout, run autonomously (not retrained)",
-            )
+    axis.set_xlabel(style.label("レプリケート", "replicate"))
+    axis.set_ylabel(
+        style.label(
+            f"log10 NRMSE ({HORIZON_STEPS} ステップ先の1点)",
+            f"log10 NRMSE (single point, {HORIZON_STEPS} steps ahead)",
         )
-        conditions = f"task = {rows[0].task}, horizon = {HORIZON_STEPS}"
-        add_provenance(figure, conditions, rows, style=style)
-        return save_png(figure, path)
+    )
+    axis.set_xticks([row.replicate for row in rows])
+    axis.legend(loc="best", fontsize=7)
+    return logs
 
 
-def _headline(logs: Sequence[float], style: StyleContext) -> str:
-    """結論文を**行から導く** (D-90 と同じ規律)。"""
+def horizon_reference_note(style: StyleContext) -> str:
+    """参照線の出典と条件を **figure の注記**として返す (D-97 / FIG-14)。
+
+    凡例に入れると幅が軸を超えるので、文字は figure の下端へ置く。
+    **出典を消すのではなく、置き場所を変えている** —— D-97 は引用に条件を
+    必ず添えることを求めており、それはここで満たしている。
+
+    Args:
+        style: 言語。
+
+    Returns:
+        注記の1文。
+    """
+    return cited_measurement(
+        style.label("破線は文献値", "the dashed lines are the cited values"),
+        JAEGER_HAAS_2004,
+        style.label(*JAEGER_CONDITIONS),
+    )
+
+
+def horizon_headline(logs: Sequence[float], style: StyleContext) -> str:
+    """結論文を**行から導く** (D-90 と同じ規律)。
+
+    Args:
+        logs: 有限な ``log10_nrmse_horizon`` の並び。
+        style: 言語。
+
+    Returns:
+        パネルの見出しに使う1文。
+    """
     if not logs:
         return style.label(
             "自走が測れなかった", "the autonomous run could not be measured"
@@ -164,5 +179,7 @@ __all__ = [
     "JAEGER_CONDITIONS",
     "JAEGER_LOG10_NRMSE84",
     "JAEGER_PREVIOUS_LOG10",
-    "plot_horizon",
+    "draw_horizon_panel",
+    "horizon_headline",
+    "horizon_reference_note",
 ]

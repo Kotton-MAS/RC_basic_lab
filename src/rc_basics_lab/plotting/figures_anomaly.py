@@ -334,7 +334,10 @@ def plot_score_timeline(
     ]
     spans = _anomaly_spans(rows)
     with rc_context_for(style):
-        figure = new_figure(9.0, 1.5 * len(methods) + 1.2)
+        # **縦長にしない** (FIG-13)。手法を縦に積むのは時間軸を共有する
+        # ためで、そこは変えない。1枚あたりの高さを詰め、幅を広げて
+        # 上限内 (1.0〜3.2 : 1) に収める。0.87 : 1 では画面に入らなかった。
+        figure = new_figure(11.0, 1.3 * len(methods) + 1.2)
         axes = np.atleast_1d(figure.subplots(len(methods), 1, sharex=True))
         for axis, method in zip(axes, methods, strict=True):
             indices, scores = _timeline_series(rows, method)

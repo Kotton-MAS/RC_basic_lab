@@ -50,8 +50,6 @@ from rc_basics_lab.experiment.waveform_data import waveform_predictions
 logger = logging.getLogger(__name__)
 
 HORIZON_CSV = "horizon.csv"
-FIG_HORIZON = "fig_horizon.png"
-FIG_WAVEFORM = "fig_waveform.png"
 FIG_COMPARISON = "fig_comparison.png"
 FIG_STATE_SPACE = "fig_state_space.png"
 
@@ -60,8 +58,6 @@ ARTIFACTS: tuple[str, ...] = (
     COMPARISON_SUMMARY_CSV,
     HORIZON_CSV,
     FIG_COMPARISON,
-    FIG_HORIZON,
-    FIG_WAVEFORM,
     FIG_STATE_SPACE,
     META_JSON,
 )
@@ -135,9 +131,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     # subprocess guard の両方が落ちる。
     from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
-    from rc_basics_lab.plotting.figures_horizon import plot_horizon
     from rc_basics_lab.plotting.style import setup_style
-    from rc_basics_lab.plotting.waveforms import plot_prediction_waveform
 
     started = time.perf_counter()
     plans0 = _plan_zero_by_task(config)
@@ -158,14 +152,14 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
         write_rows_csv(horizon_rows, out_dir / HORIZON_CSV, HORIZON_CSV_COLUMNS),
-        plot_prediction_waveform(
-            *waveform_predictions(config, plans0[HORIZON_TASK]),
-            out_dir / FIG_WAVEFORM,
-            task_label=("Mackey-Glass", "Mackey-Glass"),
+        # FIG-12: 波形と自走 (01') は単独図をやめ、比較図のパネルへ。
+        plot_comparison(
+            rows,
+            out_dir / FIG_COMPARISON,
+            waveform=waveform_predictions(config, plans0[HORIZON_TASK]),
+            horizon_rows=horizon_rows,
             style=style,
         ),
-        plot_comparison(rows, out_dir / FIG_COMPARISON, style=style),
-        plot_horizon(horizon_rows, out_dir / FIG_HORIZON, style=style),
         plot_state_space(reports, out_dir / FIG_STATE_SPACE, style=style),
         write_meta(
             config,
@@ -193,9 +187,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
 __all__ = [
     "ARTIFACTS",
     "FIG_COMPARISON",
-    "FIG_HORIZON",
     "FIG_STATE_SPACE",
-    "FIG_WAVEFORM",
     "HORIZON_CSV",
     "ExperimentOutputs",
     "run_and_report",

@@ -68,7 +68,6 @@ from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
 
-FIG_ONESTEP = "fig_onestep.png"
 FIG_FREERUN_ATTRACTOR = "fig_freerun_attractor.png"
 FIG_FREERUN_TIMELINE = "fig_freerun_timeline.png"
 FIG_VALID_TIME = "fig_valid_time.png"
@@ -81,7 +80,6 @@ FREERUN_ARTIFACTS: tuple[str, ...] = (
     FREERUN_PROFILE_CSV,
     STABILITY_CSV,
     CAPACITY_CSV,
-    FIG_ONESTEP,
     FIG_FREERUN_ATTRACTOR,
     FIG_FREERUN_TIMELINE,
     FIG_VALID_TIME,
@@ -262,11 +260,10 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
     from rc_basics_lab.plotting.figures_freerun import (
         plot_freerun_attractor,
         plot_freerun_stats,
-        plot_onestep,
-        plot_stability_map,
         plot_valid_time,
     )
     from rc_basics_lab.plotting.figures_freerun_time import plot_freerun_timeline
+    from rc_basics_lab.plotting.figures_stability import plot_stability_map
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -293,9 +290,12 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
         # 列順は 03 の CAPACITY_CSV_COLUMNS (= CapacityRow の宣言順) をそのまま
         # 使う。04 専用の書き出しを作ると列順の単一の真実が2つになる。
         write_capacity_csv(stability.capacity_rows, out_dir / CAPACITY_CSV),
-        plot_onestep(onestep_rows, out_dir / FIG_ONESTEP, style=style),
+        # FIG-12: 4-A の 6 点は単独図をやめ、位相図と同じ figure のパネルへ。
         plot_freerun_attractor(
-            freerun.profile_rows, out_dir / FIG_FREERUN_ATTRACTOR, style=style
+            freerun.profile_rows,
+            out_dir / FIG_FREERUN_ATTRACTOR,
+            onestep_rows=onestep_rows,
+            style=style,
         ),
         plot_valid_time(freerun.rows, out_dir / FIG_VALID_TIME, style=style),
         # FIG-11 追加図4 (D-107)。位相図と valid time はあるのに
@@ -417,7 +417,6 @@ __all__ = [
     "CAPACITY_NOTE",
     "FIG_FREERUN_ATTRACTOR",
     "FIG_FREERUN_STATS",
-    "FIG_ONESTEP",
     "FIG_STABILITY_MAP",
     "FIG_VALID_TIME",
     "FREERUN_ARTIFACTS",

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from matplotlib.axes import Axes
 
 from rc_basics_lab.plotting.style import (
     FIGURE_SIZES,
@@ -70,6 +71,66 @@ TRUTH_COLOR = "#333333"
 """真値の色。手法4色 (D-85) とも参照線の黒 (D-86) とも別の無彩色にする。"""
 
 
+def draw_prediction_waveform(
+    axis: Axes,
+    truth: FloatArray,
+    predictions: dict[str, FloatArray],
+    style: StyleContext,
+) -> int:
+    """真値と各手法の予測を **1 つの軸に**重ねる (FIG-11 / D-107)。
+
+    単独の figure にする経路 (``plot_prediction_waveform``) と、他の図の
+    パネルにする経路 (01 の ``fig_comparison``, FIG-12) の**両方がこれを呼ぶ**。
+    片方に書き写すと、線の太さや真値の色が2箇所で独立にずれていく。
+
+    Args:
+        axis: 描画先。
+        truth: テスト区間の真値 (切り出し済み)。
+        predictions: 手法名 -> 予測 (同じ長さ)。色は ``METHOD_COLORS`` から引く。
+        style: 配色・言語。
+
+    Returns:
+        描いた区間の長さ [ステップ]。脚注の条件に使う。
+
+    Raises:
+        ValueError: ``predictions`` が空、または長さが揃っていない場合。
+    """
+    if not predictions:
+        raise ValueError("predictions が空です")
+    length = int(np.asarray(truth).reshape(-1).size)
+    for name, values in predictions.items():
+        if int(np.asarray(values).reshape(-1).size) != length:
+            raise ValueError(f"{name} の長さが真値と違います")
+    steps = np.arange(length, dtype=np.float64)
+    axis.plot(
+        steps,
+        np.asarray(truth).reshape(-1),
+        color=TRUTH_COLOR,
+        linewidth=2.0,
+        label=style.label("真値", "ground truth"),
+        zorder=2,
+    )
+    for name, values in predictions.items():
+        axis.plot(
+            steps,
+            np.asarray(values).reshape(-1),
+            color=method_color(name) if name in METHOD_COLORS else None,
+            linewidth=1.2,
+            alpha=0.9,
+            label=name,
+            zorder=3,
+        )
+    axis.set_xlabel(
+        style.label(
+            f"テスト区間の先頭からのステップ (オフセット {WAVEFORM_OFFSET})",
+            f"steps from the start of the test split (offset {WAVEFORM_OFFSET})",
+        )
+    )
+    axis.set_ylabel(style.label("値 (標準化前)", "value (before standardisation)"))
+    axis.legend(loc="upper right", fontsize=8, ncols=2)
+    return length
+
+
 def plot_prediction_waveform(
     truth: FloatArray,
     predictions: dict[str, FloatArray],
@@ -93,44 +154,11 @@ def plot_prediction_waveform(
     Raises:
         ValueError: ``predictions`` が空、または長さが揃っていない場合。
     """
-    if not predictions:
-        raise ValueError("predictions が空です")
-    length = int(np.asarray(truth).reshape(-1).size)
-    for name, values in predictions.items():
-        if int(np.asarray(values).reshape(-1).size) != length:
-            raise ValueError(f"{name} の長さが真値と違います")
-
     width, height = FIGURE_SIZES["wide"]
-    steps = np.arange(length, dtype=np.float64)
     with rc_context_for(style):
         figure = new_figure(width, height)
         axis = figure.subplots(1, 1)
-        axis.plot(
-            steps,
-            np.asarray(truth).reshape(-1),
-            color=TRUTH_COLOR,
-            linewidth=2.0,
-            label=style.label("真値", "ground truth"),
-            zorder=2,
-        )
-        for name, values in predictions.items():
-            axis.plot(
-                steps,
-                np.asarray(values).reshape(-1),
-                color=method_color(name) if name in METHOD_COLORS else None,
-                linewidth=1.2,
-                alpha=0.9,
-                label=name,
-                zorder=3,
-            )
-        axis.set_xlabel(
-            style.label(
-                f"テスト区間の先頭からのステップ (オフセット {WAVEFORM_OFFSET})",
-                f"steps from the start of the test split (offset {WAVEFORM_OFFSET})",
-            )
-        )
-        axis.set_ylabel(style.label("値 (標準化前)", "value (before standardisation)"))
-        axis.legend(loc="upper right", fontsize=8, ncols=2)
+        length = draw_prediction_waveform(axis, truth, predictions, style)
         figure.suptitle(
             style.label(
                 f"{task_label[0]}: 予測がどう見えるか",
@@ -183,6 +211,7 @@ __all__ = [
     "WAVEFORM_OFFSET",
     "WAVEFORM_REPLICATE",
     "WAVEFORM_STEPS",
+    "draw_prediction_waveform",
     "plot_prediction_waveform",
     "selection_is_fixed",
     "slice_window",

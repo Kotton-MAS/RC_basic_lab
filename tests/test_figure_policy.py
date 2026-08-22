@@ -46,17 +46,18 @@ from test_plotting_freerun import freerun_rows
 from rc_basics_lab.config import Esp02Config, load_config_as
 from rc_basics_lab.experiment.esp import EXPERIMENT_ESP_MAP
 from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
+from rc_basics_lab.experiment.freerun import FreeRunProfileRow
 from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
     NARMA10_REFERENCE_NOTE_EN,
 )
+from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting import (
     figures_anomaly,
     figures_capacity,
     figures_esp,
     figures_freerun,
-    figures_horizon,
     heatmap,
     style,
     waveforms,
@@ -82,7 +83,7 @@ from rc_basics_lab.plotting.figures_horizon import (
     JAEGER_CONDITIONS,
     JAEGER_LOG10_NRMSE84,
     JAEGER_PREVIOUS_LOG10,
-    plot_horizon,
+    draw_horizon_panel,
 )
 from rc_basics_lab.plotting.freerun_headlines import (
     LITERATURE_VALID_TIME,
@@ -113,7 +114,7 @@ from rc_basics_lab.plotting.style import (
     method_color,
     reference_line_kwargs,
 )
-from rc_basics_lab.types import BoolArray
+from rc_basics_lab.types import BoolArray, FloatArray
 
 PLOTTING_DIR = Path(style.__file__).parent
 
@@ -752,15 +753,21 @@ def test_the_horizon_figure_carries_a_literature_reference_line(
     **予測長を合わせたから並べられる。** 01 本体は1ステップ先なので、
     そのままでは比較できない (D-105 がこの実験を足した理由)。
     """
-    captured = _capture_saves(monkeypatch, figures_horizon, "save_png")
-    plot_horizon(_horizon_rows(), tmp_path / "h.png", style=CONTEXT)
-    assert captured, "図が保存されませんでした"
-    labels = _legend_texts(captured[0])
-    cited = [label for label in labels if JAEGER_HAAS_2004 in label]
-    assert len(cited) == 2, f"文献の参照線が2本ありません: {labels}"
-    for legend in cited:
-        assert ";" in legend, legend
-        assert CONTEXT.label(*JAEGER_CONDITIONS) in legend, legend
+    from matplotlib.figure import Figure
+
+    from rc_basics_lab.plotting.figures_horizon import horizon_reference_note
+
+    figure = Figure()
+    draw_horizon_panel(figure.subplots(1, 1), _horizon_rows(), CONTEXT)
+    labels = _legend_texts(figure)
+    values = [label for label in labels if "-4.20" in label or "-1.35" in label]
+    assert len(values) == 2, f"文献の参照線が2本ありません: {labels}"
+    # **出典と条件は凡例ではなく注記が持つ** (FIG-14 で移した)。
+    # 凡例に入れると幅が軸の4倍になり、隣のパネルを潰した (実測)。
+    note = horizon_reference_note(CONTEXT)
+    assert JAEGER_HAAS_2004 in note, note
+    assert ";" in note, note
+    assert CONTEXT.label(*JAEGER_CONDITIONS) in note, note
     # 従来手法の線は 700 倍悪い側 (取り違えると比較の向きが反転する)
     assert JAEGER_PREVIOUS_LOG10 > JAEGER_LOG10_NRMSE84
     assert pytest.approx(700.0) == 10.0 ** (
@@ -847,16 +854,14 @@ def test_no_legend_spills_out_of_its_axes(
 
 #: **範囲の外にある図** (2026-08-22 の実測)。この集合は増やせない。
 #: 直したら外す (下の陳腐化検査が外し忘れを拾う)。
-ASPECT_RATIO_EXCEPTIONS: frozenset[str] = frozenset(
-    {
-        # 4.03 : 1。パネルを2段に折る必要がある
-        "fig_stability_map.png",
-        # 3.84 : 1。同上
-        "fig_ipc_profile.png",
-        # 0.87 : 1 (縦長)。横に折るか系列を減らす
-        "fig_score_timeline.png",
-    }
-)
+ASPECT_RATIO_EXCEPTIONS: frozenset[str] = frozenset()
+"""アスペクト比の上限を外れてよい図。**空である。**
+
+かつては3枚あった (``fig_stability_map`` 4.03 : 1 / ``fig_ipc_profile``
+3.84 : 1 / ``fig_score_timeline`` 0.87 : 1)。FIG-13 で全部畳んだので、
+**ここへ追記して通すのはラチェットを外す操作である**。図が上限を外れたら、
+例外に足すのではなくパネルの並べ方を変える (2段に折る / 高さを取る)。
+"""
 
 
 def _png_aspect(path: Path) -> float:
@@ -949,3 +954,144 @@ def test_the_waveform_selection_is_not_a_free_parameter() -> None:
     assert np.array_equal(first, again)
     assert first[0] == 100 + waveforms.WAVEFORM_OFFSET
     assert first.size == waveforms.WAVEFORM_STEPS
+
+
+def _comparison_rows() -> tuple[ResultRow, ...]:
+    """``plot_comparison`` に足りる最小の行 (2 課題 x 3 手法)。"""
+    return tuple(
+        ResultRow(
+            task=task,
+            method=method,
+            replicate=replicate,
+            seed_reservoir=0,
+            seed_task=1,
+            seed_split=2,
+            alpha=1e-4,
+            n_lags=0,
+            rmse=0.1,
+            nrmse=0.1,
+            nmse=0.01,
+            sign_accuracy=0.5,
+            n_train=100,
+            n_val=20,
+            n_test=50,
+            t0=1,
+            wall_time_s=0.1,
+        )
+        for task in ("mackey_glass", "delay_parity")
+        for method in ("linear", "delay_line", "esn")
+        for replicate in range(2)
+    )
+
+
+def _comparison_waveform() -> tuple[FloatArray, dict[str, FloatArray]]:
+    """波形パネルに足りる最小の (真値, 手法 -> 予測)。"""
+    truth: FloatArray = np.linspace(0.0, 1.0, 16)
+    return truth, {"esn": truth * 0.99}
+
+
+def _profile_rows_for_two_tasks() -> tuple[FreeRunProfileRow, ...]:
+    """位相図パネル2枚に足りる最小の行。"""
+    return tuple(
+        FreeRunProfileRow(
+            experiment="4B_freerun",
+            task=task,
+            method="esn",
+            replicate=0,
+            source=source,
+            kind="phase",
+            index=index,
+            x=float(index),
+            y=float(index) * 0.5,
+        )
+        for task in ("lorenz", "mackey_glass")
+        for source in ("truth", "freerun")
+        for index in range(4)
+    )
+
+
+def _onestep_rows_for_two_tasks() -> tuple[ResultRow, ...]:
+    """4-A パネルに足りる最小の行。"""
+    return tuple(
+        ResultRow(
+            task=task,
+            method=method,
+            replicate=replicate,
+            seed_reservoir=0,
+            seed_task=1,
+            seed_split=2,
+            alpha=1e-4,
+            n_lags=0,
+            rmse=0.1,
+            nrmse=0.1,
+            nmse=0.01,
+            sign_accuracy=0.5,
+            n_train=100,
+            n_val=20,
+            n_test=50,
+            t0=1,
+            wall_time_s=0.1,
+        )
+        for task in ("lorenz", "mackey_glass")
+        for method in ("linear", "delay_line", "esn")
+        for replicate in range(2)
+    )
+
+
+# --- FIG-12: 点の少ないスカラー比較を単独図にしない (D-109) --------------------
+
+
+def test_sparse_scalar_figures_are_panels_not_standalone_figures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """01 / 04 の主図が、スカラー比較を**パネルとして**抱えていること (D-109)。
+
+    かつては ``fig_onestep`` (6 点) と ``fig_horizon`` (5 点) が単独の figure
+    だった。**点の数を数えるのではなく、軸の数を数える** —— 単独図に戻せば
+    軸が減るので、その形で退行が捕まる。
+
+    ``fig_waveform`` も同じ理由で ``fig_comparison`` のパネルになっている。
+    """
+    from rc_basics_lab.plotting import figures, figures_freerun
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveform=_comparison_waveform(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    assert captured, "01 の主図が保存されませんでした"
+    assert len(captured[0].axes) == 3, (
+        "01 の fig_comparison は 課題別の誤差 / 予測波形 / 自走 84 ステップ先 の"
+        f"3パネルであるべきです (実測 {len(captured[0].axes)})。"
+        "単独の figure に戻すのは D-109 の取り消しです。"
+    )
+
+    captured_freerun = _capture_saves(monkeypatch, figures_freerun, "_save")
+    figures_freerun.plot_freerun_attractor(
+        _profile_rows_for_two_tasks(),
+        tmp_path / "fig_freerun_attractor.png",
+        onestep_rows=_onestep_rows_for_two_tasks(),
+        style=CONTEXT,
+    )
+    assert captured_freerun, "04 の主図が保存されませんでした"
+    assert len(captured_freerun[0].axes) == 3, (
+        "04 の fig_freerun_attractor は 位相図2枚 + 4-A のスカラー比較の"
+        f"3パネルであるべきです (実測 {len(captured_freerun[0].axes)})。"
+    )
+
+
+def test_the_figures_that_fig12_folded_away_are_gone() -> None:
+    """畳んだ3枚が成果物として復活していないこと (D-109)。
+
+    **図を足すのは自由だが、この3つの名前で単独図に戻すのは統合の取り消し**
+    なので、名前で止める。
+    """
+    folded = ("fig_onestep.png", "fig_horizon.png", "fig_waveform.png")
+    present = [name for name in folded if list((ROOT / "results").rglob(name))]
+    assert not present, (
+        f"FIG-12 で畳んだ図が単独で復活しています: {present}。"
+        "パネルとして親figureへ入れてください (D-109)。"
+    )

@@ -1,6 +1,5 @@
 """記事04の図5枚 (実験 4-A / 4-B / 4-C / 4-D).
 
-- ``plot_onestep``: 教師強制の1ステップ先予測。3手法の NRMSE を課題別に並べる
   (受け入れ条件3 の前半: **差が小さい**ことを見せる図)。
 - ``plot_freerun_attractor``: **記事の主図**。自走軌道と真の軌道の位相図の
   重ね描き (Lorenz は (x, z)、1変数系は遅延座標埋め込み)。
@@ -31,7 +30,6 @@ import math
 from collections.abc import Sequence
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
 
@@ -39,9 +37,7 @@ from rc_basics_lab.experiment.attractor import (
     REGIME_ATTRACTOR,
     REGIME_DIVERGED,
     REGIME_PERIODIC,
-    REGIMES,
 )
-from rc_basics_lab.experiment.capacity import CapacityRow
 from rc_basics_lab.experiment.freerun import (
     KIND_PHASE,
     KIND_RETURN_MAP,
@@ -52,7 +48,6 @@ from rc_basics_lab.experiment.freerun import (
     FreeRunRow,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
-from rc_basics_lab.experiment.stability import StabilityRow, regime_map
 from rc_basics_lab.plotting.freerun_grids import (
     label_of,
     mean_std,
@@ -125,11 +120,20 @@ def source_label(source: str, style: StyleContext) -> str:
     return style.label(SOURCE_STYLE[source][1], _SOURCE_LABELS_EN[source])
 
 
-def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) -> Path:
-    """実験 4-A: 教師強制の1ステップ先予測 (受け入れ条件3 の前半)。
+def _draw_onestep_panel(
+    axis: Axes, rows: Sequence[ResultRow], style: StyleContext
+) -> None:
+    """4-A (教師強制の1ステップ先) を **位相図と同じ figure のパネル**に描く。
 
-    横軸が手法、縦軸がテスト NRMSE (対数)。課題ごとに系列を分ける。
-    **差が小さいことを見せる図**なので、対数軸のまま値を注記する。
+    単独の figure にしないのは FIG-12 による。点は 6 個しかなく、単独図では
+    面積の9割が空白になっていた。**「教師強制では差が出ない」(4-A) と
+    「自走にすると差が出る」(4-B) は一つの主張の表と裏**なので、並べたほうが
+    読み手の往復も減る。
+
+    Args:
+        axis: 描画先。
+        rows: ``onestep.csv`` と同じ行。
+        style: 配色・言語。
 
     Raises:
         ValueError: ``rows`` が空の場合。
@@ -138,76 +142,85 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
     tasks = tasks_of(rows)
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     positions = np.arange(len(methods), dtype=np.float64)
-    with rc_context_for(style):
-        figure = _new_figure(7.6, 5.0)
-        axis = figure.subplots(1, 1)
-        for offset, task in enumerate(tasks):
-            stats = [
-                mean_std(
-                    [
-                        row.nrmse
-                        for row in rows
-                        if row.task == task and row.method == method
-                    ]
-                )
-                for method in methods
-            ]
-            means = np.asarray([mean for mean, _ in stats], dtype=np.float64)
-            stds = np.asarray([std for _, std in stats], dtype=np.float64)
-            axis.errorbar(
-                positions + 0.12 * (offset - 0.5 * (len(tasks) - 1)),
-                means,
-                yerr=np.vstack([np.minimum(stds, means * 0.999), stds]),
-                fmt="o",
-                capsize=5,
-                label=label_of(TASK_LABELS, task, style),
+    for offset, task in enumerate(tasks):
+        stats = [
+            mean_std(
+                [row.nrmse for row in rows if row.task == task and row.method == method]
             )
-        axis.set_yscale("log")
-        axis.set_xticks(positions)
-        axis.set_xticklabels(
-            [label_of(METHOD_LABELS, method, style) for method in methods]
+            for method in methods
+        ]
+        means = np.asarray([mean for mean, _ in stats], dtype=np.float64)
+        stds = np.asarray([std for _, std in stats], dtype=np.float64)
+        axis.errorbar(
+            positions + 0.12 * (offset - 0.5 * (len(tasks) - 1)),
+            means,
+            yerr=np.vstack([np.minimum(stds, means * 0.999), stds]),
+            fmt="o",
+            capsize=5,
+            label=label_of(TASK_LABELS, task, style),
         )
-        axis.set_xlim(-0.5, len(methods) - 0.5)
-        n_replicates = len({row.replicate for row in rows})
-        axis.set_ylabel(
-            style.label(
-                f"NRMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
-                f"NRMSE (test split, mean +- s.d. of {n_replicates} replicates)",
-            )
+    axis.set_yscale("log")
+    axis.set_xticks(positions)
+    axis.set_xticklabels([label_of(METHOD_LABELS, method, style) for method in methods])
+    axis.set_xlim(-0.5, len(methods) - 0.5)
+    n_replicates = len({row.replicate for row in rows})
+    axis.set_title(
+        style.label(
+            "4-A: 教師強制では遅延線と ESN に差が出ない",
+            "4-A: with teacher forcing the delay line and the ESN"
+            "\nare indistinguishable",
         )
-        axis.legend(loc="best", fontsize=9)
-        figure.suptitle(
-            style.label(
-                "実験 4-A: 教師強制の1ステップ先予測では遅延線と ESN に差が出ない",
-                "Experiment 4-A: with teacher forcing the delay line and the ESN"
-                " are indistinguishable",
-            )
+    )
+    axis.set_ylabel(
+        style.label(
+            f"NRMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
+            f"NRMSE (test split, mean +- s.d. of {n_replicates} replicates)",
         )
-        conditions = f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}"
-        add_provenance(figure, conditions, rows, style=style)
-        return _save(figure, path)
+    )
+    axis.legend(loc="best", fontsize=8)
 
 
 def plot_freerun_attractor(
-    rows: Sequence[FreeRunProfileRow], path: Path, *, style: StyleContext
+    rows: Sequence[FreeRunProfileRow],
+    path: Path,
+    *,
+    onestep_rows: Sequence[ResultRow],
+    style: StyleContext,
 ) -> Path:
-    """**記事の主図**: 自走軌道と真の軌道の位相図の重ね描き。
+    """**記事の主図**: 自走軌道と真の軌道の位相図 + 4-A のスカラー比較。
 
     Lorenz は (x, z) 平面、1変数系は遅延座標埋め込み (遅延は真の軌道の自己
     相関から決めた1個を両者に使う)。図は ``freerun_profile.csv`` の行だけを
     読み、軌道を作り直さない。
 
+    最後のパネルに 4-A (教師強制の1ステップ先) を同居させる (FIG-12)。
+    **かつては単独の figure だったが、点が 6 個しかなく面積の9割が空白だった。**
+    「教師強制では差が出ない」と「自走にすると差が出る」は一つの主張の表と裏で、
+    並べて初めて対比になる。
+
+    Args:
+        rows: ``freerun_profile.csv`` と同じ行。
+        path: 出力先の PNG。
+        onestep_rows: ``onestep.csv`` と同じ行 (最後のパネルに使う)。
+        style: 配色・言語・commit。
+
+    Returns:
+        書き出した PNG のパス。
+
     Raises:
-        ValueError: 位相図の行が1つも無い場合。
+        ValueError: 位相図の行が1つも無い場合、``onestep_rows`` が空の場合。
     """
     tasks = tasks_of(rows)
     if not tasks:
         raise ValueError("profile 行が空です")
+    require_rows(onestep_rows)
     with rc_context_for(style):
-        figure = _new_figure(5.4 * len(tasks), 5.0)
-        axes = np.atleast_1d(figure.subplots(1, len(tasks)))
+        # パネルが1つ増えるぶん幅も増やす。1枚あたりの幅を保たないと
+        # 位相図が潰れ、蝶形が読めなくなる (FIG-13 の上限 3.2:1 には収まる)。
+        figure = _new_figure(5.0 * (len(tasks) + 1), 5.4)
+        axes = np.atleast_1d(figure.subplots(1, len(tasks) + 1))
         drawn = 0
-        for axis, task in zip(axes, tasks, strict=True):
+        for axis, task in zip(axes[: len(tasks)], tasks, strict=True):
             for source in (SOURCE_TRUTH, SOURCE_FREERUN):
                 points = profile_points(rows, task, KIND_PHASE, source)
                 if points.shape[0] == 0:
@@ -235,14 +248,22 @@ def plot_freerun_attractor(
             axis.legend(loc="best", fontsize=8)
         if drawn == 0:
             raise ValueError("位相図に描く点がありません")
+        _draw_onestep_panel(axes[len(tasks)], onestep_rows, style)
         figure.suptitle(
             style.label(
-                "実験 4-B: 入力を切っても ESN の自走軌道は真のアトラクタの形を保つ",
-                "Experiment 4-B: with the input switched off the ESN free run"
-                " keeps the shape of the true attractor",
+                "実験 4-A / 4-B: 教師強制では遅延線と ESN に差が出ないが、"
+                "入力を切ると ESN だけがアトラクタの形を保つ",
+                "Experiments 4-A / 4-B: teacher forcing leaves the delay line"
+                " and the ESN indistinguishable, but with the input switched"
+                " off only the ESN keeps the shape of the attractor",
             )
         )
-        conditions = f"tasks = {'/'.join(tasks)}"
+        # 位相図はレプリケート0の1本、4-A のパネルは全レプリケートの平均である。
+        # ``rows`` だけを渡すと脚注が「1 rep」になり、右のパネルを取り違える。
+        onestep_replicates = len({row.replicate for row in onestep_rows})
+        conditions = (
+            f"tasks = {'/'.join(tasks)}, 4-A panel = {onestep_replicates} replicates"
+        )
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 
@@ -378,126 +399,6 @@ def _valid_time_panel(
         axis.legend(handles[:1], labels[:1], loc="best", fontsize=8)
 
 
-def plot_stability_map(
-    rows: Sequence[StabilityRow],
-    capacity_rows: Sequence[CapacityRow],
-    path: Path,
-    *,
-    style: StyleContext,
-) -> Path:
-    """実験 4-C: (rho x リーク率) の3態マップ + 4-D の容量との関係。
-
-    ノイズ量ごとにパネルを並べ、格子点の色が3態を表す (レプリケートは多数決、
-    ``regime_map``)。**分類は行の値そのもの**であり、図から決めていない
-    (仕様 §5 禁止する構造6)。最後のパネルは 4-D: 同じ条件で測った
-    ``mc_total`` と有効予測時間の関係を3態で色分けする。
-
-    Raises:
-        ValueError: ``rows`` が空の場合。
-    """
-    require_rows(rows)
-    noises = sorted({row.state_noise for row in rows})
-    with rc_context_for(style):
-        figure = _new_figure(3.4 * (len(noises) + 1) + 1.0, 4.2)
-        axes = np.atleast_1d(figure.subplots(1, len(noises) + 1))
-        for axis, noise in zip(axes[:-1], noises, strict=True):
-            _regime_panel(axis, rows, noise, style)
-        _capacity_panel(axes[-1], rows, capacity_rows, style)
-        handles = [
-            matplotlib.lines.Line2D(
-                [],
-                [],
-                marker="s",
-                linestyle="none",
-                color=REGIME_COLORS[regime],
-                label=label_of(REGIME_LABELS, regime, style),
-            )
-            for regime in REGIMES
-        ]
-        figure.legend(
-            handles=handles,
-            loc="outside lower center",
-            ncols=len(REGIMES),
-            fontsize=9,
-        )
-        figure.suptitle(
-            style.label(
-                "実験 4-C / 4-D: アトラクタを再現できる領域は"
-                "状態ノイズ 0.01 までほとんど動かない",
-                "Experiments 4-C / 4-D: the region that reproduces the attractor"
-                " barely moves up to a state noise of 0.01",
-            )
-        )
-        conditions = f"N = {rows[0].n_units}, stats = {rows[0].stats_steps} steps"
-        add_provenance(figure, conditions, rows, style=style)
-        return _save(figure, path)
-
-
-def _regime_panel(
-    axis: Axes, rows: Sequence[StabilityRow], noise: float, style: StyleContext
-) -> None:
-    """状態ノイズ 1 点ぶんの3態マップ (格子点を色で塗る)。"""
-    mapping = regime_map(rows, noise)
-    rhos = sorted({key[0] for key in mapping})
-    leaks = sorted({key[1] for key in mapping})
-    for (rho, leak), regime in mapping.items():
-        axis.scatter(
-            [rho],
-            [leak],
-            s=420,
-            marker="s",
-            color=REGIME_COLORS[regime],
-            edgecolors="white",
-        )
-    axis.set_xticks(rhos)
-    axis.set_yticks(leaks)
-    axis.set_xlim(min(rhos) - 0.15, max(rhos) + 0.15)
-    axis.set_ylim(min(leaks) - 0.12, max(leaks) + 0.12)
-    axis.set_xlabel(style.label("スペクトル半径 rho", "spectral radius rho"))
-    axis.set_ylabel(style.label("リーク率", "leak rate"))
-    axis.set_title(
-        style.label(f"状態ノイズ = {noise:g}", f"state noise = {noise:g}"), fontsize=10
-    )
-
-
-def _capacity_panel(
-    axis: Axes,
-    rows: Sequence[StabilityRow],
-    capacity_rows: Sequence[CapacityRow],
-    style: StyleContext,
-) -> None:
-    """4-D: ``mc_total`` と有効予測時間の関係 (条件キーで join する)。"""
-    keyed = {
-        (row.rho, row.leak_rate, row.state_noise, row.replicate): row
-        for row in capacity_rows
-    }
-    for regime in REGIMES:
-        xs: list[float] = []
-        ys: list[float] = []
-        for row in rows:
-            if row.regime != regime:
-                continue
-            capacity = keyed.get(
-                (row.rho, row.leak_rate, row.state_noise, row.replicate)
-            )
-            if capacity is None:
-                continue
-            xs.append(capacity.mc_total)
-            ys.append(row.valid_time_lyapunov)
-        if xs:
-            axis.scatter(xs, ys, s=26, alpha=0.75, color=REGIME_COLORS[regime])
-    axis.set_xlabel(style.label("線形メモリ容量 MC", "linear memory capacity MC"))
-    axis.set_ylabel(
-        style.label("有効予測時間 [Lyapunov 時間]", "valid time [1 / lambda_max]")
-    )
-    axis.set_title(
-        style.label(
-            "4-D: 同じ状態行列で測った容量", "4-D: capacity on the same states"
-        ),
-        fontsize=10,
-    )
-
-
 def plot_freerun_stats(
     rows: Sequence[FreeRunProfileRow], path: Path, *, style: StyleContext
 ) -> Path:
@@ -574,8 +475,6 @@ __all__ = [
     "TASK_LABELS",
     "plot_freerun_attractor",
     "plot_freerun_stats",
-    "plot_onestep",
-    "plot_stability_map",
     "plot_valid_time",
     "profile_points",
 ]

@@ -109,7 +109,9 @@ def test_savefig_dpi_is_retina(tmp_path: Path) -> None:
     """
     assert SAVEFIG_DPI >= RETINA_DPI
     context = setup_style()
-    path = figures.plot_comparison(_rows(), tmp_path / "dpi.png", style=context)
+    path = figures.plot_comparison(
+        _rows(), tmp_path / "dpi.png", style=context, **_comparison_extras()
+    )
     assert png_dpi(path) >= RETINA_DPI
 
 
@@ -117,6 +119,38 @@ def test_label_requires_both_languages() -> None:
     """英語ラベルの書き忘れは静かに通さない。"""
     with pytest.raises(ValueError, match="ja / en"):
         label("日本語だけ", "", cjk=False)
+
+
+def _comparison_extras() -> dict[str, object]:
+    """``plot_comparison`` の追加パネル (FIG-12) に渡す最小の入力。
+
+    01 の主図は波形と自走 (01') を**同じ figure のパネル**として持つように
+    なった。**1箇所にまとめる** —— 呼び出しごとに書くと、パネルが増えたときに
+    テストだけが取り残される。
+    """
+    import numpy as np
+
+    from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
+
+    truth = np.linspace(0.0, 1.0, 8)
+    return {
+        "waveform": (truth, {"esn": truth * 0.99}),
+        "horizon_rows": tuple(
+            HorizonRow(
+                task="mackey_glass",
+                method="esn",
+                replicate=index,
+                n_units=200,
+                horizon=HORIZON_STEPS,
+                nrmse_horizon=0.006,
+                log10_nrmse_horizon=-2.2 + 0.1 * index,
+                nrmse_mean_to_horizon=0.004,
+                diverged=False,
+                wall_time_s=0.1,
+            )
+            for index in range(3)
+        ),
+    }
 
 
 def _rows() -> tuple[ResultRow, ...]:
@@ -170,7 +204,10 @@ def test_figures_are_written_at_retina_resolution(tmp_path: Path) -> None:
     """図2枚が実際に書き出され、PNG の実測 dpi が 200 以上 (受け入れ条件5)。"""
     context = setup_style()
     comparison = figures.plot_comparison(
-        _rows(), tmp_path / "fig_comparison.png", style=context
+        _rows(),
+        tmp_path / "fig_comparison.png",
+        style=context,
+        **_comparison_extras(),
     )
     state_space = figures.plot_state_space(
         [_report("mackey_glass"), _report("delay_parity")],
@@ -190,7 +227,9 @@ def test_figures_render_without_cjk_font(
     _no_fonts(monkeypatch)
     context = setup_style()
     assert context.cjk_available is False
-    figures.plot_comparison(_rows(), tmp_path / "a.png", style=context)
+    figures.plot_comparison(
+        _rows(), tmp_path / "a.png", style=context, **_comparison_extras()
+    )
     figures.plot_state_space(
         [_report("mackey_glass")], tmp_path / "b.png", style=context
     )
@@ -209,4 +248,6 @@ def test_aggregate_nrmse_matches_manual_mean_and_std() -> None:
 
 def test_plot_comparison_rejects_empty_rows() -> None:
     with pytest.raises(ValueError, match="rows"):
-        figures.plot_comparison([], Path("unused.png"), style=StyleContext())
+        figures.plot_comparison(
+            [], Path("unused.png"), style=StyleContext(), **_comparison_extras()
+        )

@@ -400,7 +400,9 @@ def plot_ipc_profile(
     norm = PowerNorm(gamma=_HEATMAP_GAMMA, vmin=0.0, vmax=max(ceiling, _MIN_COLOR_MAX))
 
     with rc_context_for(style):
-        figure = _new_figure(3.4 * len(rhos) + 1.2, 3.6)
+        # **1段に並べない** (FIG-13)。ヒートマップを横一列にすると 3.84:1 に
+        # なり、各パネルの格子が読めなくなる。高さを取って上限内に収める。
+        figure = _new_figure(3.4 * len(rhos) + 1.2, 4.8)
         axes = figure.subplots(1, len(rhos), squeeze=False)
         meshes = [
             _plot_heatmap_panel(
