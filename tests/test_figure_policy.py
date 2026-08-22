@@ -53,6 +53,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting import (
     figures_anomaly,
     figures_capacity,
@@ -937,7 +938,14 @@ def test_the_waveform_selection_is_not_a_free_parameter() -> None:
     シグネチャを直接見る。
     """
     selection = dict(waveforms.selection_is_fixed())
-    assert selection == {"offset": 0, "steps": 300, "replicate": 0}, selection
+    assert selection == {
+        "offset": 0,
+        "steps": 300,
+        "replicate": 0,
+        # 課題ごとの長さも定数表である (D-107)。遅延パリティは 1 ステップごとに
+        # 反転するので 300 では塗り潰れ、01 の主張が図から読めなかった。
+        "delay_parity": 80,
+    }, selection
 
     for name in ("offset", "start", "window", "replicate", "steps"):
         parameters = inspect.signature(waveforms.plot_prediction_waveform).parameters
@@ -984,10 +992,13 @@ def _comparison_rows() -> tuple[ResultRow, ...]:
     )
 
 
-def _comparison_waveform() -> tuple[FloatArray, dict[str, FloatArray]]:
-    """波形パネルに足りる最小の (真値, 手法 -> 予測)。"""
+def _comparison_waveforms() -> tuple[WaveformPanel, ...]:
+    """波形パネル2枚 (01 は課題を2つ扱う) に足りる最小の入力。"""
     truth: FloatArray = np.linspace(0.0, 1.0, 16)
-    return truth, {"esn": truth * 0.99}
+    return tuple(
+        WaveformPanel(task=task, truth=truth, predictions={"esn": truth * 0.99})
+        for task in ("mackey_glass", "delay_parity")
+    )
 
 
 def _profile_rows_for_two_tasks() -> tuple[FreeRunProfileRow, ...]:
@@ -1058,14 +1069,14 @@ def test_sparse_scalar_figures_are_panels_not_standalone_figures(
     figures.plot_comparison(
         _comparison_rows(),
         tmp_path / "fig_comparison.png",
-        waveform=_comparison_waveform(),
+        waveforms=_comparison_waveforms(),
         horizon_rows=_horizon_rows(),
         style=CONTEXT,
     )
     assert captured, "01 の主図が保存されませんでした"
-    assert len(captured[0].axes) == 3, (
-        "01 の fig_comparison は 課題別の誤差 / 予測波形 / 自走 84 ステップ先 の"
-        f"3パネルであるべきです (実測 {len(captured[0].axes)})。"
+    assert len(captured[0].axes) == 4, (
+        "01 の fig_comparison は 課題別の誤差 / 波形2枚 / 自走 84 ステップ先 の"
+        f"4パネルであるべきです (実測 {len(captured[0].axes)})。"
         "単独の figure に戻すのは D-109 の取り消しです。"
     )
 

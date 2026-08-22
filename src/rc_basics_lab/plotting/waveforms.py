@@ -45,12 +45,36 @@ WAVEFORM_OFFSET = 0
 """
 
 WAVEFORM_STEPS = 300
-"""切り出す長さ [ステップ] (D-107)。
+"""切り出す長さの既定値 [ステップ] (D-107)。
 
 Mackey-Glass (Delta t = 1.0) で振動が数周見える長さ。
 **長さも定数**にするのは、短くすれば当たって見え、長くすれば外れて見える
 ためである。
 """
+
+WAVEFORM_STEPS_BY_TASK: dict[str, int] = {
+    # 1 ステップごとに +-1 が反転するので、300 だと線が塗り潰れる (実測)。
+    # 80 なら個々の反転が分離し、「線形と遅延線が 0 に張り付く」が読める。
+    "delay_parity": 80,
+}
+"""課題ごとの切り出し長 (D-107)。載っていない課題は ``WAVEFORM_STEPS``。
+
+**課題ごとに変えても「選べない」性質は保たれる** —— これは定数表であり、
+実行のたびに同じ窓が出る。呼び出し側が長さを指定する経路は作らない。
+"""
+
+
+def waveform_steps_for(task: str) -> int:
+    """課題の切り出し長を返す (D-107)。
+
+    Args:
+        task: 課題名。
+
+    Returns:
+        ``WAVEFORM_STEPS_BY_TASK`` の値、無ければ ``WAVEFORM_STEPS``。
+    """
+    return WAVEFORM_STEPS_BY_TASK.get(task, WAVEFORM_STEPS)
+
 
 WAVEFORM_REPLICATE = 0
 """波形に使うレプリケート (D-107)。**0 に固定する。**
@@ -182,19 +206,21 @@ def plot_prediction_waveform(
         return save_png(figure, path)
 
 
-def slice_window(values: FloatArray, start: int) -> FloatArray:
+def slice_window(values: FloatArray, start: int, task: str = "") -> FloatArray:
     """テスト区間から**固定の窓**を切り出す (D-107)。
 
     Args:
         values: 系列全体。
         start: テスト区間の先頭 index。
+        task: 課題名。長さの決定にだけ使う (``WAVEFORM_STEPS_BY_TASK``)。
+            **窓を選ぶ引数ではない** —— 同じ課題なら常に同じ窓になる。
 
     Returns:
         ``WAVEFORM_STEPS`` 行の切り出し (足りなければあるだけ)。
     """
     begin = start + WAVEFORM_OFFSET
     flat: FloatArray = np.asarray(values, dtype=np.float64).reshape(-1)
-    return flat[begin : begin + WAVEFORM_STEPS]
+    return flat[begin : begin + waveform_steps_for(task)]
 
 
 def selection_is_fixed() -> Sequence[tuple[str, int]]:
@@ -203,6 +229,9 @@ def selection_is_fixed() -> Sequence[tuple[str, int]]:
         ("offset", WAVEFORM_OFFSET),
         ("steps", WAVEFORM_STEPS),
         ("replicate", WAVEFORM_REPLICATE),
+        # 課題ごとの長さも定数である。ここに載せておかないと、
+        # 「既定は固定だが課題別は自由」という抜け道がガードの外に出る。
+        *sorted(WAVEFORM_STEPS_BY_TASK.items()),
     )
 
 
@@ -211,8 +240,10 @@ __all__ = [
     "WAVEFORM_OFFSET",
     "WAVEFORM_REPLICATE",
     "WAVEFORM_STEPS",
+    "WAVEFORM_STEPS_BY_TASK",
     "draw_prediction_waveform",
     "plot_prediction_waveform",
     "selection_is_fixed",
     "slice_window",
+    "waveform_steps_for",
 ]

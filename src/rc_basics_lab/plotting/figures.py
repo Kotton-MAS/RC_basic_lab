@@ -30,6 +30,7 @@ from rc_basics_lab.experiment.state_space import (
     StateSpaceReport,
 )
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
+from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
@@ -295,7 +296,7 @@ def plot_comparison(
     rows: Sequence[ResultRow],
     path: Path,
     *,
-    waveform: tuple[FloatArray, dict[str, FloatArray]],
+    waveforms: Sequence[WaveformPanel],
     horizon_rows: Sequence[HorizonRow],
     style: StyleContext,
 ) -> Path:
@@ -312,7 +313,8 @@ def plot_comparison(
     Args:
         rows: ``comparison.csv`` と同じ長形式の行。
         path: 出力先 PNG。
-        waveform: ``(真値, 手法 -> 予測)``。中央のパネルに使う。
+        waveforms: 課題ごとの波形パネル。**2 課題とも渡す** ——
+            片方だけだと「差が見えない側」しか載らない (FIG-11 追加図2)。
         horizon_rows: ``horizon.csv`` と同じ行。右のパネルに使う。
         style: ``setup_style()`` の戻り値 (ラベル言語の決定に使う)。
 
@@ -320,7 +322,7 @@ def plot_comparison(
         書き出した PNG のパス。
 
     Raises:
-        ValueError: ``rows`` が空の場合。
+        ValueError: ``rows`` が空、または ``waveforms`` が空の場合。
     """
     from rc_basics_lab.plotting.figures_horizon import (
         draw_horizon_panel,
@@ -330,28 +332,43 @@ def plot_comparison(
     from rc_basics_lab.plotting.waveforms import draw_prediction_waveform
 
     require_rows(rows)
+    if not waveforms:
+        raise ValueError("waveforms が空です (課題ごとに1枚必要です)")
     tasks = _unique(row.task for row in rows)
     methods = _unique(row.method for row in rows)
     stats = aggregate_nrmse(rows)
-    truth, predictions = waveform
 
     with rc_context_for(style):
-        # 幅は「スカラー : 波形 : 自走 = 1 : 1.6 : 1」。波形だけ広いのは、
-        # 横軸が 300 ステップあり、詰めると線が重なって読めなくなるため。
-        figure = _new_figure(16.0, 5.6)
-        axes = figure.subplots(1, 3, width_ratios=(1.0, 1.6, 1.0))
+        # **1段に並べない**。パネル4枚を横一列にすると 3.57 : 1 で D-108 の
+        # 上限を超える。2段に折ると 1.44 : 1 に収まる。
+        figure = _new_figure(13.0, 9.0)
+        axes = np.atleast_1d(figure.subplots(2, 2)).reshape(-1)
         _draw_scalar_panel(axes[0], tasks, methods, stats, style)
-        length = draw_prediction_waveform(axes[1], truth, predictions, style)
-        axes[1].set_title(
-            style.label(
-                f"予測がどう見えるか ({HORIZON_TASK_LABEL[0]})",
-                f"what the predictions look like ({HORIZON_TASK_LABEL[1]})",
+        # **課題ごとに長さが違う** (D-107)。最後のパネルの長さだけを脚注に
+        # 書くと、もう一方のパネルの条件を偽って書くことになる。
+        windows: list[str] = []
+        for index, panel in enumerate(waveforms):
+            axis = axes[1 + index]
+            length = draw_prediction_waveform(
+                axis, panel.truth, panel.predictions, style
             )
-        )
-        logs = draw_horizon_panel(axes[2], horizon_rows, style)
-        axes[2].set_title(
+            windows.append(
+                f"{panel.task} {WAVEFORM_OFFSET}..{WAVEFORM_OFFSET + length}"
+            )
+            label = _lookup(_TASK_LABELS, panel.task, style)
+            axis.set_title(
+                style.label(
+                    f"予測がどう見えるか: {label}",
+                    f"what the predictions look like: {label}",
+                )
+            )
+        logs = draw_horizon_panel(axes[1 + len(waveforms)], horizon_rows, style)
+        axes[1 + len(waveforms)].set_title(
             style.label("自走 84 ステップ先の誤差", "error 84 steps into the free run")
         )
+        # 余った枠は消す。空の軸を残すと「測ったが何も無かった」に見える。
+        for axis in axes[2 + len(waveforms) :]:
+            axis.set_axis_off()
         figure.suptitle(
             style.label(
                 "実験 1: 非線形な遅延パリティを解けるのは ESN だけ"
@@ -364,11 +381,11 @@ def plot_comparison(
         # 幅が軸を超えて隣のパネルへかぶった (実測: FIG-14 と同じ症状)。
         figure.supxlabel(
             style.label(
-                f"右: {horizon_headline(logs, style)}。"
+                f"自走のパネル: {horizon_headline(logs, style)}。"
                 f"{horizon_reference_note(style)}\n"
                 "注: 波形の区間もレプリケートも固定である (D-107)。"
                 "「よく当たっている区間」を選べる図にしない。",
-                f"Right: {horizon_headline(logs, style)}."
+                f"Free-run panel: {horizon_headline(logs, style)}."
                 f" {horizon_reference_note(style)}\n"
                 "Note: the waveform window and replicate are fixed (D-107)."
                 " The figure must not let anyone pick a favourable window.",
@@ -377,7 +394,7 @@ def plot_comparison(
         )
         conditions = (
             f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}, "
-            f"waveform steps = {WAVEFORM_OFFSET}..{WAVEFORM_OFFSET + length}"
+            f"waveform steps = {' / '.join(windows)}"
         )
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)

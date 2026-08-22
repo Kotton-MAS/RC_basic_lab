@@ -45,7 +45,10 @@ from rc_basics_lab.experiment.state_space import (
     summarize,
 )
 from rc_basics_lab.experiment.summary import aggregate_nrmse
-from rc_basics_lab.experiment.waveform_data import waveform_predictions
+from rc_basics_lab.experiment.waveform_data import (
+    WaveformPanel,
+    waveform_predictions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,37 @@ def _plan_zero_by_task(config: ExperimentConfig) -> dict[str, ReplicatePlan]:
     }
 
 
+def _waveform_panels(
+    config: ExperimentConfig, plans0: dict[str, ReplicatePlan]
+) -> tuple[WaveformPanel, ...]:
+    """**両方の課題**の波形パネルを作る (FIG-11 追加図2)。
+
+    Mackey-Glass だけを載せていた時期があるが、それでは 01 の主張
+    (「非線形な遅延パリティを解けるのは ESN だけ」) が図に出ない ——
+    Mackey-Glass では3手法とも真値にほぼ重なるので、
+    **差が見えない側だけを見せていた**ことになる。
+
+    Args:
+        config: 01 の設定。
+        plans0: 課題名 -> レプリケート0の ``ReplicatePlan``。
+
+    Returns:
+        ``build_tasks`` の並び順の ``WaveformPanel`` (課題名だけを持つ)。
+
+    Raises:
+        KeyError: ``plans0`` に課題が無い場合。
+    """
+    panels = []
+    for entry in build_tasks(config):
+        truth, predictions = waveform_predictions(
+            config, plans0[entry.name], entry.name
+        )
+        panels.append(
+            WaveformPanel(task=entry.name, truth=truth, predictions=predictions)
+        )
+    return tuple(panels)
+
+
 def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs:
     """実験を実行し、CSV2枚・図2枚・meta.json を書き出す。
 
@@ -156,7 +190,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
         plot_comparison(
             rows,
             out_dir / FIG_COMPARISON,
-            waveform=waveform_predictions(config, plans0[HORIZON_TASK]),
+            waveforms=_waveform_panels(config, plans0),
             horizon_rows=horizon_rows,
             style=style,
         ),

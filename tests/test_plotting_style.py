@@ -30,6 +30,7 @@ from rc_basics_lab.experiment.state_space import (
     SpaceSummary,
     StateSpaceReport,
 )
+from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting import figures, style
 from rc_basics_lab.plotting.labels import label
 from rc_basics_lab.plotting.style import (
@@ -115,7 +116,7 @@ def test_savefig_dpi_is_retina(tmp_path: Path) -> None:
         _rows(),
         tmp_path / "dpi.png",
         style=context,
-        waveform=_waveform(),
+        waveforms=_waveforms(),
         horizon_rows=_horizon_rows(),
     )
     assert png_dpi(path) >= RETINA_DPI
@@ -127,10 +128,13 @@ def test_label_requires_both_languages() -> None:
         label("日本語だけ", "", cjk=False)
 
 
-def _waveform() -> tuple[FloatArray, dict[str, FloatArray]]:
-    """波形パネル (FIG-12) に渡す最小の (真値, 手法 -> 予測)。"""
+def _waveforms() -> tuple[WaveformPanel, ...]:
+    """波形パネル2枚 (FIG-11 追加図2) に渡す最小の入力。"""
     truth: FloatArray = np.linspace(0.0, 1.0, 8)
-    return truth, {"esn": truth * 0.99}
+    return tuple(
+        WaveformPanel(task=task, truth=truth, predictions={"esn": truth * 0.99})
+        for task in ("mackey_glass", "delay_parity")
+    )
 
 
 def _horizon_rows() -> tuple[HorizonRow, ...]:
@@ -211,7 +215,7 @@ def test_figures_are_written_at_retina_resolution(tmp_path: Path) -> None:
         _rows(),
         tmp_path / "fig_comparison.png",
         style=context,
-        waveform=_waveform(),
+        waveforms=_waveforms(),
         horizon_rows=_horizon_rows(),
     )
     state_space = figures.plot_state_space(
@@ -236,7 +240,7 @@ def test_figures_render_without_cjk_font(
         _rows(),
         tmp_path / "a.png",
         style=context,
-        waveform=_waveform(),
+        waveforms=_waveforms(),
         horizon_rows=_horizon_rows(),
     )
     figures.plot_state_space(
@@ -261,6 +265,6 @@ def test_plot_comparison_rejects_empty_rows() -> None:
             [],
             Path("unused.png"),
             style=StyleContext(),
-            waveform=_waveform(),
+            waveforms=_waveforms(),
             horizon_rows=_horizon_rows(),
         )
