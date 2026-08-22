@@ -703,8 +703,9 @@ def test_readme_claims_the_same_experiments_it_documents() -> None:
     documented = {
         match.group(1) for match in re.finditer(r"^## 実験(\d{2})", text, re.MULTILINE)
     }
-    # 01 は「3コマンドで再現する」の節が兼ねているので、節見出しが無くても実装済み。
-    documented.add("01")
+    # **例外は無い。** かつては 01 だけ節見出しが無く、ここで documented に
+    # 足して回避していた。読者から見ると 01 だけ他と違う探し方になるうえ、
+    # 例外を持つ guard は「例外を1つ足せば通る」形になる。
     claimed = re.search(r"記事(\d{2})〜(\d{2}) の全範囲", text)
     assert claimed, (
         "README 冒頭に「記事NN〜MM の全範囲を実装している」の記述がありません。"

@@ -77,6 +77,10 @@ from rc_basics_lab.experiment.runner import (
     plan_replicate,
 )
 from rc_basics_lab.experiment.split import make_split
+from rc_basics_lab.experiment.valid_time import (
+    LITERATURE_VPT_THRESHOLD,
+    VALID_TIME_THRESHOLD_GRID,
+)
 from rc_basics_lab.readout.design import ReservoirSpec, build_design_matrix
 from rc_basics_lab.readout.ridge import fit_ridge
 from rc_basics_lab.reservoir.esn import ESN
@@ -1029,3 +1033,29 @@ def test_committed_artifacts_match_the_declared_list() -> None:
         assert (CHAOS_RESULTS / name).exists(), name
     total = sum(path.stat().st_size for path in CHAOS_RESULTS.glob("*.csv"))
     assert total < 5 * 1024 * 1024, total
+
+
+def test_the_literature_vpt_threshold_is_in_the_sensitivity_grid() -> None:
+    """文献の VPT 定義に対応する閾値が感度格子に入っていること (D-101)。
+
+    RC のカオス予測で広く使われる有効予測時間 (VPT) は
+    **正規化二乗差**が 0.4 を超えるまでと定義される
+    (Platt et al. 2022, Neural Networks)。こちらの有効予測時間は
+    **NRMSE 比**が閾値を超えるまでである (D-43)。
+    同じ「0.4」でも別の量を測っているので、そのまま並べると
+    **定義の違いに気づかないまま比較したことになる**。
+
+    換算した点 (``sqrt(0.4)``) を格子に入れておくと、
+    ``meta.json`` の ``valid_time_sensitivity`` に必ず出るので、
+    文献と並べるときに使う列が存在する状態が保たれる。
+
+    実測 (本番、Lorenz / ESN / 10 レプリケート): こちらの閾値 0.4 では
+    中央値 4.83、文献の定義に対応する 0.632 では 5.26 [1/lambda_max]。
+    """
+    assert pytest.approx(math.sqrt(0.4)) == LITERATURE_VPT_THRESHOLD
+    assert LITERATURE_VPT_THRESHOLD in VALID_TIME_THRESHOLD_GRID, (
+        "文献の VPT 定義に対応する閾値が格子から外れています。"
+        "外すと、文献と並べるときに換算し忘れる経路が戻ります (D-101)。"
+    )
+    # 換算前の 0.4 と取り違えない (二乗の分だけ必ず大きい)
+    assert LITERATURE_VPT_THRESHOLD > 0.4
