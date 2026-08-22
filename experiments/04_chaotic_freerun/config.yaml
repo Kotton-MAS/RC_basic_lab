@@ -1,0 +1,155 @@
+# 実験04: カオス時系列の自由走行予測 (4-A / 4-B / 4-C / 4-D)
+#
+# 未知キーは ConfigError で即座に落ちる (D-09)。
+#
+# 実験ごとに設定クラスを分ける (D-13)。このファイルは Chaos04Config を埋める
+# もので、01 の ExperimentConfig / 02 の Esp02Config / 03 の Capacity03Config
+# とはローダ (load_config_as) だけを共有する。
+#
+# Lorenz のパラメータ (sigma, rho, beta) = (10, 28, 8/3) はここに書けない
+# (tasks/chaotic.py のモジュール定数、D-41)。値を変えると lambda_max の
+# 照合値 0.9056 の意味が失われるため。
+
+name: 04_chaotic_freerun
+
+# 01 の設定をまるごと内包する (Narma10Config.base と同じ形、D-31)。
+# 4-A は 01 の run_task をそのまま通すので、公平性の3決定 (D-04 / D-05 /
+# D-08) と MG の生成パラメータはここが単一の真実。
+base:
+  name: 04_chaotic_freerun_base
+  # 有効予測時間の分布をシード10本以上で出す (要件書 受け入れ条件2)。
+  # 4-A も同じレプリケート数で回して条件をそろえる。
+  n_replicates: 10
+  seeds:
+    reservoir: 0
+    task: 1
+    split: 2
+  split:
+    train_ratio: 0.5
+    val_ratio: 0.15
+    test_ratio: 0.35
+    washout: 200
+    max_start_offset: 200
+  ridge:
+    # alpha 格子は 01 と共有する単一キー (D-04)。
+    alpha_grid: [1.0e-08, 1.0e-07, 1.0e-06, 1.0e-05, 1.0e-04, 1.0e-03,
+                 1.0e-02, 1.0e-01, 1.0, 10.0, 100.0]
+    n_lags_grid: [1, 2, 4, 8, 16]
+  # 04 の MG 課題の生成パラメータ (標準化は mackey_glass.standardize_steps)。
+  mackey_glass:
+    tau: 17.0
+    beta: 0.2
+    gamma: 0.1
+    exponent: 10
+    rk4_step: 0.1
+    sample_interval: 10
+    integration_burn_in: 1000
+    length: 8000
+    horizon: 1
+  # 04 は遅延パリティを回さないが、base が 01 の設定をまるごと内包する以上
+  # セクションは在る (値は 01 の既定のまま。読む経路が無いので効かない)。
+  delay_parity:
+    n_bits: 2
+    delay: 1
+    length: 8000
+  # 04 が読む ESN セクションは esn_mackey_glass の1本 (CHAOS_ESN_SECTION)。
+  # 構造ハイパーパラメータは検証分割で選ばない (D-08)。state_noise は 4-C の
+  # 掃引軸なので、本番の基準点は 0 のまま置く。
+  esn_mackey_glass:
+    n_units: 200
+    spectral_radius: 0.9
+    leak_rate: 0.3
+    input_scale: 0.5
+    bias_scale: 0.1
+    density: 0.1
+    activation: tanh
+    state_noise: 0.0
+  esn_delay_parity:
+    n_units: 200
+    spectral_radius: 0.9
+    leak_rate: 1.0
+    input_scale: 1.0
+    bias_scale: 0.1
+    density: 0.1
+    activation: tanh
+    state_noise: 0.0
+
+lorenz:
+  # Delta t = rk4_step * sample_interval = 0.01 (T4 の較正で確定)。
+  # {5, 10, 25} を代表条件で測り、受け入れ条件1 (自走がアトラクタを再現) と
+  # 受け入れ条件3 (1ステップ先で ESN と遅延線の差が小さい) の**両方**が
+  # 成立するのは 5 だけだった (落選値の実測は docs/plans/rc-basics-04.md)。
+  rk4_step: 0.002
+  sample_interval: 5
+  integration_burn_in: 1000
+  length: 8000
+  horizon: 1
+  # 標準化係数を推定する先頭サンプル数 (D-41)。訓練区間の内側でなければ
+  # ならず、実験層が分割と突き合わせて ValueError にする。
+  standardize_steps: 3000
+
+mackey_glass:
+  standardize_steps: 3000
+
+freerun:
+  # 自走の切り替え点 (テスト区間の先頭からのオフセット)。
+  warmup_steps: 200
+  # 有効予測時間 (D-43) を測る区間。Delta t=0.01 なので 20 時間単位
+  # (約 18 Lyapunov 時間)。速くするために削らない (仕様 §10-1)。予算は
+  # 条件数の側で調整する。
+  free_run_steps: 2000
+  # 長時間統計 (D-46) に使う自走の総ステップ数 = 200 時間単位
+  # (約 183 Lyapunov 時間)。自走は1本だけ回し、先頭 free_run_steps を
+  # 有効予測時間に、全体をリターンマップ / スペクトルに使う。確保軸4。
+  stats_steps: 20000
+  # 有効予測時間の閾値 (NRMSE 比、D-43)。{0.2, 0.3, 0.4, 0.5} の感度は
+  # meta.json の valid_time_sensitivity に出る。
+  valid_time_threshold: 0.4
+
+# 実験 4-C (3態マップ) の掃引軸。格子の積 x n_replicates が確保軸5 で、
+# 条件を作る前に experiment/stability.py の _MAX_CONDITIONS が検査する。
+stability:
+  spectral_radius_grid: [0.7, 0.9, 1.1, 1.3]
+  leak_rate_grid: [0.1, 0.3, 0.6, 1.0]
+  # ノイズ注入は状態への加算のみ (仕様 §8)。**これを変えると3態マップが
+  # 変わる**ことが受け入れ条件4 の核心。
+  state_noise_grid: [0.0, 1.0e-4, 1.0e-3, 1.0e-2]
+  # 予算超過時に落としてよいのはこの値だけ (仕様 §5)。
+  n_replicates: 5
+  # 4-D のしきい値サロゲート用 (D-27 / D-37)。全条件で1個を共有する。
+  surrogate_seed: 4
+
+lyapunov:
+  estimator:
+    method: perturbation
+    delta: 1.0e-08
+    renorm_interval: 10
+    max_growth: 1000.0
+    check_propagator: true
+    propagator_tol: 1.0e-10
+  # 文献値 (Viswanath 1998)。**照合にのみ使う**。正本は数値推定 (D-42)。
+  reference_value: 0.9056
+  reference_rel_tol: 0.05
+
+# 4-D の委譲先。04 で新しい上限を作らず、03 で置いた D-34 の4段の上限を
+# そのまま使う (確保軸8)。
+mc:
+  max_delay: 400
+  alpha: 1.0e-09
+  threshold_mode: surrogate
+  n_surrogates: 100
+  surrogate_quantile: 0.99
+  chunk_size: 256
+ipc:
+  max_delay_by_degree: [60, 20, 10, 6]
+  max_variables: 3
+  basis: legendre
+  input_distribution: uniform
+  alpha: 1.0e-09
+  threshold_mode: surrogate
+  n_surrogates: 100
+  n_surrogate_targets: 4
+  surrogate_quantile: 0.99
+  chunk_size: 256
+  max_targets: 200000
+  max_degrees: 20

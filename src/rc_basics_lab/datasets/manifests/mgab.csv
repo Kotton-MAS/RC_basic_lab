@@ -1,0 +1,21 @@
+# dataset: MGAB (Mackey-Glass Anomaly Benchmark)
+# license: CC0-1.0
+# source: https://raw.githubusercontent.com/MarkusThill/MGAB/master/{series}.csv
+# repository: https://github.com/MarkusThill/MGAB
+# doi: https://doi.org/10.5281/zenodo.3760086
+# citation: Markus Thill, Wolfgang Konen, Thomas Baeck, "MGAB: The Mackey-Glass Anomaly Benchmark" (2020), Zenodo, doi:10.5281/zenodo.3760086
+# redistribution: CC0-1.0 なので再配布可能だが、data/ は .gitignore 済みでリポジトリには含めない (D-58)
+# columns: index,value,is_anomaly,is_ignored (先頭列は無名のインデックス列)
+# retrieved: 2026-08-20
+# note: 10系列すべて 100,000 点 / 異常 4,010 点 / 異常区間 10 個 / is_ignored 257 点 (実測)
+series,relative_path,sha256,n_points,n_anomaly_points,n_anomaly_segments,anomaly_rate,n_ignored
+1,mgab/1.csv,4a56c6e74aec4df0397bbf3c1fae6b05f08994a7f418a851f1f8122753f5665e,100000,4010,10,0.0401,257
+2,mgab/2.csv,fb3f857d0df238e391c6ba8aae95ef8bb1ca0e7cae159a4479418c85bb263f8f,100000,4010,10,0.0401,257
+3,mgab/3.csv,ea254a33d05bb3f68f06086b1446ba264f6204feacabbb1b1020ea871787b008,100000,4010,10,0.0401,257
+4,mgab/4.csv,83351053cf6245047b7ccd8e791c158138a57f067d809c4124c3058aa45e27b2,100000,4010,10,0.0401,257
+5,mgab/5.csv,02621f7d1faf60a4854606036b07dd94a88621c88e7eec253708b70884ea141a,100000,4010,10,0.0401,257
+6,mgab/6.csv,c1a80d733a06c435602403ae9c448fd4fcd7de86e3da291937cda085f4c092c8,100000,4010,10,0.0401,257
+7,mgab/7.csv,c2259bc635fe1cf881ef42be77d5c3e4c5caa4b01a1f4abc8c45365681f23dfd,100000,4010,10,0.0401,257
+8,mgab/8.csv,0c1cfbda4d5e56dfdb0309089e0e347bddca654423dd1e05c92d1ee2bcb3836a,100000,4010,10,0.0401,257
+9,mgab/9.csv,1c72ce0d9a3499e8cc31cc72ea9f5cfd429488e3a7fc0d62ea20c303fa27fc76,100000,4010,10,0.0401,257
+10,mgab/10.csv,497ccae3b3cd9e77f5bb705ea3d3c2ffc9b09c737bcd0b58adcaeba3fa7bc857,100000,4010,10,0.0401,257

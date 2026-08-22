@@ -1,0 +1,607 @@
+# 意図的な設計判断 (rc-basics-lab)
+#
+# 正本は散文ではなくこのファイル。各決定には、壊れた瞬間に落ちるテスト
+# (guard_test) を必ず紐づける。背景説明は docs/design.md を参照。
+#
+# 検証: python3 ~/.claude/scripts/check_decisions.py .claude/decisions.yaml
+#
+# 由来: docs/plans/rc-basics-01.md §6 (D-01〜D-10)。
+# guard_test は実在するテストしか書けないため、T3〜T5 で実装されるテストに
+# 紐づく決定は、該当タスクの担当者が実装と同時にここへ追記する。
+# サイクル1 (T1〜T5) の10件がそろった。
+#
+# サイクル2 (docs/plans/rc-basics-02.md §6) で D-13〜D-22 を追記した。
+# rule / rationale は仕様書の草案そのままではなく、**T1〜T4 が実装に合わせて
+# 訂正した版**が正本である (特に D-19 の補償式)。背景と実測値は
+# docs/design.md §9 を参照。
+
+- id: D-01
+  rule: "診断関数の署名は f(X, u=None, y=None, *, ctx: DiagnosticContext|None) に固定し、拡張は DiagnosticContext への既定値つきフィールド追加のみで行う。DiagnosticContext が持つのはデータの素性 (washout / dt / seed / companion_states) のみとし、診断固有のパラメータはパラメータ化した callable (frozen dataclass の __call__) の構築時に渡す"
+  rationale: "要件_01 設計判断1。02 の ESP は2軌道、03 の IPC はサロゲート用シード、04 は dt を要するが、これらを位置引数にすると診断ごとに署名が割れて memristor-rc-lab への移植性が失われる。ctx.companion_states / ctx.dt / ctx.seed に逃がせば 02〜05 の全診断が署名変更なしで乗る。F-1-006: 『拡張は DiagnosticContext への既定値つきフィールド追加のみ』という文言だけだと、診断固有のパラメータまで ctx に押し込む読み方を誘発する。DiagnosticContext は既に dt (04専用) / seed (03専用) / companion_states (02専用) を持ち、05 まで進むと全診断の設定の union になって『どの診断がどのフィールドを読むか』が型から分からなくなる。実例として要件_02 設計判断3 (ESP判定の閾値と窓は設定可能にする) や要件_03 (IPC のサロゲート本数・最大遅延/次数) のパラメータをどこに置くかが、このルールのままでは決まらない。Diagnostic は __call__ を持つ Protocol なので、frozen dataclass の __call__ として書けば署名を変えずに固有パラメータを構築時に渡せる (例: StatePca(cumulative_threshold=0.9))"
+  guard_test: "tests/test_diagnostics_base.py::test_all_diagnostics_conform_to_d01_signature_contract"
+
+- id: D-02
+  rule: "誤差指標は NRMSE = RMSE / std(y_true) (ddof=0) に統一する。範囲正規化 (max-min) は使わない"
+  rationale: "要件_01 未確定3。NRMSE=1 が『平均予測と同等』を意味するため、遅延パリティで線形手法が失敗したことを解釈可能な形で示せる (範囲正規化では 1 に意味が無い)。CSV には nmse を併記し 03 の先行研究比較に備える"
+  guard_test: "tests/test_metrics.py::test_nrmse_of_mean_predictor_is_one"
+
+- id: D-03
+  rule: "リッジ回帰はバイアス列を正則化しない (罰則行列 D = diag(0,1,1,...))"
+  rationale: "バイアスを縮めると目標の平均がずれ、NRMSE=1 という基準線の意味が壊れる。D-02 の解釈性が前提とする性質であり、実装の簡略化で潰されやすい"
+  guard_test: "tests/test_ridge.py::test_bias_column_is_not_penalized"
+
+- id: D-04
+  rule: "ridge alpha の探索格子は YAML の単一キー ridge.alpha_grid に集約し、全手法・全タスクが同一格子を読む。手法別の alpha 格子キーは ConfigError とする。alpha は (手法, タスク, レプリケート) ごとに検証分割で最良化する"
+  rationale: "要件_01 設計判断3。esn-vla-uq §11 の教訓 —— alpha を固定すると手法比較で逆の結論が出うる。『格子は揃え、条件ごとに最良化する』が連載全体の規律であり、これが崩れると 01〜05 の全比較が無効になる"
+  guard_test: "tests/test_experiment_fairness.py::test_alpha_grid_is_shared_across_methods"
+
+- id: D-05
+  rule: "1レプリケート内では全手法が完全に同一の行 index で学習・評価する。t0 = max(全手法の first_valid, washout) を単一の基準点にする"
+  rationale: "遅延線は先頭 n_lags 行を失うため、素直に実装すると手法ごとに評価行が変わり比較が無効になる。要件_01 受け入れ条件1 の『同一分割』の実体はこれ"
+  guard_test: "tests/test_experiment_fairness.py::test_all_methods_share_identical_rows"
+
+- id: D-06
+  rule: "乱数はリザバー生成 / タスク生成 / 分割の3ストリームに SeedSequence の spawn_key で分離し、1ストリームの変更が他ストリームの乱数列に影響しない"
+  rationale: "要件_01 設計判断4。単一 Generator を共有すると『リザバーだけ変えたときの分散』が測れず、受け入れ条件3 の平均±標準偏差の意味が曖昧になる。split ストリームは系列内の開始オフセット選択に実配線し、未使用パラメータを作らない"
+  guard_test: "tests/test_seeds.py::test_streams_are_independent"
+
+- id: D-07
+  rule: "遅延パリティの既定は n_bits=2, delay=1、入力は ±1 の i.i.d.、目標は該当ラグの積 (y[t] = u[t-1]*u[t-2])"
+  rationale: "要件_01 未確定2・受け入れ条件2。この符号化では目標が {1, u[t-k]} の張る線形空間に厳密に直交するため、線形回帰と遅延線の失敗が finite-sample の偶然ではなく解析的に保証される。遅延線も失敗する点が『最も安い対照は遅延線』(記事01 §6) に対する最も鮮明な実演になる。n_bits/delay は掃引軸として YAML 化し、n_bits=3, delay=2 を副条件として併記する"
+  guard_test: "tests/test_tasks_parity.py::test_target_is_orthogonal_to_lagged_inputs"
+
+- id: D-08
+  rule: "ESN の構造ハイパーパラメータ (N, rho, leak, input_scale, density) は文献既定値に固定し、検証分割で調整しない。検証で選ぶのは alpha (全手法) と遅延線の n_lags のみ"
+  rationale: "要件_01 スコープ『網羅探索はやらない・探索予算を揃えることを優先』。結果として探索予算は対照 (遅延線: alpha x n_lags) の方が ESN (alpha のみ) より大きく、非対称性は ESN に不利な側へ倒れる。Goudarzi 2014 が ESN 側だけ最適化して逆の非対称性を作った (survey Q2) のと反対の立場を明示的に取る"
+  guard_test: "tests/test_experiment_fairness.py::test_esn_hyperparameters_are_not_validation_selected"
+
+- id: D-09
+  rule: "実験設定 YAML の未知キーは ConfigError で即座に失敗させる (寛容な読み飛ばしをしない)"
+  rationale: "本サイクルで十数個のパラメータを新設するため、キーのタイプミスが黙って無視されると『設定したのに効いていない』が発生し、実験結果が丸ごと無意味になる。この失敗は LLM レビューでは確率的にしか見つからない"
+  guard_test: "tests/test_config.py::test_unknown_key_raises"
+
+- id: D-10
+  rule: "日本語フォント対応に新規依存 (japanize-matplotlib 等) を追加せず、実行時に CJK フォント (Hiragino Sans / Noto Sans CJK JP / IPAexGothic / Yu Gothic) を matplotlib.font_manager から探索し、見つからない場合はフォント設定ではなく**ラベル文字列ごと**英語にフォールバックする"
+  rationale: "要件_01 制約『依存は最小構成を維持』と『図は日本語フォント対応』の両立。フォント設定だけをフォールバックすると CI 上で豆腐文字の図が『正常に』生成され、生成の成否では検出できない壊れ方をする。記事用の図はローカル (CJK あり) で生成し、CI は生成の成否のみ検証する"
+  guard_test: "tests/test_plotting_style.py::test_labels_fall_back_to_english_without_cjk_font"
+
+- id: D-11
+  rule: "alpha 格子の下端 1.0e-10 は数値条件数による限界であり、恣意的な打ち切りではない。Mackey-Glass では検証 NRMSE が alpha に対して単調増加で内点解が存在しないため、格子下端が選ばれることは探索の失敗ではなく期待される挙動として扱う (下端が選ばれたことを理由に格子をさらに下へ延ばさない)"
+  rationale: "実測 (レプリケート0・遅延線 k=64): 検証 NRMSE は alpha=1e-10 の 5.292627e-04 から alpha=100 の 2.467684e-01 まで単調増加で、最適は alpha->0 (OLS) 側にある。ESN N=200 も同形 (8.171786e-04 -> 2.044276e-01)。下端をこれ以上下げられないのは数値限界のため —— cond(Phi^T Phi) は遅延線 k=64 で 2.0e16、ESN N=200 で 8.0e18 に達し、alpha <= 1.0e-11 では fit_ridge の scipy.linalg.solve(assume_a='pos') が LinAlgError (singular matrix) で落ちる。「格子端が選ばれている = 探索予算が足りない」という一般則 (D-04/D-08 の規律の背景にある考え方) をこの実験に機械的に適用すると誤診になる、というのがこの決定の要点。LinAlgError の出方は BLAS/LAPACK 実装に依存するため guard_test では主張せず、単調性 (= 下端が最良) を固定する"
+  guard_test: "tests/test_alpha_grid_lower_bound.py::test_mackey_glass_validation_nrmse_is_monotone_in_alpha"
+
+- id: D-12
+  rule: "diagnostics/ 配下は rc_basics_lab.types 以外の自作モジュール (特に config / reservoir) を import しない。診断の設定 dataclass は diagnostics/ 側に定義し、YAML 配線が要るときは config.py 側から diagnostics の設定 dataclass を import する (config → diagnostics の向きのみ許可、逆向きは禁止)"
+  rationale: "『diagnostics/ は reservoir に依存しない』が 02〜05・memristor-rc-lab への移植性の前提だが、これまで docstring 3か所 (diagnostics/__init__.py / diagnostics/base.py / conventions.md) の散文にしかなく正本が無かった。実測: `uv run python -c \"import importlib,sys; importlib.import_module('rc_basics_lab.config'); print(sorted(k for k in sys.modules if k.startswith('rc_basics_lab.reservoir')))\"` は ['rc_basics_lab.reservoir', 'rc_basics_lab.reservoir.esn'] を返す。config.py が reservoir.esn.ESNConfig を import しているため、tasks/ の前例 (自分の設定 dataclass を config.py から import する) を diagnostics/ が真似ると reservoir が推移的に引き込まれる"
+  guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config"
+
+- id: D-13
+  rule: "実験ごとに設定 dataclass を分ける。02 の設定は Esp02Config に置き、ExperimentConfig (01 専用) には1フィールドも足さない。ローダは load_config_as(path, cls) で共有する"
+  rationale: "test_each_parameter_changes_output は『全フィールドが 01 のパイプライン出力を変える』ことを要求する。02 用フィールドを相乗りさせると満たせないフィールドが必ず生まれ、逃がすために例外チャネルを増やすと配線漏れの検出力そのものが落ちる (このテストは本リポジトリ最大の失敗モード『設定したのに効いていない』への唯一の防衛線)。設定を分ければ 01 の被覆は無傷のまま 02 に同型の被覆を作れる。実装では各実験セクション (decay / timescale_sweep / esp_map) に ESNConfig を内包させず、掃引軸だけを平らに持たせた。ESNConfig を内包すると掃引軸である spectral_radius が『YAML から設定できるが実行時に上書きされる死んだフィールド』になり、この決定が防ごうとしている状態を自分で作ることになる。共通のリザバー構造 (input_scale / n_units / density / n_replicates) は Esp02Config.reservoir に1本だけ集約し、3セクションが別々に持って黙って条件が割れる経路を消した"
+  guard_test: "tests/test_config_wiring_esp.py::test_all_esp_config_fields_are_covered"
+
+- id: D-14
+  rule: "初期状態対の生成に4本目の乱数ストリーム SeedStream.PROBE を使う。01 の SeedConfig には probe を足さず、make_rng_for 経由で 02 の EspSeedConfig から渡す。_STREAM_INDEX[PROBE] は末尾の 3 とし、既存3本の index は動かさない"
+  rationale: "ESP 判定の頑健性は『同じ重み・同じ入力で初期状態対だけ振ったときに判定が変わらないか』で測るため、初期状態は reservoir / drive と独立に振れる必要がある。reservoir ストリームから引くと初期状態を変えた瞬間に重みも変わり、この検査が原理的に不可能になる。一方 01 の SeedConfig に probe を足すと D-13 と同じ理由で配線テストが破れる。index を末尾に足すのは、既存3本の spawn_key を動かすと 01 の成果物がバイト単位で再現しなくなるため (test_make_rng_for_matches_make_rng が固定)。make_rng(SeedConfig, PROBE) は ValueError にする —— 無い設定を黙って既定値で埋めるとこの決定が形骸化する"
+  guard_test: "tests/test_seeds.py::test_probe_stream_is_independent_of_seed_config_streams"
+
+- id: D-15
+  rule: "診断の設定値 (閾値・窓・摂動サイズ) は DiagnosticContext ではなく、既定値つきキーワード引数 cfg で渡す。DiagnosticContext には実行時データ (第2軌道・伝播器) だけを入れる"
+  rationale: "D-01 の拡張規約は『ctx への既定値つきフィールド追加』だが、02〜05 の全診断の設定を ctx に積むと、移植先が診断1本を使うために全診断の設定を知る羽目になる。cfg は既定値つきキーワード引数なので D-01 の guard は完全に維持される。境界は『系そのものを表すか (ctx) / 判定基準を表すか (cfg)』。設定 dataclass 自体は純データにし、値域検証は使う側の診断関数が行う (ESNConfig / SplitConfig と同じ流儀)"
+  guard_test: "tests/test_diagnostics_esp.py::test_esp_config_is_passed_as_defaulted_keyword"
+
+- id: D-16
+  rule: "ESP 判定の距離は RMS/ユニット距離 ||x_a - x_b|| / sqrt(N)。判定は『末尾 window ステップの中央値 <= max(abs_tol, rel_tol * d_initial)』。既定 abs_tol=1e-6, rel_tol=1e-3, window=200。複数ペアは最悪値 (d_tail は最大・d_initial は最小) で判定する。初期状態は両方とも U[-1,1]^N から独立に引き、片方をゼロ状態にしない"
+  rationale: "(1) sqrt(N) 正規化により閾値が N に依存せず、N の異なるメモリスタ配列へそのまま移植できる。(2) abs_tol=1e-6 は float64 の eps から十分離れ、初期距離 O(1) から6桁の収縮を要求するので描画の丸めに紛れない。(3) window=200 は 01 の washout と同じ桁。(4) 片方をゼロ状態にすると、無入力では 0 が不動点であるため『2軌道の分離』ではなく『単一軌道の原点への収束』を測ることになり ESP と別の量に化ける。(5) 最悪値の取り方をペアごとの判定の AND にしないのは、報告した d_initial / d_tail と converged が別のペアから来ることになり CSV の3列を見ても判定を再現できなくなるため (この取り方は AND より安全側)。既定値は結論を変えうるので docs/design.md §9 に abs_tol 3 x window 3 の感度表を残した (実測では9通りすべてで sigma_u 別の臨界 rho が1点も動かない)"
+  guard_test: "tests/test_diagnostics_esp.py::test_verdict_is_monotone_in_tolerance"
+
+- id: D-17
+  rule: "入力強度は駆動信号の標準偏差 sigma_u で定義する (振幅ではない)。一様分布では振幅 a = sqrt(3) sigma_u。掃引中 input_scale は固定し、変えるのは信号側だけ。CSV には sigma_u / input_amplitude / input_drive_std の3列を出す"
+  rationale: "要件_02 設計判断4。2-C の横軸が『振幅か分散か』で曖昧になると、記事の主張 (Scholarpedia の再実演) と数値の対応が取れない。標準偏差を主軸に取るのは分布形が変わっても比較可能で、Manjunath & Jaeger 2013 の定式化と同じ土俵に乗るため。振幅も併記するのは Scholarpedia の文言が振幅で書かれているため。input_scale を同時に動かすと『信号を強くした』のか『重みを大きくした』のか分離できなくなる。指定値 sigma_u と実測値 input_drive_std を両方出すのは、駆動生成の取り違えを CSV の2列の食い違いとして表に出すため"
+  guard_test: "tests/test_experiment_esp.py::test_input_strength_is_standard_deviation_not_amplitude"
+
+- id: D-18
+  rule: "条件付き Lyapunov 指数は摂動法で推定する。delta=1e-8 (RMS/ユニット)、再正規化間隔 1 ステップ、method='perturbation' 以外は ValueError。伝播器は ctx.propagator で受け取り、propagator(X[t], t) が X[t+1] に一致することを実行時に検査する (check_propagator 既定 true)"
+  rationale: "要件_02 未確定2・設計判断2。delta=1e-8 は sqrt(eps)=1.5e-8 近傍で、線形性からのずれと丸め誤差が釣り合う古典的な最適点。距離の定義 (D-16) と土俵をそろえるため delta も RMS/ユニットで解釈する (摂動ベクトルの L2 ノルムは delta*sqrt(N))。間隔1は分離が線形域を外れない最も安全な選択で、推定値が解析解と直接照合できる —— 実測では本番 2-C 格子 336 条件の max_observed_growth (1区間あたり成長率の最大) が最大 1.5372 / 中央値 1.0873 で、暴走検出の上限 max_growth=1000 に対して 650 倍の余裕がある (摂動は 1 ステップで 1 桁も成長しておらず線形域の内側にある)。method を文字列にしてあるのは解析 Jacobian 版の差し込み口であり、未実装の値を黙って受理しない。propagator の整合検査は『参照軌道と別の入力で伝播している』配線ミスを実行時に落とすためで、この種のミスは λ が「それらしい値」で出るためレビューでは見つからない (実測: u[t+1] を u[t] に差し替えると λ が -0.02 から +15 へ跳ね、検査を切らない限り全条件で ValueError になる)"
+  guard_test: "tests/test_diagnostics_esp.py::test_matches_analytic_exponent_for_linear_map"
+
+- id: D-19
+  rule: "washout 感度実験では、washout を増やしても訓練/検証/テストの行数が変わらないよう系列長を伸ばして補償する (pad_series=True が既定)。補償量は washout の差分ではなく t0 の差分 length = base_length + (t0(washout) - t0(min(grid))) とし、t0 は系列を作る前に readout.design.first_valid_for から予測する。補償なしは pad_series=False として残し対比に使う"
+  rationale: "make_split は n_usable = T - max_start_offset - t0 で行数を決めるため、washout を増やすと訓練データ量が同時に減る。素直に掃引すると『washout の効果』と『訓練データ量の効果』が交絡し、受け入れ条件5 が別の量の測定になる。この交絡は滑らかな単調曲線として出るため図を見ても気づけない (実測: 補償なしだと MG x ESN の NRMSE が washout に対して完全に単調増加し比 1.0115。補償を入れると単調性が消え比 1.0076 の非単調なノイズになる)。仕様草案の式 base_length + (max(grid) - washout) は符号が逆で、行数をそろえるどころか補償なしより差を広げる (変異注入で行数が 348/310/230/110 に割れることを実測)。補償量を washout の差分にしないのは t0 = max(washout, 各手法の first_valid) が飽和するためで、本番格子では遅延線の最大ラグ 64 により washout=0 と 50 がどちらも t0=64 になり、washout 差分での補償では washout=0 だけ行数がずれる (実測 228 対 230)"
+  guard_test: "tests/test_experiment_washout.py::test_washout_sweep_holds_training_size_constant"
+
+- id: D-20
+  rule: "λ の符号と ESP 判定の整合の要求は非対称にする。『λ>0 なのに収束 (偽の ESP)』は |λ|>0.01 の全条件で 0 件を要求し、『λ<0 なのに非収束』は許容して件数と sigma_u / rho の内訳を meta.json の verdict_lyapunov_agreement に残す。両者の完全一致は駆動が十分ある領域 (sigma_u >= 0.5) でのみ要求する。この非対称性を『揃っていないから』と対称化しない"
+  rationale: "条件付き Lyapunov 指数は参照軌道まわりの局所量なので多安定性を原理的に検出できない。tanh は奇関数なので x* が不動点なら -x* も不動点であり、各不動点は局所安定 (λ<0) でありながら初期状態によって行き先が割れる (= ESP 不成立)。実装者が rho=1.1, sigma_u=0, replicate=0 で4軌道の末尾を直接観測して確認済み —— 4本とも末尾200ステップの時間 s.d. が 6.4e-16 で不動点に到達しており、d(traj0,traj1)=1.2e-16 / d(traj0,traj3)=1.6e-16 に対して d(traj0,traj2)=5.3e-01、しかも ||x0* + x2*||/sqrt(N)=1.3e-16 で traj2 の行き先はちょうど -x0* である (奇対称の対の吸引子)。この条件の λ は -0.032 (局所安定) だが converged=0。対称な一致を要求すると、この実在の現象を実装バグとして潰すことになる。逆向き (λ>0 なのに収束) は理論上あり得ないので 0 件を厳格に要求し、伝播器のインデックスずれや閾値の緩みはそちらで落とす。本番格子の実測: 369 行中、境界近傍 37 件を除く 332 件で偽の ESP は 0 件、『λ<0 なのに非収束』は 27 件 (8.13%) で sigma_u <= 0.2 かつ rho in [1.1, 1.6] に完全に限局し、sigma_u >= 0.5 の 158 件は不一致 0 件"
+  guard_test: "tests/test_experiment_esp.py::test_lyapunov_sign_agrees_with_verdict_away_from_boundary"
+
+- id: D-21
+  rule: "02 の ESN は bias_scale=0 で構成し、無入力条件 (sigma_u=0) を真の無入力にする。比較軌道は n_pairs=10 本引く"
+  rationale: "(1) 定数バイアスは [1; u] の先頭成分に掛かる振幅一定の入力そのものであり、D-17 が入力強度を駆動信号の標準偏差で定義している以上その定義に入らない常時入力は 0 にする。実測: bias_scale=0.1 では無入力・rho=1.2 でも2軌道が収束し受け入れ条件1 が成立しない。(2) 無入力・rho>1 の ESN は +x* / -x* の対をなす吸引子を持つことがあり (D-20 参照)、比較軌道が k 本すべて参照軌道と同じ側へ落ちる確率が約 2^-k 残る。実測: n_pairs=3 では特定のリザバー draw (replicate 2) で rho=1.05〜1.5・無入力が『収束』と誤判定された。10 本 (偽陽性の上限 2^-10 未満) で全レプリケートが正しく非収束になり、rho<1 側の判定は変わらない (n_pairs=30 まで上げても偽陰性なし)。本番 wall time は 43.2s から 83.3s になるが予算 900s の 9%"
+  guard_test: "tests/test_experiment_esp.py::test_no_input_decay_matches_spectral_radius"
+
+- id: D-22
+  rule: "esp_convergence に渡す ctx の washout は 0 に固定する (experiment.esp.ESP_DISTANCE_WASHOUT)。drive.washout は λ と自己相関の ctx にだけ渡す。02 の esp.fit_skip の既定は 10 とし、診断側の既定 (DEFAULT_ESP, fit_skip=50) は変えない"
+  rationale: "esp_convergence で washout が効くのは減衰率の当てはめ開始位置だけで、判定 (末尾 window の中央値) には効かない。2-A は過渡そのものを見せる図であり、距離が floor に届く前に当てはめを始めないと減衰率が測れない。実測: 無入力 rho=0.5 の距離は t=46 付近で 1e-14 を割るため、当てはめ開始が washout(200)+fit_skip(50)=250 だと当てはめ点が 0 点になり decay_rate_per_step が nan になる (rho=0.8 も同様)。過渡を捨てるのは λ と自己相関の側の要求なので、同じ条件でも ctx を2つに分ける"
+  guard_test: "tests/test_experiment_esp.py::test_decay_fit_starts_before_the_distance_underflows"
+
+# サイクル 3a (docs/plans/rc-basics-03.md §6)。T1 で D-23 / D-24 / D-28 を、
+# T2 (IPC) で D-25 / D-26 / D-27 を追記した。D-24 / D-28 の guard_test は
+# T1 では暫定的に MC 側を指していたが、仕様 §6 の本来の指定どおり IPC 側へ
+# 差し替えた (MC 側の同等テストは残してあり、両方が回る)。
+
+- id: D-23
+  rule: "diagnostics/ は readout.ridge / readout.design を import してよい。config / reservoir は直接・推移のいずれでも禁止し、推移閉包で機械検査する"
+  rationale: "D-12 の文言は『types 以外の自作モジュールを import しない』だが guard は reservoir だけを見ていた。IPC は同一 X に対する多数目標の回帰であり、fit_ridge_from_gram (バイアス列を正則化しない D-03 の唯一の実装) を使わないと同じ閉形式解を2箇所に持つことになり D-03 が片方だけで崩れる。readout.ridge は metrics/types しか import しないため移植性の前提は保たれる。禁止対象に config を明示的に足すことで guard は現状より強くなる —— 実測: 検出フィルタに ['rc_basics_lab.config'] を与えると旧 guard は [] (見逃し)、新 guard は ['rc_basics_lab.config'] を返す。diagnostics/dummy.py に `from rc_basics_lab import config` を一時的に入れると新 guard は leaked=['rc_basics_lab.config', 'rc_basics_lab.reservoir', 'rc_basics_lab.reservoir.esn'] で落ちることも確認済み (確認後 revert)。D-12 の guard_test はこのテストの改名に追随させた (決定そのものは変えていない)"
+  guard_test: "tests/test_diagnostics_base.py::test_diagnostics_package_does_not_transitively_import_reservoir_or_config"
+
+- id: D-24
+  rule: "MC / IPC は全目標を同一の行集合で回帰する。行合わせの担い手は RowAlignment (t0 と n_samples だけを持つ値) 1つであり、(i) t0 = max(ctx.washout, その診断の最大遅延) の算出、(ii) t0 >= T の拒否、(iii) 遅延窓の切り出しの3つを、診断ごとに複製せずここ1箇所に置く。CapacityProblem は RowAlignment を内包し、構築時に行数の一致を検査する。行合わせの検査は状態行列を経由せずに書けること"
+  rationale: "遅延 k の目標は先頭 k 行が未定義なので、素直に書くと遅延が深いほど標本数が減り容量が系統的に下がる。これは『記憶が減衰している』という測りたい現象とまったく同じ向きに出るため図を見ても気づけない。01 の D-05 と同じ規律を容量測定の軸に適用する。guard_test は T2 で仕様 §6 の本来の指定 (IPC 側) へ差し替えた。IPC を正本にするのは、次数と遅延の2軸があり『次数 4 の目標だけ標本が減る』という MC には存在しない壊れ方まで含めて固定できるため。IPC 側は2つの向きから固定する: (1) washout を最大遅延未満で振っても heatmap が1ビットも変わらない (基準点が単一)、(2) u[t]=t の単調系列を使い、目標の行 j が状態の行 t0+j に、遅延 k の目標が u[t0+j-k] に対応することを値から逆算して確認する。MC 側の同等テスト (tests/test_diagnostics_memory_capacity.py::test_all_delays_share_identical_rows) は削除せず残してある。04a T3 (ADR 0002 §4) で rule を改訂した: F-03-1-001 が潰したのは (iii) の窓式だけで、(i)(ii) は memory_capacity と ipc に2箇所複製されたまま残っていた (同じ規律を2箇所に書く形の再発)。行合わせを t0 と n_samples だけの値 RowAlignment に切り出し、基準点の算出 (from_series) もそこへ集約した。基準点を集約しない案 (窓計算だけを持つ器) を却下したのは、それだと呼び出し側で同じ式を書き直せるため no-op に差し替えても挙動が変わらず、D-33 で実際に作ってしまった『no-op に差し替えても1件も落ちない空虚な安全機構』(F-03-2-018 BLOCKER) と同じ形になるため。抽象が空虚でないことは『それが無いと書けないテスト』で担保する: test_row_alignment_needs_no_state_matrix は状態行列を作らずに窓計算を検査する (改訂前は _dummy_problem が値を使わない np.zeros と特異な Gram ごと構築していた)。変異注入の実測 (04a T3): (#4) max(washout, max_delay) を washout に -> 19件赤 (guard の test_all_targets_share_identical_rows を含む)。(#5) start = t0 - delay を t0 + delay に -> 33件赤で、うち test_row_alignment_needs_no_state_matrix と test_iter_delay_chunks_matches_expected_offset が別々に落ちる (窓式そのものと、MC が実際に呼ぶ経路の両方)。(#6) RowAlignment を消して lagged を CapacityProblem へ戻す -> 3ファイルが収集時エラー (構造ガード)。(#7) from_states の行数一致検査を消す -> test_capacity_problem_rejects_inconsistent_row_alignment のみ1件赤。(#8) MC 側だけ from_series を経由せず手書きに戻す -> test_row_alignment_from_series_is_the_only_base_point_calculation のみ1件赤 (複製の復活を直接検出できる)"
+  guard_test: "tests/test_diagnostics_ipc.py::test_all_targets_share_identical_rows"
+
+- id: D-28
+  rule: "多項式基底は宣言された入力分布に対して正規直交化する。(input_distribution, basis) は対でのみ意味を持つので、対を1つの値 InputMeasure にまとめ、orthonormal_basis は既定値なしの第3引数としてこれを受け取る (片方だけを渡す呼び方を型検査で書けなくする)。未対応の組は InputMeasure の構築時点で ValueError にし、黙って Legendre として扱わない。設定層は YAML と meta.json の面を変えないため2つの文字列フィールドのまま保ち、ipc() が入口で1度だけ畳む"
+  rationale: "要件書 設計判断2。基底が入力測度に対して直交していないと容量が目標間で二重計上され保存則が破れる。破れ方は『N をわずかに超える』という穏やかな形で出るため図では正常に見える。正規化を振幅に追従させることで sigma_u を自由に振れる (D-17 と両立)。対応する組は (uniform, legendre) と (normal, hermite) の2つで、正規化は入力の実測の平均・標準偏差で行う (一様は a = sqrt(3) sigma_u で割ってから Legendre に入れる)。guard_test は T1 では MC 側 (基底1本ずつの直交性) を指していたが、T2 で仕様 §6 の本来の指定 (IPC 側) へ差し替えた。IPC 側が正本なのは、二重計上が起きるのは基底1本ずつではなく IPC が実際に足し合わせる積の目標 Pi_i psi_{n_i}(u[t-k_i]) の間だからで、そこを直接測る必要があるため (実測: T=200000・(uniform, legendre)・次数3 までの 14 目標で max|G/T - I| = 0.00722 < 0.02)。MC 側の同等テストは削除せず残してある (test_basis_is_orthonormal_under_declared_input_distribution。test_mismatched_distribution_and_basis_raises は 04a T3 で test_input_measure_rejects_unsupported_pairs へ置き換えた —— 検査の場所が orthonormal_basis の中から InputMeasure の構築時点へ移ったため)。04a T3 (ADR 0002 §2) で rule を改訂した: 『対で意味を持つ』と宣言しておきながら orthonormal_basis は片方 (distribution) を既定値つきの位置引数で、もう片方 (basis) を既定値つきのキーワード専用引数で受けており、片方だけ渡す呼び方が型検査を素通りしていた (F-03-1-006。3a -> 3b -> 04 と2回先送りされた)。対を InputMeasure (frozen/slots) 1値にまとめ、第3引数から既定値を外した —— 既定値を持たせないことが本決定の実体である。検査は値を作る場所1箇所だけにあり、orthonormal_basis に届いた測度は定義上すべて対応済みの組になる。IpcConfig を measure: InputMeasure に置き換える案は却下した (meta.json の config.ipc が構造ごと変わり、04a T3 の唯一の証明手段である results/ のバイト不変を整理そのものが壊す。ADR 0002 §9-1)。Enum 化も却下 —— 設定ローダの _coerce_scalar が Enum を受理せず T1 (D-49) の直後に同じ層へ手を入れることになり、かつ D-28 の guard が固定している ValueError 経路が『ローダの型エラー』に化けて決定の意味が読めなくなる (見直し条件へ格上げ)。変異注入の実測 (04a T3): (#1) InputMeasure.__post_init__ の対の検査を pass に -> 2件赤 (guard の test_basis_is_orthonormal_and_mismatched_pair_raises と test_input_measure_rejects_unsupported_pairs)。(#2) 第3引数に既定値 UNIFORM_LEGENDRE を戻す -> test_orthonormal_basis_requires_an_explicit_measure が1件赤、加えて mypy も赤 (tests の unused-ignore)。(#3) 分岐を measure.basis から measure.distribution に -> 3件赤 (直交性側 2件 + 設定の被覆 1件)"
+  guard_test: "tests/test_diagnostics_ipc.py::test_basis_is_orthonormal_and_mismatched_pair_raises"
+
+# サイクル 3a T2 (IPC) 分。仕様 docs/plans/rc-basics-03.md §6 の D-25 / D-26 / D-27。
+# rule は仕様のまま、rationale は実装で確かめた実測値を足した版が正本。
+
+- id: D-25
+  rule: "容量測定の回帰は固定の微小 alpha (既定 1e-9) を使い、検証分割による alpha 選択を行わない。D-04 の alpha 格子は 3-C にのみ適用する"
+  rationale: "容量は『線形読み出しで到達可能な最大の説明率』という定義そのものであり正則化は系統的に過小評価する。一方 alpha=0 は N=200 の Gram (cond ~ 1e18, D-11 の実測) で solve が落ちうるため数値安定の下駄として 1e-9 を置く。D-04 を容量測定へ機械的に広げると Dambre 2012 の保存則と比較できなくなる。実測 (N=15, T=4000, rho=0.9, 目標 72 本, threshold_mode=none): alpha=(1e-9, 1e-6, 1e-3, 1, 100) に対し ipc_total_raw = (10.012, 10.012, 10.012, 9.119, 4.831) と単調に減る (小さい alpha では 3 桁目まで同じで、下駄としての 1e-9 が容量を歪めていないことも同時に見える)。guard_test は単調非増加と『alpha=100 で実際に減る』の両方を要求する (向きだけだと、alpha が一切効いていない実装でも通ってしまう)"
+  guard_test: "tests/test_diagnostics_ipc.py::test_capacity_is_monotone_decreasing_in_alpha"
+
+- id: D-26
+  rule: "IPC は X を条件ごとに1回だけ計算し、Gram も条件ごとに1回だけ作る。目標は chunk_size (D-33 の性能軸 RowAlignment.solve_width(cfg.chunk_size) が返す実効値。params には chunk_size_effective として記録する) 列ずつ生成して rhs に畳み、fit_ridge_from_gram の呼び出し回数は ceil(K/chunk_size_effective) に比例させる"
+  rationale: "(delay, degree) ごとに ESN を再実行する素直な設計は実測 4.7us/step x T=1e6 x 2395 通り = 約3.1時間になり実験そのものが回らない。容量は Gram 量だけで閉じるので Phi も Z も再走査は不要。Z 全体を実体化しないのはメモリ制約でもある (19 GB)。実測: 目標を 25 本から 270 本 (10.8 倍) に増やしても solve は 3 回から 4 回にしか増えない (chunk_size=256)。guard_test は solve 回数を『目標チャンク数 + 次数ごとのサロゲートチャンク数』の閉形式と厳密一致で固定するので、チャンク化を外して1本ずつ回帰する実装に戻すと即座に落ちる。既定設定 (打ち切り (60,20,10,6), max_variables=3) の目標数は 601 本で、N=25 / T=50000 の1条件が 0.83 秒 (サロゲート 1600 列込み)。04a T3: D-33 の改訂でチャンク幅が性能軸と確保軸に分かれ、実効値の取得経路が CapacityProblem.effective_chunk_size から RowAlignment.solve_width へ移ったので rule の名指しを追随させた (params のキー chunk_size_effective と閉形式そのものは不変。F-03-3-009 で1度 rule 間の自己矛盾を起こしているため、名前が動いたら参照側も同じコミットで直す)"
+  guard_test: "tests/test_diagnostics_ipc.py::test_gram_solve_count_does_not_scale_with_target_count"
+
+- id: D-27
+  rule: "IPC のしきい値処理はシャッフルサロゲート法を既定とし、閾値は次数ごとに推定する。サロゲートは通常の目標と同一経路で計算する。乱数は ctx.seed のみから引き、surrogate かつ ctx.seed is None なら ValueError"
+  rationale: "要件書 設計判断1 / サーベイ Q3 (Kubota 2021 系)。有限標本では容量が系統的に過大評価され、その量は目標の周辺分布に依存するため次数ごとに閾値を分ける。サロゲートを別経路で計算すると閾値と容量が別実装からずれるので同じ関数 (capacity_of_targets) に流す。ctx.seed を必須にするのは、閾値が黙って非再現になると受け入れ条件3 の記録が意味を失うため。代表目標は次数内の列挙順から等間隔で決定的に選ぶ (乱数で選ぶと閾値が非再現になり、先頭から詰めると変数1本の目標に偏る)。実測: 入力と独立な状態 (N=15, T=3000, 目標 601 本) でしきい値後の総容量は生の 0.66〜3.52% (8 シード、平均 2.0%) まで落ちる"
+  guard_test: "tests/test_diagnostics_ipc.py::test_surrogate_threshold_requires_ctx_seed_and_is_reproducible"
+
+# サイクル 3a T2 round1 の BLOCKER 修正 (F-03-1-012/013、T=1e6 で peak RSS を
+# 4GB 未満に収める) の副産物として round2 で発見された決定。fixer が自分で
+# 追加した bounded_chunk_size (指示に無い安全機構) の設計判断を正本化する。
+#
+# F-03-3-001 (BLOCKER): round2 でこの決定に D-29 を割り当てたが、
+# docs/plans/rc-basics-03.md line 9 (ユーザー承認済み) が「3b = T3・T4 + T5
+# の残り (D-29〜D-32)」を既に予約しており、line 271 に D-29 = NARMA10 を
+# rule/rationale/guard_test 付きで記録済みだった。予約を確認せずに番号を
+# 指定したオーケストレータの指示ミスで、正本の中に同じ ID の別定義が2つ
+# 存在する状態が成立していた。3b 用の D-29〜D-32 は plan doc の採番のまま
+# 動かさず、この決定を D-33 (現行最大 D-29 の次の空き番号) へ改番する。
+# design.md / ipc.py / _capacity.py / review-findings-03.md の D-29 参照も
+# 同時に D-33 へ置換した。
+
+- id: D-33
+  rule: "チャンク幅は2つの軸を持ち、名前と導出元を分ける。(i) 性能軸 RowAlignment.solve_width(configured): cfg.chunk_size を上限とし、1チャンクの目標行列 (T_eff x chunk_size) が _MAX_CHUNK_BYTES (128 MiB) を超える場合に限り configured より小さい実効値へ黙って下げてよい (configured より大きくはしない)。結果を1ビットも変えず、呼び出し側は cfg.chunk_size を直接使わずこのメソッドを経由し、成果物の params には設定値 (chunk_size) と実効値 (chunk_size_effective) の両方を記録する。(ii) 確保軸 RowAlignment.block_width(n_columns): cfg.chunk_size を読まない —— 運用者の性能ノブが確保上限を動かしてはならない。両軸とも bounded_chunk_size 1本の純関数へ委譲する (128 MiB 予算を2箇所に持たない)"
+  rationale: "round1 の BLOCKER 修正 (F-03-1-012/013) は指示 (仕様書・plan doc) に無い bounded_chunk_size を fixer が自分で追加したもので、この判断とその根拠 (_MAX_CHUNK_BYTES=128MiB、4GB 予算) が decisions.yaml にも design.md にも plan doc にも記録されていなかった (F-03-2-002)。round2 の4つの reviewer が独立にこの関数を突いた: (1) no-op に差し替えても既存58テストが1件も落ちない空虚な安全機構だった (F-03-2-018 BLOCKER。テスト規模の budget_columns がテスト規模の chunk_size を一度も下回らないため切り詰め分岐が一度も真にならない)。(2) 実効値が params にも guard の閉形式 (D-26) にも反映されず、T=200000/chunk_size=256 で D-26 の期待 solve 回数=2 に対し実際4回になる本番規模の乖離が生じていた (F-03-2-001 HIGH)。(3) 適用が ipc.py 2箇所・memory_capacity.py 1箇所に手書きで複製され、F-03-1-001 で潰した『同じ規律を呼び出し側で複製する』形が別の軸で復活していた。今回 CapacityProblem.effective_chunk_size に一本化し、params に chunk_size_effective を追加し、D-26 の guard (test_gram_solve_count_does_not_scale_with_target_count) にキャップが実際に発動する規模のケースを足して閉形式を ceil(K/effective_chunk_size) に更新した。docs/design.md §11 の既定値表にも _MAX_CHUNK_BYTES の行を足した。round3 (F-03-3-004): rule (iii) (params への記録) 単体を守る guard_test が無く、chunk_size_effective を params から削除しても落ちるテストが0件だった。tests/test_diagnostics_ipc.py::test_params_record_configured_and_effective_chunk_size_when_capped を追加し、guard_test をこちらへ差し替えた (rule (i) の純関数としての正しさは test_bounded_chunk_size_truncates_when_over_budget が引き続き独立に守る)。04a T3 (ADR 0002 §5) で rule を改訂した: 1つの実効値が3つの用途 (A 実目標の solve 幅 / B サロゲートの solve 幅 / C 代表目標ブロックの確保幅) に使われていたが、(C) には性能上の意味が一切無く、運用者の性能ノブ cfg.chunk_size が確保上限を動かしていた。名前だけを分ける案は却下した —— 値が同一なら差し戻し変異で1件も落ちず、この決定自身が作った空虚な安全機構と同じ形になる。着手前の実測 (前提の確認): 03 の全条件 (3-A T=20000 / 3-B T=100000 / 3-B' T=200000 / 系列長掃引 T=1e5,2e5,5e5,1e6) で 128 MiB 予算の列数は 847 / 168 / 83 / 168 / 83 / 33 / 16 で、いずれも n_surrogate_targets=4 以上。したがって代表目標ブロックは改訂前後とも全条件で1ブロック4列であり、分割も丸め順序も変わらない。実測で確認: make figures-03 を回して CSV 3本と図5枚を個別 SHA-256 で突き合わせ、図5枚と capacity_profile.csv はバイト一致、capacity.csv / narma10.csv の差分は wall_time_* 列のみ (それ以外のセルは全行で文字列として同一)、meta.json の config ブロックは 109 キーすべて一致した。なお test_chunk_size_does_not_change_results は docstring で『1ビットも変わらない』と主張しているが assert は pytest.approx(rel=1e-10) / assert_allclose(rtol=1e-10) であり、ビット一致は測っていない (本サイクルの発見。ビット一致を実際に測っているのは上記の成果物 SHA-256 の突き合わせの方である)。変異注入の実測 (04a T3): (#9) solve_width を return configured に -> 3件赤 (guard を含む)。(#10) block_width を性能軸 solve_width(cfg.chunk_size) に戻す (却下案B が空虚であることの証明) -> 3件赤 (test_representative_blocks_do_not_follow_chunk_size / test_surrogate_base_matrix_is_bounded_by_the_allocation_axis / D-26 の solve 回数閉形式)。(#11) block_width の予算キャップを外す -> 2件赤。(#12) 予算関数を2本に複製し確保軸だけ予算を4倍にする -> 2件赤 (test_solve_and_block_widths_share_one_budget_function を含む)"
+  guard_test: "tests/test_diagnostics_ipc.py::test_params_record_configured_and_effective_chunk_size_when_capped"
+
+# サイクル 3a T2 round3 (F-03-3-003 / F-03-3-019、D-33 の次)。IPC の確保・
+# 組合せ計算量を縛る上限群 (max_degrees の既定値・絶対上限、
+# _MAX_VARIABLES_FOR_COUNT) を1件にまとめて正本化する。round2 で
+# max_degrees / _MAX_VARIABLES_FOR_COUNT を追加した際、判断と根拠が
+# decisions.yaml にも plan doc にも記録されず、design.md も存在しない
+# D-29 を参照していた (F-03-3-003)。
+
+- id: D-34
+  rule: "IPC の確保・組合せ計算量は、上書き不能な絶対上限4段と、運用者が宣言する共有予算 max_targets 1本で縛る。max_targets は『目標数の上限』ではなく、単位の違う複数の確保軸を1本で縛る共有予算の終端である。これは意図的であり、現在縛る軸は (a) 目標数 (b) ipc_heatmap のセル数の2本で、diagnostics.ipc.MAX_TARGETS_BOUNDED_AXES の列挙が正本である。軸ごとに別の設定フィールドへ分けることは行わない —— 本番で目標が上限の 1/49・heatmap が 1/250 と機能的な必要が無く、運用者が正しく設定すべきノブを増やすため。どちらかの余裕が10倍を切ったら分離を再検討する。絶対上限4段は次のとおり。(1) max_degrees (既定20、設定フィールド) は len(max_delay_by_degree) の上限であり、psi_table (次数の本数 x 系列長) の確保サイズを縛る。(2) max_degrees 自身にも上書き不能な絶対上限 _MAX_DEGREES=32 を置く (max_degrees を1行引き上げるだけで (1) を素通りできてはならない)。(3) max_variables には上書き不能な絶対上限 _MAX_VARIABLES_FOR_COUNT=20 を置き、count_targets の閉形式 (math.comb) の組合せ爆発を縛る。(4) max_delay_by_degree の各要素にも上書き不能な絶対上限 _MAX_DELAY_BIT_LENGTH=128 (bit) を置き、math.comb のコストが値ではなく桁数に対して伸びる軸 (CWE-400) を縛る。4つとも _validate_config (延いては count_targets の先頭、F-03-3-018) で確保・列挙より前に検査する"
+  rationale: "F-03-3-003: round2 で追加した max_degrees=20 と _MAX_VARIABLES_FOR_COUNT=20 の根拠が decisions.yaml にも plan doc にもコードコメントにしか無く、design.md:761 は max_degrees を『(D-29)』と誤って参照していた (D-29 の rule は chunk_size のキャップのみで max_degrees に触れていない)。加えて _MAX_VARIABLES_FOR_COUNT の docstring/テストが根拠にしていた実測ケース (max_delay_by_degree=(1,)*4000, max_variables=4000, 373.73s) は、次数の本数 (4000) が既定 max_degrees=20 を超えるため _validate_config の max_degrees 検査に先に捕まり、count_targets へ到達しなかった (到達不能な根拠)。既定 max_degrees=20 の下の最悪ケース (次数20・遅延20・max_variables=20) は 15us で、_MAX_VARIABLES_FOR_COUNT は『count_targets の実行時間に対する独立した防御』としては実質的に max_degrees を引き上げた場合の後段の砦としてのみ意味を持つ。F-03-3-019 (security, CWE-789): max_degrees 自身は通常の設定フィールドで上限が無く、max_degrees=400 の1行変更だけで round2 の防御 (len(max_delay_by_degree) > max_degrees の検査) を素通りして psi_table を膨らませられた (実測 peak RSS 0.095GB -> 0.721GB)。_MAX_VARIABLES_FOR_COUNT (上書き不能なモジュール定数) と防御強度を揃えるため、_MAX_DEGREES=32 を追加した。_MAX_DEGREES=32 の下で改めて測ると、max_degrees=32・max_variables=32 (_MAX_VARIABLES_FOR_COUNT を仮に外した場合) でも count_targets は 35us・comb(10**300, 20) でも 0.3ms と、_MAX_VARIABLES_FOR_COUNT を除いても count_targets の実行時間は問題にならない水準に収まる。それでも _MAX_VARIABLES_FOR_COUNT を維持するのは (a) 目標1本に掛け合わせる変数の本数として意味のある値域を明示するため、(b) _MAX_DEGREES が将来引き上げられた場合の独立した多重防御のためで、この非対称 (max_degrees は現在 (1) と (2) の二重、max_variables は (3) 単独) を rule に明記した。F-03-3-018: count_targets / enumerate_targets は __all__ の公開関数だが _validate_config を経由せず、max_delay_by_degree=(10**6,)*1600 を count_targets に直接渡すと 107.89s かかっていた。count_targets の先頭に (max_targets / heatmap_cells とは独立な) 組合せ計算量の検査だけを切り出した _validate_combinatorial_bounds を置き、count_targets 経由で enumerate_targets も自動的に保護されるようにした。F-03-4-007 (round4, security, CWE-400): (1)〜(3) は max_delay_by_degree の要素数・max_variables を縛るが、要素の値の桁数には上限が無かった。math.comb(max_delay, n_vars) のコストは値ではなく桁数に対して約 digits^1.6 で伸びるため、既定の (1)〜(3) の下でも max_delay_by_degree=(10**M,)*32 (max_variables=20, max_degrees=32) は M=300 で 0.013s だが M=60000 で 57.02s かかった。この経路は ipc() 本体では heatmap_cells 検査 (F-03-1-016) に保護されるが、公開関数 count_targets / enumerate_targets は max_targets / heatmap_cells の検査を意図的に除外している (F-03-3-018 の rationale: count_targets を目標数の下見に使う既存の呼び出し側の意味を変えないため) ため無防備だった。_MAX_DELAY_BIT_LENGTH=128 (bit、10進で約38桁) を追加し、既定の遅延打ち切り (max_delay<=60) を大きく上回る余裕を持たせつつ math.comb のコスト増を確保・列挙前に縛った。F-03-4-002/F-03-4-013 (round4, test): guard_test が (1) しか単独で固定しておらず、(2)(3) がスコープを絞った Stop フックの再検証で無防備になりうる状態だった。test_out_of_range_config_raises への差し替えで1つの node id が (1)〜(4) をすべて固定するように改めた。パラメトライズの分担 (D-33 と同じ形式で明記): cfg3 (max_delay_by_degree=(1,)*21, max_degrees=20) が (1)、cfg6 (max_degrees=33) が (2)、cfg5 (max_variables=21) が (3)、cfg14 (max_delay_by_degree=(1<<200,)) が (4) を各々独立に守る (test_max_degrees_bounds_the_psi_table_row_count は (1) の別角度からの固定として残し、guard_test からは外した)。F-03-4-010 (round4, security): この4段の外に残る唯一の『上限自体に上限が無い』設定フィールドは max_targets であり、これは意図的である —— max_targets は運用者が明示的に宣言する予算の終端であり絶対上限は置かない。目標数と heatmap 確保量はどちらも max_targets 1本で閉じており (F-03-1-016)、確保はこの検査を経由しない限り発生しない。3b で運用ポリシーとして絶対上限を追加する判断はありうるが、それは別決定として扱う。04a T3 (ADR 0002 §3) で rule を改訂した: 指摘の実体は『ノブが足りない』ことではなく『max_targets が何を縛っているかがどこにも書かれていない』ことだった (reviewer が単位の食い違いに到達できたのは ipc.py のコメントを読んだからで、rule からは読めなかった)。max_heatmap_cells を設定フィールドとして足す案は却下 —— 本番の余裕は目標数 4,075/200,000 = 1/49、heatmap セル数 800/200,000 = 1/250 で機能的な必要が無く、test_ipc_config_fields_change_output の除外リスト行きが確定する空虚な設定フィールドを1本増やし、かつ meta.json の config.ipc に新キーが出て results/ のバイト不変が崩れる (実測: フィールドを1本足すと config.ipc のキーが 12 -> 13 になり max_heatmap_cells が現れる。test_ipc_config_fields_change_output も1件赤。確認後 revert)。_MAX_HEATMAP_CELLS を5段目の絶対上限にする案も却下 (max_targets を小さくしても緩むので現状より弱くなる)。代わりに縛っている軸を MAX_TARGETS_BOUNDED_AXES として列挙し、各軸の ValueError メッセージに軸名を入れ、軸ごとに独立に到達できることと列挙の完全性の両方をテストで固定した。変異注入の実測 (04a T3): (#13) heatmap セル数の検査を消す -> 3件赤 (test_max_targets_also_bounds_the_heatmap_cell_count / test_max_targets_bounded_axes_are_enumerated / guard の test_out_of_range_config_raises[cfg16-heatmap_cells])。(#14) 列挙表から heatmap 軸を削る -> test_max_targets_bounded_axes_are_enumerated のみ1件赤 (列挙とケース表の完全性検査)。guard_test には max_targets が縛る2軸のケースを追加したので、1つの node id が絶対上限4段と共有予算2軸をすべて固定する。"
+  guard_test: "tests/test_diagnostics_ipc.py::test_out_of_range_config_raises"
+
+# サイクル 3b-1 (docs/plans/rc-basics-03b.md §6)。T1 で D-35 / D-36 / D-37 を
+# 追記した。D-38 / D-39 と 3b 用に予約済みの D-29〜D-32 は T2 以降の担当で、
+# 参照先のテストが実在しないうちに書くと check_decisions.py が落ちる。
+# rule は仕様 §6 のまま、rationale は T1 の実装で確かめた実測値を足した版が正本。
+
+- id: D-35
+  rule: "CapacityProblem.from_states に渡す X は呼び出し側 (experiment/capacity.py) が read-only にしてから渡す。診断側でコピーはしない"
+  rationale: "CapacityProblem は X の**ビュー**を持ち gram は構築時点の**スナップショット**なので、構築後に X を書き換えると両者が例外も警告もなく desync する (3a の実測で容量が 1.25e8 という桁違いの値になった)。from_states は自分が保持するビュー (problem.x) だけを writeable=False にできるが、**元の X の writeable フラグは変えない** (F-03-3-006 / F-03-4-001) ため、X 自身への書き込みは呼び出し側でしか塞げない。診断側で防御的にコピーすると T=1e6 / N=200 で 1.6GB 増えて 4GB のメモリ予算を壊す (F-03-1-012/013 で潰したのと同じ失敗)。実装は measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg) が受け取った X に対して states.flags.writeable = False を1回だけ立て、その同じ配列を MC と IPC の両方へ渡す (3b-2 準備 F-3b1-1-004 の分割前は evaluate_capacity_condition が直接立てていた。読み取り専用化を『軌道を生成した側』ではなく『診断へ渡す側』に置いたので、3-C のように X を外部 (01 の run_task / plan_replicate) で作る経路でも同じ1行で守られる)。なお MC と IPC は t0 が異なる (MC は max(washout, mc.max_delay)、IPC は max(washout, max(ipc.max_delay_by_degree))) ため CapacityProblem は条件あたり2個作られるが、これは正常であり『1個にまとめる』最適化をすると D-24 の単一基準点がどちらかの診断で壊れる。変異試験: capacity.py の states.flags.writeable = False の1行を消すと guard_test が `assert True is False` で落ちることを実測済み (分割前は tests/test_experiment_capacity.py の他の9件が緑のままだった。分割後に再実測したところ 2 failed / 13 passed で、guard_test に加えて test_externally_built_states_can_produce_a_capacity_row —— 外部生成の X を measure_capacity に渡す 3-C の予行演習 —— も落ちる。この1行を守っているのはこの2件だけである)"
+  guard_test: "tests/test_experiment_capacity.py::test_states_are_read_only_before_capacity_problem"
+
+- id: D-36
+  rule: "state_noise は experiment/esp.py の build_esn_config / simulate_reference_trajectory に**既定値つきキーワード**で足し、ESN.run には常に rng (リザバー重み生成に使った Generator の続き) を渡す。02 の呼び出しは書き換えない。**この『常に』が支配するのは軌道を作る呼び出し (ESN.run / 自走の ESN.step) だけであり、伝播器 (esn_propagator) は含まない —— そちらは D-48 が支配し、rng を渡すのではなく state_noise>0 の ESN を受理しない**"
+  rationale: "3-B' の受け入れ条件2 (ノイズ下では IPC_total が厳密に N 未満) を測る経路が変更前は**存在しなかった**。build_esn_config が ESNConfig.state_noise を設定せず、simulate_reference_trajectory が esn.run(u, x0=x0) を rng なしで呼んでいたため、state_noise>0 を設定すると ESN._update が『state_noise > 0 のときは rng が必要です』で ValueError になる (仕様 §2.4-4)。rng を条件分岐で渡す実装にすると同じ配線漏れが再発するので**常に**渡す。ESN は state_noise=0 のとき乱数を1個も引かないので既存結果は不変で、これは 01 の runner.plan_replicate (reservoir.run(data.u, rng=reservoir_rng)) の前例と同じ形である。実測 (T1 完了時点): 02 の本番設定を /tmp へ再生成して results/02_esp_and_dynamics/ と突き合わせたところ、esp_diagnostics.csv 369 行 / washout_sensitivity.csv 180 行で**値が異なる列は wall_time_s (実行ごとに変わる実測時間) の1本だけ**、図4枚 (fig_esp_decay / fig_leak_timescale / fig_esp_map / fig_washout_sensitivity) は PNG バイト単位で一致した。guard_test は 02 の simulate_condition().states と 03 経路 (state_noise=0.0 を明示) の states が np.array_equal であることを固定する。round1 (F-3b1-1-001, HIGH): T1 完了時点では『常に』が simulate_reference_trajectory 経由の参照軌道1本にしか適用されておらず、simulate_condition の比較軌道ループ (reference.esn.run(reference.drive, x0=x0)、02 専用) は rng 無しで呼ばれたままだった (ReferenceTrajectory が rng を外へ出さないリーキーな抽象化のため、比較軌道側が続きのストリームを受け取る手段が無かった)。ReferenceTrajectory に rng フィールドを1本足し (reservoir_rng をそのまま保持)、比較軌道ループを reference.esn.run(reference.drive, x0=x0, rng=reference.rng) に直して『常に』を文字通り2箇所とも満たした。state_noise は simulate_condition 経由では常に既定 (0.0) のままなので rng を渡しても乱数は1個も引かれず、02 の成果物は引き続きバイト不変 (既存 guard_test が再確認済み)。この配線漏れは tests/test_experiment_esp.py::test_simulate_condition_always_passes_rng_to_every_esn_run が ESN.run を monkeypatch して参照軌道1回+比較軌道 n_pairs 回のすべてで rng is not None であることを直接固定する (この行を revert すると同テストが赤くなることを実測済み)。04a T2 (ADR 0001 §2 / §6) で rule に境界を1文足した —— **意味は変えていない**。元の rule は 03 の配線漏れ (軌道を作る経路で rng が渡らない) を塞ぐために書かれたもので、伝播器は最初から対象外だった (experiment/esp.py の esn_propagator は F-3b1-2-006 の時点で『rng を意図的に渡さない』と docstring に書いてある)。境界を明文化したのは、04 で 02 経路にノイズを入れる担当が『D-36 は常に rng を渡すと言っている』を根拠に伝播器へ rng を渡すのが最も安い直し方に見えるためで、その手が触れる場所には D-48 の ValueError が立っている"
+  guard_test: "tests/test_experiment_capacity.py::test_reference_states_match_esp_simulate_condition"
+
+- id: D-37
+  rule: "サロゲートしきい値の ctx.seed は Capacity03Config.seeds.surrogate 1個を全条件・両診断 (MC / IPC) で共有する (共通乱数法)。条件ごとに振らない"
+  rationale: "しきい値は有限標本のかさ上げの推定量 (D-27) であり、条件ごとに独立なシードで推定すると、条件間の容量差にしきい値の推定ノイズが独立に乗る。03 の主張はすべて条件間の**差** (rho を上げるとプロファイルが伸びる / ノイズを入れると N に届かなくなる) なので、共通乱数法で差の分散を落とす。seeds.surrogate は SeedStream ではなく ctx.seed へ直接渡る整数であり、seeds.py の既存4ストリームの spawn_key を1つも動かさない (D-14 と同じ理由で 01/02 の成果物に影響しない)。配線の実体は evaluate_capacity_condition が DiagnosticContext を1個だけ作り、それを measure_capacity へ渡し、measure_capacity が memory_capacity と ipc の両方へ同じオブジェクトを渡すこと (3b-2 準備 F-3b1-1-004 の分割で ctx は measure_capacity の引数になった —— 中で作らないのは、3-C のように条件が CapacityCondition で表現できない経路でも『全条件で ctx は1個』を呼び出し側が保てるようにするため)。guard_test は全条件・両診断の ctx.seed が seeds.surrogate と一致し、同一条件では ctx オブジェクトそのものが共有されること、行に seed_surrogate として記録されることを固定する (共有しているだけでは『届いている』証明にならないので、seeds.surrogate を変えると mc_threshold が動くことを test_surrogate_seed_actually_moves_the_threshold が別途実測する)"
+  guard_test: "tests/test_experiment_capacity.py::test_surrogate_seed_is_shared_and_recorded"
+
+# サイクル 3b-1 T2 (docs/plans/rc-basics-03b.md §6)。D-39 と 3b 用に予約済みの
+# D-29〜D-32 は 3b-2 (T4/T5) の担当なのでここには書かない (参照先のテストが
+# 実在しないうちに書くと check_decisions.py が落ちる)。
+
+- id: D-38
+  rule: "cfg 依存でキー集合が変わる量 (IPC の ipc_threshold_degree{d}) は capacity.csv の列にせず、長形式の capacity_profile.csv の行に落とす。書くのはしきい値後の容量が厳密に正のセルだけで、その正値フィルタ条件は IPC の n_targets_kept (np.count_nonzero(kept)) の判定条件と同じ > 0 にする (行数が n_targets_kept と一致することは要求しない —— 長形式の行は (次数,遅延) のヒートマップセル単位、n_targets_kept は目標単位で単位が異なり、1セルに複数目標が畳み込まれるため行数は n_targets_kept 以下にしかならない)。成果物から保存則を検算する不変条件は、capacity_profile.csv の capacity 列の総和が capacity.csv の ipc_total / mc_total と一致することとする"
+  rationale: "F-03-1-005: ipc() が返す scalars は ipc_threshold_degree{d} を len(cfg.max_delay_by_degree) 本だけ持つため、キー集合が cfg に依存する。これを列にすると『CSV の列順は行 dataclass の宣言順が単一の真実』(§2.2-1) が cfg 依存になり、3-B' だけ打ち切りを (200,60,20,10) に上書きする (片方向) 本仕様では実験ごとに列が変わりうる。次数・遅延・診断名を行の値に落とせば列は静的なままで、しきい値も次数ごとの行に自然に乗る。正値セルだけに絞るのは results/ がコミット対象だからで、全セルを書くと本番設定 (117 条件 x MC 400 遅延 + IPC 240〜800 セル) で約6万行になる。実測 (本番 figures-03): capacity.csv 117 行 (45 KB) / capacity_profile.csv 21636 行 (1,778,605 バイト = 1.70 MB) / 合計 1,824,677 バイト = 1.74 MB (予算 5 MB。round2 準備 F-3b1-2-008: 以前ここに書いていた『1.78 MB』は capacity_profile.csv のバイト数 1,778,605 を MB と読み違えた値で、実測合計と約2.3%ずれていた)。しきい値は CapacityOutcome.ipc_thresholds として1条件につき1回だけ運ぶ —— 行を書くときに ipc() を呼び直すと同じ条件で診断を2回走らせることになり、3-B' では1条件あたり 6.6 秒の再計算になる。round1 (F-3b1-1-003, MEDIUM): 当初の rule / rationale と CapacityProfileRow の docstring は『規準は n_targets_kept と同一にする』『しきい値を超えたことと行が在ることが1対1に対応する』と書いており、これは実装が満たしていない不変条件 (行数 == n_targets_kept) を主張していた。実測: capacity_profile.csv の IPC 行数と capacity.csv の n_targets_kept を突き合わせると、本番成果物117行すべてで行数 != n_targets_kept (例: 81セル vs 297目標) だった。一方 capacity 列の総和と ipc_total / mc_total は117行すべてで一致 (誤差0件) しており、これが実装が実際に守っている不変条件である。rule / rationale / docstring をこの実測に合わせて訂正し、guard_test に総和一致の検算を追加した (以前は『打ち切りの本数が違う2設定で列が同一であることと、capacity <= 0 の行が0件であること』の2点のみ実測していた —— この2点は変更していない)"
+  guard_test: "tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive"
+
+# サイクル 3b-1 T3 (docs/plans/rc-basics-03b.md §4 T3 / 「T2 実装時に決めたこと」4)。
+# 仕様の受け入れ基準の文言が本番格子に対して誤っていた件を、ユーザー確認
+# (2026-08-19) の上で決定として正本化する。D-39 と 3b 用に予約済みの
+# D-29〜D-32 は 3b-2 (T4/T5) の担当なので飛ばしてある
+# (check_decisions.py は id の連番を要求しない)。
+
+- id: D-40
+  rule: "受け入れ条件1 (MC のプロファイルが rho とともに伸びる) の単調性は rho <= 1.0 の範囲でのみ要求する。rho > 1.0 は ESP が崩れる領域であり、記憶容量は臨界点近傍 (rho = 1.0) で最大になる。あわせて『格子の最大 rho (1.1) が格子の最大値ではない』ことを固定し、この制限の根拠 (rho=1.1 で実際に下がる) が消えたらテストが落ちるようにする"
+  rationale: "仕様 docs/plans/rc-basics-03b.md §4 T2 の受け入れ基準は『mc_effective_delay が rho に単調非減少』と書いていたが、本番格子 (rho in {0.5,0.7,0.9,0.95,1.0,1.1}) に対してこの文言は**誤り**だった。本番実測 (3-A、3レプリケート平均の mc_effective_delay): leak=0.3 で 20.99 / 30.63 / 49.62 / 58.95 / **69.40 (rho=1.0)** / 60.24 (rho=1.1)、leak=0.6 で 11.78 / 15.80 / 22.06 / 25.00 / **35.73** / 26.98、leak=1.0 で 9.20 / 11.64 / 16.29 / 18.19 / **21.74** / 21.37。3つの leak すべてで rho=1.0 がピークで rho=1.1 で落ちる。これは測定の失敗ではなく『rho>1 では ESP が崩れて記憶容量が下がる = 容量は臨界点近傍で最大になる』という 3-A が見せたい現象そのものである。仕様 §7 リスク2 の (a) 駆動強度は T2-5 の較正で切り分け済みで、sigma_u in {0.05,0.1,0.2,0.5} の4点すべてでどこかの leak が rho=1.1 で低下する (0.05 は rho<=1.0 の内側でも非単調、0.5 は比が 1.5 未満)。(b) T 不足も make saturation-03 の実測 (T=1e5 -> 1e6 で mc_total 15.153 -> 15.138) で切り分け済み。したがって格子から 1.1 を外す (= 条件数を動かす) のではなく**仕様の文言の方を訂正**し、実装 (T2 が書いたテスト) を正とする。guard_test は3点を固定する: (i) rho <= 1.0 でレプリケート平均が単調非減少、(ii) 格子の最大 rho (1.1) の値が最小 rho (0.5) の 1.5 倍以上 (仕様の文言どおり)、(iii) rho=1.1 が格子の最大値ではない —— (iii) があるので、物理が変わって rho=1.1 が最大になった場合はここが赤くなり、(i) の制限を残す根拠が消えたことに気づける"
+  guard_test: "tests/test_capacity_pipeline.py::test_mc_effective_delay_increases_with_rho"
+
+# サイクル 3b-2 T4 (docs/plans/rc-basics-03b.md §4 T4 / §6)。D-29〜D-31 は
+# docs/plans/rc-basics-03.md §6 が 3b 用に予約していた採番で、rule は予約時の
+# 文言のまま、rationale に T4 の実装で確かめた実測値を足した版が正本。
+# D-39 は仕様 §8 でユーザー承認済み (3-C の ESN 規模)。
+
+- id: D-29
+  rule: "NARMA10 は y[t+1] = 0.3 y[t] + 0.05 y[t] sum_{i=0}^{9} y[t-i] + 1.5 u[t-9] u[t] + 0.1, u ~ U[0, 0.5] i.i.d. を採用する。記事にはこの式をそのまま載せる。係数と入力分布は tasks/narma.py のモジュール定数とし、設定フィールドにはしない (Narma10Config が持つのは length と 01 側の土台 base だけ)"
+  rationale: "要件書 未確定3 / サーベイ Q2: 文献の添字が2系統 (1.5 u(n-9) u(n) 系と 1.5 u(k-1) u(k-10) 系) に割れており、どちらを使ったかで数値が変わるのに明記されないことが多い。実験3-C の直接の先行 (Goudarzi 2014) がこの形なので比較可能性を優先する。係数・入力分布を設定にしないのは、YAML の1行変更で『記事に載せた式』と成果物の対応が黙って切れる経路を作らないため (D-09 の未知キー検査と同じ規律の適用先)。guard_test は先頭5ステップ (y[10]..y[14]) を、実装のループでも実装のモジュール定数でもなく**1ステップずつ書き下した有理数 (Fraction) の式**と 1e-12 以内で照合する —— 実装と同じ定数・同じループを参照すると添字を取り違えたまま両方が同じ値を出す同語反復になるため。手計算の先頭値は y[10] = 1.5*u[0]*u[9] + 0.1 = 0.1675 で、テストにリテラルでも置いてある。添字を1つずらした版がこの値と一致しないことは test_shifted_index_would_not_match が別途実測する (guard_test が空虚でないことの確認)"
+  guard_test: "tests/test_tasks_narma.py::test_matches_reference_recurrence"
+
+- id: D-30
+  rule: "NARMA10 の発散 (|y| > 1e3 または非有限) は ValueError にする。クリップも自動再抽選もしない"
+  rationale: "NARMA10 は入力次第で発散する既知の系であり、黙ってクリップすると『クリップの飽和特性』という別の非線形性を手法に与えることになる (遅延線対照が不当に有利/不利になる)。再抽選も、どのシードが捨てられたかが記録されないと 3-C の公平性の外に穴が開く。実測 (T4): 宣言した分布 U[0, 0.5] の**内側**でも発散は普通に起きる —— np.random.default_rng(s) の s=0..199 のうち 6 本 (75 / 83 / 107 / 111 / 140 / 144) が length=8000 で発散し、定数入力 u=0.5 は 33 ステップで発散する。本番の 5 レプリケート (task ストリーム、seeds.task=1) は発散せず 3-C は回るが、**レプリケート7 は発散する**ので narma.base.n_replicates を 7 以上にするときは D-30 で落ちることを承知の上で行うこと (test_production_replicates_do_not_diverge が両方を実測している)"
+  guard_test: "tests/test_tasks_narma.py::test_divergence_raises_instead_of_clipping"
+
+- id: D-31
+  rule: "実験3-C は 01 の run_task を再利用し、TaskEntry を 03 側 (experiment/narma.py) で組み立てる。build_tasks / ExperimentConfig に NARMA10 を足さない。レプリケート0 の ReplicatePlan は 3-C 側で1回だけ作り run_task(base, entry, plan0=plan0) へ渡す"
+  rationale: "要件書 設計判断4。build_tasks に足すと 01 の comparison.csv に行が増えて 01 の成果物が変わり D-13 の分離も崩れる。run_task は task_entry を引数に取るので、公平性の3決定 (D-04 同一 alpha 格子 / D-05 同一分割 / D-08 構造 HP を検証分割で選ばない) を1行も書き写さずに 3-C へ効かせられる。plan0 を渡す形 (F-1-009 の前例: 01 の pipeline が collect_state_space に対してやっているのと同じ) にするのは、『NARMA10 を解いた ESN』と『容量 (MC/IPC) を測った ESN』が同一のリザバー・同一の状態行列であることを構造で保証するため —— plan_replicate を2回呼んでも同じシードなら同じ値になるが、それは偶然の一致であって片方の n_steps やシードを変えれば黙って別物になる。実測 (T4): 01 の本番設定を再生成して results/comparison.csv と突き合わせたところ wall_time_s 列を除いて完全一致 (test_01_artifacts_are_unchanged)。guard_test は run_task がちょうど1回 plan0 つきで呼ばれること・3手法 x 全レプリケートの行が出ること・同一レプリケート内で (t0, n_train, n_val, n_test) が全手法で一致すること (D-05)・build_tasks に narma10 が混ざっていないことを同時に固定する。状態行列の同一性 (同じオブジェクトであること、および run_task がレプリケート0 を作り直していないこと) は test_narma10_capacity_uses_the_same_states_as_the_esn_run が別途実測する"
+  guard_test: "tests/test_experiment_narma.py::test_narma10_reuses_run_task_and_shares_rows_across_methods"
+
+# D-32 は docs/plans/rc-basics-03.md §6 が 3b 用に予約していた採番 (§8 Q1 で
+# ユーザーが (a) を選択済み)。guard_test に当たるテストは 3b-1 T1 で実装済み
+# だったが、decisions.yaml への記録だけが 3b-1 の3タスクを通して漏れていた
+# (3b-2 T5 で発見。仕様 §4 T5 が「D-29〜D-32 と D-35〜D-39」を要求している)。
+# rule は予約時の文言のまま、rationale に 3a / 3b-1 の実測を足した版が正本。
+
+- id: D-32
+  rule: "IPC 掃引のリザバーは N=50、MC 掃引は N=200 とし、実験ごとにリザバー規模を変える。n_units は横断共有の reservoir セクションではなく**各セクション** (mc_sweep / ipc_sweep / conservation / length_sweep) が持ち、reservoir が持つのは input_scale / density / n_replicates の3つだけにする"
+  rationale: "docs/plans/rc-basics-03.md §6 / §8 Q1 (ユーザー承認済み)。保存則 IPC_total <= N の飽和を有限の打ち切りで見せるには必要な目標数が N とともに急増する。N=200 で飽和させるには打ち切りを深くする必要があり実行時間が予算 (900秒) を超える。N=50 なら深い打ち切りでも saturation_ratio >= 0.5 に届く。MC は degree=1 のみなので N=200 のまま連載の連続性 (01・02 のリザバー規模) を保てる。実測: 3a の保存則テスト (N=25 / T=5e4 / rho=0.9 / input_scale=0.5、目標 601 本) で ipc_total = 17.076 (上限 25.5)、saturation_ratio = 0.683、1条件 0.83 秒。3b-1 の本番 3-B' (打ち切り (200,60,20,10) = 目標 4,075 本、T=2e5、3レプリケート平均) は noise=0 で saturation_ratio が N=25: 0.676 / N=50: 0.720 / N=100: 0.734 と N を上げても 0.5 を保つ一方、27 条件で 222.28 秒 (make figures-03 全体 325〜371 秒のうち 58%) を要しており、N=200 まで上げる余地は 900 秒予算には無い。MC 側 (3-A、N=200、T=2e4、54 条件) は 28.84 秒で収まる —— この非対称が『n_units をセクションが持つ』理由そのものであり、横断共有の reservoir に n_units を置くと片方に不利な値を押し付けることになる。guard_test は ipc_sweep.n_units < mc_sweep.n_units と両者の値 (50 / 200) に加えて、CapacityReservoirConfig に n_units フィールドが**無い**ことまで固定する (在れば食い違っても何も落ちない)"
+  guard_test: "tests/test_config_wiring_capacity.py::test_ipc_reservoir_is_smaller_than_mc_reservoir"
+
+- id: D-39
+  rule: "実験3-C の ESN は N=50 とし、3-B (IPC 掃引) と同じリザバー規模にする。読む ESN セクションは narma.base.esn_mackey_glass の1本だけとし、その解決は experiment/narma.py の narma_esn_config に閉じる"
+  rationale: "仕様 docs/plans/rc-basics-03b.md §6 / §8 (ユーザー承認済み、2026-08-18)。参照値 (NMSE 0.16 / 0.107) が N = 50 規模の報告であり、N=200 で回すと『先行より良い』が規模差なのか対照設計の差なのか分離できない。3-B (IPC 掃引 N=50) とそのまま突き合わせられる利点もある (3-C の容量行は experiment=3C_narma10 として同じ capacity.csv に出る)。D-08 により N は検証分割で選ばれないので、宣言した1点をそのまま報告する。読むセクションを1本に決めて narma_esn_config に閉じるのは、narma.base が 01 の ExperimentConfig をまるごと内包していて ESN セクションが2本あるためで、Mackey-Glass 側を選ぶのは NARMA10 が連続値入力の回帰課題で漏れ積分が効く点で MG と同型だからである (esn_delay_parity は ±1 の2値入力・leak=1.0 前提)。guard_test は宣言 (NARMA10_ESN_SECTION) と実際に TaskEntry へ載る ESN 設定が同じ1本であること・n_units == 50 であること・それが ipc_sweep.n_units と一致することを固定する —— 宣言だけを見ると『50 に直したセクションを誰も読んでいない』を通してしまう"
+  guard_test: "tests/test_experiment_narma.py::test_narma10_esn_size_matches_the_declared_choice"
+
+# サイクル 04a T1 (docs/plans/rc-basics-04.md §4 T1 / §6)。config.py の package 化。
+# D-41〜D-48 / D-50 / D-51 は T2 以降の担当なので、それぞれの実装と同時に追記する
+# (guard_test の参照先が実在しない状態でここへ書くと check_decisions.py が落ちる)。
+
+- id: D-49
+  rule: "config.py を config/ package へ割っても、公開シンボルの import 経路と __all__ を変えない。from rc_basics_lab.config import <名前> は package 化前と同一に通り、__all__ は差分0とする。package 内の依存は一方向のみで循環を作らない —— _common (ローダ) は package 内の葉とし、サイクルモジュール (experiment01 / esp02 / capacity03) は互いを import しない。01 を内包する辺 (esp02 -> experiment01 / capacity03 -> experiment01) だけを許可辺として明示する"
+  rationale: "仕様 docs/plans/rc-basics-04.md §4 T1 / §6 / §7 リスク2。config.py は 03 完了時点で非空 615 行 (総 771 行) に達し、サイクル03 が置いた着手条件 (非空 600 行) に到達していた。04 の Chaos04Config を足す前に割らないと、その diff が『移動なのか論理変更なのか』を切り分けられなくなる。**経路を変えないこと**が package 化を『純粋な整理』に留める条件で、経路が変われば呼び出し側 (実験3本 + main.py + experiment/ 12 モジュール + テスト 20 本超) の diff が同じ回に混ざり、results/ のバイト不変検査が『整理のせいか配線のせいか』を切り分けられなくなる。実測 (base-ref 8810d4e): 分割前の公開名は __all__ 36 名 + dir() のみ 17 名 = 53 名。分割後、__all__ は差分0、dir() は実装 import 由来の16名 (Mapping / Path / Protocol / SeedConfig / SeedStream / Sequence / UnionType / cast / dataclass / dataclasses / field / get_args / get_origin / get_type_hints / np / yaml) が消え、サイクルモジュール3名 (experiment01 / esp02 / capacity03) が増える。消える16名が API でなかったことは test_no_module_imported_the_dir_only_names_from_config がリポジトリ全体の AST 走査で実測している (該当0件)。依存を一方向に縛るのは、_common がサイクル側を参照すると 01 の設定を読むためだけに 02・03 の設定まで引き込まれ、D-13 (実験ごとに設定 dataclass を分ける) の分離が import 時点で崩れるため —— 実際に _common から experiment01 へ辺を張ると、experiment01 -> _common (load_config が load_config_as に委譲する) と噛み合って循環になり、変異注入で ImportError (partially initialized module) を実測した。guard_test は __all__ の差分0 と 36 名それぞれの解決を固定し、同ファイルの test_dir_only_names_changed_exactly_as_recorded が dir() の増減両側を、test_config_package_internal_dependencies_are_one_way が AST で許可辺の集合を固定する。変異注入で確認済み: __init__ から load_config を落とすと3件・numpy を公開名に漏らすと1件・capacity03 -> esp02 の辺を足すと1件が赤くなる"
+  guard_test: "tests/test_config_package_layout.py::test_public_symbols_are_importable_from_the_package_root"
+
+# サイクル 04a T2 (docs/plans/rc-basics-04.md §4 T2 /
+# docs/adr/0001-t2-noise-propagator-and-public-api-boundaries.md、Accepted)。
+# ノイズ経路の封鎖 (D-47 / D-48) と公開 API・レイヤ境界 (D-52 / D-53)。
+# D-52 / D-53 は ADR で新規採番したもので、仕様 §6 の予約 (D-41〜D-51) とは
+# 別枠である (check_decisions.py は連番を要求しない)。
+# D-41〜D-46 / D-50 / D-51 は 04b の予約なのでここにはまだ書かない。
+
+- id: D-47
+  rule: "experiment/esp.py の simulate_condition は state_noise>0 を受理しない。state_noise: float = 0.0 を**既定値つきキーワード**で受け、0 以外なら即 ValueError にする (主)。さらに config から組んだ ESN の state_noise を**比較軌道ループの直前**でも検査する (副・経路非依存)。判定とメッセージ組み立ては require_deterministic_esn 1本に集約し D-48 と共有する。ノイズ実現値用の5本目の乱数ストリームは新設しない。ノイズ下で状態行列が要るときは simulate_reference_trajectory(..., state_noise=...) を使う (03 の 3-B' と同じ経路)"
+  rationale: "ADR 0001 §3 / 仕様 §6 D-47 / §8 (ユーザー確定)。simulate_condition に state_noise を素通しすると2つ壊れる: (a) 比較軌道が『初期状態もノイズ実現値も違う』軌道になり、ESP 判定が測るはずの『初期状態だけを振った差』に D-14 の3ストリーム分離 (RESERVOIR / TASK / PROBE) の外側から4本目の未制御な変動が混ざる (b) 各軌道が引く乱数の個数と位置が参照軌道の消費量に依存するため、結果が**評価順**に依存する。塞ぐ場所を evaluate_condition ではなく simulate_condition の入口にしたのは、experiment/threshold.py:42 が simulate_condition を**直接** import しており evaluate_condition では抜け道が残るため。**引数で受けて拒否する**形にしたのは、build_esn_config / simulate_reference_trajectory の2つが同じ形で state_noise を受けている (D-36) ので次の実装者が『上の2つと同じように流せばいい』と考えて必ずここへ手を伸ばすからで、その手が触れる場所に停止標識を置くのがこの決定の実体である (引数が無いと guard_test が monkeypatch 依存の間接的なものになり、D-33 で作った空虚なガードと同じ弱さになる)。04 の 4-C は state_noise を掃引軸にするが 02 の ESP 判定経路を使わない —— 3態分類は自走軌道の統計から決める純関数 (D-45)、4-D の状態行列は simulate_reference_trajectory であり、ESP 的な性質は同じ条件を state_noise=0 で別に評価して『写像の性質』として報告する (state_noise を落として測った ESP をノイズ条件の行として書くことは禁止)。実測 (変異注入): 入口 (引数側) の検査だけを消すと test_simulate_condition_rejects_state_noise が 1 件赤、ESN 側の検査だけを消すと test_simulate_condition_rejects_a_noisy_esn_from_any_route が 1 件赤になり、**二重化のどちらの半分も単独で必要**であることを確認した (片方しか無ければ、その半分を消しても1件も落ちない)。既定値のままの呼び出し (experiment/threshold.py を含む) は1つも書き換えておらず、results/ は全 24 ファイルでバイト不変"
+  guard_test: "tests/test_experiment_esp.py::test_simulate_condition_rejects_state_noise"
+
+- id: D-48
+  rule: "experiment/esp.py の esn_propagator は state_noise>0 の ESN を受理せず、**伝播器を作る時点で** ValueError にする。esn.step に rng を渡して黙らせることは禁止。**ノイズ無しの複製 ESN で伝播することも禁止**する。エラーメッセージには4点 (何を拒否したか / なぜか / やってはいけない直し方2つ / 正しい経路) をすべて含める"
+  rationale: "ADR 0001 §2 / 仕様 §6 D-48 / experiment/esp.py の esn_propagator docstring (F-3b1-2-006)。conditional_lyapunov は同じ写像を2本の近接した状態に当てて摂動の成長率を測るので**伝播器は決定的でなければならない**。rng を渡すと測る量が『摂動の成長率』ではなく『摂動 + ノイズ実現値の差の成長率』という別物になる。判定を伝播器の**生成時**に置くのは、伝播器が conditional_lyapunov の深部で初めて呼ばれるため、そこで落とすと失敗が D-18 の check_propagator のメッセージ (『参照軌道と別の入力で伝播している疑い』) として出て、次の実装者を存在しないバグの捜索へ送り込むためである。**却下案A (ノイズ無しの複製で伝播する) は安全に見えて成立しない**: ノイズ有りの参照軌道 X にノイズ無しの複製を当てると差は a·[tanh(pre) - tanh(pre + σξ)] のオーダーになる。実測 (N=60 / rho=0.9 / leak=0.3 / T=300): RMS/ユニット距離の最悪値は σ=1e-4 で 2.741e-05、σ=1e-3 で 2.741e-04、σ=1e-2 で 2.742e-03 で、propagator_tol=1e-10 をそれぞれ **5.44 / 6.44 / 7.44 桁**超過する (ADR の推定『leak=0.3, σ=1e-4 で 1e-5 台・5〜6桁超過』と一致)。したがって check_propagator=True では必ず ValueError になり、check_propagator=False にすればノイズ条件でだけ D-18 の防衛線を全部外すことになる。『ノイズ無しの複製』は**呼び出し側が明示的に作るなら正しい**。誤りなのは伝播器の中でこっそり作ることである。ノイズ下の条件付き Lyapunov 指数が成果物の列として必要になったとき、または ESN のノイズが tanh の**外側**の加算に変わったときが見直し条件 (後者になって初めて案A が成立する)。実測 (変異注入): 検査を消して esn.step(x, u, rng) に差し替えても、却下案A (ノイズ無しの複製を返す) に差し替えても、test_propagator_refuses_a_noisy_esn が 1 件赤になる (前者は ESN.step が呼ばれることまで固定しているため)。案A が成立しないことの実測は test_noise_free_clone_fails_the_propagator_check が桁差と**誤診メッセージの本文**の両方で残す"
+  guard_test: "tests/test_experiment_esp.py::test_propagator_refuses_a_noisy_esn"
+
+- id: D-52
+  rule: "どのパッケージでも、公開サブモジュール名と同名の公開シンボルを __init__ で再エクスポートしない。diagnostics/__init__.py からは**関数** ipc / memory_capacity の再エクスポートを外し、__all__ からも2名を外す。属性 diagnostics.ipc / diagnostics.memory_capacity は**モジュール**である。関数の正規の入手経路はフルパス (from rc_basics_lab.diagnostics.ipc import ipc) 1本に固定する"
+  rationale: "ADR 0001 §4 (§9 でユーザー承認済み、2026-08-20) / 仕様 §2.4-5 / §4 T2-3 / §10-3。from ....ipc import ipc と書くとパッケージ属性 diagnostics.ipc (=モジュール) が**関数**で上書きされる。import a.b.c as m は sys.modules より先に親の属性を見るため m は関数になり、monkeypatch.setattr(m, '...') が関数オブジェクトへの属性設定として**成功**したまま何も差し替わらない —— 3a のレビューで実際に踏み、**変異試験が偽の緑になった**。同じ衝突が memory_capacity にもあり、ipc 固有の事故ではなく**命名規約の欠如**である。関数名を変える案 (compute_ipc 等) は本番約80箇所の機械置換が T3 (diagnostics/ の整理) と同じサイクルに乗って『純粋な整理である』ことの証明を切り分けにくくする上、記事・docs の語彙とずれる。現状維持は 04b-1 の diagnostics/lyapunov.py で**3件目**を招く。破壊の見え方は mypy の『Module not callable』と実行時 TypeError で**静かには壊れない**。本番コードで from rc_basics_lab.diagnostics import ipc を使っている箇所は 0 件 (capacity_threshold.py:39 のヒットは罠を説明するコメント) なので、変更は __init__ とテスト側だけである。既存の慣習テスト (test_package_init_reexports_all_public_submodules) は hasattr しか見ないため隠蔽を緑で通しており**テスト自身が共犯**だった。tests/test_experiment_capacity.py の旧テスト test_diagnostics_ipc_module_and_function_are_both_reachable は『パッケージ属性は関数である』と**現在の隠蔽そのものを固定**していたので、削除ではなく test_diagnostics_ipc_module_resolves_to_a_module へ**反転**して置き換え、monkeypatch が実際に効くことまで測るようにした。実測 (変異注入): __init__ に from ....ipc import ipc を戻すと 3 件赤 (test_package_attributes_are_modules_not_shadowed[diagnostics] / test_diagnostics_all_matches_the_recorded_snapshot / test_diagnostics_ipc_module_resolves_to_a_module)。guard_test は全7パッケージ x 全公開サブモジュールを回すので、04b-1 が公開関数名を lyapunov にした瞬間に**一覧への追記なしで**赤くなる"
+  guard_test: "tests/test_public_api_reexport.py::test_package_attributes_are_modules_not_shadowed"
+
+- id: D-53
+  rule: "rc_basics_lab.experiment 配下のモジュールは rc_basics_lab.plotting を module-level で import しない。作図の呼び出しは関数本体の中で import する。逆向き (作図層が実験層の行 dataclass・集計関数・記事メタを module-level で import すること) は**許可する**。どのパッケージも単独 import で完結し、import 直後に __all__ の全名前が解決できること"
+  rationale: "ADR 0001 §5 / 仕様 §2.4-4 / §3.3-4b。循環の実体は plotting/__init__ -> plotting.figures -> experiment.runner -> **experiment/__init__** -> experiment.pipeline -> plotting.figures (部分初期化) -> ImportError で、起きているのは『静的な辺』(plotting -> experiment: 行 dataclass の型・集計関数・記事メタ) と『動的な辺』(pipeline -> plotting: 図を描く関数を呼ぶだけ。型注釈にも定数にも現れない) を同じ module-level import 文で書いていることの積である。動的な辺だけを関数本体へ落とせば、公開 import 経路を1つも変えずに (D-49 の延長) 循環が消える。変更は3ファイル・6行の移動だけで済む。**plotting/__init__ を遅延化する案 (却下案A) は偽の緑を作る**: 仕様 §4 T2 が指定した受け入れ基準 test_plotting_can_be_imported_first は緑になるが、直後の属性アクセスで同じ ImportError が1回ぶん先へ移動するだけである。実測: 案A を実装して D-53 を取り消すと test_plotting_can_be_imported_first は**緑**になる一方 test_every_package_resolves_all_of_its_public_names_when_imported_first[plotting] は**赤のまま**だった (2 failed / 8 passed) —— 受け入れ基準を仕様より強くした理由そのものである。記事メタを article/ へ移す案は、plotting が行 dataclass だけでなく**関数** (mean_nrmse_by_washout / aggregate_nrmse) も import しているため循環を消せない。package 分離は最も正直だが公開 import 経路を変える (D-49 の逆) ので必要になってからでよい。関数内 import には D-53 に紐づくコメントを必ず添える (紐づけないと次の fixer が先頭へ戻して循環が復活する)。実測 (変異注入): import を module-level へ戻すと test_experiment_never_imports_plotting_at_module_level (AST 走査) と test_plotting_can_be_imported_first / test_every_package_resolves_all_of_its_public_names_when_imported_first[plotting] (subprocess) の**両方**が赤 (計 3 件)。AST 走査なので 04b-2 の freerun_pipeline.py は一覧への追記なしで自動被覆される。見直し条件は、作図層が実験層の**関数**に依存しなくなったとき、または合成層の関数内 import が10か所を超えたとき"
+  guard_test: "tests/test_layer_boundaries.py::test_experiment_never_imports_plotting_at_module_level"
+
+
+# サイクル04b-1 (T4)。docs/plans/rc-basics-04.md §6 の D-41 / D-42 / D-44 /
+# D-50 / D-51。rule / rationale は仕様の草案ではなく**T4 が実装に合わせて
+# 訂正した版**が正本 (特に D-41 の Delta t は較正で 0.02 -> 0.01 に変わった)。
+# D-43 / D-45 / D-46 は 4-B / 4-C を担当する次サイクルが追記する。
+
+- id: D-41
+  rule: "Lorenz は (sigma, rho, beta) = (10, 28, 8/3) を古典的 RK4 で積分し sample_interval ごとにサンプルする。系パラメータは tasks/chaotic.py のモジュール定数とし設定フィールドにしない。Delta t は較正で決めた 0.01 (rk4_step=0.002 x sample_interval=5) を既定とする。標準化 (平均0・分散1) の係数は**訓練区間の先頭 standardize_steps 行から推定した1組**を u・y の全区間で使い、自走中も評価区間も再推定しない。Mackey-Glass は再実装せず tasks/mackey_glass.py の generate_mackey_glass へ委譲し、04 が足すのは標準化だけにする"
+  rationale: "仕様 §6 D-41 / §10-2。(a) 系パラメータを設定にすると、カオス域かどうかも文献値 lambda_max=0.9056 の意味も黙って変わる (tasks/narma.py の係数を設定にしない D-29 と同じ規律)。(b) **標準化係数を区間ごとに推定し直すと、モデルが当てられていない区間でも予測と真値の平均・分散が揃うため『予測が当たっているように見える』壊れ方をし、位相図でも有効予測時間でも検出できない**。係数を作れる場所を Standardizer.from_training_prefix 1箇所に閉じ、値として持ち回ることで、区間ごとの再推定が構造上書けないようにした。(c) u と y は同じ係数でなければならない —— 自走は出力をそのまま次時刻の入力へ戻すので、片方だけ別の係数だと単位が食い違う。(d) MG を再実装すると遅延微分方程式の積分・履歴の線形補間・tau/rk4_step の整数性検査が2箇所に分かれる。実測 (変異注入): beta を 8/3 -> 2.7 にすると独立実装 (solve_ivp, rtol/atol 1e-10) との相対差が 7.1e-03 (許容 1e-6) で 2 件赤、標準化を全区間から推定すると 2 件赤、y だけ別の係数にすると 1 件赤。Delta t の較正は sample_interval in {5,10,25} を代表条件 (Lorenz / N=200 / 10 レプリケート) で測り、受け入れ条件1 (自走がアトラクタを再現) と受け入れ条件3 (1ステップ先で ESN と遅延線の差が小さい) の両方が成立するのは 5 だけだった (10: 自走が 5/10 で発散、25: ESN が遅延線を 25 倍上回り条件3 が壊れる)。落選値の実測は docs/plans/rc-basics-04.md の T4 実装メモにある"
+  guard_test: "tests/test_tasks_chaotic.py::test_standardization_uses_the_training_prefix_coefficients_everywhere"
+
+- id: D-42
+  rule: "最大 Lyapunov 指数は Benettin 法による**数値推定を正本**とし、ctx.dt (= rk4_step x sample_interval) で割って時間あたりの値にする。文献値 (Viswanath 1998 の 0.9056) は MaxLyapunovConfig.reference_value として**照合にのみ**使い、推定には一切使わない。Benettin の反復は diagnostics/esp.py の conditional_lyapunov に一本化し、自律系用に書き直さない。公開関数名は max_lyapunov とし lyapunov にしない (D-52)"
+  rationale: "仕様 §6 D-42。文献値を正本にすると、積分刻み・サンプリング間隔・burn-in を取り違えても指標に現れず、図でも有効予測時間でも検出できない。数値推定を正本にすれば、これらの取り違えは推定値のずれとして必ず出る。自律系は『入力が無い = 伝播器が時刻に依存しない』場合であり条件付き Lyapunov 指数の特別な場合そのものなので、反復を書き直すと同じアルゴリズムが2箇所に分かれる (memory_capacity と ipc が _capacity を共有しているのと同じ形)。max_lyapunov が足すのは (a) 自律系向けの名前と params (b) Lyapunov 時間 1/lambda (c) 文献値との照合の3つだけで、いずれも反復の中身ではない。lyapunov_time は指数が正でないとき nan にする —— 1/lambda をそのまま返すと『負の Lyapunov 時間』が有効予測時間の分母に入る。実測: 本番設定 (軌道 8000 サンプル / burn-in 1000 サンプル / 再正規化間隔 10 サンプル / 摂動 delta=1e-8) で lambda_max = 0.9161 [1/時間]、文献値 0.9056 との相対差 1.16% (許容 5%)。変異注入: 文献値をそのまま推定値として返すと 1 件赤、ctx.dt での正規化をやめると 2 件赤、lyapunov_time を符号に関係なく 1/lambda にすると 1 件赤"
+  guard_test: "tests/test_diagnostics_lyapunov.py::test_estimated_lyapunov_matches_the_literature_value"
+
+- id: D-44
+  rule: "自走 (closed-loop) は**教師強制で学習した read-out 係数をそのままの配列オブジェクトとして**使う。readout/autoregressive.free_run は学習の入口 (fit_ridge / select_alpha) を1つも呼ばず、FreeRunResult.coefficients には渡された配列そのものを返す。自走のたびに学習し直す・教師強制と自走で別の係数や別の FeatureSpec を使うことを禁じる"
+  rationale: "仕様 §6 D-44 / §5 禁止する構造1・2。自走区間で学習し直すと、測っているのが『自走が上手くいくか』ではなく『自走区間に当てはめ直せるか』になり、実験の主張 (力学系そのものを学習しているか) が成り立たない。同一性 (is) で契約を書くのは、値の一致だけだと『同じ値を再計算する実装』が通り、シードや alpha 格子を変えた瞬間に黙って別物になるため。特徴の並びは自走中も build_design_matrix を通して組むので、教師強制と自走で並びが違う事故は構造上起きない。実測 (変異注入): free_run が係数を複製して返すようにすると 2 件赤 (readout 側の同一性テストと実験層の D-44 guard)。guard は同一性だけでなく『alpha を変えて学習し直した係数を渡すと予測列が変わる』ことも測るので、係数を無視して定数を吐く実装でも緑にならない"
+  guard_test: "tests/test_experiment_freerun.py::test_free_run_uses_the_teacher_forced_coefficients"
+
+- id: D-50
+  rule: "readout/autoregressive.py は rc_basics_lab.reservoir を module-level でも関数内でも推移的にも import しない。状態更新器は StateUpdater プロトコル (f(x, u) -> x) で受け取る。ESN を StateUpdater に適合させるアダプタ (esn_state_updater) と確保軸の検査は実験層 (experiment/freerun.py) が持つ"
+  rationale: "仕様 §6 D-50 / 要件書 受け入れ条件7 (移植性の担保。メモリスタ本編で再利用)。diagnostics が StatePropagator で reservoir から独立しているのと同じ構造で、ESN でも外部シミュレータでも実素子の測定ループでも同じ free_run がそのまま動く。**Protocol を満たすだけでは動く証明にならない**ので、guard は解析的に閉じた線形写像 (x[k] = A x[k-1] + B u[k], y = C x) で自走を回し、閉形式 y[k] = C x[1] (A+BC)^(k-1) と一致することまで測る。さらに ESN.__init__ / step / run を『呼ばれたら落ちる』ものへ差し替えた状態で完走させるので、内部でこっそり ESN を作る実装は緑にならない。推移的な引き込みは別プロセスで sys.modules を見て検出する (同一プロセスでは他のテストが import 済みの reservoir が残り検査が空虚になる)。実測 (変異注入): module-level に reservoir の import を1行足すと 2 件赤 (AST 走査とサブプロセス)"
+  guard_test: "tests/test_readout_autoregressive.py::test_free_run_works_with_an_external_state_generator"
+
+- id: D-51
+  rule: "実験04 の成果物は results/04_chaotic_freerun/ に出す (要件書の results/ 直下から変更)。main.EXPERIMENTS['04'].out_dir と experiments/04_chaotic_freerun/run_04.py:DEFAULT_OUT の両方がこの値であること"
+  rationale: "仕様 §3.2 / §6 D-51。results/ 直下は 01 が使っており meta.json のファイル名が衝突する —— --out を付けずに 04 を実行すると 01 の成果物を黙って上書きする (02・03 で実際に踏んで実験ごとのディレクトリへ分けた経緯がある)。既定出力先が2箇所 (レジストリと実験スクリプト) に手で二重定義されている点は 03 までと同じなので、一致は tests/test_main.py::test_run_script_default_out_matches_the_registry が全実験について機械的に回す"
+  guard_test: "tests/test_experiment_freerun.py::test_chaos_artifacts_go_to_their_own_directory"
+# サイクル04b-2 (T5)。docs/plans/rc-basics-04.md §6 の D-43 / D-45 / D-46。
+# rule / rationale は仕様の草案ではなく**T5 が実装に合わせて訂正した版**が正本
+# (特に D-46 の指標は「分布距離」から点集合距離へ、根拠は実測)。これで 53 件。
+
+- id: D-43
+  rule: "有効予測時間は、誤差の NRMSE 比 (瞬時 RMSE / 真の系列の標準偏差 ddof=0、D-02 と同じ正規化) が freerun.valid_time_threshold を初めて超えるまでのステップ数とし、**Lyapunov 時間 (1/lambda_max、D-42 の数値推定) で正規化して報告する**。生のステップ数だけで報告しない。自走長まで一度も超えなかった行は valid_time_censored=True を立てて残す (打ち切りを無かったことにしない)。自走が打ち切られた後の nan は『閾値を超えた』と扱う。lambda_max を数値推定していない系 (Mackey-Glass) の Lyapunov 列と valid_time_lyapunov は nan にし、**他の系の値で埋めない**。閾値の感度 {0.2, 0.3, 0.4, 0.5} を meta.json の valid_time_sensitivity に必ず残す"
+  rationale: "要件書 設計判断1 / 仕様 §6 D-43 / §5 禁止する構造5。カオス系は原理的に長期予測不能なので『何ステップ当たったか』には系とサンプリング間隔に依存する意味しかなく、Delta t を半分にしただけで数字が倍になる。Lyapunov 時間で割ると系のスケールが落ち、Delta t の較正 (D-41) を変えても比較できる量になる。打ち切りをフラグにするのは、自走長に達した行を『ちょうどそこで誤差が超えた』と読むと分布の右端が実際より小さく見えるためで、右側打ち切りは統計として明示するしかない。nan を『超えていない』側に倒すと、自走が破綻して以降の行が『まだ当たっている』に化ける。MG を nan にするのは D-42 (正本は数値推定) の裏返しで、Benettin 法には遅延系の履歴 (tau/h = 170 次元) を状態とする伝播器が要り 04 では作っていないため、文献値でも他系の値でも埋めない。実測 (本番設定、Lorenz / ESN / 10 レプリケート): 中央値 4.83 [1/lambda_max]、最小 3.18、最大 5.93、打ち切り 0 件。同じ条件の対照は遅延線 0.179 / 線形 0.069 で **27〜70 倍**の差。閾値感度は 0.2 -> 0.5 で中央値 3.71 -> 5.24 と動くが、対照との差に対して桁が2つ小さいので『0.4 だから出た結論』ではない。変異注入: (a) 打ち切りフラグを常に False にすると test_valid_time_marks_the_run_length_as_censored が1件赤 (b) Lyapunov 正規化をやめて生のステップ数を書くと 2件赤 (c) nan を『超えていない』扱いにすると test_nan_errors_end_the_valid_time が1件赤。**成果物 CSV を読むだけのテストは (b) を検出できない** (CSV は変異の前に生成されている) ので、guard_test には縮小設定で 4-B を実際に回して正規化を再計算する脚を足してある"
+  guard_test: "tests/test_experiment_freerun.py::test_valid_time_rows_cover_at_least_ten_seeds"
+
+- id: D-45
+  rule: "自走の3態 (発散 / 周期軌道 / アトラクタ再現) は純関数 experiment/attractor.classify_regime が数値基準だけで決める。図・目視・手作業の区分けを使わない。判定は上から順に排他で、(1) 非有限で打ち切り **または** 振幅比 (自走のピーク振幅 / 真の軌道のピーク振幅) > AMPLITUDE_RATIO_MAX = 5.0 -> 発散、(2) 標準偏差比 < COLLAPSE_STD_RATIO **または** 自己相関のピーク (最初のゼロ交差以降の最大) >= PERIODIC_AUTOCORR = 0.95 -> 周期軌道、(3) それ以外 -> アトラクタ再現、で網羅する。**振幅そのものを見る**こと。COLLAPSE_STD_RATIO は AMPLITUDE_RATIO_MAX の逆数とし、独立に動かせる定数を持たない"
+  rationale: "仕様 §6 D-45 / §5 禁止する構造6 / T4 実装メモ 5。(a) **isfinite だけでは破綻を捕まえられない**: float64 の範囲内で 1e200 まで伸びる軌道は有限値のままで、振幅を見ない分類器はこれを『アトラクタ再現』に数える (T4 の Delta t 較正で実際に踏み、判定を『ピーク振幅 > 真値の5倍』に変えて初めて 5/10 の破綻が見えた)。(b) 閾値を2本の独立な定数にすると片方だけを動かせてしまい、『図が良く見えるまで閾値を調整する』余地が残る。倍率を1本にして潰れ側をその逆数にすれば、両側を同時にしか動かせない。(c) 自己相関は最初のゼロ交差以降だけを見る —— Delta t = 0.01 ではラグ1 の自己相関が 0.999 に達する (滑らかにサンプルしているだけ) ので、そのまま最大を取ると全条件が周期軌道になる。実測の分離 (Lorenz / stats_steps = 20,000): 自走が続く ESN は標準偏差比 0.80〜1.01・自己相関ピーク 0.005〜0.224、緩やかに不動点へ落ちる対照は 0.032〜0.214・0.717〜0.760、4-C で発散した 100 条件の振幅比は最小 5.4。しきい値 0.2 / 0.95 はどちらの群からも遠い。**3態は粗い分類であり、再現の可否を最終的に決めるのは D-46 の2指標**である (対照 10 本中 1 本は 20,000 ステップかけても収束しきらず『アトラクタ再現』側に落ちるが、D-46 では 0/10)。受け入れ条件4 (ノイズで領域が変わる) は成果物の行から test_noise_changes_the_regime_map が判定する (状態ノイズ 0 -> 1e-2 で発散が 31 -> 21 / 80 条件)。変異注入: 振幅の検査を消して isfinite だけにすると guard_test が1件赤、潰れ側の倍率を独立の定数にすると設計文書との照合 (test_chaos_regime_rule_table_matches_the_module_constants) が1件赤、自己相関を最初のゼロ交差より手前から見ると 2件赤"
+  guard_test: "tests/test_experiment_attractor.py::test_classify_regime_catches_a_finite_but_blown_up_trajectory"
+
+- id: D-46
+  rule: "アトラクタ再現は**2本の距離指標**で定量化する: (1) リターンマップ (最終成分の連続する極大値の対) の点集合間の対称 chamfer 距離 (2) 正規化パワースペクトル間の全変動距離。**視覚評価を結論に使わない**。どちらも**真の軌道のシャッフル代替**(時間順序だけを壊し周辺分布を1ビットも変えない対照) より小さいことを要求し、群ごとに片側符号検定の p 値を成果物に残す。代替の並べ替えは task ストリームから引く (5本目のストリームを新設しない、D-14)。4本の距離 (自走 / 代替 x 2指標) と判定を freerun.csv の列として出す"
+  rationale: "要件書 設計判断4 / 仕様 §6 D-46。『絵が似ている』で終わらせないための決定だが、**指標を分布だけで作ると対照が効かない** —— シャッフル代替は周辺分布を1ビットも変えないので、値の分布距離では代替と真の軌道を区別できない。リターンマップ (連続する極大値の対) は時間順序を壊すと再現できない統計量なので、これを1本目に選んだ。**2次元ヒストグラムの全変動距離を採らなかったのは実測による**: 真の軌道の極大値は 20,000 サンプルでも約 106 点しかなく、同一分布からの独立標本 (真の点列を半分に割ったもの) でも TV が 0.23〜0.45 (ビン 8〜32) に達して自走 (0.14〜0.26) と重なる。同じ対照で対称 chamfer は 0.030 (同一分布) / 0.011 (自走) / 0.393 (代替) と分離する —— 標本数が三桁のとき、ヒストグラム距離の雑音床は信号と同じ大きさになる。片側だけの chamfer にしないのは、潰れた軌道が真のリターンマップ上の1点に乗るだけで距離 0 になるためである。実測 (本番設定、10 レプリケート): ESN は Lorenz で 0.0181 (代替 0.4296) / スペクトル 0.3853 (代替 0.9321)、MG で 0.0061 (0.1705) / 0.2994 (0.9457) で、**2課題とも 10/10 のシードが代替より近い** (片側符号検定 p = 1/1024 = 0.00098)。対照 (線形・遅延線) は 0/10 で、指標が自走の質を見ていることの対照になっている。長時間統計の長さ (stats_steps = 20,000 = 183 Lyapunov 時間) は『真の系列より長く 100 Lyapunov 時間以上』という基準で先に決めた —— 短くするほど結果は良く見える (2,000 では最大 0.083、20,000 では 3/10 が崩れて最大 0.412) ので、良く見える方を選んでいないことを design.md §12.3 の表に残す。変異注入: リターンマップを値の分布距離に差し替えると test_shuffled_surrogate_keeps_the_marginal_and_destroys_the_time_structure が1件赤、代替を時間順序を保つ複製にすると同じテストが1件赤、代替との比較をやめて常に True にすると guard_test が1件赤。**成果物 CSV を読む受け入れ条件のテスト (test_attractor_distance_separates_true_and_surrogate) は最後の変異を検出できない** (CSV は変異の前に生成されている) ので、guard_test には計算を実際に回す側を据えてある"
+  guard_test: "tests/test_experiment_freerun.py::test_closer_than_surrogate_is_derived_from_the_two_distances"
+
+# サイクル05 (T1)。docs/plans/rc-basics-05.md §6 の D-54 / D-62。
+# rule / rationale は仕様の草案ではなく**T1 が実装に合わせて訂正した版**が正本。
+# D-55 / D-56 / D-61 / D-63 は実験層 (T3) が、D-57 は課題層 (T2) が、
+# D-58 / D-59 / D-60 は データ層 (T2) が、それぞれ実装と同時に追記する。
+# これで 55 件。
+
+- id: D-54
+  rule: "AUPRC は average precision (階段和) Sigma_n (R_n - R_{n-1}) * P_n で計算する。台形則・線形補間を禁止する。同順位 (同スコア) は1つの閾値に畳み、sklearn.metrics.average_precision_score と同じ規則にする。PR 曲線の点列・図・CSV・AP はすべて metrics_detection.precision_recall_curve が返す PrecisionRecallCurve 1本から作り、AP は PrecisionRecallCurve.average_precision() 以外の経路で計算しない"
+  rationale: "docs/plans/rc-basics-05.md §6 D-54。sklearn 公式ドキュメント『not interpolated ... can be too optimistic』。台形則は補間の分だけ楽観バイアスが乗るが、値は 0〜1 に収まり曲線も滑らかなので**図でも CSV でも壊れて見えない** —— 05 の主指標が AUPRC である以上、静かに楽観側へずれる実装は実験の結論をそのまま動かす。実測 (2026-08-20): 最上位スコアが同順位 (陽性1点 + 陰性1点) の 4 点の例 labels=[T,F,T,F] / scores=[1.0,1.0,0.5,0.4] で階段和 7/12 = 0.58333、台形則 2/3 = 0.66667 で**台形則の方が 1/12 大きい**。台形則が大きくなるのは端点 (recall=0, precision=1) との平均を最初の recall 上昇区間で取るためで、同順位が無い入力では差が出ないことがある —— **同順位を含む例を選ばないと guard が空虚になる**。曲線に合成端点を含めない設計にしたのは、階段和 (R_0 = 0) がそのままコードになり、端点を足すか足さないかで AP が変わる余地を消すため。変異注入: PrecisionRecallCurve.average_precision() を台形則に差し替えると 3 件赤 (guard_test / test_matches_scikit_learn_average_precision_on_random_inputs / test_average_precision_matches_a_hand_computed_case)。同順位を畳まず1点ずつ閾値にすると sklearn 照合が赤"
+  guard_test: "tests/test_metrics_detection.py::test_average_precision_is_the_step_sum_not_the_trapezoid"
+
+- id: D-62
+  rule: "検知指標は自前実装し、scikit-learn を実行時依存に追加しない。dev グループにのみ置きテストのオラクルとしてのみ使う。[project].dependencies は matplotlib / numpy / pyyaml / scipy の4つに保つ。src/rc_basics_lab/ の本番コードから sklearn を import しない"
+  rationale: "docs/plans/rc-basics-05.md §3 設計判断(1) 案C (ユーザー承認済み、2026-08-20) / §6 D-62。実行時依存を4つに保つ (D-10 と同じ規律) —— 連載の『依存最小』の主張は README の文言ではなく pyproject の行数でしか担保できない。sklearn を実行時に入れると joblib / threadpoolctl / narwhals が芋づるで増える (実測: uv add で 4 パッケージ増)。一方、AUPRC の自前実装は**同順位の扱いで容易に間違え、間違いは『少し違う値』としてしか現れない**ため、独立オラクル無しの自前実装は危険である。両方を満たす唯一の形が『自前 + dev のみの sklearn 照合』。実測 (2026-08-20): ランダム入力 1000 ケース (n=50〜500 / 異常率 1〜20% / 全ケースが同順位を含む) で sklearn.metrics.average_precision_score との最悪相対差 5.50e-16 (許容 1e-12 に対し4桁の余裕)。実装初版は precision の分母を TP+FP ではなく FP にしていて precision > 1 が出たが、**この照合が無ければ『少し高い AUPRC』として通っていた** (最悪相対差 1.02 で検出)。sklearn は型スタブを同梱しないので pyproject の mypy overrides に sklearn.* を足してある (scipy / matplotlib と同じ扱い)。変異注入: [project].dependencies に scikit-learn を足すと guard_test が赤 (実行時依存の一覧そのものをリテラルで固定しているため、依存が1つ増減しただけでも落ちる)"
+  guard_test: "tests/test_metrics_detection.py::test_runtime_dependencies_do_not_include_scikit_learn"
+
+# サイクル05 (T2)。docs/plans/rc-basics-05.md §6 の D-57 / D-58 / D-59 / D-60。
+# rule / rationale は仕様の草案ではなく**T2 が実装に合わせて訂正した版**が正本
+# (特に D-57 の normalize 4値の扱いと、D-59 の検査範囲)。これで 59 件。
+
+- id: D-57
+  rule: "異常検知の前処理は手法間で完全に共通化する。係数を作れる場所は tasks/anomaly.py の AnomalyPreprocessor.from_training_prefix(series, n_steps, normalize) の1本だけとし、訓練区間の先頭から推定した1組を値として全手法・全区間へ配る。normalize は zscore / minmax / robust / none の4値で、未対応の文字列は ValueError にする (黙って恒等変換へ倒さない)。AnomalyPreprocessor を返す関数・構築する呼び出しを他に作らない"
+  rationale: "docs/plans/rc-basics-05.md §3 設計判断(3) / §6 D-57。要件書 設計判断4 で、D-41 (tasks/chaotic.py の Standardizer) と同型。区間ごとに推定し直すと『当てられていない区間でも平均・分散が揃うため予測が当たって見える』壊れ方をする。**異常検知ではさらに悪く、テスト区間から推定した尺度にはその区間の異常が入っているため、異常が「正常なばらつき」として吸収される**。実測 (2026-08-20): 前半 N(0,1) 500 点 + 後半 N(50,10) 500 点の系列で、訓練前半から推定した係数を後半へ適用すると変換後の平均は 4 方式とも 0 から大きく離れる (再推定していれば 0 付近に来る)。guard_test は normalize の4値 x 『(a) src/ 全体を AST で走査して AnomalyPreprocessor を構築する呼び出しが from_training_prefix の中にしか無い (b) 係数がテスト区間から再推定されていない』の両方を測る —— 値だけの検査は『実験層が自分で係数を作る』経路を検出できず、構造だけの検査は『from_training_prefix の中で区間を取り違える』を検出できない。normalize の値域検査を落とすと test_preprocessor_rejects_an_unsupported_normalize が赤、from_training_prefix 以外に構築経路を足すと guard_test が 4 件赤になる"
+  guard_test: "tests/test_tasks_anomaly.py::test_all_methods_share_one_preprocessor_fitted_on_training_prefix"
+
+- id: D-58
+  rule: "外部データセット本体をリポジトリに含めない。置くのは取得スクリプト・ファイル名リスト・SHA256 マニフェスト (src/rc_basics_lab/datasets/manifests/*.csv) だけとする。取得は HTTPS のみ / リダイレクト追随は 3 回まで / サイズ上限 200 MB / タイムアウトつきで行い、**SHA256 不一致は例外にしてキャッシュにも残さない** (一時ファイル .part も消す)。ZIP は member 名を検査してから必要なものだけを展開し (extractall を使わない)、data_dir の外へは1バイトも書かない"
+  rationale: "docs/plans/rc-basics-05.md §6 D-58。UCR は公式ページにライセンス表記が一切なく (引用のお願いのみ) 再配布可否が法的に不明で、Figshare ミラーは寄託者が原著者でなくサイズも異なるため根拠にならない。SHA256 照合が無いと、URL 先が差し替わったとき『違うデータで実験して同じ数値が出ない』という形でしか気づけない。**不一致のファイルを残すと次回の実行が「キャッシュ済み」として拾う**ので、guard_test は例外が出ることに加えて保存先と .part の両方が消えていることまで測る。実測 (2026-08-20): マニフェストに載せた 18 ファイル (MGAB 10 + UCR 8) と ZIP 全体の SHA256 は shasum -a 256 の実測値で、読み取り実装が返す点数・異常点数・異常率もマニフェストの値と完全に一致する。サイズ上限 200 MB は UCR の ZIP 実測 184,066,400 byte を通す最小の切りのよい値。変異注入: 照合を消すと guard_test が赤、.part を消さないと同じテストの後半 2 行が赤、extractall に差し替えると test_extract_members_rejects_a_path_traversal_member が赤"
+  guard_test: "tests/test_datasets_anomaly.py::test_download_is_rejected_when_the_sha256_does_not_match"
+
+- id: D-59
+  rule: "ネットワーク・ファイル I/O・ライセンス確認は datasets/ にのみ置く。tasks/ と metrics_detection.py は純関数層に保ち、**module-level だけでなく関数本体の中も** AST で機械検査する。依存は datasets -> tasks の一方向で、tasks から datasets を import しない"
+  rationale: "docs/plans/rc-basics-05.md §6 D-59。tasks/__init__.py の規律 (課題層は readout も reservoir も知らない) の延長。課題層に HTTP とキャッシュを足すと純関数層がステートフルな I/O 層に化け、memristor-rc-lab への移植性 (D-12 が守る性質) が失われる。**関数の中まで見るのが要点**で、module-level だけを見る検査は『関数の中で import すれば通る』ため guard にならない (test_the_io_guard_would_catch_an_import_inside_a_function が、module-level 版では素通りし関数込み版では捕まることを実測して固定してある)。禁止する根は仕様が名指しした urllib / requests / socket / pathlib / open の5つに加えて os / io / shutil / zipfile / tarfile / tempfile / subprocess / sqlite3 / csv / json と numpy 経由のファイル I/O (np.loadtxt / np.load / np.savetxt など) まで広げた —— 名指しの5つだけを塞ぐと『pathlib は使っていない (os.path を使った)』『open は呼んでいない (np.loadtxt を呼んだ)』が通る。D-53 (experiment -> plotting を関数内へ落とす) とは向きが逆で、あちらは循環 import の話、こちらは層が何をする層なのかの話である。禁止側だけだと datasets/ が空でも緑になるので、test_datasets_is_the_only_package_that_may_perform_io が I/O の在り処も同時に固定する"
+  guard_test: "tests/test_layer_boundaries.py::test_tasks_and_metrics_never_perform_io"
+
+- id: D-60
+  rule: "pytest はネットワークに一切触れない。既定データ源は合成 (generate_synthetic_anomalies) とし、実データ源のテストはキャッシュが無ければ skip する。HTTP を開く部分は fetch.Opener として差し替え可能にし、取得・照合の検査はローカルのバイト列を返す fixture で行う"
+  rationale: "docs/plans/rc-basics-05.md §6 D-60。CI がネットワーク可用性に依存すると、UCR の URL が死んだ日にリポジトリ全体が赤になり、実装の正しさと外部の可用性が区別できなくなる (サーベイ §2 が実測したとおり論文記載 URL の多くは既に死んでいる)。guard_test は urllib.request.urlopen / socket.create_connection / fetch.open_https を例外に差し替えた状態で、合成源・マニフェスト読み取り・キャッシュ問い合わせが通ることを測る。実測 (2026-08-20): data/05_anomaly を退避した状態で uv run pytest -q が **1077 passed / 9 skipped**、キャッシュ在りで **1086 passed** —— 差分の 9 件がキャッシュ依存テスト (MGAB 1 + UCR 8) で、それ以外は1件も動かない。変異注入: skip の条件を消すと退避状態で 9 件赤、Opener の差し替え口を消すと test_download_is_rejected_when_the_sha256_does_not_match がネットワークなしでは書けなくなる"
+  guard_test: "tests/test_datasets_anomaly.py::test_default_source_needs_no_network"
+
+# サイクル05 round2 fixer 分。reviewer-docs (F-2-008) / reviewer-performance
+# (F-2-012) の指摘を受け、D-64 / D-65 を追記した。これで 61 件。
+
+- id: D-64
+  rule: "datasets/fetch.py 内でファイルを確定させる経路はすべて (現状は _StagedSink.commit の1箇所のみ。今後増えても同様)、os.replace で確定させる直前に、書き込みに使った一時ファイルの実体 (fd) から実バイト列を再照合する。ストリームから計算しただけのダイジェストや、パスを開き直して読んだ値では代用しない。加えて確定直前に、書き込みに使ったディレクトリ fd 相対で見た一時ファイルの実体 (os.stat(name, dir_fd=..., follow_symlinks=False)) と os.fstat(fd) の (st_dev, st_ino) が一致することまで確認し、不一致なら os.replace を行わずに送出する"
+  rationale: "(reviewer-docs 指摘) D-58 は『SHA256 不一致は例外にしてキャッシュにも残さない』という照合すること自体は決めているが、『どのバイト列を照合するか』には触れていない。round2 の T2 実装者は D-58 を読んだ上でパスを開き直してディスクを再照合する実装 (sha256_of(partial)) を書き、これが round2 で HIGH (reviewer-security 指摘、CWE-367) として指摘された —— 書き込み完了から os.replace までの間に同名パスが symlink や別ファイルへ差し替えられた場合、パス越しの再照合そのものが攻撃者の中身を読んで『一致』してしまう。読み直す実体を『パス』ではなく『書き込みに使った fd』に変えても、まだ『同じ fd から書いて同じ fd から読む』という自己整合性しか測れず、確定直前に同名パスが丸ごと別の実体へ差し替えられていると素通りする —— そこで最後に fstat/stat の実体一致まで見る。これを決定として残さないと、次に fetch.py を触る誰かが『無駄な2度読み』や『冗長な stat 呼び出し』として消せてしまう (実際に一度、パス越し再照合という同じ誤りが decisions.yaml に記録されないまま書かれている)。実測 (fixer、round2): `_StagedSink.commit` の fstat/stat 検査を取り除く変異を注入すると、``test_staged_write_commit_rejects_bytes_swapped_before_replace`` / ``test_download_is_rejected_when_the_part_file_is_swapped_mid_write`` / ``test_extract_members_is_rejected_when_the_part_file_is_swapped_mid_write`` の3件が揃って赤くなる (3 failed / 6 passed / 38 deselected)。round3 で reviewer-security から HIGH (CWE-367) が独立に指摘された: fstat/stat 再照合は「同名パスが指す実体」と「fd が指す実体」を比較しているだけなので、resolve_under 通過後に target.parent 自体が data_dir 外への symlink に差し替えられると、fd もパスも同じ (symlink 越しの) 実体を指すことになり比較が無力化する。round3 ではこれを受けて rule に『一時ファイルの作成・再照合・確定は target.parent をパス文字列として都度開き直すのではなく _staged_write の冒頭で1回だけ取得したディレクトリ fd に固定する』という条項 ((c)) を足したが、round4 で reviewer-architecture (F-4-001) の指摘により、この条項を専用に測る guard_test が無いことが判明した (D-64 の guard_test は (a) fd からの再照合と (b) fstat/stat の実体一致しか測っていない)。D-65→D-66 と同じ形の分割として、(c) は D-67 として独立させた —— この決定の guard_test は (a)(b) のみを対象とする"
+  guard_test: "tests/test_datasets_anomaly.py::test_staged_write_commit_rejects_bytes_swapped_before_replace"
+
+- id: D-67
+  rule: "_staged_write は target.parent を os.O_DIRECTORY | os.O_NOFOLLOW で1回だけ開き、一時ファイルの作成・再照合・確定 (os.replace)・後始末は _StagedSink・_open_unique_temp_file のいずれもこの dir_fd 相対でのみ行う (target.parent をパス文字列として都度開き直さない)"
+  rationale: "(reviewer-architecture 指摘、F-4-001、round4) D-64 の rule は round3 で (a) fd からの再照合 (b) fstat/stat の実体一致 (c) dir_fd への固定、の3つの約束を束ねるところまで広がったが、D-64 の guard_test (test_staged_write_commit_rejects_bytes_swapped_before_replace) は (a)(b) しか測っておらず、(c) を測るテストはリポジトリに1本も存在しなかった。実測 (reviewer-architecture、round4): commit をパス越しに戻し _staged_write から O_DIRECTORY|O_NOFOLLOW まで外した変異を注入しても、D-64 の guard_test の全 assert (例外種別・メッセージ『差し替え』・target 未作成・*.part 残存なし の4条件) は成立したまま通った (`D-64 guard_test still GREEN: True True True`) —— **この条項が無いと、パス越し実装に戻しても D-64 の guard は緑のままだった**。(c) は round3 の HIGH (親ディレクトリ symlink 差し替え、reviewer-security 指摘) を閉じた条項そのものだが、唯一の裏付け .claude/tmp/repro_parent_dir_swap.py は .gitignore で無視される untracked ファイルで、次に fetch.py を触る人が『冗長な dir_fd 受け渡し』として畳んでも CI・check_decisions.py・全 guard が緑のままになる状態だった。guard_test には、with に入った**後**で target.parent という名前を丸ごと (改名 + symlink) 差し替えても、書き込み・再照合・確定が最初に取得した dir_fd の指す実ディレクトリでしか行われず symlink 先には1バイトも書かれないことを固定するテストを新設した。実測 (fixer、round4): この述語をパス越し実装 (target.parent を都度開き直す版) へ適用すると、確定後のファイルが symlink 先側に着地してしまい赤くなることを、tempfile 上に複製した fetch.py の変異版で確認した (src/ は変更していない)"
+  guard_test: "tests/test_datasets_anomaly.py::test_staged_write_stays_pinned_to_dir_fd_after_path_replaced"
+
+- id: D-68
+  rule: "fetch.py 内でファイルへ書く経路 (os.open/os.write/os.replace/os.rename/os.fdopen/shutil.move/numpy.save/組み込み open/io.open/*.write_bytes/*.write_text 等の書き込みモード呼び出し) はすべて _staged_write・_open_unique_temp_file・_StagedSink のメソッドのいずれかに属する。この全称性は tests/test_datasets_anomaly.py::test_every_write_capable_path_in_fetch_goes_through_staged_write が AST で機械検査し、検出対象の集合に mkdir/unlink は含めない (D-64/D-67 が扱う『確定させる経路』とは別の関心事であるため)"
+  rationale: "(reviewer-architecture 指摘、F-4-002、round4) round3 で新設した全称ガード test_every_write_capable_path_in_fetch_goes_through_staged_write と、その guard の guard (test_the_write_path_guard_detects_known_bypasses、9パターン) が、check_decisions.py --list-tests のどの決定からも参照されていなかった (grep -c 'every_write_capable' .claude/decisions.yaml が 0 件)。D-64/D-67 の rule はいずれも『fetch.py 内でファイルを確定させる経路はすべて』という全称の言い回しを含むが、両方の guard_test は _StagedSink.commit の1点しか測っておらず、『経路が全て _staged_write を通る』という全称性そのものを検証する guard_test を持つ決定が存在しなかった。将来 _WRITE_CAPABLE_MODULE_ATTRS から1エントリを削る・全称ガードごと消す、といった変更をしても、これで機械的に検出される。この決定を独立させたのは check_decisions.py の guard_test が単一 pytest node id しか解決しないため (D-65/D-66 と同じ事情)。round4 で reviewer-test (F-4-016) の指摘を受け検出集合を拡張した —— 組み込み open の裸呼び出し、io.open (mode がレシーバに応じて位置引数の第1/第2引数に来る)、os.fdopen、*.write_text、tempfile.NamedTemporaryFile(...).write(...) のような一時オブジェクトへの .write、numpy.save のいずれも実測で検出漏れだった (7パターン全てで offenders == [])。動的な getattr(os, \"replace\")(a, b) は静的 AST 解析の原理的な限界として追わない (docstring に明記。追いかけると終わりがない)"
+  guard_test: "tests/test_datasets_anomaly.py::test_every_write_capable_path_in_fetch_goes_through_staged_write"
+
+- id: D-65
+  rule: "generate_synthetic_anomalies() の確保軸は _MAX_RAW_SAMPLES (raw_samples 単体の上限) と _MAX_FIND_CUT_CELLS (_find_cut が確保する starts x spans の要素数上限、segment_length の実質2乗) の2本で縛る。value_scale / slope_scale (raw / derivative 全体の標準偏差) は generate_synthetic_anomalies 側で1回だけ計算して _find_cut へ引数で渡し、_find_cut 本体の中で再計算しない"
+  rationale: "(reviewer-performance / reviewer-architecture 指摘、D-34 に前例のある形の確保軸ガード) _find_cut が呼び出しごとに np.std(raw) / np.std(derivative) を raw 配列全体に対して再計算しており、generate_synthetic_anomalies が _find_cut を n_anomalies 回呼ぶことと合わさって全体のコストが実質 O(n_anomalies^2) になっていた。_MAX_RAW_SAMPLES と _MAX_FIND_CUT_CELLS はどちらもこの n_anomalies x raw_samples の積を検査しておらず、両方のガードを満たしたまま到達可能な軸だった。実測 (reviewer-performance、修正前): n_anomalies=1,000/5,000/20,000/50,000 でそれぞれ 0.0881s/0.6848s/6.2107s/34.2457s、total/n^2 が 8.81e-8→1.37e-8 に収束 (事実上の二乗)。修正 (value_scale/slope_scale をループの外で1回だけ計算) 後の実測 (fixer): 同じ4点で 0.0630s/0.2985s/1.1840s/2.9511s、total/n が 6.30e-5/5.97e-5/5.92e-5/5.90e-5 とほぼ一定 (線形化を確認)。n=50,000 で約11.6倍の高速化。この決定を残さないと、次に generate_synthetic_anomalies を触る誰かが『value_scale/slope_scale をループの中に戻す』(_find_cut を単体で呼びたくなる、など) リファクタで同じ二乗コストを再導入しても、既存の2つの確保軸ガードのどちらにも引っかからない。round3 で reviewer-architecture / reviewer-docs の双方から、この rule の後半 (value_scale/slope_scale の再計算をしないこと) を guard_test が測っていないという同一の指摘を独立に受けた —— 後半専用の guard は D-66 として分離して追記した (check_decisions.py の guard_test は単一の pytest node id しか受け付けないため、1つの決定に2本を併記する代わりに決定を2つに分けた。D-66 参照)"
+  guard_test: "tests/test_tasks_anomaly.py::test_synthetic_source_rejects_a_segment_length_that_would_allocate_too_much"
+
+# サイクル05 round3 fixer 分。reviewer-architecture (F-3-005) / reviewer-docs
+# (F-3-008) の指摘を受け、D-65 の rule 後半 (value_scale/slope_scale の
+# 再計算をしないこと) 専用の guard として D-66 を追記した。これで 62 件。
+
+- id: D-66
+  rule: "_find_cut の関数本体は np.std を一切呼ばない。value_scale / slope_scale の計算は generate_synthetic_anomalies 側の1箇所だけに閉じ、_find_cut は渡された値をそのまま使う (D-65 rule 後半の機械的な裏付け)"
+  rationale: "(reviewer-architecture F-3-005 / reviewer-docs F-3-008、独立に同一の指摘) D-65 の rule は2つの約束を束ねている: (1) 確保軸ガード (_MAX_RAW_SAMPLES / _MAX_FIND_CUT_CELLS)、(2) value_scale/slope_scale の1回計算・_find_cut 内での非再計算。D-65 の guard_test (test_synthetic_source_rejects_a_segment_length_that_would_allocate_too_much) は (1) の ValueError 境界しか検証しておらず、_find_cut が確保前に落ちるため (2) には到達すらしない。実測 (reviewer-architecture): _find_cut を『渡されたスケールを無視して本体で np.std を再計算する』版に差し替えても、tests/test_tasks_anomaly.py + tests/test_datasets_anomaly.py が全件緑 (exit 0) のままだった。安価で決定的な後半専用の guard として、_find_cut の関数本体 (AST) に np.std 呼び出しが無いことを固定する test_find_cut_never_recomputes_np_std_internally を追加した。挙動側 (呼び出し回数) ではなく AST 検査を選んだのは、raw/derivative が呼び出しをまたいで不変であるため『本体で再計算しても値は変わらない』(再計算は性能退行であって値の破壊ではない) 場合があり、値の相違を待つ回帰テストでは検出できないため —— 実際、round3 で追加した golden test (test_synthetic_source_values_match_a_known_seed_golden_case) は既知 seed の出力値を固定するが、np.std の再計算そのものは値を変えないので検出できない (別の観点の回帰しか拾わない)。この決定を独立させたのは、check_decisions.py の guard_test が単一の pytest node id しか受け付けず (`str(entry.get(\"guard_test\", \"\"))` を1つの node id として解決するため、YAML list を渡しても分解できない)、1つの決定に guard_test を2本併記する形で機械検証を通す方法が無いため —— 決定を2つに分けることで、check_decisions.py のスキーマを変えずに『2つの約束それぞれに専用の guard がある』という不変条件を保てる"
+  guard_test: "tests/test_tasks_anomaly.py::test_find_cut_never_recomputes_np_std_internally"
+
+# 05b (T3〜T5) 着手前の準備リファクタ分。ユーザー確定の3方針
+# (docs/next-pr-candidates-05a.md §1) を実装し、D-69〜D-72 を追記した。これで 68 件。
+
+- id: D-69
+  rule: "05 の合成源の設定 (SyntheticAnomalyConfig) は、生成時に必ず上書きされる死んだ葉を持たない。土台の Mackey-Glass 生成パラメータは length / horizon を持たない SyntheticMackeyGlassConfig (tau/beta/gamma/exponent/rk4_step/sample_interval/integration_burn_in の7葉) で受け、leaf_paths(SyntheticAnomalyConfig) の全葉について『値を変えると generate_synthetic_anomalies の出力データ (values/labels/ignore/train_end の指紋) が変わる』ことを1葉1ケースで実測する"
+  rationale: "(ユーザー決定、2026-08-20。docs/next-pr-candidates-05a.md §1 優先度1) 従来 SyntheticAnomalyConfig は 01 の MackeyGlassConfig をまるごと内包していたが、generate_synthetic_anomalies が dataclasses.replace(cfg.mackey_glass, length=raw_samples, horizon=1) で length と horizon を必ず上書きするため、この2葉は『YAML から設定できるのに出力が1バイトも変わらない』設定として死んでいた。T3 の全葉被覆テストはこの2葉で構造的に赤くなる。04 の DELEGATED_SECTIONS による免除は『委譲先の別テストが同じ葉を被覆している』ことが前提であり 05 には使えない —— 01 の test_config_wiring が『length は効く』と証明している葉が、05 の経路では効かないからである。mackey_glass.* をまるごと免除すると実際に効く7葉まで一緒に抜ける。死葉リスト (『変えても変わらないこと』を assert する) で固定する案は採らず、器から2葉を取り除く方を選んだ —— 死葉リストは『死んでいる状態』を正としてテストで固定してしまい、次に生かしたくなったときにテストが逆向きの抵抗になる。これは『MG の生成パラメータを 05 側で再定義しない』(config/anomaly05.py の元の docstring、04 の chaos04.py と同じ規律) からの意図的な逸脱であり、逸脱の範囲を**葉の集合だけ**に閉じるため、7葉の既定値は _MACKEY_GLASS_DEFAULTS = MackeyGlassConfig() から引いて 01 を単一の真実のまま残した (test_synthetic_mackey_glass_defaults_come_from_experiment01 が固定)。指紋に params を入れないのが要点で、generate_synthetic_anomalies は params['tau'] に設定値をそのまま書き写すため、params 込みの指紋では『設定を meta へ転記しているだけで生成には効いていない』葉が緑で通る。実測 (fixer): to_mackey_glass を tau だけ無視する版 (tau=_MACKEY_GLASS_DEFAULTS.tau) に変異させると、params 込みの指紋では 11 件すべて緑 (16 passed) のまま通り、データだけの指紋では mackey_glass.tau の1件が赤くなった (1 failed / 10 passed)。合成源の出力そのものは変わっていない —— 既定値が同一なので golden test (test_synthetic_source_values_match_a_known_seed_golden_case、sha256 297264...bbbc4) は緑のまま"
+  guard_test: "tests/test_config_wiring_anomaly.py::test_each_synthetic_leaf_changes_the_generated_series"
+
+- id: D-70
+  rule: "SyntheticMackeyGlassConfig から 01 の MackeyGlassConfig を組み立てるのは SyntheticMackeyGlassConfig.to_mackey_glass の1メソッドだけとする。合成源の経路 (SyntheticAnomalyConfig / SyntheticMackeyGlassConfig を名指しする src/ 配下のモジュール) で length を渡して MackeyGlassConfig を構築している場所が to_mackey_glass 以外に無いことを AST で機械検査する"
+  rationale: "(D-69 の実装で生じた分岐点。D-41 / D-57 の『係数を作れる場所を1本に閉じる』流儀と同型) 絞った器を導入しても、呼び出し側が自前で MackeyGlassConfig(tau=..., length=..., horizon=3) と書ければ、D-69 が取り除いた死葉は『実験層が黙って別の値を入れる経路』として戻ってくる —— 器から取り除いたのは葉であって、組み立てる自由ではない。tasks/chaotic.py の Standardizer.from_training_prefix (D-41) が『訓練区間から推定した1組の係数を全区間に使う』を構造で保証しているのと同じ形で、変換を1メソッドに閉じる。検査対象を『合成源の経路のモジュール』に限るのは、01 / 04 が自分の都合で MackeyGlassConfig を組み立てることまで禁じる決定ではないため。既定値を取るだけの MackeyGlassConfig() (config/anomaly05.py の _MACKEY_GLASS_DEFAULTS) を対象外にするため、length キーワードを渡す呼び出しだけを数える。実測 (fixer): tasks/anomaly.py の raw_config を cfg.mackey_glass.to_mackey_glass(length=raw_samples) から MackeyGlassConfig(tau=cfg.mackey_glass.tau, length=raw_samples, horizon=1) の直接構築へ変異させると、guard_test が ['config/anomaly05.py::to_mackey_glass', 'tasks/anomaly.py::generate_synthetic_anomalies'] を検出して赤くなった (1 failed)。静的解析の原理的限界 —— getattr(module, 'MackeyGlassConfig')(...) のような動的な組み立ては追わない (D-68 で同じ線引きをした)"
+  guard_test: "tests/test_config_wiring_anomaly.py::test_only_to_mackey_glass_builds_the_generation_parameters"
+
+- id: D-71
+  rule: "系列源の共通型 SeriesSource は純関数層 (tasks/anomaly.py) に置き、面は is_available() -> bool と __call__(rng: np.random.Generator) -> AnomalySeries の2メソッドだけとする。合成源 (SyntheticSeriesSource) / MGAB (MgabSeriesSource) / UCR (UcrSeriesSource) の3実装がこの面を**引数名・引数種別・戻り値の型まで含めて**満たすことを実行時に検査する"
+  rationale: "(ユーザー決定、2026-08-20。docs/next-pr-candidates-05a.md §1 優先度2) T3 は合成源・MGAB・UCR を同じ実験ループに流すため、共通型が無いとこの時点で実験層に源ごとの if 分岐が3本入り、datasets -> tasks の一方向依存 (D-59) が実験層で崩れる (実験モジュールが両層の具象を捌く形になる)。実装が3つ揃う時点なので早すぎる抽象化には当たらない。Protocol を tasks 側に置き datasets が実装するのは向きのためで、逆に datasets 側へ置くと、合成源しか使わない実験まで Protocol を引くために I/O 層を import することになる。面を最小 (2メソッド) にしたのは、既存3源の呼び出し規約がそもそも噛み合わないため —— generate_synthetic_anomalies は (cfg, rng)、mgab/ucr の load_series は (name, *, data_dir) で、揃えるには既存関数の署名を変えるしかない。代わりに『源1本ぶんの設定を構築時に受け取った frozen dataclass の __call__』という形にした (D-01 が診断で採ったのと同じ形) ので、既存関数の署名は1つも変えていない。is_available を面に含めるのは、これが無いと実験層が『MGAB のときだけキャッシュを確認する』分岐を持ち、源の具象名が漏れるため (D-60 の skip 規律と同じ判断を実験層でも使える)。系列名は Mapping の鍵と AnomalySeries.name が持つので面には入れない。検査を isinstance (runtime_checkable) だけに頼らないのが要点で、isinstance はメソッドの**存在**しか見ない。実測 (fixer): MgabSeriesSource.__call__ の引数名を rng から generator へ変えるだけの変異を注入すると、guard_test が赤くなり (1 failed / 6 passed)、同時に mypy も tests/test_series_source_protocol.py:55 で dict-item エラーを出した (Mapping[str, SeriesSource] に入らなくなる) —— isinstance だけの検査では両方とも素通りする"
+  guard_test: "tests/test_series_source_protocol.py::test_each_source_satisfies_the_series_source_protocol"
+
+- id: D-72
+  rule: "datasets/__init__.py は cli を import せず __all__ にも載せない (facade に CLI を載せない)。CLI は python -m rc_basics_lab.datasets (__main__.py) か rc_basics_lab.datasets.cli を直接呼ぶ経路だけで提供する"
+  rationale: "(ユーザー決定、2026-08-20。docs/next-pr-candidates-05a.md §1 優先度3、案 (a) を採用) datasets/__init__.py が cli を import し、cli.py が from rc_basics_lab.datasets import mgab, ucr でパッケージへ戻るため __init__ -> cli -> __init__ の辺が存在した。現状は submodule import 機構 (from pkg import submodule は sys.modules 経由で解決できる) のおかげで動いていただけで、cli が __init__ の再エクスポートを1つでも使い始めた瞬間に壊れる。実測 (fixer): __init__ に cli の import を戻し、cli.py の `from rc_basics_lab.datasets.fetch import DEFAULT_DATA_DIR` を `from rc_basics_lab.datasets import DEFAULT_DATA_DIR` へ変えるだけで、`import rc_basics_lab.datasets` が ImportError: cannot import name 'DEFAULT_DATA_DIR' from partially initialized module 'rc_basics_lab.datasets' (most likely due to a circular import) になった。T5 の CLI 配線はまさに再エクスポートを使いたくなる作業であり、そこで初めて壊れると原因が CLI 変更に見えて循環に見えない。案 (b) (cli.py は必ず葉モジュールを直接 import する規律をテストで固定) ではなく (a) を採ったのは、(b) が『cli.py の書き方』という守り続けなければならない規律であるのに対し、(a) は辺そのものを消すため守る対象が残らないからである。慣習テスト tests/test_public_api_reexport.py::test_package_init_reexports_all_public_submodules は『全公開サブモジュールを再エクスポートする』を要求しており、これは NOT_ON_THE_FACADE という明示的な除外表 (現在 datasets.cli の1件のみ) で扱う —— CLI は公開 API ではなく make data-05 の入口なので facade に載せる理由が無い。guard_test は3方向 (AST に cli の import が無い / __all__ に cli が無い / まっさらな別プロセスで import rc_basics_lab.datasets しても sys.modules に cli が入らない) から測る。別プロセスで測るのは、pytest の1プロセス内では他のテストが datasets.cli を import した副作用で cli が親の属性として現れ、辺を戻しても緑のまま通るため。実測 (fixer): __init__ の import を戻した状態 (cli.py は葉モジュール参照のまま = 現状動く形) でも guard_test は赤くなった (1 failed / 25 passed)。make data-05 は引き続き動く —— urllib.request.urlopen / socket.create_connection / socket.socket.connect / fetch.open_https を例外に差し替えた状態で cli.main(['--dataset', 'all']) が MGAB 10 系列 + UCR 8 系列を照合して exit 0 (キャッシュ有効時はネットワークを開かない、D-60)"
+  guard_test: "tests/test_public_api_reexport.py::test_the_datasets_facade_does_not_import_the_cli"
+
+# サイクル05 (T3)。docs/plans/rc-basics-05.md §6 の D-55 / D-56 / D-61 / D-63。
+# id は仕様書の採番に合わせてあり、追記順 (D-72 の後) とは一致しない。これで 72 件。
+
+- id: D-55
+  rule: "point-adjust を既定にしない。PA-F1 を報告する場合は同じ警報予算での一様乱数の PA-F1 を必ず並べる。pa_f1 単独を返す公開関数も、pa_f1 単独の CSV 列も作らない。列名を作れるのは experiment/anomaly_rows.py の pa_columns だけで、この関数は (pa_f1_k*, pa_f1_random_k*) を必ず対で返す"
+  rationale: "docs/plans/rc-basics-05.md §6 D-55。Kim et al. AAAI 2022 —— 一様乱数の F1_PA が5データセット中4つで SOTA を上回る (SWaT 0.969 vs GDN 0.935)。PA-F1 は『高い値が出る』形でしか壊れないため、単独報告された瞬間に読者も実装者も検出できない。指標層は T1 で PointAdjustReport(pa_f1, pa_f1_random, k) を返す型にして『単独では取得できない』を型で閉じてあり、この決定は成果物 (CSV の列) の側を閉じる —— 型が対を持っていても、書き出すときに片方の列だけを書けば同じ壊れ方をする。実測 (T3、既定の縮小設定): ESN の auprc は一様乱数対照の 2.0 倍だが、同じ行の pa_f1 は 0.90 対 0.69 で比が 1.3 倍まで潰れる (test_point_adjust_hides_the_gap_that_the_auprc_shows が長区間条件で固定)。変異注入: anomaly_csv_columns の columns.extend(pa_columns(k)) を pa_columns(k)[:1] (対照列を落とす) に変えると guard_test が 3 件すべて赤になった (3 failed)。PA%K の報告は列であって行ではない —— 仕様 §5 の配線表は evaluation.pa_k_grid の観測点を『PA%K の行数』と書いていたが、T3 は 1行 = 1 (系列, 系統, レプリケート) を保ち K ごとに 2 列を足す形にした (行にすると同じ条件の行が K の数だけ増え、auprc の平均を取るときに重み付けが狂う)"
+  guard_test: "tests/test_experiment_anomaly.py::test_point_adjust_is_never_reported_without_the_random_control"
+
+- id: D-56
+  rule: "運用閾値は較正区間のスコア分位点だけで決め、テスト区間では固定する。閾値を決める関数 calibrate_threshold(calibration_scores, target_false_alarm_rate) は**ラベルを引数に取らない**。テスト側最適化の結果は f1_test_optimal という別列にのみ出し、f1_calibrated を置き換えない"
+  rationale: "docs/plans/rc-basics-05.md §6 D-56 / 要件書 設計判断3 (実験5-B の主題)。テスト側で閾値を選ぶと誰でも高性能に見えるが、これは『良い結果』として出るのでレビューで止まらない —— 引数から外せば混入が型検査で書けなくなる。較正区間の側にも同じ規律が要るので、ignore マスクを較正スコアへ適用する経路 (experiment/anomaly.py の _visible) はラベルを受け取らない形にしてある (metrics_detection.apply_ignore_mask はラベルを引数に取るため、閾値決定の経路では使わない)。f1_test_optimal は掃引の格子ではなく PR 曲線の**全点**の最大 (best_test_f1) にした —— 曲線の点は『相異なるスコアで切ったときの (P, R)』の全体なので、f1_test_optimal >= f1_calibrated が定義から成り立つ (格子で近似すると格子の粗さ次第でこの不等号が破れる行が出る)。実測 (T3、変異注入2件): (a) 閾値を『テスト区間で異常だった点の最小スコア』に変えると、テスト区間のラベル全反転で閾値が 0.000435 -> 0.002979 と動いて guard_test が赤 (1 failed)。(b) 閾値を『較正区間で異常だった点の最小スコア』に変えると、較正区間のラベル全反転だけで閾値が動いて同じ guard_test が赤 (1 failed)。既定の縮小設定での実測は全行で f1_test_optimal >= f1_calibrated"
+  guard_test: "tests/test_experiment_anomaly.py::test_operating_threshold_is_calibrated_without_test_labels"
+
+- id: D-61
+  rule: "一様乱数スコアと入力ノルムを対照として常置する。系統を列挙するのは experiment/anomaly_score.py の ANOMALY_METHODS / build_score_specs だけとし、Anomaly05Config に手法を選ぶ葉を1つも置かない (設定から対照を外す経路を作らない)"
+  rationale: "docs/plans/rc-basics-05.md §6 D-61。Kim et al. に倣う。一様乱数の AUPRC は異常率付近に張り付くため『主指標が PA を通っていないこと』の証拠として機能し、入力ノルムは『学習していないものがどこまで届くか』の下限になる。**対照を設定で外せるようにすると、予算が厳しい日に真っ先に外され、外した図が記事に載る**。実測 (T3、既定設定 3系列 x 5レプリケート): 一様乱数 0.0811 / 入力ノルム 0.0797 に対し ESN 0.3935 / 遅延線 0.1877 で、persistence 0.0792 と移動統計 0.0790 は**対照と区別がつかない** —— 対照が無ければ『4手法のうち2つは効いていない』を数値で言えない。行の側にも auprc_random 列を全行が持ち歩く形にした (図を見ない読者にも基準線が届く)。guard_test は Anomaly05Config の**全葉**について値を差し替え、build_score_specs の鍵が ANOMALY_METHODS から1つも減らないことを測る。変異注入: build_score_specs が report_point_adjust=False のとき input_norm_control を落とす版に変えると、その葉のケースが赤になった (1 failed / 27 passed)"
+  guard_test: "tests/test_experiment_anomaly.py::test_random_and_input_norm_controls_are_always_present"
+
+- id: D-63
+  rule: "05 の実験層は着手時点から複数モジュールに分け、experiment/anomaly*.py のどのファイルも 600 行を上限とする。上限そのものを緩めない (超えたらもう1段割る)"
+  rationale: "docs/plans/rc-basics-05.md §6 D-63。実測の反面教師: experiment/freerun.py 1620行 / capacity.py 1204 / attractor.py 715 / stability.py 631。行数は乱暴な代理指標だが、決定論的に落ちるという一点で散文より強い —— 『後で割る』は必ず割られない。T3 の実測: 仕様 §3(4) の割り方 (score 350 / threshold 300 / anomaly 450 の3本) では anomaly.py が 799 行になったため、行 dataclass と CSV 列を anomaly_rows.py へ、系列源の組み立てを anomaly_sources.py へ切り出して 5 本にした (anomaly.py 551 / anomaly_score.py 446 / anomaly_rows.py 223 / anomaly_threshold.py 181 / anomaly_sources.py 68)。**上限に当たったので割った**のであって上限を動かしていない、というのがこの決定の使い方である。anomaly_sources.py を独立させたのは行数のためだけではなく、これが experiment/ で datasets (I/O を持つ唯一のパッケージ) を import する唯一のモジュールになるため (D-59 の向きが実験層で読める)。変異注入: anomaly.py に 60 行のパディングを足して 612 行にすると guard_test が赤になった (1 failed)。検査が空振りしないよう『モジュールが3本以上ある』ことも同時に測る (1本にまとめて上限を超えない、という抜け道を塞ぐ)"
+  guard_test: "tests/test_experiment_anomaly.py::test_anomaly_modules_stay_under_the_line_budget"
+
+- id: D-73
+  rule: ".claude/settings.json の env で処理系を固定しない。フックが使う python3 の解決はマシン固有なので、gitignore された .claude/settings.local.json の PATH で行う。固定する場合でも、pyproject.toml の requires-python を下回るバージョンを指定しない"
+  rationale: "(docs/agent-system-review-from-artifacts.md 指摘4、ユーザー指摘) 以前 env に PYENV_VERSION: 3.10.0 が固定されていた。これはキットのフック (PY=$(command -v python3) で解決する) が pyenv shim の『version 3.12 is not installed』で無言で死ぬのを止めるための回避策が、恒久設定として残ったものだった。副作用として、フックが動く処理系がこのリポジトリのコードを解析できない状態になっていた —— src/rc_basics_lab/diagnostics/ipc.py の PEP 695 型エイリアス (type TargetSpec = ...) は 3.10 では SyntaxError になる (実測: PYENV_VERSION=3.10.0 python3 -c 'ast.parse(...)' → SyntaxError: invalid syntax)。decisions.yaml のスキーマ検証しかしていない間は無害だが、rationale の数値を一次資料 (src/ と results/) と機械照合する提言を実装した瞬間に破綻する。実測した代替案: system は 3.10.2 で同じく SyntaxError、pyenv install --list に 3.12 候補は 0 件 (python-build の定義が古い)、プロジェクトの .venv は 3.12.5 + PyYAML 6.0.3 で ipc.py を解析でき、キットの check_decisions.py も完走する。settings.json の env は文字列をそのまま設定する仕様で ${PATH} の展開が効かないため、PATH は local 設定に全要素を列挙する。guard_test は『バージョン文字列を requires-python と比較する』形にしてある —— 最初『いま python3 を実行して解析できるか』で書いたところ、uv run 配下では venv の 3.12 が pyenv の shims を覆い隠すため、固定を戻しても 3 passed のまま通ってしまった (空虚なガード)。データで判定する形に直したうえで変異注入し、PYENV_VERSION: 3.10.0 を戻すと assert (3, 10) >= (3, 12) で赤になることを確認した"
+  guard_test: "tests/test_hook_interpreter.py::test_project_settings_do_not_pin_an_interpreter_older_than_required"
+
+- id: D-74
+  rule: "成果物 (results/ 配下の全ファイル) の SHA256 指紋を tests/artifact_manifest.csv にコミットし、make ci で毎回照合する。指紋の書き直し (make artifacts-manifest) は成果物を意図的に変えたときだけ行い、変えた理由をコミットメッセージに書く"
+  rationale: "(docs/リファクタリング方針.md ステップ0、docs/agent-system-review-from-artifacts.md 1 節、ユーザー指摘) このリポジトリのガードは guard_test / evidence 検証 / 変異注入 のいずれも『壊れていないこと』を測るもので、『読めるか・削れるか』を測る軸が1本も無い。実測: 8サイクルでテストは 439→964、決定は53件、src は 18,660 行と単調増加し、削除・統合を要求した findings は 0 件だった。整理を進めるには『振る舞いを変えずに削れたか』を言える道具が要り、その判定は成果物のバイト不変でしか行えない。振り返り 4 節はこのバイト不変検査を『効いた対策』として挙げているが、これまで手作業で行われており、実際に shasum (既定は SHA-1) と sha256 の取り違えが4サイクル続いた記録がある。さらに SubagentStop の自動コミットが作業ツリーを丸ごと拾うため、成果物が変わってもコミットされて git status は綺麗なままになり、基準 ref を覚えていないと気づけない経路が残っていた。指紋をコミットして make ci で照合すれば、この経路が閉じる。**この検査は守る側 (壊すな) ではなく攻める側 (削れ) の合否判定として使う** —— 新しい機械層を作らずに『削れるか』の reviewer を成立させられる。変異注入: results/meta.json に改行を1バイト足すと 3186B → 3187B の差として検出され赤になることを実測した。空振り防止として『指紋が30件以上あり、png/csv/meta.json をいずれも含む』ことも同時に測る (results/ を読み違えて0件の指紋を作ると全一致で緑になるため)"
+  guard_test: "tests/test_artifact_invariance.py::test_every_artifact_matches_its_committed_fingerprint"
+
+# サイクル05 (fixer、削減候補-05.md §2 #2/#3)。「削れるか」reviewer が実測した
+# 公開面の空回り (6パッケージ・__all__ 合計286名、root からの利用0件) を
+# モジュール名だけの再エクスポートへ縮小した。
+
+- id: D-75
+  rule: "パッケージの __init__.py はモジュール名だけを再エクスポートする (公開シンボルは再エクスポートしない)。ただし config は除く (D-49 が __all__ を差分0で固定した本物の facade)。対象は experiment / diagnostics / plotting / readout / datasets / tasks の6パッケージ。reservoir は既に14行・3名で最小のため対象外。モジュールは今までどおり eager import され、sys.modules の中身は変えない"
+  rationale: "docs/削減候補-05.md §2 #2/#3 (「削れるか」reviewer、初回実行)。オーケストレータが独立に実測: `from rc_basics_lab.<pkg> import ...` で root から引かれているのはモジュール名だけ (experiment: runner/narma/freerun/attractor/stability/threshold、diagnostics: .ipc 属性経由、plotting: figures/figures_capacity/style、tasks: narma/mackey_glass/chaotic、datasets: mgab/ucr) で、6パッケージ合計 __all__ 286名 (experiment 198 + diagnostics 23 + plotting 21 + readout 17 + datasets 14 + tasks 13) のうちシンボル (関数・クラス・定数) の利用は実測0件だった。config は54名中50名が実際に root から引かれる本物の facade なので同じ扱いにできない (D-49 が別に固定)。実測 (fixer、Read + wc -l): 6ファイル合計 466+100+70+54+61+44=795 行 → 81+71+35+18+33+30=268 行 (527行削減)。変更後 `uv run pytest -q` は 1275 passed (変更前と同数)、`uv run mypy .` / `uv run ruff check .` / `uv run ruff format --check .` は green、`tests/test_artifact_invariance.py` (D-74) も green で成果物はバイト単位で無変更。diagnostics/__init__.py の __all__ スナップショットテスト (tests/test_public_api_reexport.py::test_diagnostics_all_matches_the_recorded_snapshot、D-52 の非 guard テスト) はモジュール名23個の新スナップショットへ機械的に更新した (D-52 の rule 自体には反さない —— シンボルを一切再エクスポートしないことで『モジュール名との非衝突』が構造的に保証されるため、むしろ強くなる)。既存の D-52 guard (test_package_attributes_are_modules_not_shadowed) はサブモジュール名と同名のシンボルによる隠蔽しか検出できず、非衝突の新規シンボルを __all__ に足す退行 (例: run_task を再び足す) を捕まえられないため、__all__ の集合をサブモジュール名の集合と厳密一致させる専用の guard_test を新設した。変異注入で実測: readout/__init__.py の __all__ に (未 import の) 'predict' を追記すると即座に1件赤 (増=['predict'])"
+  guard_test: "tests/test_public_api_reexport.py::test_module_only_packages_export_only_module_names"
+
+- id: D-76
+  rule: "CLAUDE.md が参照する D-xx はすべて .claude/decisions.yaml に実在すること。テンプレートのプレースホルダ (_____ / TODO) を残さないこと"
+  rationale: "(docs/agent-system-review-from-artifacts.md 指摘2) CLAUDE.md は次のサイクルの Claude が最初に読む唯一の文書だが、**この文書だけが誰にも検査されていなかった**。実測: テンプレートのプレースホルダ『このプロジェクトは _____ を行う Python モノレポです』が未置換のまま8サイクル回り、numpy の数値実験リポジトリに1つも該当しないセキュリティ節 (SQLi / XSS / パラメータ化クエリ / Key Vault / 本番デプロイ) が約40行常駐し、そのあいだ『学習メモ』は0行だった。振り返りは『効いたのは機械層、効かなかったのはプロンプト層』と結論づけているが、プロンプト層が一度も本気で書かれていない事実を併記すべきである —— テンプレートの穴埋めすらしていない文書に対してその結論は早い。今回 204 行を 162 行に書き直し (該当しない節を削り、モジュール行数上限・docstring の粒度・公開面の規律・成果物の扱いを実態に合わせて厚くし、学習メモをこのサイクルの実測で埋めた) たうえで、規約が実体を失ったことを機械で検出できるようにする。実在しない ID を引くと、読み手は『根拠があるらしい』と受け取ったまま根拠に辿り着けない —— 空虚な参照は無い参照より悪い。変異注入: CLAUDE.md に D-999 への参照を足すと assert が『実在しない決定を参照しています: [D-999]』で赤になることを実測した"
+  guard_test: "tests/test_claude_md.py::test_every_decision_referenced_by_claude_md_exists"
+
+- id: D-77
+  rule: "モジュールの行数上限は src/ 全体に課す。新規モジュールは 600 行、既に超えている既存モジュールは tests/test_module_line_budget.py の FROZEN に現在値で凍結し、増えたら落とす (減らすのは自由)。増やすために FROZEN の数値を上げない"
+  rationale: "(docs/agent-system-review-from-artifacts.md 第2版 指摘 A-1) D-63 の射程は 05 の実験層 (experiment/anomaly*.py) だけで、guard_test も 05 のモジュールしか見ていない。ところが CLAUDE.md の『コード規約』は『1モジュール 600 行を上限とする』と**無条件に**書いていた。実測すると 600 行超は 9 本ある (freerun.py 1596 / capacity.py 1192 / esp.py 912 / ipc.py 910 / figures_capacity.py 861 / _capacity.py 829 / figures_esp.py 770 / attractor.py 715 / stability.py 625)。つまり次サイクルの実装者は『600 行上限が機械で守られている』と読んだうえで、守られていない場所に書き足すことになる —— これは振り返りが名づけた『層どうしの矛盾』と『空虚なガード』の合わせ技であり、**それらを直しているサイクルで新しく作られた**。単純に全体へ 600 行を課すと既存9本が即座に赤になって『まず9本を割る』以外の作業ができなくなり、CLAUDE.md の文言を『05 以降の新規モジュールは』へ戻すと既存9本は永久に据え置きになる。そこでラチェットにした。D-63 の rationale は『後で割るは必ず割られない』と書いているが、同じ論理で許容リストも『後で減らす』では減らない —— **現在値で凍結することが悪化を止める唯一の機械的な形**である。これで CLAUDE.md の文言が嘘でなくなる (新規に対しては真、既存に対しては単調非増加)。変異注入で3方向とも確認した: (1) stability.py に1行足すと test_frozen_modules_never_grow が赤、(2) 1行削ると test_the_frozen_list_has_no_stale_entries が赤 (凍結値が古いままだとその差分をまた増やせてしまうため)、(3) 凍結外の新規モジュールが 600 行を超えると test_new_modules_stay_within_the_line_budget が赤"
+  guard_test: "tests/test_module_line_budget.py::test_new_modules_stay_within_the_line_budget"
+
+- id: D-78
+  rule: "5-C の順位は6系統すべてで計算する。対照と区別できない系統を順位から除外しない。区別可能性は行の印 (distinguishable) と根拠3列 (n_pairs / n_better_than_control / control_sign_p) で表し、印は auprc と auprc_random の対応のある片側符号検定 (p <= 0.05) で決める"
+  rationale: "(ユーザー決定、2026-08-20。docs/checkpoint-05b-t3.md §3(a)) T3 の実測では MGAB で6系統中5系統が一様乱数対照と区別できない。この群の中で順位が入れ替わっても『プロトコル感度』ではなく雑音であり、印が無いと『順位が入れ替わった = プロトコルに敏感』という誤った結論になる。**除外方式 (対照を超えた系統だけで順位を計算する) は採らない** —— 除外の閾値をどこに置くかが新しい任意性になり、しかも図からは除外の事実が消える。印にすれば全系統が図に残り、読者は『どの入れ替わりが意味を持つか』を自分で判定できる。対応のある符号検定にしたのは、auprc と auprc_random が同じ行 (同じ系列・レプリケート・評価点) の2つの数だからで、平均の比だけを見ると UCR のように s.d. が平均と同じ大きさの源で判断を誤る。有意水準を設定の葉にしないのは、根拠3列が行にあるので読者が別の水準で再判定でき、葉にすると『水準を緩めて印を増やした図』が作れてしまうため。既定設定 (合成源 3系列 x 5レプリケート = 15 対) の実測: ESN 15/15 (p=3.05e-05) と遅延線 15/15 (p=3.05e-05) だけに印が付き、persistence 9/15 (p=0.304) / 移動統計 7/15 (p=0.696) / 入力ノルム 10/15 (p=0.151) / 一様乱数 0/15 (p=1.0) には付かない。27 格子点のうち 21 点で順位が動き、逆転した系統対は延べ 46 組あったが、**そのうち両方に印がある組は 0 組**だった (ESN と遅延線の順位は27点すべてで不動)。印が無ければ『プロトコルで順位が入れ替わる』という誤った結論になっていた。変異注入: distinguishable を平均の大小 (values.mean() >= control.mean()) に変えると guard_test が赤 (2 failed / 18 passed。一様乱数対照が自分自身と区別できることになる)"
+  guard_test: "tests/test_experiment_anomaly_sweep.py::test_every_ranked_method_carries_a_control_mark_and_its_evidence"
+
+- id: D-79
+  rule: "掃引の基準条件は 5-A と同じ条件とする。5-C の格子は preprocess の3葉と一致する点を、5-D の格子は reservoir.n_units を必ず含み、含まない設定は ValueError にする (基準を格子の端や先頭で代用しない)"
+  rationale: "docs/plans/rc-basics-05.md §4 T4 受け入れ基準1。基準が 5-A と別条件だと『5-C の格子点の行が 5-A の対応行と厳密一致する』が成立せず、前処理が2実装に割れていても成果物から検出できない。格子に含まれていないときに先頭の点や格子の最大値で代用すると、CSV には順位と劣化点だけが残り『何を基準にした数か』が読者にも次の実装者にも分からなくなる (しかも図は普通に描ける)。apply_protocol_condition(config, headline_condition(config)) == config が恒等になることを guard_test が設定オブジェクトの一致で測るので、値がたまたま揃う別実装では通らない。実測: 既定設定で 5-C の is_headline 行の auprc_mean は 5-A の行の平均と厳密一致し (ESN 0.39347775726246964)、5-D の N=200 の行は auprc_ratio=1.0 / below_reference_fraction=False になる。変異注入: headline_condition の格子検査を無効化すると guard_test が赤 (1 failed / 19 passed)"
+  guard_test: "tests/test_experiment_anomaly_sweep.py::test_the_sweeps_reject_a_grid_without_the_headline_condition"
+
+- id: D-80
+  rule: "5-D (N 掃引) は全系列が同じ学習量 (n_train) で回っていることを行から検査し、揃っていなければ ValueError にする。系列ごとに train_end が異なる源 (UCR) は 5-A / 5-C に限る"
+  rationale: "docs/checkpoint-05b-t3.md §3(b) の実測: UCR 8系列の train_end / 系列長は 0.137〜0.405 とばらつき、既定の train_ratio では最短系列が (正しく) ValueError になる。T3 の測定は train_ratio=0.07 まで下げて全系列を通したが、これは最短系列に合わせて全系列を切り詰めている。その状態で 5-D を回すと**学習量不足による劣化と N 不足による劣化が混ざり**、『N を削ると性能がどこで落ちるか』の答えが出ない。ユーザーが推奨した (a) 系列自身の train_end から分割を導く案は採らなかった: 5-A の分割の意味 (dataset.train_ratio が何の割合か) が全源で変わり、T3 のチェックポイント (記事の結論の土台) を測り直すことになるうえ、train_ratio が『系列ごとに上書きされる葉』へ近づく (D-69 が潰した死葉の同型)。学習区間が train_end を越える設定を黙って切り詰める案も、T3 の決定12 が明示的な ValueError にした判断を『静かな縮小』へ戻すことになる。代わりに 5-D の入口へ『学習量が揃っていること』という**正の条件**を置いた —— 源の名前で分岐しない (D-71) ので、将来 UCR の分割を系列ごとに導く実装が入れば、その時点で条件が満たされて 5-D が回るようになる。n_train は SizeSweepRow の列でもあるので、成果物だけで『学習量は揃っていた』を確認できる。実測: 既定設定の 5-D は全 24 行が n_train=4900 で、n_units_at_90pct=100 (基準 N=200 の 0.855 倍)。変異注入: 検査を無効化すると guard_test が赤 (1 failed / 19 passed)"
+  guard_test: "tests/test_experiment_anomaly_sweep.py::test_the_size_sweep_requires_a_uniform_training_amount"
+
+# サイクル05b T5 (パイプライン・図5枚・配線)。図の側の約束を2つ足す ——
+# 「印を描かない図」と「図のためだけの別条件」はどちらも成果物が正常に見える
+# 形でしか壊れないため、散文ではなく guard_test で固定する。
+
+- id: D-81
+  rule: "5-C / 5-D の図は、一様乱数対照と区別できる系統 (distinguishable) とできない系統を必ず違う体裁で描く。線種・線幅・マーカーの塗り・凡例の文言の4つで区別し、体裁を決める場所は plotting/figures_anomaly.method_line_style 1本に閉じる。5-C の図はさらに『逆転した系統対の延べ数』と『そのうち両方に印がある数』を別の棒として並べる"
+  rationale: "(docs/checkpoint-05b-t3.md §5、T4 の実測) 既定設定の 5-C は27 格子点中 21 点 (T5 の本番設定 MGAB では 27 点中 23 点) で順位が動くが、逆転した系統対 46 組 (MGAB では 62 組) は**すべて対照と区別できない系統の内部**で起きており、印のある系統の順位は全格子点で不動である (MGAB では ESN が 27 点すべてで 1 位)。順位の変動だけを描いた図は『この手法比較はプロトコルに敏感で信頼できない』という**逆の結論**を伝える。D-78 は行に印を持たせることまでを決めたが、図がその列を無視して全系統を同じ体裁で描けば、読者に届くのは順位の変動だけになる ——記事に載るのは CSV ではなく図なので、可視化まで含めて初めて D-78 が効く。体裁を1関数に閉じるのは、図を1枚足すたびに『今回は印を描かなかった』が起こらないようにするため。変異注入: method_line_style を常に MARKED_STYLE を返すよう変えるとguard_test が赤 (2 failed / 8 passed。線種・線幅・塗り・凡例のいずれかを直しても残りで落ちる)"
+  guard_test: "tests/test_plotting_anomaly.py::test_the_protocol_figure_marks_the_methods_that_are_distinguishable"
+
+- id: D-82
+  rule: "時系列図 (fig_score_timeline) が読む anomaly_timeline.csv は、5-A の(先頭の使える系列, レプリケート 0) をそのまま再実行して作る。閾値は再計算せず5-A の行が持つ値をそのまま載せ、図のためだけの条件・前処理・閾値規則を作らない"
+  rationale: "図は成果物 CSV の行だけを読む (仕様 §5 禁止する構造7) ので、配列で表される『時系列上のスコア』にも書き出し先が要る (04 の freerun_profile.csv と同じ役割)。このとき図用に条件を作り直すと、記事の図と anomaly.csv の数値が別の実験のものになる —— しかも両方それらしく見えるので、レビューでは見つからない。閾値を calibrate_threshold で計算し直す実装も同型の危険で、較正区間の切り出し規則(ignore の落とし方) が実験層と作図用の2実装に割れる (D-57 と同じ壊れ方)。そこで run_anomaly_replicate の戻り値 (plan.scores と rows) だけから行を作る。シードは AnomalyCondition.draw だけで決まるので、再実行しても 5-A の行とビット単位で同じものになる。間引き (TIMELINE_MAX_POINTS) は元の index を保ち、間引いた結果として異常点が1点も残らない場合は ValueError にする(帯の無い時系列図が静かに出るのを防ぐ)。実測: MGAB 3系列の本番設定でtimeline は 6系統 x 2960 点 = 17,760 行、閾値は 6系統とも anomaly.csv と完全一致。変異注入: 閾値を固定値 0.5 に差し替えると guard_test が赤 (1 failed / 8 passed)"
+  guard_test: "tests/test_anomaly_pipeline.py::test_the_timeline_matches_the_headline_row"
+
+- id: D-83
+  rule: "README 冒頭が主張する『実装済みの記事の範囲』は、実際に節がある実験と一致すること"
+  rationale: "(T5 実装者の指摘) README 冒頭が『サイクル01〜03 の範囲を実装している』のまま、下に実験04・05 の節が並んでいた。**最初に読む3行が最も古い**という形のドリフトで、リポジトリを開いた人が最初に受け取る情報が間違っていた。同じ箇所に『D-01〜D-22』という記述もあり、実際は82件だった。このリポジトリは README の数値表を機械照合する仕組み (tests/test_readme_summary.py) を厚く持っており、それがこの連載の背骨なのに、**『何を実装したか』という一番大きな主張だけが誰にも検査されていなかった** —— 細かい数値は守られ、見出しレベルの主張は守られていない、という非対称があった。決定の件数は増え続けるので README には書かず、範囲だけを機械照合の対象にする。変異注入: 冒頭を『記事01〜03 の全範囲』に戻すと『主張する範囲 [01,02,03] と実際に節がある実験 [01,02,03,04,05] が食い違っています』で赤になることを実測した"
+  guard_test: "tests/test_readme_summary.py::test_readme_claims_the_same_experiments_it_documents"
+
+# サイクル06 (図の設計方針 FIG-1〜FIG-7 のうち「実験を変えないもの」の実装)。
+# docs/図の設計方針_RC基礎編.md の FIG-3 / FIG-5 / FIG-6 / FIG-7 を約束にする。
+# 図は記事から切り離されて流通するので、**図の外に置いた情報は失われる**。
+# 「本文の注に書いてある」は、図が単体になった時点で嘘になる。
+
+- id: D-84
+  rule: "文献由来の参照線は、凡例テキストそのものに出典 (著者 年) を持たせる。出典が特定できていない参照値には [原典未特定] を付す。出典文字列は plotting/labels.py が単一の真実で、labels.cited(text, source) を通す (source が空なら描画前に ValueError)"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-3。参照線の値・図の注・原典未特定の明記は既に実装されていたが、**注は図が切り取られると消える**。記事の図は単体で流通するので、出典は凡例の中に入れないと読者に届かない。実測 (変更前): 3-A の凡例は『上限 MC <= N = 200』、3-B' は『上限 IPC_total = N (傾き1)』で、どちらにも出典が無く、3-C の参照線 (0.16 / 0.107) の『原典未特定』は supxlabel の注にしか無かった。cited() を関数にして空の出典を落とすのは、figures_capacity._reference_lines の『ラベルが欠けたら描画前に落とす』と同じ規律 (設計方針『実装上の置き場所』が『出典文字列も同じ検証対象に含める』と指定している)。出典は人名と年なので ja/en で変えない (SOURCE_UNIDENTIFIED だけは訳語がある対にした —— D-10 の英語フォールバックで日本語が図に残ると豆腐文字になるため)。変異注入: 3-A の上限線から cited(...) を外して素のラベルに戻すと guard_test が赤 (1 failed / 11 passed)"
+  guard_test: "tests/test_figure_policy.py::test_literature_reference_lines_carry_their_source_in_the_legend"
+
+- id: D-85
+  rule: "手法と色の対応は plotting/style.py の METHOD_COLORS (線形 / 遅延線(リッジ) / 遅延線(OLS) / ESN の4色) が単一の真実とし、連載5記事で共通にする。作図モジュールが matplotlib の tab: 色を直書きしない。未知の手法は method_color が ValueError で落とす"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-5。読者は5記事を続けて読み、記事をまたいで同じ対照群 (線形 / 遅延線 / ESN) を見る。実測 (変更前): 3-A は viridis、3-B は tab:blue + tab:orange、3-B' は plasma、3-C と 4-B は単色 tab:blue、05 だけが独自の6色パレットを持っており、同じ ESN が記事ごとに違う色だった。ESN の緑 (#1a9850) と遅延線の青 (#2166ac) は 05 の figures_anomaly.METHOD_COLORS と同じ値にしてある (05 が既に持っていた色を連載の正本に昇格させた)。delay_line_ols は**実験としてはまだ無い**が色だけ先に確保した —— 後から足すと既存4記事の配色がずれるため (3-C に OLS 水準を足すのは実験の追加なので、今回の範囲外)。既定色へのフォールバックを禁止するのは、手法を1つ足したときに『なぜか他と同じ色の系列が2本ある』図が静かに出るため。tab: 直書きの禁止まで含めて1つの約束にしているのは、対応表を style へ置いても各モジュールが自分で色を選び直せば約束が崩れるからである。変異注入: METHOD_COLORS の delay_line_ols を delay_line と同色にすると guard_test が赤 (1 failed / 11 passed)"
+  guard_test: "tests/test_figure_policy.py::test_method_colours_are_fixed_for_the_whole_series"
+
+- id: D-86
+  rule: "参照線・理論上限は style.REFERENCE_COLOR (黒) + 破線で描き、データ系列のどのパレットとも同色にしない。同じ図に参照線が複数あるときは色ではなく破線の刻み (REFERENCE_DASHES) で区別する"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-5『参照線・理論上限: 常に同一色＋破線。データ系列と絶対に同色にしない』。実測 (変更前): 参照線は tab:red / tab:green / tab:orange / #333333 に散っており、3-C では参照線の tab:green とデータ系列の色が同系だった。『測ったもの』と『引いた線』が体裁だけで区別できないと、読者は理論値を実測点の一つとして読む。黒を選んだのは、手法4色・05 の系統6色・04 の3態色・SOURCE_STYLE のいずれとも重ならない唯一の無彩色だったため (guard_test がこの非重複を毎回検算する)。2本以上のときに色を変えないのは、色を1本増やすたびにデータ系列と衝突する余地が増えるからで、代わりに刻みを変える (3-C の NMSE = 0.16 / 0.107)。変異注入: REFERENCE_COLOR を ESN の緑 (#1a9850) にすると guard_test が赤 (1 failed / 11 passed)"
+  guard_test: "tests/test_figure_policy.py::test_the_reference_colour_is_never_a_data_series_colour"
+
+- id: D-87
+  rule: "全ての図 (plotting/figures*.py の plot_* 関数) は、再現条件を図の隅の footnote へ ASCII 1行で焼き込む。組み立ては style.add_provenance / add_footnote の1か所に閉じ、条件をタイトルへ書かない。コミットハッシュは実験層が meta.git_commit() を1回呼んで setup_style(commit=...) へ渡す (作図層は git を呼ばない)"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-6。meta.json にある『どの条件で測ったか』は、図が単体で流通した時点で失われる。実測 (変更前): 条件をタイトルに書いている図が5枚 (3-A / 3-B / 3-B' / 2-B / 5-A の時系列) あり、書いている項目は図ごとにばらばら (N と sigma_u だけ / rho と a だけ / dataset と series と replicate)、残り16枚は条件を1つも載せていなかった。手書きだと揃わないので機械生成にし、AST で全 plot_* が footnote を書いていることを数える (図を1枚足したときに忘れる、がこの約束の壊れ方なので、描画を通さない静的検査のほうが確実)。レプリケートは seed_* 列ではなく**レプリケート番号**を載せる —— seed_* は基底シードで全レプリケートで同じ値である (実測: 03 の capacity.csv は 117 行すべて seed_reservoir=0)。**この決定は D-74 と競合する**: commit を焼き込むぶん PNG は生成時の HEAD に依存し、『再生成してバイト一致するか』では図の退行を判定できなくなる (CSV の wall_time_s 列・meta.json の timestamp_utc が既に同じ性質を持っており、PNG が最後のバイト安定な成果物だった)。それでも焼き込むのは、図だけを見た読者がコードの版に辿り着けることのほうが、削減レビューの判定材料より優先すると判断したためである。図の退行判定は指紋の差分の**理由**を見る運用に移す。変異注入: plot_ipc_profile から add_provenance の呼び出しを外すと guard_test を含む 3 件が赤 (3 failed / 9 passed)"
+  guard_test: "tests/test_figure_policy.py::test_every_figure_burns_in_its_reproduction_conditions"
+
+- id: D-88
+  rule: "ヒートマップで打ち切りの外 (未計算) のセルは、容量 0 と同じ色で塗らない。plotting/heatmap.masked_beyond_truncation でマスクし、Colormap.set_bad のグレーで描いて打ち切り境界を線で示す。打ち切りが分からないとき (max_delay_by_degree を渡さないとき) は未計算の領域を捏造しない"
+  rationale: "docs/図の設計方針_RC基礎編.md FIG-7。実測: fig_ipc_profile (3-B) は次数4 x 遅延60 = 240 セルのうち打ち切り (max_delay_by_degree = 60/20/10/6) の外が 144 セル (60%) あり、そこは 0 で埋められていた。見えている矩形ブロックは**打ち切り設定の形そのもの**であって系の性質ではないのに、読者はそれを『次数3 は遅延10 より先で容量が消える』と読む。長形式 (D-38) には正値セルしか無いので『未計算』と『しきい値を超えなかった 0』は行からは区別できない —— 打ち切りは設定にしかないため、作図関数の引数として実験層から渡す (CSV の列を増やすと成果物が変わるので採らなかった)。遅延軸を対数にするのは、打ち切りが次数ごとに一桁違い、線形軸では容量の大半が在る低遅延側が潰れるため。マスクを既定 (None) で無効にしてあるのは、打ち切りを知らない呼び出し側が『測っていない領域』を勝手に作らないようにするためである。変異注入: masked_beyond_truncation のマスク条件を反転すると guard_test を含む 2 件が赤 (2 failed / 10 passed)"
+  guard_test: "tests/test_figure_policy.py::test_the_ipc_profile_separates_uncomputed_cells_from_zero_capacity"
+
+- id: D-89
+  rule: "実行環境で値が変わる数値 (wall_time、およびそれを列に含む CSV のバイト数) は、文書と一次資料を厳密一致で照合しない。比が 2 倍 (サイズは 1.05 倍) 以内なら通し、それを超える差だけを落とす。tests/test_design_doc.py の _assert_wall_time_cell / _assert_size_cell と tests/test_readme_summary.py の assert_wall_time_is_the_same_order を通す。厳密一致に戻さない"
+  rationale: "図のラベルを直して成果物を再生成しただけで、design.md の実行時間表3本とサイズ表、README の実測時間表が落ちた (実測: 5 failed / 1382 passed)。落ちた原因は退行ではなく wall_time が実行のたびに動くことで、直し方は『文書の数値を書き換える』しかない —— つまりこの検査は退行を1件も検出しないまま、再生成のたびに文書を書き換える義務だけを生んでいた。実際 wall_time_s の追随修正はこのサイクルで3回発生している (87.69 -> 88.0 -> 95.18)。それでも検査を消さないのは『その区間が10倍遅くなった』は拾いたいからで、桁が変わる手前で止める。サイズ側を 1.05 倍と厳しくできるのは、CSV のバイト数のうち wall_time 列が占める割合が小さいためで、行数・列構成の変化は確実に落ちる (行数は別途厳密一致で照合したまま残してある)。CSV 合計が 5 MB 予算に収まることは、表との一致とは別の assert で直接測る (表の役目は予算の根拠を示すことなので、そちらが本体である)。この決定を『一貫性のため』に厳密一致へ戻すと、次のサイクルの実装者が同じ追随修正を繰り返すことになる。変異注入: WALL_TIME_TOLERANCE を 1e9 にすると guard_test が赤 (DID NOT RAISE)。design.md の 5-A+5-B セルを 3 倍 (7.3 -> 21.9) に改竄すると test_anomaly_wall_time_table_matches_the_meta_json が赤、capacity.csv のサイズセルを 2 倍にすると test_artifact_size_table_matches_the_files が赤"
+  guard_test: "tests/test_design_doc.py::test_the_wall_time_tolerance_accepts_noise_and_rejects_a_drift"
+
+- id: D-90
+  rule: "実験 3-C は「遅延線 (正則化なし OLS)」を第4水準として持つ。alpha = 0 の1点だけを使い、設計行列は delay_line から design_key で借りて同一にする (n_lags の検証選択は残す)。この水準は run_task の extra_methods からのみ入り、build_methods には足さない。meta.json は regularisation_changes_the_verdict を必ず持つ。図のタイトルの結論文は行から導出し、固定文にしない"
+  rationale: "docs/図の設計方針_RC基礎編.md が 3-C を最優先に挙げている。先行 (Goudarzi et al. 2014) の対照は正則化なしの遅延線 (1,810 タップ) で、現行の3手法はどれもリッジだったため、『遅延線が ESN に勝つ』が正則化のおかげなのか遅延線という特徴のおかげなのかを分離する水準が1つも無かった。設計行列を借りるのは、同一の n_lags_grid・同一の特徴・同一の分割で alpha だけを動かした2水準にするためで、こうしないと差の出どころが言えない。借用により plan_replicate の t0 も分割も変わらないので、既存3手法の値は1つも動かない (実測: 再生成後の narma10.csv で linear 1.01814 / delay_line 0.15375 / esn 0.2673 が変更前と一致)。n_lags の検証選択を残すのは、Goudarzi の穴が『タップ数固定 + 正則化なし』の合わせ技であり、ここで両方を動かすと対照の意味が消えるためである (D-08 は n_lags の選択を許している)。build_methods に足さないのは D-31 と同じ理由で、足すと 01 の comparison.csv に行が増えて D-13 の分離が崩れる (実測: extra_methods の既定を空にしてあるため 01 の成果物はバイト不変)。alpha 格子を手法ごとに変えるのは D-04 が禁じた探索予算の不平等そのものなので、例外がこの1件であることを guard_test が数える。**実測の結論は設計方針が期待した向きの逆である**: delay_line_ols = 0.15337 で ESN (0.2673) を下回り、リッジ (0.15375) ともほぼ同値だった。つまり正則化は遅延線の優位の理由ではなく、regularisation_changes_the_verdict は False である。結論文を行から導出するのは、FIG-1 が結論をタイトルに書く形式で、固定文にすると結果が反転したときに図が静かに嘘をつくためである (このサイクルで実際に5枚の誤ったタイトルが見つかっている)。変異注入: extra_methods の alphas を無視して config の共有格子を使うようにすると guard_test が赤 (期待 6 件に対し 0 件)"
+  guard_test: "tests/test_experiment_narma.py::test_narma10_alpha_grid_is_shared_across_methods"
+
+- id: D-91
+  rule: "片側符号検定の p 値は metrics_significance.sign_test_p_value が単一の真実とする。対の数が 0 のときは 1.0 を返す (nan ではない)。負値と n_successes > n_pairs は ValueError で落とす。experiment 層はここを import し、自前で二項係数を足し上げない"
+  rationale: "experiment/freerun.py (04 のアトラクタ再現) と experiment/anomaly_ranking.py (05 の対照比較) が同じ閉形式 sum_(k>=m) C(n,k)/2**n を独立に実装しており、境界の振る舞いが違っていた —— 対の数が 0 のとき freerun 側は nan、anomaly 側は 1.0 を返し、引数検証も anomaly 側にしか無かった。同一リポジトリに境界で答えの違う p 値関数が2本あり、どちらも記事に載る数値を作る状態だった。1.0 を採るのは閉形式の値そのものが 1 だからで (対が無ければ X = 0 かつ m = 0)、nan は『データが無い』という別の情報を p 値の位置に混ぜる形である。metrics_significance.py に置くのは純関数層 (D-59) だからで、experiment -> metrics の一方向依存に収まる。実測: 呼び出し側は freerun が len(rows) >= 1、anomaly が n_pairs >= 0 で、nan を要求するテストは1件も無かった (tests/test_experiment_freerun.py の 3 アサーションはいずれも n >= 1)。統合後 63 件が緑。この重複は reviewer-deletion の観点1 が拾うはずだったが、手続き層に置かれていたため実行されず、4件の重複が増えた巡で生まれた (D-92 がその再発を機械で止める)"
+  guard_test: "tests/test_experiment_anomaly_sweep.py::test_the_sign_test_matches_the_binomial_tail"
+
+- id: D-92
+  rule: "src/ のモジュール直下に同名の def / class を新しく作らない。既存の同名は tests/test_duplicate_symbol_budget.py の FROZEN で定義箇所ごと凍結し、増えたら落ちる (減らすのは自由)。FROZEN に追記して通すのはラチェットを外す操作である"
+  rationale: "reviewer-deletion の観点1 (同名の重複) は手続き層で結着していた —— CLAUDE.md の『サイクル完了時にやること』に『reviewer-deletion を1回走らせる。走らせないことが問題である』と明記されていた。そのサイクルで走らず、走らなかった同じサイクルで重複が4件増えた (SectionTiming 2->3 / _log_timing 1->2 / _meta_extra 1->2 / sign_test_p_value 1->2)。4件目は境界の振る舞いが違う p 値関数2本という実害を伴った (D-91)。同じ巡で機械層に落とした観点4 (行数ラチェット D-77) は機能し、figures_capacity.py は 869->791 に縮んでいる。したがって文言の強さの問題ではなく、手続き層はプロンプト層と同じ側に落ちる —— やらなかったことに気づく機械が無ければ、やらない回が出る。判定を AST のモジュール直下に限るのは、メソッド名 (run / __init__) まで数えると同名が構造上必ず大量に出て検査が意味を失うためである。datasets/ の5件 (fetch / is_available / load_series / manifest / series_path) は Protocol 実装なので同名が正しく、tasks/_validate も私的ヘルパとして正当だが、凍結リストに載せておけば新しい同名は必ず人の判断を1度通る。変異注入: 既存の _log_timing を capacity_pipeline.py へ広げると test_frozen_duplicates_never_spread[_log_timing] が赤、新しい同名 _brand_new_duplicate を2モジュールに足すと test_no_new_duplicate_names_appear が赤 (2 failed / 16 passed)"
+  guard_test: "tests/test_duplicate_symbol_budget.py::test_no_new_duplicate_names_appear"
+
+- id: D-93
+  rule: "サイクル完了手続きのうち「飛ばしても何も起きない」ものは、tests/test_cycle_hygiene.py が状態で判定する。prunable な worktree が残っていないこと、全 meta.json が生成時の commit を記録していることを検査する。手続きを実行したかではなく、実行していれば成り立つ状態かを測る"
+  rationale: "3巡の実測で、完了手続き4つのうち実行されたのは結果が目に見えるもの (make ci は赤になる、タグはログに出る) だけで、飛ばしても何も起きないもの (reviewer-deletion、git worktree prune) は飛んだ。worktrees は 589MB -> 595MB と積み上がり、内訳は .venv 297M + data/ 205M で大半が gitignore 済みの再生成可能なもの —— コミットされないのでレビューには出てこず、ディスクだけを食い続ける。実行の有無そのものを測ろうとすると『実行の記録を残す手順』がまた1つ増え、その手順が飛ぶので、状態で判定する (どの経路で直したかを問わずに済む)。作業中の worktree は prunable にならないので、この検査が作業を止めることはない。commit の記録を先に固定するのは、commit を持たない meta.json があると『生成版がそろっているか』の検査がその実験を黙って見逃すためである。変異注入: _meta_commits から commit キーの読み取りを空 dict に差し替えると test_every_experiment_records_the_commit_it_was_generated_from が赤"
+  guard_test: "tests/test_cycle_hygiene.py::test_every_experiment_records_the_commit_it_was_generated_from"
+
+- id: D-94
+  rule: "fig_ipc_profile (3-B) は偶数次の容量がほぼ空である理由を注に書く。注の文言は capacity_grids.even_degree_note が行から生成し、残存割合を実測値で埋める。固定文で書かない"
+  rationale: "docs/agent-system-review-from-artifacts.md 指摘 B-4。FIG-7 で『未計算』をグレーにして 0 と区別できるようにした以上、『0 である理由』も要る —— 読者が最初に目を引かれるのは『なぜ次数2と4だけ空なのか』である。実測 (3B_ipc_sweep): 容量の合計は次数1 が 815.229 / 次数3 が 485.410 に対し、次数2 が 0.784 / 次数4 が 0.780 で、最大セルも 0.0096 / 0.0224 (次数3 の最大は 6.2032)。共通の色スケールでは 0 と見分けられない。機構は駆動入力が対称 (experiment/esp.py の make_drive は rng.uniform(-amplitude, +amplitude) で平均0) かつ tanh が奇関数であるため、状態が入力の奇関数汎関数になり偶数次の目標を表現できないことによる。厳密に 0 でないのは bias_scale = 0.1 の定数項が対称性をわずかに破るためで、残る偶数次は全容量の 0.1% である。割合を行から数え直すのは、掃引の設定が変われば注も変わるようにするためで、3-C のタイトルを行から導出したのと同じ理由である (固定文は結果が変わったときに静かに嘘をつく)。変異注入: even_degree_share の偶奇判定を反転すると guard_test が赤"
+  guard_test: "tests/test_figure_policy.py::test_the_ipc_profile_explains_why_the_even_degrees_are_empty"
+
+- id: D-95
+  rule: "実験 3-C' (タップ数掃引) を narma_taps.py として持つ。各 k は独立に plan_replicate を通り、その k の t0 と分割を使う (3-C 本体の n_lags_grid とは別軸)。横軸は k / n_train。k + 1 > n_train は解く前に ValueError で落とす。図のタイトルの結論文は行から導出する。3-C 本体の行は1つも変えない (別 CSV / 別図)"
+  rationale: "docs/agent-system-review-from-artifacts.md 指摘 B-2。3-C は D-90 で正則化なしの水準を足したが、動作点は n_lags_grid = [10..30] / n_train = 3800 で k / n_train は最大 0.008 であり、この領域では OLS が壊れる理由が無い。したがって『OLS でも同じだった』は先行 (Goudarzi et al. 2014) の対照設計への批判を検証していなかった。先行の設定は 1,810 タップ / 訓練 2,000 点 (k/n ≈ 0.9) で、彼らの対照の本質は『正則化なし』ではなく『正則化なし かつ k ≈ n_train』である。実測 (本番設定、3 レプリケート): k/n=0.008 でリッジ 0.1562 / OLS 0.1524 と区別できず、k/n=0.476 で 0.2804 / 0.3016、k/n=0.786 で 0.3609 / 0.6188、k/n=0.943 で 0.4369 / 1.453 (OLS がリッジの 3.33 倍)。小さい k では両者が区別できず、k/n が 1 に近づいたところで OLS だけが壊れる —— 3-C の結論が正則化に依らないのは動作点が先行と違うからだと図で言えるようになった。各 k に独立の分割を与えるのは、共有すると分母 n_train が動かず先行の動作点まで届かないためである (k が伸びると t0 が伸びて訓練区間が縮み、k/n が自然に 1 へ近づく)。事前判定にするのは、scipy の LinAlgError がどの k がなぜ悪いのかを言わず掃引の設計を直せないためで、判定は全レプリケートの最小 n_train で行う (分割オフセットがレプリケートごとに違うので、1本だけ通って他が落ちる形にしない)。格子の上限 2500 は k/n=0.943 で、実測で k=2600 が n_train=2600 になり特異になる手前である。掃引は 3 レプリケート (本体は 5) で、8 点 x 3 本の実測は 7.3 秒。3-C 本体の副題も『この動作点は k/n_train <= 0.01 で先行とは違う』を書き足した —— 副題が『先行の対照を足した』とだけ書いていると読者は先行の設計が検証されたと受け取る。変異注入: _base_for が n_lags_grid を差し替えず base のまま返すようにすると、全 k で t0 が同じになり test_each_tap_count_gets_its_own_split が赤"
+  guard_test: "tests/test_experiment_narma_taps.py::test_each_tap_count_gets_its_own_split"
+
+- id: D-96
+  rule: "4-B のタイトルは水準の良否を主張しない。文献の有効予測時間の参照線が引けるまでは、結論文を行から導いて手法間の差だけを述べる (freerun_headlines.valid_time_headline)。FIG-2 (各記事に文献照合を最低1枚) は tests/test_figure_policy.py の KNOWN_WITHOUT_CITATION で管理し、文献照合を持たない実験の集合は増やせない"
+  rationale: "docs/agent-system-review-from-artifacts.md 指摘 B-3。fig_valid_time のタイトルは FIG-1 に従って『自走が真の軌道からずれるまでの時間は数 Lyapunov 時間』という結論文になっていたが、図の中に文献の有効予測時間の参照線が無い。読者は 4.83 という数字の良否を判断できないのに、タイトルは判断を済ませている —— 参照線が無かった第1版時点より、主張が先行しているぶん危うい。引くべき文献値と条件 (N・入力次元・観測ノイズ) は docs/図の設計方針_RC基礎編.md が未解決1 に置いており特定できていないので、**無い参照線を引くことはできない**。したがってタイトルの側を実測に合わせ、この図が言えること (手法間の差) だけを述べる。文献値が特定できたら参照線を引いて水準の主張へ戻せる。FIG-2 をラチェットにするのは、FIG-1/3/4/5/6/7 が機械化された一方で FIG-2 だけが方針から静かに落ちていたためで、実測すると cited(...) を持つのは 03 だけ (figures_capacity の参照線3本と figures_narma_taps の先行の動作点) だった。『持っていない実験の集合は増やせない』形にすると、新しい実験を文献照合なしで足した瞬間に赤くなり、既存の穴は見えたまま残る。この過程で figures_freerun.py が 606 行になり D-77 の新規上限を超えたので freerun_grids.py / freerun_headlines.py へ分割した (558 行)。分割の際に freerun 側の mean_std が capacity_grids.mean_std と重複し D-92 のラチェットが発火したので、空入力で ValueError を投げる 04 側の実装を捨てて1本に寄せた (その挙動に依存するテストは1件も無かった)。変異注入: KNOWN_WITHOUT_CITATION から 03 を除いた状態にすると test_the_known_gaps_list_has_no_stale_entries が赤、figures_narma_taps と figures_capacity から cited を外すと test_no_experiment_loses_its_literature_comparison が赤"
+  guard_test: "tests/test_figure_policy.py::test_no_experiment_loses_its_literature_comparison"

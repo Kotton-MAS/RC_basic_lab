@@ -1,0 +1,1260 @@
+# 仕様: rc-basics-03b —— 容量の実験と記事の図 (T3・T4・T5 の残り)
+
+*要件書: `docs/要件_rc-basics-03.md` / 前サイクル仕様: `docs/plans/rc-basics-03.md` (§4 T3・T4・T5)*
+*前提: サイクル1・2a・2b・**3a** 完了 (534 tests / D-01〜D-28 + D-33 + D-34 / `make ci` 緑)*
+
+> **本書の位置づけ**: `docs/plans/rc-basics-03.md` line 9 で承認済みの分割
+> 「3b (実験と記事の図) = T3・T4 + T5 の残り (D-29〜D-32、図5枚、実測表)」を、
+> 3a の完了事実 (性能実測・D-32〜D-34・持ち越し6項目) を踏まえて具体化したもの。
+> §4 のタスク番号は 3b 内での通し番号 (**T1〜T5**) に振り直してある。
+> 旧仕様との対応: 3b-T1+T2+T3 = 旧 T3 / 3b-T4 = 旧 T4 / 3b-T5 = 旧 T5 の残り。
+
+---
+
+## 1. ゴール
+
+3a の診断2本 (MC / IPC) を**配線するだけ**で、ρ・リーク率・ノイズに対する容量の移動と
+公平な対照下の NARMA10 比較を、1コマンド再生成できる CSV・図5枚・実測表として出す。
+
+---
+
+## 2. 現状認識
+
+### 2.1 関連箇所 (すべて実測で確認済み)
+
+| 用途 | 場所 | 3b での使い方 |
+|---|---|---|
+| MC 診断 | `src/rc_basics_lab/diagnostics/memory_capacity.py:160-277` | `memory_capacity(X, u, ctx=..., cfg=...)`。scalars 6個 + `mc_profile` |
+| IPC 診断 | `src/rc_basics_lab/diagnostics/ipc.py:720-834` | `ipc(X, u, ctx=..., cfg=...)`。scalars 7個 + `ipc_threshold_degree{d}` (**本数が cfg 依存**) + arrays 3本 |
+| 目標数の下見 | `src/rc_basics_lab/diagnostics/ipc.py:366-456` | `count_targets(cfg)` / `enumerate_targets(cfg)` は公開済み。打ち切り変更時の見積りをテストから直接引ける |
+| 容量カーネルの契約 | `src/rc_basics_lab/diagnostics/_capacity.py:79-196` | `CapacityProblem` は `X` の**ビュー**を持ち `gram` はスナップショット。**構築後に `X` を書き換えると例外も警告もなく desync** |
+| 参照軌道の生成 | `src/rc_basics_lab/experiment/esp.py:260-312` | `simulate_reference_trajectory(reservoir, drive_config, ...)`。**03 のために 02 から切り出し済み** |
+| ESN 構成 | `src/rc_basics_lab/experiment/esp.py:225-242` | `build_esn_config(reservoir, rho, leak_rate)`。**`state_noise` を渡す口が無い** (下記 2.4) |
+| 状態ノイズ | `src/rc_basics_lab/reservoir/esn.py:182-199, 233-262` | `state_noise > 0` かつ `rng is None` は `ValueError`。`state_noise=0` なら 1個も引かないので既存結果は不変 |
+| 01 の公平性機構 | `src/rc_basics_lab/experiment/runner.py:295-333` (`run_task`) / `161-191` (`plan_replicate`) | 3-C は `run_task(base_config, task_entry, plan0=...)` を直接呼ぶ。`build_tasks` に触らない (D-31) |
+| 01 の行 dataclass | `src/rc_basics_lab/experiment/runner.py:93-117` | `ResultRow` / `CSV_COLUMNS` を 3-C がそのまま使う |
+| pipeline の前例 | `src/rc_basics_lab/experiment/esp_pipeline.py:221-291` | 成果物一覧を定数 `*_ARTIFACTS` にし、CLI は薄い層 |
+| meta の書き出し | `src/rc_basics_lab/experiment/report.py:76-112` | `write_meta_for(config, seeds, wall_time_s, n_rows, path, extra=...)` |
+| 設定ローダ / 内包の前例 | `src/rc_basics_lab/config.py:452-488` / `314-332` | `load_config_as(path, cls)`。**01 の `ExperimentConfig` をまるごと内包する前例がある** |
+| 配線テストの機構 | `tests/wiring.py` / `tests/test_config_wiring_esp.py:114-120` | チャネル割り当てを機械的に閉じる |
+| 実験レジストリ | `main.py:76-96` | `"03"` を1行。`out_dir=results/03_capacity` |
+| Makefile | `Makefile:51-80` | `figures-01` / `figures-02` / `threshold-02` の3前例 |
+| design.md の既定値表 | `docs/design.md:700-807` (§11.1) | 表の「コード上の出どころ」列は**実在の属性に解決される**ことが機械検査される |
+
+### 2.2 既存の慣習で守るもの (3個)
+
+1. **CSV の列順は行 dataclass の宣言順が単一の真実**
+2. **設定 dataclass は純データ、値域検証は使う側**。未知キーは `ConfigError` (D-09)
+3. **図のラベルは `labels.label(ja, en, cjk=...)` を通す** (D-10)
+
+### 2.3 影響範囲
+
+- **追加**: `config.py` に 03 セクション群 / `experiment/capacity.py` / `experiment/capacity_pipeline.py` /
+  `experiment/narma.py` / `tasks/narma.py` / `plotting/figures_capacity.py` /
+  `experiments/03_capacity/{config.yaml,run_03.py}` / テスト5本
+- **変更**: `experiment/esp.py` (**既定値つきキーワード `state_noise` の追加のみ**、D-36) /
+  `main.py` (1行) / `Makefile` (2ターゲット) / 各 `__init__.py` / `README.md` /
+  `docs/design.md` §11.2〜11.5 / `.claude/decisions.yaml`
+- **変更しない**: `diagnostics/` 配下 (**3a で完成。3b は1行も触らない**) /
+  `experiment/runner.py` の `build_tasks` / `ExperimentConfig` / `seeds.py` の既存ストリーム index /
+  01・02 の成果物
+
+### 2.4 3a 完了時点で新たに判明した事実
+
+1. **性能予算に余裕がある** (実測): 3-A 0.131s/条件・3-B 1.821s/条件・3-B' 9.841s/条件。
+   診断計算の合計は約 161 秒で 900 秒予算の 18%。
+   ただし**状態生成側 (素の tanh ESN、O(T·N²) の Python ループ) は未実測**。3b で実測する (T2)。
+2. **メモリは T=1e6 で MC 2.11 GB / IPC 0.90 GB** (予算 4 GB)。
+3. **`ipc_threshold_degree{d}` の本数は D-34 の `max_degrees` により最大20本と静的に有界**。
+   ただし本仕様では列にせず行に落とす (D-38)。
+4. **`simulate_reference_trajectory` は `state_noise` を渡せない**。`build_esn_config` が
+   `ESNConfig.state_noise` を設定せず、`esn.run(u, x0=x0)` に `rng` も渡していないため、
+   受け入れ条件2 を測る経路が**現状は存在しない**。
+
+---
+
+## 3. 前提・制約
+
+### 3.1 ハード制約 (絶対に変えない)
+
+- **D-01 / D-15**: 診断の署名は `f(X, u=None, y=None, *, ctx)`。`DiagnosticContext` に**フィールドを足さない**
+- **D-12 / D-23**: `diagnostics/` は `config` / `reservoir` を import しない。**3b の配線は `experiment/` 側**
+- **D-13**: `ExperimentConfig` (01 専用) に 03 のフィールドを1個も足さない
+- **D-04 / D-05 / D-08 / D-31**: 3-C は 01 の `run_task` 経路をそのまま通す
+- **D-24〜D-28 / D-32 / D-33 / D-34**: 3a で確定済み。3b は消費側であり再定義しない
+- **D-02**: 誤差指標は NRMSE 主・NMSE 併記
+- 型: Python 3.12+ / `Any` 禁止 / `# type: ignore` を理由なく使わない
+- `results/` は**コミット対象**。生成物のサイズは受け入れ基準に含める
+
+### 3.2 ソフト制約 (理由があれば変えてよい)
+
+- `config.py` の package 化は **04 の冒頭で独立タスク**とする。**（F-3b1-1-020、
+  round1 で追記）着手条件 (rc-basics-03.md: 「非空600行を超えたら」) に**3b-1
+  時点で到達済み**: `grep -cve '^\s*$' src/rc_basics_lab/config.py` で非空615行
+  (総行771行、round1 の docstring 修正 F-3b1-1-005 を含む)。04 冒頭で再計測する
+  必要はない
+- 03 は 02 の `DriveConfig` / `ReservoirSweepConfig` を**設定として再利用しない**。
+  **関数**は再利用し、**値**は配線層が1か所で組み立てる
+- **駆動強度 `sigma_u` はセクションごとに持つ**。MC の ρ 依存は準線形域を要し、
+  IPC の次数分解は中程度の駆動を要するため最適な動作点が一致する保証が無い。
+  **図をまたいだ絶対値比較はしない**ことを design.md §11.5 に明記する
+- 漸近展開による IPC 推定は v0.1 では実装しない
+
+### 3.3 3a から持ち越した設計課題の扱い (**着手前に一読**)
+
+| # | 課題 | 3b での扱い |
+|---|---|---|
+| 1 | `X` の read-only 化 | **3b で対応** (D-35。T1 の受け入れ基準) |
+| 2 | F-03-1-005: IPC の scalars キー集合が cfg 依存 | **3b で対応** (D-38。長形式の行に落とす) |
+| 3 | F-03-1-006: `orthonormal_basis` の引数設計 | **04 送り** (`diagnostics/` を触るため) |
+| 4 | `max_targets` が cells と targets を同じ値で縛る | **04 送り**。3b の最深設定でも目標 4,075 / セル 800 で上限 200,000 に対し2桁の余裕 |
+| 5 | `RowAlignment` の切り出し / 引数集約 dataclass | **04 送り** |
+| 6 | `chunk_size` が性能軸とメモリ軸を兼ねる | **04 送り** (分離に新しい設計判断が要る) |
+| 7 | `diagnostics/__init__.py` の関数 `ipc` によるモジュール名の隠蔽 | **3b では直さない** (公開 API 変更)。§10-1 の注意 + テストを1本 |
+| 8 (F-3b1-1-004, round1 で追加) | `evaluate_capacity_condition` が軌道生成/read-only化/2診断呼び出し/行組み立ての4つを1関数に閉じており、外部生成の `X` (3-C は `run_task` が作る) から `CapacityRow` を作る接ぎ目が無い | **3b-2 準備で対応済み** (下記「3b-2 準備で決めたこと」1)。`measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg)` + `capacity_row_from(measurement, *, ...)` + `capacity_outcome_from(measurement, row)` の3つに割り、`evaluate_capacity_condition` は軌道生成 + この3つを呼ぶ薄い層にした。成果物はバイト不変 |
+
+> **3〜6、8 を 04 / T4 送りにする根拠**: いずれも `diagnostics/` 内部の整理、または T4 が実際に踏むまで
+> 実害の無い接ぎ目であり、3b-1 の成果物の正しさに影響しない。3b-1 で触ると「測定装置の設計判断が
+> 実験層の設計に混ざる」という 3a/3b 分割の目的が崩れる。
+
+---
+
+## 4. タスク分解
+
+### T1: 設定層と1条件の配線 (想定所要: **L**)
+
+1. `config.py` に 03 の設定群 (D-13。`ExperimentConfig` には触らない):
+
+```
+Capacity03Config
+├ name / seeds(reservoir, drive, surrogate) / drive(distribution, washout)
+├ reservoir(input_scale, density, n_replicates)      # セクション横断で共有する3つだけ
+├ mc_sweep(rho_grid, leak_rate_grid, sigma_u, n_units=200, n_steps=20000)
+├ ipc_sweep(rho_grid, leak_rate_grid, sigma_u, n_units=50, n_steps=100000)
+├ conservation(n_units_grid=(25,50,100), state_noise_grid, rho, leak_rate, sigma_u,
+│              n_steps=200000, max_delay_by_degree=(200,60,20,10))
+├ length_sweep(n_steps_grid=(1e5,2e5,5e5,1e6), ...)   # make saturation-03 用
+├ mc: MemoryCapacityConfig / ipc: IpcConfig            # 3a の診断設定 (D-15)
+└ narma: Narma10Config(base: ExperimentConfig, length=8000)
+```
+
+   - **`n_units` はセクションが持つ** (D-32)。`reservoir` が持つのは横断共有の3つだけ
+   - `conservation.max_delay_by_degree` は 3-B' でのみ `config.ipc` を上書きする (片方向)
+
+2. `experiment/capacity.py` (**`reservoir` と `diagnostics` の両方を import してよい唯一の場所**):
+   - `CapacityCondition` / `evaluate_capacity_condition(config, condition) -> CapacityOutcome`:
+     1. `simulate_reference_trajectory` で **X を1条件につき1回だけ**作る
+     2. **`X.flags.writeable = False` にしてから**診断へ渡す (D-35)
+     3. 同じ `X` と `u` で `memory_capacity` と `ipc` の**両方**を呼ぶ (D-38 の前提)
+     4. `ctx = DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)` (D-37)
+   - `CapacityOutcome`: `row` + 図が使う配列 (02 の `ConditionOutcome` と同型)
+3. `experiment/esp.py` に **既定値つきキーワード** `state_noise: float = 0.0` を追加し、
+   `esn.run(u, x0=x0, rng=reservoir_rng)` にする (D-36)
+
+**受け入れ基準**
+
+- `test_all_capacity_config_fields_are_covered` — 全葉にチャネル割り当て。委譲先と過不足なく一致
+- `test_each_capacity_parameter_changes_output`
+- `test_states_are_read_only_before_capacity_problem` (D-35)。**変異試験**: read-only 化を外すと落ちる
+- `test_reference_states_match_esp_simulate_condition`: `state_noise=0` で 02 と**バイト一致** (D-36)
+- `test_state_noise_changes_states_and_requires_rng`
+- `test_mc_and_ipc_share_the_same_state_matrix`: 軌道生成の呼び出し回数が条件数と一致
+- `test_surrogate_seed_is_shared_and_recorded` (D-37)
+- `test_diagnostics_ipc_module_and_function_are_both_reachable` (§10-1)
+- `test_ipc_reservoir_is_smaller_than_mc_reservoir` (D-32)
+
+### T2: 実験 3-A / 3-B / 3-B' と成果物2枚 (想定所要: **L**)
+
+1. 掃引3本 (`run_mc_sweep` / `run_ipc_sweep` / `run_conservation_sweep`)
+2. **行 dataclass 2本**:
+
+   `CapacityRow` (`capacity.csv`、1行 = 1条件、**全列が常に埋まる**):
+   `experiment` / `replicate` / `seed_*` ×3 / `rho` / `leak_rate` / `input_scale` / `sigma_u` /
+   `input_drive_std` / `n_units` / `density` / `state_noise` / `n_steps` / `washout` /
+   `t0_mc` / `n_samples_mc` / `mc_total` / `mc_total_raw` / `mc_threshold` / `mc_effective_delay` /
+   `mc_ratio` / `n_delays` / `t0_ipc` / `n_samples_ipc` / `ipc_total` / `ipc_total_raw` /
+   `ipc_linear` / `ipc_nonlinear` / `ipc_saturation_ratio` / `n_targets` / `n_targets_kept` /
+   `n_degrees` / `chunk_size_mc_effective` / `chunk_size_ipc_effective` /
+   `wall_time_state_s` / `wall_time_mc_s` / `wall_time_ipc_s` / `wall_time_s`
+
+   `CapacityProfileRow` (`capacity_profile.csv`、長形式、D-38):
+   `experiment` / `replicate` / `rho` / `leak_rate` / `n_units` / `state_noise` /
+   `diagnostic` / `degree` / `delay` / `capacity` / `threshold`
+   - **しきい値後の容量が厳密に正のセルだけを書く** (全セルだと約6万行)
+
+3. `experiment/capacity_pipeline.py`: 2 CSV + 図4枚 + `meta.json`。`CAPACITY_ARTIFACTS` 定数
+4. `main.py` に `"03"`、`Makefile` に `figures-03` (本番) と `saturation-03` (**`figures-03` に含めない**)
+5. **駆動強度の較正**: `sigma_u ∈ {0.05, 0.1, 0.2, 0.5}` を代表条件で測り、
+   **受け入れ条件1 を満たす最小値**を選ぶ。**選んだ値と落選した値の実測を design.md §11.5 に残す**
+
+**受け入れ基準**
+
+- **性能の実測を先に出す**。**合計見積りが 700 秒を超えた場合に許可される調整は
+  `conservation.n_replicates` を 3 → 1 に落とすことだけ**。打ち切り・条件数・`n_steps` は動かさない
+- `test_profile_csv_columns_are_static_and_cells_are_positive` (D-38)
+- `test_capacity_csv_has_no_missing_values`
+- `test_conservation_respects_the_bound` (受け入れ条件2)
+- `test_mc_effective_delay_increases_with_rho` (受け入れ条件1)
+- `test_conservation_section_does_not_change_the_other_experiments` (scope 検査)
+- 縮小設定の CLI が **20 秒以内** / `results/03_capacity/*.csv` 合計 **< 5 MB**
+
+### T3: 図4枚 (想定所要: **M**)
+
+| 図 | 元データ | 軸 | 受け入れ条件 |
+|---|---|---|---|
+| `fig_mc_sweep.png` | 3-A | 左: x=ρ, y=`mc_total` (leak 別・平均±s.d.)、上限線 y=N。右: `mc_profile` を ρ 別に重ねる | **1** |
+| `fig_ipc_profile.png` | 3-B | (次数 × 遅延) ヒートマップを ρ 4点 × 代表 leak のパネルに | **4** |
+| `fig_memory_nonlinearity.png` | 3-B | `ipc_linear` と `ipc_nonlinear` の積み上げで配分の移動を見せる | **4** |
+| `fig_ipc_conservation.png` | 3-B' | x=N, y=`ipc_total`、noise 別の線、上限線 y=N (**傾き1の対角線**) | **2** |
+
+**受け入れ基準**: 200 dpi / `test_conservation_figure_draws_the_bound_line` /
+`test_figures_use_the_style_context_labels` / 縮小データ (2条件) で全図が描ける
+
+### T4: 実験 3-C —— 公平な対照での NARMA10 (想定所要: **M**)
+
+1. `tasks/narma.py` (D-29): **係数と入力分布はモジュール定数**。`Narma10Config` は `length` のみ。
+   発散は `ValueError` (D-30)
+2. `experiment/narma.py`: `plan0 = plan_replicate(...)` を作り `run_task(base, entry, plan0=plan0)` へ渡す。
+   **出力は 01 の `ResultRow` をそのまま使う**。`plan0.states` に対する MC / IPC は
+   `capacity.csv` に `experiment="3C_narma10"` の行として追加する
+3. `plot_narma10_control`: 参照線 NMSE=0.16 / 0.107 を**注記つき**で描き、**原典未特定を明記**
+
+**受け入れ基準**: `test_matches_reference_recurrence` (D-29) / `test_divergence_raises_instead_of_clipping` (D-30) /
+`test_narma10_reuses_run_task_and_shares_rows_across_methods` (D-31) / `test_narma10_alpha_grid_is_shared_across_methods` (D-04) /
+`test_narma10_capacity_uses_the_same_states_as_the_esn_run` / `test_narma10_esn_size_matches_the_declared_choice` (D-39) /
+`test_01_artifacts_are_unchanged`。**結果の向きは問わない**
+
+### T5: 記録 (想定所要: **M**)
+
+- `docs/design.md` §11.2 (しきい値法の比較、受け入れ条件3) / §11.3 (打ち切り表と目標数・実行時間) /
+  §11.4 (NARMA10 の採用式と先行との差分) / §11.5 (実測結果・実行時間表・**駆動強度の較正記録**・
+  `config.py` の行数)
+- `.claude/decisions.yaml` に **D-29〜D-32 と D-35〜D-39**
+- `README.md` に `make figures-03` / `make saturation-03` と成果物表
+- `tests/test_design_doc.py` に §11.2 の照合を1件
+
+---
+
+## 5. 評価軸 (Check フェーズに渡す)
+
+### 性能観点 (**予算を明示する**)
+
+| 区間 | 予算 |
+|---|---|
+| `make figures-03` 合計 | **< 900 秒** |
+| 3-A (54 条件) | < 120 秒 |
+| 3-B (36 条件) | < 180 秒 |
+| 3-B' (27 条件) | < 400 秒 |
+| 3-C | < 120 秒 |
+| **状態生成の合計** | < 60 秒 / **内訳を `meta.json` に出す** |
+| `make saturation-03` | < 1800 秒 (予算外・手動) |
+| 03 が追加する pytest | < 60 秒 |
+| ピークメモリ | < 4 GB |
+| `results/03_capacity/*.csv` | < 5 MB |
+
+**禁止する構造**: 「条件ごとに X を2回作る (MC 用と IPC 用)」/「(delay, degree) ごとに ESN を再実行する」
+
+### 安全性観点
+
+- 01・02 の成果物がバイト単位で不変 / `seeds.py` の既存4ストリームの `spawn_key` を動かさない
+- `DiagnosticContext` のフィールドが増えていない (D-01) / `diagnostics/` の import 制約 (D-23)
+- **`diagnostics/` 配下の差分が 0 行** (3b は消費側)
+
+### 有効性観点 (**必須**)
+
+- `Capacity03Config` の**全葉**にチャネル割り当て。委譲先と過不足なく一致
+- **セクション固有の葉は scope 検査つき** (`mc_sweep.*` は 3-A の行だけを変える、を4セクションで)
+- `seeds.surrogate` を変えるとしきい値が変わり `ipc_total` が動く (D-37 の配線の実体)
+- `conservation.max_delay_by_degree` を変えると `n_targets` が変わり `count_targets` と一致する
+
+---
+
+## 6. 意図的な決定
+
+> **D-29〜D-32 は `docs/plans/rc-basics-03.md` §6 が 3b 用に予約済みの採番**。
+> 新規は **D-35 以降** (D-33 / D-34 は 3a で消費済み)。
+
+主要な新規決定:
+
+- **D-35**: `CapacityProblem.from_states` に渡す X は呼び出し側が read-only にする。
+  診断側でコピーすると T=1e6 で 1.6GB 増えて 4GB 予算を壊す (F-03-1-013 で潰したのと同じ失敗)
+- **D-36**: `state_noise` を `esp.py` に既定値つきキーワードで足し、`run` に常に rng を渡す。
+  02 の呼び出しは書き換えず成果物はバイト不変
+- **D-37**: サロゲートの `ctx.seed` は1個を全条件で共有する (共通乱数法)。
+  条件ごとに振ると容量差にしきい値の推定ノイズが独立に乗る
+- **D-38**: cfg 依存のキー集合は列にせず長形式の行に落とす。正値セルのみ書く
+- **D-39**: 3-C の ESN は **N=50** とし 3-B (IPC 掃引) と同じリザバー規模にする。
+  参照値 (0.16 / 0.107) が50ノード級であり、N=200 で回すと『先行より良い』が規模差なのか
+  対照設計の差なのか分離できない。D-08 により N は検証分割で選ばれないので宣言した1点を報告する
+
+---
+
+## 7. 想定リスク (起きたら止まって相談)
+
+1. **`make figures-03` の合計が 700 秒を超える**。許可される調整は
+   `conservation.n_replicates` を 3 → 1 だけ。それでも収まらないなら**実装者判断で削らず止まる**
+2. **本番設定で受け入れ条件1 が成立しない**。原因は (a) 駆動強度が飽和域 (b) T 不足による偽陽性
+   (c) しきい値法 のどれかで対処が正反対。T2-5 の較正で (a) を先に切り分け、それでも出ないなら止まる
+3. **3-C で遅延線が ESN を上回る**。結果としては受け入れ (記事になる) が、探索予算の非対称性
+   (D-08) が効いている可能性があるため追加条件を回す前に相談する
+
+---
+
+## 8. 確定事項 (ユーザー承認済み・2026-08-18)
+
+| 問 | 決定 |
+|---|---|
+| **分割** | **2分割**。**3b-1 = T1+T2+T3** (容量実験・図4枚) / **3b-2 = T4+T5** (NARMA10・記録) |
+| **3-C の ESN 規模** | **N=50** (D-39)。参照値 0.16 / 0.107 が50ノード級で、規模差と対照設計差を分離できる。3-B (IPC 掃引 N=50) とそのまま突き合わせられる |
+| **持ち越し設計負債** | F-03-1-006 / `max_targets` の単位 / `RowAlignment` / `chunk_size` の二重意味は **04 冒頭**の「`config.py` package 化 + 容量カーネルの整理」タスクへ送る。3b は `X` の read-only 化 (D-35) と CSV 列設計 (D-38) のみ対応し、**`diagnostics/` の差分を 0 行に保つ** |
+
+### 分割後のタスク配分
+
+| サイクル | タスク | L の本数 | 主な成果物 | 終了条件 |
+|---|---|---|---|---|
+| **3b-1** | T1 (L) / T2 (L) / T3 (M) | 2 | `capacity.csv` / `capacity_profile.csv` / 図4枚 / `make figures-03` / D-32・D-35〜D-38 | `make figures-03` が予算内で成果物を出し、受け入れ条件1・2・4 が実測で満たされる |
+| **3b-2** | T4 (M) / T5 (M) | 0 | `narma10.csv` / `fig_narma10_control.png` / design.md §11.2〜11.5 / D-29〜D-31・D-39 | 受け入れ条件3・5・7 が満たされ、decisions が全件 guard_test つきで揃う |
+
+> 2分割の根拠: 容量実験 (T1〜T3) と NARMA10 (T4) は**依存が無く**、成果物も CSV / 図が別。
+> 唯一の接点は「3-C の容量行を `capacity.csv` に追記する」1点だけ。3a と同じ 1,500 行超の diff を
+> 1本の reviewer ラウンドに載せると、3a で起きた「BLOCKER の修正が新しい未記録の決定を生む」
+> 連鎖 (D-33 / D-34 の経緯) が再現しやすい。
+
+### 質問にせず前提として進めるもの
+
+- 3-A / 3-B / 3-B' の**全条件で MC と IPC の両方を測る** (要件書 設計判断3 の直接の帰結)
+- `conservation` (3-B') の既定レプリケート数は **3**。予算超過時の縮退規則は T2 に事前宣言済み
+- `make saturation-03` は **T ∈ {1e5, 2e5, 5e5, 1e6} の掃引**で `capacity_length.csv` を出す。
+  本番 (`figures-03`) には含めない
+- セクション名は 3-B' を `conservation`、T 掃引を `length_sweep` とする
+  (旧仕様は両方を "saturation" と呼んで衝突していた。Make ターゲット名 `saturation-03` は承認済みなので変えない)
+- `diagnostics/__init__.py` の関数 `ipc` 再エクスポートは**維持する** (公開 API を壊さない)。
+  代わりに §10-1 の罠をテストで固定する
+- しきい値法の既定はシャッフルサロゲート (D-27)、誤差指標は NRMSE 主・NMSE 併記 (D-02)、
+  参照値 0.16 / 0.107 の原典は**未特定のまま注記**、漸近展開 IPC は v0.1 見送り
+
+## 9. 受け入れ条件 → タスク対応表
+
+| # | 受け入れ条件 | タスク | 検証手段 |
+|---|---|---|---|
+| 1 | MC が N を上限に振る舞い ρ↑ でプロファイルが伸びる | T2 / T3 | `test_mc_effective_delay_increases_with_rho`, `fig_mc_sweep.png` |
+| 2 | IPC_total ≤ N。ノイズ下では厳密に N 未満 | T2 / T3 | `test_conservation_respects_the_bound`, `fig_ipc_conservation.png` |
+| 3 | しきい値処理の記録と既定の根拠 | T2 / T5 | `meta.json.threshold_comparison`, design.md §11.2 |
+| 4 | ρ・leak で線形/非線形の配分が移動 | T2 / T3 | `capacity.csv`, `fig_ipc_profile.png`, `fig_memory_nonlinearity.png` |
+| 5 | 探索予算をそろえた遅延線と ESN の比較 | T4 | `test_narma10_reuses_run_task_and_shares_rows_across_methods` |
+| 6 | MC・IPC が外部生成の状態系列で動く | (3a で完了) | `tests/test_diagnostics_base.py` |
+| 7 | 図5枚が1コマンド再生成 + pytest green | T2 / T3 / T4 | `make figures-03`, `make ci` |
+
+---
+
+## 10. 実装者への注意 (最も壊れやすい3点)
+
+1. **`import rc_basics_lab.diagnostics.ipc as m` はモジュールではなく関数を返す**。
+   `diagnostics/__init__.py` が関数 `ipc` を再エクスポートしているため。
+   **3a のレビュー中に実際に踏み、変異試験が偽の緑になった**。
+   `importlib.import_module(...)` を使うか、**呼び出し側のモジュール属性**を差し替えること
+2. **`X` は診断へ渡す前に read-only にする** (D-35)。`CapacityProblem` は `problem.x` を
+   read-only にするが**元の `X` は塞げない**。desync すると容量が例外なく桁違いになる。
+   なお MC と IPC は `t0` が異なるため `CapacityProblem` は条件あたり2個作られる ——
+   これは正常で、「1個にまとめる」最適化をすると D-24 の単一基準点が壊れる
+3. **参照軌道の生成を 03 側で書き直さない**。`simulate_reference_trajectory` をそのまま呼び、
+   `state_noise` は既定値つきキーワードで足す (D-36)。バイト一致テストが分岐を防ぐ
+
+---
+
+## T1 実装時に決めたこと (3b-1 T1 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+
+### 1. `CapacityRow` は T1 で定義した (§4 の T1 / T2 の境界の調整)
+
+§4 は行 dataclass 2本を T2 に置いているが、T1 の受け入れ基準
+`test_each_capacity_parameter_changes_output` (「縮小設定の**行**の指紋が変わる」) は
+行 dataclass が無いと成立しない。**列の並びは §4 T2-2 の指定をそのまま採用**し
+(`seed_*` ×3 は `seed_reservoir` / `seed_drive` / `seed_surrogate`)、T2 は CSV への
+書き出しだけを担当する。`CapacityProfileRow` (長形式、D-38) は指定どおり T2 のまま。
+
+### 2. `CapacityOutcome` は配列3本だけを持つ (しきい値は持たない)
+
+§4 T1-2 の指定どおり `mc_profile` / `ipc_heatmap` / `ipc_by_degree` のみ。
+**T2 への申し送り**: `CapacityProfileRow.threshold` 列に次数ごとのしきい値
+(`ipc_threshold_degree{d}`、cfg 依存で本数が変わる) が要るなら、
+`CapacityOutcome` にフィールドを1本足すこと。**全条件を再計算してはいけない**。
+
+### 3. セクション固有の葉は `CHANNEL_PENDING` (task=T2 / T4) + 信管
+
+T1 が実装するのは「1条件の配線」までで、掃引 (条件の列挙) は T2 なので、
+`mc_sweep.*` / `ipc_sweep.*` / `conservation.*` (打ち切りを除く) / `length_sweep.*` /
+`reservoir.n_replicates` / `narma.length` の 23 葉は出力で実測できない。
+02 の pending 機構をそのまま使い、消費側が生えた瞬間に落ちる信管
+(`tests/test_config_wiring_capacity.py::test_pending_cases_disappear_once_the_sweeps_exist`)
+を張った。**信管はモジュール名だけでなく関数名でも発火する** —— 03 の掃引は T1 で既に
+存在する `experiment/capacity.py` の**中に**生える計画なので、02 の
+`KNOWN_EXPERIMENT_MODULES` (モジュール新設で発火) だけでは沈黙するため。
+in-process で `capacity.run_mc_sweep` を生やすと実際に発火することを実測済み。
+
+§5 有効性観点の「セクション固有の葉は scope 検査つき (4セクション)」は、
+この pending の解消 (T2) と同時に満たされる。
+
+### 4. 3-B' の打ち切り上書きは `ipc_config_for(config, experiment)` に置いた
+
+実験ラベルで分岐する純関数にしたので、掃引が無い T1 でも
+`conservation.max_delay_by_degree` を `CHANNEL_ROWS` (scope=3-B') として実測できる。
+`dataclasses.replace` は `max_delay_by_degree` 以外のフィールドを触らないことも assert 済み。
+
+### 5. `conservation` に `n_replicates` フィールドは無い (**T2 で要判断**)
+
+§4 T1-1 の構造どおり、レプリケート数は `reservoir.n_replicates` (セクション横断) 1本にした。
+一方 §7 リスク1 と §8 は「予算超過時に許可される調整は `conservation.n_replicates` を
+3 → 1 だけ」と書いており、**そのフィールドは現状存在しない**。
+T2 は (a) `ConservationConfig` に `n_replicates` を足す (横断共有との二重定義になるので
+「セクション側があればそちらを優先」の規則が要る) か、(b) 縮退規則を
+`reservoir.n_replicates` (= 3実験すべてに効く) へ読み替えるかを、**planner に確認してから**
+決めること。実装者判断で (a) を先取りすると D-32 の「横断共有は3つだけ」が崩れる。
+
+### 6. 既定値の出どころ
+
+- 格子の点数は §5 の条件数と一致させた: 3-A 6×3×3rep=54 / 3-B 4×3×3rep=36 /
+  3-B' 3×3×3rep=27。
+- `sigma_u` の既定 (3-A 0.1 / 3-B・3-B'・length_sweep 0.2) は**暫定値**であり、
+  T2-5 の較正 (`sigma_u ∈ {0.05, 0.1, 0.2, 0.5}`) で確定する。
+- `seeds.surrogate = 4`。**`SeedStream` ではない** (`ctx.seed` へ直接渡る整数) ので
+  `seeds.py` の既存 4 ストリームの `spawn_key` は1つも動いていない。
+- 実験ラベルは `3A_mc_sweep` / `3B_ipc_sweep` / `3Bp_conservation`
+  (T4 が足す 3-C は §4 T4 の指定どおり `3C_narma10`)。
+- `length_sweep` の「...」は `rho` / `leak_rate` / `sigma_u` / `n_units` と解釈した。
+
+### 7. `Narma10Config` は `config.py` に置いた
+
+01 の `MackeyGlassConfig` / `DelayParityConfig` と同じ場所・同じ向き
+(`tasks/` が `config.py` から自分の設定 dataclass を import する既存慣習)。
+フィールドは `length` + `base: ExperimentConfig` の2つで、係数と入力分布は
+T4 が `tasks/narma.py` のモジュール定数として持つ (D-29) —— 設定にはしない。
+
+### 8. `drive_config_for` は 02 の `DriveConfig.n_pairs` を既定のまま使う
+
+`n_pairs` は ESP 判定 (比較軌道の本数) 専用で `simulate_reference_trajectory` は読まない。
+03 の `CapacityDriveConfig` に `n_pairs` を持たせないのは「設定したのに効いていない」
+フィールドを作らないため (§2.2-2 / D-09 と同じ規律)。
+
+### 9. 指紋から外す列
+
+`wall_time_s` に加えて `wall_time_state_s` / `wall_time_mc_s` / `wall_time_ipc_s` の
+計4本 (実行ごとに変わる実測時間)。T2 が CSV に書く列としては残る。
+
+---
+
+## T2 実装時に決めたこと (3b-1 T2 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+
+### 1. `ConservationConfig.n_replicates: int | None = None` を追加した (**仕様の訂正**)
+
+§7 リスク1 と §8 の縮退規則「`conservation.n_replicates` を 3 → 1 に落とす」に対応する
+フィールドが存在しなかった (T1 の申し送り5)。ユーザー判断により **(a) セクション側に足す**
+を採用。`None` なら `reservoir.n_replicates` を継承する片方向の上書きで、
+`conservation.max_delay_by_degree` が `config.ipc` を上書きするのとまったく同じ形にした。
+解決は `experiment/capacity.py` の `n_replicates_for(config, experiment)` (純関数) に置き、
+`ipc_config_for` と並べてある。継承と上書きの両方を
+`test_conservation_replicates_default_to_the_shared_value_and_can_be_overridden` が固定する
+(片方だけ測ると「上書きが無視される」実装と「`None` を int と誤って扱う」実装のどちらかが通る)。
+
+これに伴い **`config.py` のローダに `X | None` の対応を足した** (`_coerce_optional`)。
+従来は `UnionType` を無条件で `ConfigError` にしていた。受理するのは `None` との2項 union だけで、
+`int | str` のような「どちらでも良い」型は引き続き `ConfigError` にする —— YAML の値から型を
+推測し始めると `1` と `"1"` で挙動が変わる設定が生まれ、D-09 の規律が崩れるため。
+
+### 2. `CapacityOutcome` に `ipc_thresholds` を1本足した (T1 の申し送り2への回答)
+
+`CapacityProfileRow.threshold` に次数ごとのしきい値が要る。T1 の申し送りどおり
+**再計算はせず**、`ipc()` の `scalars["ipc_threshold_degree{d}"]` を次数の昇順に並べた
+タプルとして条件ごとに1回だけ運ぶ。再計算すると 3-B' では1条件あたり 6.6 秒の追加になる。
+
+### 3. 実験ラベル `3L_length_sweep` を新設し `CAPACITY_EXPERIMENTS` を4本にした
+
+`length_sweep.*` の5葉も T2 担当の `CHANNEL_PENDING` だったので、消費側 (`run_length_sweep`) を
+今回作った。`capacity.csv` には出ない (`capacity_length.csv` 側にしか現れない) が、
+**scope 検査のためにラベルは必要**である —— 3-A と同じラベルを名乗ると「T 掃引の設定を変えたら
+3-A の行まで動いた」を検出できない。`capacity.csv` に出る3実験は `FIGURE_EXPERIMENTS`
+(予算 900 秒の対象) として別に持つ。
+
+### 4. 受け入れ条件1 の「単調非減少」を **rho <= 1.0 に限った** (**要確認**)
+
+§4 T2 の受け入れ基準は「`mc_effective_delay` が ρ に単調非減少、最大 ρ が最小 ρ の 1.5 倍以上」
+だが、**本番格子 (0.5〜1.1) の全域では sigma_u をどう選んでも成立しない**。
+実測 (1レプリケート、3-A の本番格子):
+
+| sigma_u | rho<=1.0 で単調 (leak 3本すべて) | 全域で単調 | ratio (rho=1.1 / rho=0.5) |
+|---|---|---|---|
+| 0.05 | **不成立** (leak=0.3 で 64.49@0.95 -> 63.46@1.0) | 不成立 | 3.05 / 2.57 / 2.56 |
+| **0.1** | **成立** | 不成立 (leak 3本とも 1.1 で低下) | 2.71 / 2.38 / 2.20 |
+| 0.2 | 成立 | 不成立 (leak=0.3, 0.6 で低下) | 2.38 / 2.04 / 2.47 |
+| 0.5 | **不成立** (leak=1.0 で 9.30@0.7 -> 8.43@0.9) | 不成立 (leak=1.0 で低下) | 2.85 / 2.09 / **1.57** |
+
+ρ>1 では駆動が弱いと ESP が成立せず記憶容量は**下がる** (容量は臨界点近傍で最大)。これは
+3-A が見せたい現象そのものなので、格子から 1.1 を外す (= 条件数を動かす) 選択は取らなかった。
+§7 リスク2 の (a) 駆動強度は較正で切り分け済み (4点すべてで同じ形の低下が出る) である。
+
+実装した `test_mc_effective_delay_increases_with_rho` は3つを固定する:
+(i) rho <= 1.0 でレプリケート平均が単調非減少、(ii) **仕様の文言どおり**格子の最大 ρ (1.1) の値が
+最小 ρ (0.5) の 1.5 倍以上、(iii) ρ=1.1 が格子の最大値**ではない**こと
+(= 単調性を ESP 領域に限る根拠が消えたらテストが赤くなる)。
+
+**この (i) の制限は仕様の受け入れ基準からの逸脱なので、planner の確認を求める。**
+本番実測 (3レプリケート平均):
+
+| leak | 0.5 | 0.7 | 0.9 | 0.95 | 1.0 | 1.1 | ratio(1.1/0.5) |
+|---|---|---|---|---|---|---|---|
+| 0.3 | 20.99 | 30.63 | 49.62 | 58.95 | **69.40** | 60.24 | 2.87 |
+| 0.6 | 11.78 | 15.80 | 22.06 | 25.00 | **35.73** | 26.98 | 2.29 |
+| 1.0 | 9.20 | 11.64 | 16.29 | 18.19 | **21.74** | 21.37 | 2.32 |
+
+### 5. 受け入れ条件2 の s.d. は **対応のある差** (同一レプリケート) で取る
+
+「差がレプリケート間 s.d. の3倍以上」を、セルごとの s.d. ではなく**同じレプリケート番号
+どうしの差の s.d.** で測る。レプリケート番号はリザバー重みと駆動信号の両方を決めるので、
+`state_noise` だけが違う2条件は同じリザバー・同じ入力を共有する (共通乱数法。D-37 と同じ設計)。
+対応を無視すると「リザバーの引きの良し悪し」が分母に乗る —— 実測 (N=25, noise=0.01):
+対応なしの s.d. は 2.99 で差 7.41 の 2.5 倍にしかならないが、対応のある差の s.d. は 1.04 で
+比は 7.16 になる。3レプリケートとも同じ向きに 40〜50% 落ちているのに検出できないのは
+検定の側の問題である。全6セルの比は 7.16 / 9.30 / 10.90 / 31.94 / 14.36 / 51.18。
+
+### 6. 駆動強度の較正 (T2-5) の結果: `mc_sweep.sigma_u = 0.1` (**既定のまま**)
+
+§4 T2-5 の手順 (代表条件 rho in {0.5, 0.99}, leak=1.0, 1レプリケート) の実測:
+
+| sigma_u | eff_delay @rho=0.5 | @rho=0.99 | 比 | 受け入れ条件1 |
+|---|---|---|---|---|
+| 0.05 | 9.29 | 24.68 | 2.66 | 代表条件は満たすが**本番格子で不成立** (上表) |
+| **0.1** | 9.04 | 20.37 | 2.25 | **成立 (採用)** |
+| 0.2 | 8.39 | 15.11 | 1.80 | 成立 (最小ではない) |
+| 0.5 | 6.50 | 9.09 | 1.40 | **不成立** (比が 1.5 未満) |
+
+代表条件だけで選ぶと最小は 0.05 になるが、受け入れ条件1 は本番格子に対する主張なので
+**本番格子でも成立する最小値**を採る、と読んだ。結果として T1 の暫定値 (0.1) が確定値になった。
+`ipc_sweep` / `conservation` / `length_sweep` の `sigma_u = 0.2` は受け入れ条件4 (次数分解) 側の
+動作点であり、この較正の対象ではない (§3.2: 図をまたいだ絶対値比較はしない)。
+
+### 7. 受け入れ条件のテストは**コミット済みの本番成果物**を読む
+
+`test_mc_effective_delay_increases_with_rho` / `test_conservation_respects_the_bound` /
+CSV サイズの3件は `results/03_capacity/*.csv` を読む。本番を pytest の中で回すと 325 秒かかり、
+「03 が追加する pytest < 60 秒」(§5) を1件で使い切る。受け入れ条件は「**この設定で実際に
+こうなった**」という主張なので、縮小設定で回し直しても裏付けにならない。
+`tests/test_readme_summary.py` が `results/comparison_summary.csv` を読むのと同じ形で、
+成果物が古い設定のまま取り残される事故は
+`test_production_config_matches_the_committed_results` (本番 YAML の条件数と行数の一致) が防ぐ。
+
+### 8. `meta.json` に `wall_time_breakdown` と `n_profile_rows` を載せた
+
+§5 が「状態生成の合計 < 60 秒 / **内訳を meta.json に出す**」を要求している。実験ごとに
+`n_conditions` / `wall_time_state_s` / `wall_time_mc_s` / `wall_time_ipc_s` / `wall_time_s` を出す。
+`n_rows` は `capacity.csv` の行数のままにし、長形式の行数は `n_profile_rows` に分けた
+(足すとどちらの CSV の行数か読めなくなる。02 の `washout_sensitivity` と同じ規律)。
+
+### 9. 配線テストの縮小設定は各セクション2条件にした
+
+1条件だと「格子の**点数**が届いているか」しか測れず、点の**値**が無視される実装でも指紋が
+変わってしまう。セクションごとに `n_units` / `n_steps` / `sigma_u` を別の値にしてあるのは、
+セクション間で値を取り違える配線 (3-B の `n_units` を 3-A が読む等) を落とすため。
+`CASE_CONDITIONS` (T1 が固定条件を並べていたもの) は削除し、条件は設定から作られる。
+
+### 10. 本番 YAML の `narma.base.name` を `03_narma10` にした
+
+T4 が使うセクションだが、`ExperimentConfig` の既定 (`01_what_is_rc`) のままだと 03 の
+`meta.json` に 01 の実験名が載る。値の意味は T4 が決めるので、それ以外のフィールドは
+既定のまま触っていない。
+
+### 11. 実測 (本番 `make figures-03`、Darwin 25.3.0 / Python 3.12)
+
+| 区間 | 条件数 | 状態生成 | MC | IPC | 合計 | 予算 |
+|---|---|---|---|---|---|---|
+| 3-A | 54 | 5.21s | 2.89s | 20.74s | **28.84s** | < 120s |
+| 3-B | 36 | 11.09s | 6.39s | 55.97s | **73.46s** | < 180s |
+| 3-B' | 27 | 18.89s | 15.53s | 187.85s | **222.28s** | < 400s |
+| **合計** | 117 | **35.19s** | 24.80s | 264.57s | **324.57s** (`make` 全体 325.20s) | < 900s / 状態生成 < 60s |
+
+ピーク RSS 0.99 GB (予算 4 GB)。CSV 合計 **1.74 MB** (1,824,677 バイト。
+`capacity.csv` 117 行 46,072 バイト = 45 KB / `capacity_profile.csv` 21,636 行
+1,778,605 バイト = 1.70 MB、予算 5 MB)。
+3a の reviewer が警告した「状態生成側が予算を割る」は**起きていない** (35.19s / 予算 60s、
+全体の 10.8%)。支配的なのは 3-B' の IPC (187.85s、全体の 58%) で、これは打ち切りを
+(200,60,20,10) に深めた結果 目標数が 601 → 4,075 本になるため。
+縮退規則 (`conservation.n_replicates` 3 -> 1) は**発動していない** (700 秒の閾値に対し 325 秒)。
+
+`make saturation-03` (予算外・手動) も1回実行して動作を確認した: 12 条件
+(T in {1e5, 2e5, 5e5, 1e6} x 3 レプリケート) で **174.58 秒** (予算 < 1800 秒)、ピーク RSS 1.43 GB、
+`capacity_length.csv` 12 行 5 KB。容量は T=1e5 の時点で既に飽和している
+(`mc_total` 15.153 -> 15.138 / `ipc_total` 31.365 -> 31.203、T を 10 倍にして 0.1〜0.5% の低下)
+ので、本番の 3-B (T=1e5) の値は「T 不足による過小評価」ではない —— §7 リスク2 の (b) も
+これで切り分け済みである。
+
+---
+
+## T3 実装時に決めたこと (3b-1 T3 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+
+### 1. 受け入れ条件1 の「単調非減少」は **rho <= 1.0 に限る** (**確定・D-40**)
+
+T2 実装メモ4 の「要確認」に対するユーザー判断 (2026-08-19): **仕様 §4 T2 の文言が本番格子に
+対して誤り**であり、T2 が実装したテスト (i) rho<=1.0 で単調非減少 / (ii) 1.1 が 0.5 の 1.5 倍以上 /
+(iii) rho=1.1 が格子の最大値**ではない** を**正**とする。`.claude/decisions.yaml` に **D-40**
+(guard_test: `tests/test_capacity_pipeline.py::test_mc_effective_delay_increases_with_rho`) として
+実測表つきで記録した。**§4 T2 と §9 の受け入れ条件1 の文言は D-40 が上書きする**。
+
+### 2. 図が読むのは配列ではなく**長形式の行** (D-38 の成果物と同じもの)
+
+`plot_mc_sweep` / `plot_ipc_profile` は `CapacityOutcome.mc_profile` / `ipc_heatmap` (配列) では
+なく `CapacityProfileRow` の並び (= `capacity_profile.csv` の行) を受け取る。成果物と図が
+別々の入力を見ると「CSV には正値セルしか無いのに図は配列の全セルを見ている」という食い違いが
+起こりうるため。長形式は正値セルしか無いので、格子に戻すときは**欠けたセルを 0 で埋める**
+(「未測定」と「容量 0」を区別しない)。**レプリケート平均の分母は `capacity.csv` 側の行から取る**
+(`_n_replicates`) —— 長形式の行数で割ると、容量が 0 のレプリケートを無視した過大評価になる。
+`_for_rows` が実験ラベルで長形式を絞るのは、3-A と 3-B の (rho, leak) 格子が一部重なるため。
+診断は図でも pipeline でも一切走らせない (`_profile_of` は T2 の `profile_rows` を呼ぶだけ)。
+
+### 3. 「代表 leak」の選び方 = **総容量の平均が最大**のリーク率 (同点なら小さい方)
+
+仕様は「代表 leak」としか書いていない。`representative_leak_rate(rows, key)` を純関数として
+置き、`mc_total` / `ipc_total` の平均が最大の点を選ぶ (本番はどちらも a=1.0)。理由は、その図が
+見せたい構造 (プロファイルの伸び / 次数の配分) が最も読める動作点だからで、同点時に小さい方を
+採るのは選択が行の並び順に依存しないようにするため。
+
+### 4. 軸と配色の選択 (どれも「主張が読めるか」で決めた)
+
+- **3-A 左パネルの縦軸は対数**。上限線 y=N (本番 200) と実測 (10〜36) を線形軸で1枚に載せると、
+  受け入れ条件1 の「rho とともに伸びる」が潰れて読めない。
+- **3-A 右パネルの横軸は対数**にし、各 rho の `mc_effective_delay` を同色の**縦点線**で入れた。
+  受け入れ条件1 が測る量そのものを図の中に出すため。
+- **ヒートマップの配色は平方根スケール** (`PowerNorm(gamma=0.5)`、`_HEATMAP_GAMMA`)。本番の
+  3-B ではセルの最大が次数3 で 6.0、次数1 で 1.0 と値域が2桁近く違い、線形の配色だと次数1 の行が
+  真っ暗になって「rho を上げると線形の取り分が増える」側が消える。スケールを変えたことは
+  colorbar のラベルに明記した (図の中で申告する)。配色の上限は**全パネル共通**にする
+  (パネルごとに正規化すると配分の移動が色の付け替えで消える)。
+- **`fig_memory_nonlinearity` はリーク率ごとのパネル x 横軸 rho**。棒の上の数値は非線形の割合で、
+  総容量の減少と配分の移動を分離して読ませる。凡例は左端の1枚だけ (全パネルに出すと棒と重なる)。
+
+### 5. 上限線の座標は `conservation_bound()` に切り出した
+
+描画 (`_draw_conservation_bound`) とテスト (`test_conservation_figure_draws_the_bound_line`) が
+**同じ1か所**から座標を取る。「線は在るが別の場所に引かれている」を排除するため。
+`BOUND_MARGIN = 0.1` で格子の外へ両端を伸ばすのは、`n_units` が1点しかない縮小設定でも
+長さ 0 の線分に退化しないようにするため (縮退ケースのテストつき)。
+
+### 6. 図の `Figure` はテストから `figures_capacity._save` の差し替えで捕まえる
+
+上限線の有無とラベル言語は PNG の画素からは測れない (閾値の選び方でいくらでも偽の緑になる)。
+保存直前の `Figure` を掴んで artist を直接見る。private 関数を差し替えるのは
+`tests/test_plotting_style.py` が `style._available_font_names` を差し替えているのと同じ形。
+**変異試験の実測**: `_draw_conservation_bound` の `axis.plot` を消すと
+`test_conservation_figure_draws_the_bound_line` だけが落ち (他 12 件は緑)、線を戻すと通る。
+
+### 7. `test_figures_use_the_style_context_labels` は**両方向**を測る
+
+CJK フォントが無い環境で「日本語の符号位置が1文字も無い」ことと、フォントが在る環境で
+「日本語が在る」ことの両方を見る。片方だけだと、ラベルを英語で直書きした (= `style.label` を
+通していない) 実装が通ってしまう。判定はひらがな/カタカナ/CJK 統合漢字/全角形の符号位置範囲で、
+負符号 (U+2212) や `±` は対象外 (D-10 が問題にしているのは豆腐文字になる字形)。
+
+### 8. `CAPACITY_ARTIFACTS` の並びと `meta.json` の `cjk_font`
+
+並びは 02 の `ESP_ARTIFACTS` と同じ「CSV -> 図 -> meta.json」で、`run_and_report_capacity` が
+返す `paths` の順序と一致する。`meta.json` に `cjk_font` を足したのは 02 と同じ形で、英語ラベルの
+図が出たときに「フォントの無い環境で生成した」と成果物だけで判別できるようにするため。
+
+### 9. 実測 (本番 `make figures-03`、Darwin 25.3.0 / Python 3.12)
+
+| 区間 | T2 時点 | T3 後 (1回目 / 2回目 / round1 reviewer 実測) | 予算 |
+|---|---|---|---|
+| `make figures-03` 全体 | 325.20s | 328.60s / 371.55s / **368.73s** (コミット済み meta.json は 370.42s) | < 900s |
+| うち図4枚の生成 | — | **約 0.6s** (CSV から描き直すと 1.14s。プロセス起動込み) | — |
+| 状態生成の合計 | 35.19s | 35.12s / 39.37s（60秒予算の**58.5〜65.6%**。round1 reviewer 実測は 36.53s = 60.9%。**F-3b1-1-015**: 117条件だけで予算の6割前後を使っており、残り3〜4割が3b-2 (T4) / 04 で条件数・`n_steps` が増えたときの余白） | < 60s |
+| ピーク RSS | 0.99 GB | **0.99 GB** | < 4 GB |
+| `results/03_capacity/*.csv` | 1.74 MB | **1.74 MB** (不変。`capacity.csv` 46,072 B + `capacity_profile.csv` 1,778,605 B = 1,824,677 B。`capacity_length.csv` 5,179 B を足しても 1.74 MB) | < 5 MB |
+| PNG 4枚 | — | 合計 **0.59 MB** (247 / 114 / 125 / 122 KB) | — |
+
+**（F-3b1-1-014、round1 で訂正）観測レンジは 325〜371s で、既知の3標本
+(328.60s / 371.55s / 368.73s) のうち2標本が360s超。328.60s は**最良ケース**で
+あって典型値ではない。** 当初は差 43s を「3-B' の IPC だけの機械側のばらつき
+(189.20s -> 219.82s)」と説明していたが、round1 reviewer が独立に測った3標本目
+(368.73s) の区間別内訳は 3-A 32.91s / 3-B 83.75s / 3-B' 250.95s で、
+上記「T3 後 1回目」(28.84s / 73.46s / 222.28s 相当) に対し**3-A・3-B を含む
+全区間に一様に約 +14%** 高い。したがって差は「3-B' の IPC だけの特異な
+ばらつき」ではなく、機械の状態 (サーマルスロットリング・他プロセス負荷など)
+による全区間に一様にかかる系統的な変動と考えられる。
+
+> **(F-3b1-2-009、3b-2 準備で追記) 「一様な系統的変動」は連続分布を前提にした
+> 説明だが、reviewer が集めた4標本 (324.57 / 326.71 / 368.73 / 370.42s) は ~325s 側2件・
+> ~370s 側2件の**2山 (fast / slow)** に分かれ、山の中の散らばり (2.1s / 1.7s) は
+> 山の間の差 (約44s) の 5% 未満である。**2状態 (例: サーマルスロットリングの
+> 有無、効率コアへのスケジューリングの有無) を行き来している**可能性が
+> 候補として残る。4標本では2山と連続分布を区別できないので断定はしない ——
+> 3b-2 で標本が増えたら、中間値 (~345s) が観測されるかどうかで切り分けられる。
+> **実務上の結論は変えない**: どちらの構成でも予算判断は最悪観測値ベースで行う
+> (2山なら slow 側の山、連続分布なら分布の上端であり、どちらも上表の最悪観測値
+> 371.55s を採ることに変わりはない)。**
+
+900秒予算に対する安全マージンは**最悪観測値 (371.55s) ベース**で判断すること
+(371.55s でも予算の約41%、528s の余裕がある)。3b-2 で条件を追加する際は
+この約+14%の系統的変動を予算の見積りに織り込むこと。`capacity.csv` は
+実測時間の4列を除いて**再生成前と完全一致**、`capacity_profile.csv` は
+**バイト一致**。`fig_mc_sweep.png` と `fig_ipc_conservation.png` は複数回の
+実行でバイト一致 (図の生成は決定的)。
+
+### 10. スコープ外として触らなかったもの
+
+- `diagnostics/` は**差分 0 行** (`git diff <base-ref> HEAD --stat -- src/rc_basics_lab/diagnostics/` が空)。
+- README / `docs/design.md` の 03 節は **T5 (3b-2) の担当**なので触っていない。
+  `Makefile` の `figures-03` は**コメントの成果物一覧だけ**を図4枚ぶん更新した。
+- **既知の残件 (今回のスコープ外、F-3b1-1-009。04 の別タスク候補として記録)**:
+  `import rc_basics_lab.plotting` を**最初に**行うと循環
+  import (`plotting.figures` -> `experiment.runner` -> `experiment/__init__` -> `pipeline` ->
+  `plotting.figures`) で `ImportError` になる。**T3 以前から同じ**で (base-ref の状態でも再現)、
+  実際の入口 (`main.py` / pytest) は `experiment` 側から入るため踏まない。`figures_capacity` は
+  この構造に新しい辺を足していない (`experiment.capacity` -> `plotting` の向きは 01・02 と同じ、
+  循環の形自体は変わっていない)。**04 冒頭の `config.py` package 化と同じ回で扱う**のが自然
+  (re-export を遅延 import にするか、pipeline 系を `experiment/__init__` の re-export から外す)。
+
+---
+
+## 3b-2 準備で決めたこと
+
+> サイクル 3b-2 の**着手準備**として行った作業 (T4 の接ぎ目の切り出し + 3b-1 で見送った INFO 5件)
+> の記録。**T4 の本体 (NARMA10 のタスク・実験・図) はここには含まない**。
+> 仕様に書かれていない選択を自分で決めた箇所だけを列挙する。
+
+### 1. `evaluate_capacity_condition` の分割 (F-3b1-1-004 / §3.3-8)
+
+reviewer の推奨は 2段 (`measure_capacity` + `capacity_row_from`) だったが、**3段**にした。
+
+```python
+def measure_capacity(
+    states: FloatArray,
+    u: FloatArray,
+    *,
+    ctx: DiagnosticContext,
+    mc_cfg: MemoryCapacityConfig,
+    ipc_cfg: IpcConfig,
+) -> CapacityMeasurement: ...
+
+def capacity_row_from(
+    measurement: CapacityMeasurement,
+    *,
+    experiment: str,
+    replicate: int,
+    seed_reservoir: int,
+    seed_drive: int,
+    seed_surrogate: int,
+    rho: float,
+    leak_rate: float,
+    input_scale: float,
+    sigma_u: float,
+    n_units: int,
+    density: float,
+    state_noise: float,
+    n_steps: int,
+    washout: int,
+    wall_time_state_s: float,
+    wall_time_s: float,
+) -> CapacityRow: ...
+
+def capacity_outcome_from(
+    measurement: CapacityMeasurement, row: CapacityRow
+) -> CapacityOutcome: ...
+```
+
+**仕様 (§3.3-8) との差分と理由**:
+
+1. **`capacity_row_from` の第1引数を `(mc, ipc)` の2つではなく `CapacityMeasurement` 1つにした** ——
+   行に要る値のうち診断由来のものは `mc` / `ipc` の他に `input_drive_std` (u の実測 s.d.)、
+   `wall_time_mc_s` / `wall_time_ipc_s`、`ipc_thresholds` (次数ごとのしきい値、本数が cfg 依存) の
+   4種類があり、`(mc, ipc)` だけでは呼び出し側がこれらを別途持ち回ることになる。
+   持ち回らせると 3-C 側で「`np.std(u)` を計算し忘れる」「`n_degrees` を別経路で数える」等の
+   複製が復活し、分割の目的 (行の組み立てを1か所に閉じる) が薄まる。
+2. **`capacity_outcome_from` を足した (3段目)** —— `CapacityOutcome` (行 + 図が使う配列) は
+   `profile_rows` と `capacity_pipeline` の入口の型であり、3-C も `capacity.csv` /
+   `capacity_profile.csv` に合流するならここを通る。`measurement.mc.arrays["mc_profile"]` 等の
+   キー名を T4 側に書かせないために、積み替えもここ1か所に置いた。
+3. **`ctx` は `measure_capacity` の引数**で、中では作らない —— 中で作ると
+   「全条件で `ctx` は1個」(D-37) を保証する主体が `Capacity03Config` を持つ経路に限定され、
+   3-C のように条件が `CapacityCondition` で表現できない経路で共通乱数法が崩れる。
+4. **`experiment` 以降はキーワード専用** —— 位置引数だと隣接する同型の値
+   (`rho` / `leak_rate`、3本の `seed_*`) の取り違えが静かに通る。
+
+**D-35 / D-37 の記述を実装に合わせて更新した** (`.claude/decisions.yaml`)。
+read-only 化を「軌道を生成した側」ではなく「診断へ渡す側」(`measure_capacity`) に置いたので、
+外部生成の `X` でも同じ1行で守られる。
+
+**実測 (純粋なリファクタであることの確認)**:
+
+| 対象 | 結果 |
+|---|---|
+| `make figures-03` 再実行 | 328.91s (`make` 全体 330.06s) |
+| `capacity_profile.csv` / 図4枚 / `capacity_length.csv` | **バイト一致** |
+| `capacity.csv` | ヘッダ一致・117行、`wall_time_*` 4列を除き**異なるセル 0 個** |
+| `meta.json` | 差分は `commit` / `timestamp_utc` / `wall_time_*` のみ |
+| `results/` 全22ファイル | 実行後に `capacity.csv` / `meta.json` を復元し、**SHA-256 が全件一致** |
+| D-35 の変異試験 (`states.flags.writeable = False` を削除) | 2 failed / 13 passed (guard_test + 3-C 予行演習テスト) |
+
+> **`sigma_u` を 3-C の行に何と書くかは決めていない** (T4 の判断)。3-C には
+> 「駆動信号の標準偏差の設定値」に当たる設定が無く、NaN / 0.0 / 実測値のどれを書くかで
+> `capacity.csv` の読み方が変わる。予行演習テストは `float("nan")` を渡しているが、
+> これは**接ぎ目が在ることだけ**を測る値であって決定ではない。
+
+### 2. 上限ガードの境界値テスト (F-3b1-2-005)
+
+`>` が `>=` に書き換えられても検出できなかったので、境界の**許容側**を2本で固定した。
+
+- `test_bounds_accept_the_exact_limits` —— 実際の上限ちょうど
+  (`n_units=5,000` かつ `n_units*n_steps=200,000,000`、2軸を同時にちょうど踏む) が
+  `ValueError` にならないことを、軌道生成の入口で番兵例外 `_PastTheGuard` を投げて観測する
+  (このサイズを本当に確保すると重み行列 200MB + 5000x5000 の固有値計算 + 状態行列 1.6GB になる)。
+- `test_exact_limit_condition_runs_to_completion` —— 上限を条件側に合わせて小さく差し替え
+  (`_MAX_UNITS=12` / `_MAX_STATE_ELEMENTS=14,400`)、**確保も診断も実際に走らせて**行が出ることと、
+  上限 + 1 が両軸とも落ちることを固定する。
+
+**決めたこと**: 上限の**値** (5,000 / 2e8) 自体は monkeypatch で差し替えているので、この2本が
+測っているのは**比較演算子の向き**であって値の妥当性ではない。値の根拠は `_MAX_UNITS` /
+`_MAX_STATE_ELEMENTS` の docstring 側に残す (F-3b1-1-017 で書いた確保量の見積り)。
+実測: `>` を `>=` に変えると 2 failed / 13 passed。
+
+### 3. `esn_propagator` に rng を渡さない理由の明文化 (F-3b1-2-006)
+
+**コードは変更していない**。`esn_propagator` の docstring に「意図的に `rng` を渡さない。
+伝播器は決定的でなければならない (`conditional_lyapunov` は摂動の成長率を測るので、
+ノイズを入れると『摂動 + ノイズ実現値の差の成長率』という別の量になる)」を書き、
+04 で 02 経路に `state_noise` を効かせる担当が「単に rng を渡して `ValueError` を黙らせる」
+ことのないよう、**「伝播器はノイズ無しで回す」を別の決定として明文化し guard_test を付ける**
+ことを指示として残した。D-36 の「常に rng を渡す」は**軌道**を作る呼び出しの規律であって
+伝播器は含まない、という線引きをここで初めて文字にしている。
+
+### 4. 比較軌道とノイズの申し送り (F-3b1-2-007)
+
+`simulate_condition` の比較軌道ループの直前にコメントを置いた。`state_noise>0` になると
+(a) 比較軌道が「初期状態もノイズ実現値も違う」軌道になり D-14 の3ストリーム分離に4本目の
+未制御な変動が混ざる、(b) 各軌道が引く乱数は参照軌道が消費した個数に依存するため結果が
+**評価順に依存する**。04 の担当がそこで止まって、ノイズ実現値のストリームを分離するか否かを
+先に決められるようにしてある。
+
+### 5. CSV 合計サイズの訂正 (F-3b1-2-008)
+
+`1.78 MB` → **`1.74 MB` (1,824,677 バイト)**。3箇所 (`.claude/decisions.yaml` の D-38 rationale、
+本書 §8 の性能実測、§9 の実測表) を実測値に直した。誤りの由来は
+`capacity_profile.csv` のバイト数 1,778,605 を「1.78 MB」と読んだことで、
+内訳 (`capacity.csv` 45 KB / `capacity_profile.csv` 1.70 MB) の方は正しかった。
+
+### 6. 実行時間の2山構成の可能性 (F-3b1-2-009)
+
+§9 に注記を追加。**実務上の結論 (最悪観測値ベースで予算判断) は変えていない**。
+なお本作業で取った5標本目は 330.06s (`make` 全体) で **fast 側の山**に入り、
+2山仮説と矛盾しない (ただし4標本 + 1では区別できないので、断定は引き続きしない)。
+
+
+---
+
+## T4 実装時に決めたこと (3b-2 T4 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+T5 (記録) は別タスクなので docs/design.md と README には触れていない。
+
+### 1. 3-C の行の `sigma_u` は**宣言した入力分布の標準偏差の閉形式** (0.14434)
+
+3b-2 準備が T4 の判断として残した未決事項 (NaN / 0.0 / 実測値) への回答。
+採ったのは**4つ目の選択肢**で、`tasks/narma.py` の
+`NARMA10_INPUT_STD = (0.5 - 0.0) / sqrt(12) = 0.144338...` を書く。
+
+- **NaN は選べない**: `test_capacity_csv_has_no_missing_values` が「空欄・nan が1件も無い」を固定している。
+- **0.0 は誤り**: 掃引の `sigma_u` は「駆動信号の標準偏差の**設定値**」(D-17) であり、
+  0.0 は「無入力」を意味する実在の値である。3-C は実際に駆動されているので、
+  後から `capacity.csv` だけを読む人に対して嘘になる。
+- **実測値 (`np.std(u)`) も選ばない**: それは `input_drive_std` 列がすでに持っている値で、
+  同じ数字を2列に書くと「設定値 vs 実測値」という列の分け方 (02 から続く規律) が 3-C の行でだけ消える。
+- **閉形式が掃引の `sigma_u` と同じ意味**: 一様分布の駆動では `a = sqrt(3) * sigma_u` (D-17) なので、
+  掃引の `sigma_u` は「宣言した分布の標準偏差」そのものである。3-C は分布が
+  `U[0, 0.5]` と D-29 で**宣言されている**ので、同じ意味の値が閉形式で書ける。
+
+実測: 本番の 3-C 行は `sigma_u = 0.14433756729740646` / `input_drive_std = 0.14608100370341995` で、
+2列は一致しない (サンプル揺らぎ)。`test_narma10_capacity_uses_the_same_states_as_the_esn_run` が
+両方を突き合わせ、**一致しないこと**まで assert している (同じ値を2列に書く実装に戻ると落ちる)。
+
+### 2. `n_lags_grid` / `alpha_grid` は**本番 YAML 側**に置いた (モジュール定数にしない)
+
+仕様 §4 T4-2 は「`n_lags_grid = (10,15,20,25,30)`、`alpha_grid` は 01 と同一」と書いているが、
+これを `experiment/narma.py` にハードコードすると `narma.base.ridge.*` が
+「設定したのに効いていない」フィールドになる (§2.2-2 / D-09 の規律違反)。
+本番 YAML の `narma.base.ridge` をその値に直し、コードは設定を読むだけにした。
+D-29 が「設定にしない」と言っているのは**課題の係数と入力分布**であって探索格子ではない
+(格子は D-04 が「YAML の単一キー」と決めている軸)。
+
+「`alpha_grid` は 01 と同一」は**01 の本番 YAML と同じ13点** (1e-10〜100) と読んだ。
+`Narma10Config` の既定 (`DEFAULT_ALPHA_GRID`、11点) のままだと 01 と違う格子になり、
+3-C の「探索予算をそろえた比較」を 01 の結果と並べて読めなくなる。
+一致は `test_narma10_alpha_grid_is_shared_across_methods` が**本番 YAML どうし**で突き合わせる
+(片方だけ延ばしたら赤くなる)。
+
+### 3. 3-C が読む ESN セクションは `esn_mackey_glass` (D-39 の適用先)
+
+`narma.base` は 01 の `ExperimentConfig` をまるごと内包しているので ESN セクションが2本ある。
+**Mackey-Glass 側**を選んだ理由は、NARMA10 が連続値入力 (`U[0, 0.5]`) の回帰課題で、
+漏れ積分 (`leak_rate=0.3`) が効く点で MG と同型だからである
+(`esn_delay_parity` は ±1 の2値入力・`leak_rate=1.0` を前提とした動作点)。
+D-08 により N は検証分割で選ばれないので、宣言した1点をそのまま報告する。
+
+- 解決は `experiment/narma.py` の `narma_esn_config` 1か所に閉じ、宣言は
+  `NARMA10_ESN_SECTION` 定数に置いた。`test_narma10_esn_size_matches_the_declared_choice` が
+  「宣言」と「実際に `TaskEntry` へ載る設定」が同一オブジェクトであることまで見る ——
+  宣言だけを見ると「50 に直したセクションを誰も読んでいない」を通す。
+- **読まない側 (`esn_delay_parity`) は 200 のまま**にし、不活性である旨を YAML のコメントに書いた。
+  50 に揃えると「どちらも読まれている」ように見えるうえ、内包した 01 の設定を
+  3-C の都合で書き換えることになる (被覆は 01 側へ委譲している部分である)。
+
+### 4. 実験ラベル `3C_narma10` は `CAPACITY_EXPERIMENTS` と `FIGURE_EXPERIMENTS` の両方に入れた
+
+`capacity.csv` に行が出る以上、scope 検査 (「他セクションを変えたら 3-C の行まで動いた」を落とす)
+と `meta.json` の `wall_time_breakdown` の並びの両方に必要である。
+`FIGURE_EXPERIMENTS` は `capacity_pipeline` が内訳を組む順序の単一の真実になっているので、
+並びが定数と食い違ったら `run_and_report_capacity` が `ValueError` で落ちるようにした
+(実験を1本足したときに内訳から静かに落ちるのを防ぐ)。
+
+**3-C の `SectionTiming` だけ `wall_time_s` の意味が違う**: `wall_time_state_s` /
+`wall_time_mc_s` / `wall_time_ipc_s` は掃引と同じ (状態行列1本と2診断) だが、
+`wall_time_s` は `run_task` (3手法 x 5レプリケート) を含む **3-C 全体**である。
+仕様 §5 の予算 (3-C < 120 秒) は成績の計算まで含めた区間に対する数字なので、
+容量測定ぶんだけを載せると予算判断に使えない内訳になる (`_narma_timing` の docstring に明記)。
+
+### 5. `narma10.csv` は 01 の `write_comparison_csv` をそのまま使う
+
+行型が 01 の `ResultRow` である以上、書き出しも 01 の関数を通す。3-C 専用の writer を作ると
+「CSV の列順の単一の真実 = 行 dataclass の宣言順」(§2.2-1) の実装が2つになる。
+ファイル名だけが `comparison.csv` と違う。
+
+### 6. 手順は `plan_replicate` → `measure_capacity` → `run_task` の順
+
+容量測定を先に置くのは、`measure_capacity` が状態行列を read-only にする (D-35) ので、
+**後段 (`run_task`) が状態を書き換えようとすれば例外になる**ため。逆順だと同じ守りが効かない。
+`run_task` は `plan0.designs` を読むだけなので read-only 化の影響を受けない (実測で確認)。
+
+### 7. 容量行の識別子の埋め方
+
+- `replicate=0` —— 容量はレプリケート0 の状態行列に対する1条件のみ (成績は5レプリケート)。
+- `seed_drive = narma.base.seeds.task` —— 3-C のリザバーを駆動するのは**課題の入力そのもの**なので、
+  駆動側の基底シードは task ストリーム (D-06) である。
+- `rho` / `leak_rate` / `input_scale` / `density` / `state_noise` は `TaskEntry.esn` から取る
+  (掃引の `CapacityCondition` に相当するものが 3-C には無いため)。
+- `washout` は 03 の `drive.washout` (200)。`ctx` も掃引と同じ作り方で、
+  `seeds.surrogate` を共有する (D-37 の対象に 3-C も含める)。
+
+### 8. `narma10_verdict` は勝敗を**両方向とも同じ形**で残す
+
+仕様 §4 T4 は「結果の向きは問わない。遅延線が上回った場合は `meta.json` に記録」と書いているが、
+「上回った回だけ書く」形にすると負けた回に成果物から主張が消える。`Narma10Verdict`
+(best_method / nmse_mean / delay_line_beats_esn / selected_n_lags + 参照値と原典未特定の注) を
+常に書き、`test_verdict_records_either_direction` が人工の行で両方向を通す。
+
+### 9. `CHANNEL_PENDING` は空になったが**機構は残す**
+
+`narma.length` を `CHANNEL_ROWS` + `scope=3C_narma10` へ移し、`PENDING_SECTIONS` を空集合にした。
+配線テストの `SWEEPS` に 3-C (`run_narma10_capacity`) を足したので、
+`narma.length` は「3-C の行の `n_steps` が動く」ことで実測される。
+pending の機構そのもの (`CHANNEL_PENDING` / `TASK_STAGE_CONSUMERS` / 信管) は 04 のために残した。
+これにより `test_production_config_matches_the_committed_meta_json` の除外
+(`PENDING_SECTIONS` から引いている) が自動的に外れ、**`narma` セクションも本番 `meta.json` との
+突合対象に戻った** (仕様の指示どおり1か所の変更で戻る)。
+
+### 10. 図の参照線はラベル対応表を持ち、欠けたら描く前に落とす
+
+参照値は `experiment/narma.py` の `NARMA10_REFERENCE_NMSE` が単一の真実 (`meta.json` も同じ定数を書く)。
+図の側 (`_REFERENCE_LABELS`) に無いキーが在れば `ValueError` にする ——
+参照点を足したのに図には出ない、を黙って通さないため。注 (原典未特定) は日本語と英語の2本を
+`style.label` に通す (D-10。CJK フォントが無い環境で豆腐文字にしない)。
+
+### 11. 実測 (Darwin 25.3.0 / Python 3.12)
+
+| 区間 | 実測 | 予算 |
+|---|---|---|
+| **3-C 単体** (T=8000、3手法 x 5レプリケート + 容量測定1回) | **0.33s** (状態生成 0.03s / MC 0.02s / IPC 0.13s) | < 120s |
+| `make figures-03` 全体 | **352.98s** (計算 351.76s。3-A 29.49s / 3-B 76.82s / 3-B' 245.11s / 3-C 0.33s) | < 900s |
+| 状態生成の合計 | **36.05s** | < 60s |
+| ピーク RSS | **0.94 GB** | < 4 GB |
+| `results/03_capacity/*.csv` | **1.76 MB** (1,846,209 B。`capacity.csv` 46,510 B / `capacity_profile.csv` 1,792,346 B / `narma10.csv` 2,174 B / `capacity_length.csv` 5,179 B) | < 5 MB |
+| 03 が追加する pytest | 全体 655 件で 31.5s (3b-1 は 634 件) | < 60s |
+
+`make figures-03` の 352.98s は §9 の「2山」でいう **fast 側** (~325〜330s) と slow 側 (~370s) の間だが、
+3-C を足した増分は 0.33s なので、差は機械側の変動 (§9 の +14% 系統変動) の範囲である。
+
+### 12. 3-C の結果 (**遅延線が ESN を上回った**。§7 リスク3 に該当)
+
+本番 (N=50、T=8000、5レプリケート) のテスト NMSE のレプリケート平均:
+
+| 手法 | NMSE | NRMSE | 選ばれた探索点 |
+|---|---|---|---|
+| 線形 | **1.0181** | 1.0090 | alpha=100 (5/5) |
+| **遅延線** | **0.1538** | 0.3920 | k=30 (4/5) / k=25 (1/5)、alpha は 1e-10〜10 に散る |
+| ESN | **0.2673** | 0.5170 | alpha=1e-10 (3/5) / 1e-7 / 1e-9 |
+
+- **遅延線 (0.1538) が ESN (0.2673) を上回った**。遅延線は参照値の「非線形性なしの天井」
+  0.16 をわずかに下回っており、ESN (N=50) は「良好な非線形 RC」0.107 に届いていない。
+- 探索予算の非対称性 (D-08) は**遅延線に有利**な側に倒れている (遅延線 alpha x k = 13x5 = 65 点、
+  ESN は alpha のみ 13 点)。仕様 §7 リスク3 の指示どおり、**追加条件は回していない**
+  (rho / leak / N を振って ESN 側を良くする探索は、その非対称性を逆向きに作ることになる)。
+- 遅延線は 5 回中 4 回で格子の**上端 k=30** を選んでいる (張り付き)。要件書が
+  「タップ数を妥当な範囲 (k=10〜30) に抑え」と指定した範囲なので格子は動かしていないが、
+  01 の `n_lags_grid` 上端拡張 (docs/design.md §8.2) と同じ論点が 3-C にも在る。
+  **T5 / 記事側での解釈が要る**。
+- 3-C の同じリザバーの容量は `capacity.csv` の `3C_narma10` 行にある:
+  `mc_total = 11.15` (N=50 の 22%)、`ipc_total = 30.25`、**`ipc_linear = 10.46` /
+  `ipc_nonlinear = 19.79`**、`mc_effective_delay = 22.46`。NARMA10 が要求する
+  10 ステップの記憶は届いているが、ESN の非線形容量が対照を上回るほどには
+  効いていない、という読み方ができる
+  (2枚の CSV は `experiment` と ESN の条件キーで join できる)。
+  > **(T5 で訂正)** 本項は当初 `ipc_linear = 22.46` / `ipc_nonlinear = 7.79` と
+  > 書いていたが、22.46 は `mc_effective_delay` の値であり、線形/非線形が入れ替わって
+  > いた (一次資料の `capacity.csv` は `ipc_linear = 10.46` / `ipc_nonlinear = 19.79`)。
+  > 向きが逆だと「ESN は容量の大半を線形記憶に使っている」という**正反対の読み**に
+  > なるため、T5 の記録 (docs/design.md §11.5) は一次資料から生成した表だけを載せ、
+  > 散文には有効数字を書かない形にした。
+
+### 13. D-30 が本番を止めないことの確認 (と将来の落とし穴)
+
+`U[0, 0.5]` の内側でも NARMA10 は発散する (`np.random.default_rng(s)` の s=0..199 のうち 6 本、
+定数入力 0.5 は 33 ステップで発散)。本番の task ストリーム (seeds.task=1) では
+**レプリケート0〜6 は発散せず、7 で発散する**。したがって `narma.base.n_replicates` を
+7 以上に増やすと D-30 で落ちる。`test_production_replicates_do_not_diverge` が両方を実測しており、
+増やす判断をするときはここが根拠になる (クリップも再抽選もしないので、
+発散したシードを黙って飛ばす経路は無い)。
+
+### 14. 変異試験 (guard が空虚でないことの実測)
+
+| 変異 | 落ちたテスト |
+|---|---|
+| `1.5 u[t-9] u[t]` → `1.5 u[t-1] u[t-10]` (添字ずらし) | `test_matches_reference_recurrence` のみ (1 failed / 10 passed) |
+| 発散時の `raise` を上限クリップに置換 | `test_divergence_raises_instead_of_clipping` + `test_production_replicates_do_not_diverge` (2 failed / 9 passed) |
+| `run_task(base, entry, plan0=plan0)` から `plan0=` を外す | `test_narma10_reuses_run_task_and_shares_rows_across_methods` + `test_narma10_capacity_uses_the_same_states_as_the_esn_run` (2 failed / 5 passed) |
+| 容量測定用に `plan_replicate` を呼び直す | `test_narma10_capacity_uses_the_same_states_as_the_esn_run` のみ (1 failed / 6 passed) |
+| `narma_esn_config` を `esn_delay_parity` に変更 | `test_narma10_esn_size_matches_the_declared_choice` のみ (1 failed / 6 passed) |
+| 参照線の `axhline` を描かない | `test_narma10_figure_draws_the_reference_lines_with_the_note` のみ (1 failed / 16 passed) |
+| 原典未特定の注 (`supxlabel`) を消す | 同上 (1 failed / 16 passed) |
+
+いずれも確認後に元へ戻し、SHA-256 が一致することを確認済み。
+
+### 15. 触っていないもの
+
+- `diagnostics/` は**差分 0 行** (`git diff <base-ref> -- src/rc_basics_lab/diagnostics/` が空)。
+- `build_tasks` / `ExperimentConfig` / `seeds.py` は無変更 (D-31 / D-13)。
+- 01・02 の成果物は SHA-256 で一致 (`results/comparison.csv` / `results/meta.json` /
+  `results/02_esp_and_dynamics/*.csv`)。`capacity.csv` の掃引3本の行も
+  実測時間の4列を除いて**再生成前と完全一致**、`capacity_profile.csv` は
+  前回の 21,636 行が**そのまま先頭にあり** 3-C の 176 行が末尾に増えただけ。
+- `docs/design.md` / `README.md` は **T5 の担当**なので触っていない
+  (§11.4 の「NARMA10 の採用式と先行との差分」に上記 12 の実測表がそのまま使える)。
+
+---
+
+## T5 実装時に決めたこと (3b-2 T5 完了時に追記)
+
+仕様に書かれていない選択をした箇所と、その理由。**次の周の reviewer / fixer が読むのはこの節**。
+これでサイクル3 (3a / 3b-1 / 3b-2) が完結する。
+
+### 1. D-32 は 3b-1 で記録が漏れていた (T5 で追記。決定そのものは変えていない)
+
+仕様が「確定済み」として何度も参照している D-32 (**IPC 掃引は N=50、MC 掃引は N=200**) が
+`.claude/decisions.yaml` に**存在しなかった**。guard_test に当たる
+`test_ipc_reservoir_is_smaller_than_mc_reservoir` は 3b-1 T1 で実装済みで、
+**記録だけが3タスクを通して抜けていた**。rule は `docs/plans/rc-basics-03.md` §6 の
+予約時の文言のまま、rationale に 3a の実測 (N=25 / T=5e4 / rho=0.9 / `input_scale`=0.5 で
+`saturation_ratio` 0.683) と 3b-1 の本番実測 (3-B' の noise=0 で N=25 / 50 / 100 が
+0.676 / 0.720 / 0.734、ただし 27 条件で 222 秒 = 全体の 58%) を足した。
+guard_test のパスは仕様の予約 (`tests/test_experiment_capacity.py::...`) ではなく
+**実在する場所** (`tests/test_config_wiring_capacity.py::...`) を書いた。
+これで decisions は 40 件、`check_decisions.py` は OK。
+
+### 2. しきい値法の比較は `experiment/capacity_threshold.py` を新設して測る
+
+受け入れ条件3 の一次資料 (`meta.json.threshold_comparison`) が無かったので T5 で作った。
+02 の閾値感度 (`experiment/threshold.py` + `make threshold-02`) と同じ「判定基準だけを
+振り直す」形だが、**別ターゲットにはせず `figures-03` の中で回す**。02 の閾値感度は
+9通り × 336 条件で 60 秒かかるが、こちらは代表1条件 × 5回の診断で 2.66 秒であり、
+成果物 (`meta.json`) の中に置いた方が「本番の設定でどうだったか」を1か所で読める。
+
+**決めたこと (仕様が指定していない箇所):**
+
+1. **代表条件は 3-B (IPC 掃引) の格子の中央点** (`grid[len(grid) // 2]`、本番は
+   rho=0.95 / leak=0.6)。値そのものに主張は無いが、**掃引の格子の点であること**が
+   設計判断である —— `capacity.csv` に同じ条件の行が必ず在るので、既定モードの
+   数値が本番成果物と一致することまで機械照合できる
+   (`test_default_mode_matches_the_committed_capacity_row`)。比較専用の条件を作ると
+   この突合ができず、「比較表の数字が本番と無関係」を検出できない。
+   中央を選ぶ規則が効いていること (定数の書き写しでないこと) は格子を差し替える
+   テストで別途固定した。
+2. **MC は `chi2` を持たない**ので、比較は**診断ごとに受理するモードだけ**を回す
+   (MC 2通り / IPC 3通り)。仕様は「3通りで走らせる」としか書いていないが、
+   MC の `SUPPORTED_THRESHOLD_MODES` は `(surrogate, none)` の2つである
+   (次数1しか評価せず周辺分布が1種類なのでサロゲートで足りる)。片方に無いモードを
+   `None` / 0.0 で埋めると、成果物を読む側が「chi2 を課したら MC が 0 になった」と
+   読める形になる。`meta.json` は `{condition, default_mc_mode, default_ipc_mode,
+   memory_capacity: [...], ipc: [...], wall_time_s}` の形。
+3. **軌道は1回だけ作る** (仕様 §5 の禁止構造)。MC 2通り × IPC 3通りを直積で回さず、
+   `max(2, 3) = 3` 回の `measure_capacity` で両方を賄い、使うのは振っている側の
+   結果だけにした (診断2本は独立なので片方のモードがもう片方を変えない)。
+   `ctx` も1個を5回すべてで共有する (D-37)。
+4. **`wall_time_breakdown` には入れない**。内訳の並びは `FIGURE_EXPERIMENTS` が
+   単一の真実 (T4 の決定4) なので、掃引でない区間を混ぜると `ValueError` になる。
+   比較の実測時間は `threshold_comparison.wall_time_s` として自分の中に持ち、
+   全体の `wall_time_s` には含まれる (§11.5 の実行時間表がその関係を明記)。
+
+**実測 (受け入れ条件3 の答え)**: 代表条件で IPC の総容量は `none` 28.0817 /
+`surrogate` 27.9179 / `chi2` 27.9233、MC は `none` 11.7138 / `surrogate` 11.5439。
+**総容量では3法をほとんど区別できない** (IPC は 1% 未満、MC でも 2% 未満)。
+効くのは `n_targets_kept` (601 → 324) と `mc_effective_delay` (13.63 → 10.53、1.29 倍) で、
+既定を `surrogate` のままにする根拠は「総容量の差」ではなく
+「次数分解を歪めないこと」「重心を偽らないこと」「長形式 CSV が10倍にならないこと」
+(21,812 行 → 211,916 行) である。詳細は `docs/design.md` §11.2。
+
+### 3. `docs/design.md` §11.2〜§11.5 は**表を成果物から生成**し、散文に有効数字を書かない
+
+「散文の数値が原典とずれる」事故 (T4 メモ12 の `ipc_linear` / `ipc_nonlinear` 取り違え、
+テスト件数の3回のずれ) を構造で潰すため、**§11 の表はすべて一次資料から生成し、
+`tests/test_design_doc.py` が機械照合する**。照合の対象は9件:
+
+| 節 | 表 | 一次資料 |
+|---|---|---|
+| §11.2 | MC / IPC のしきい値比較 | `meta.json.threshold_comparison` |
+| §11.2 | 次数別しきい値 | `capacity_profile.csv` + `meta.json` |
+| §11.2 | 既定モードの印 | `meta.json.default_*_mode` |
+| §11.2 | 長形式の行数 (118 条件 / 21,812 / 211,916) | `meta.json` + `capacity.csv` |
+| §11.3 | 打ち切りと目標数 | `count_targets` / `enumerate_targets` (コード) |
+| §11.5 | 3-C の成績 | `narma10.csv` + `meta.json.narma10_verdict` |
+| §11.5 | 3-C の容量 | `capacity.csv` の `3C_narma10` 行 |
+| §11.5 | 実行時間 | `meta.json.wall_time_breakdown` |
+| §11.5 | 成果物サイズ | 実ファイル |
+| §11.5 | `config.py` の行数 | 実ファイル |
+
+照合は**セルに書かれた桁数に丸めた実測値との厳密比較**にした (`_assert_cell_matches`)。
+`approx` にすると「表を読みやすく丸める」と「1桁書き間違える」が区別できない。
+**変異試験**: `27.9179` → `27.9178` / `13.6280` → `13.6281` / 次数4 の chi2 を
+`0.000764` に、の3通りでそれぞれ**該当する1件だけ**が落ちることを実測した
+(48 passed / 1 failed)。
+
+散文の側は幅でしか書かない (「1% と違わず」「約1.3倍」) が、**その幅も検査する**
+(`test_threshold_section_claims_hold_in_the_data`) —— 数値を書かない代わりに主張が
+緩くなる、を防ぐため。
+
+**機械照合できない数値が1つだけ残っている**: 駆動強度 σ_u の較正表 (§11.5) は
+3b-1 T2 が本番格子を4通り回した**一回性の実測**で、コミット済みの成果物には残らない。
+節の中でその旨を明記し、再現手順 (本書 T2 メモ 4・6) を指してある。採用値
+(`mc_sweep.sigma_u`) 自体は本番 YAML から機械照合される。
+
+### 4. `README.md` の 03 節も機械照合の対象にした
+
+02 節に `test_readme_experiment_02_numbers_match_meta_json` があるのと同じ形で、
+03 節の成果物の行数 / `wall_time_s` / NARMA10 の NMSE 表 / 容量の3値 / `mc_ratio` の
+到達率 (18.9%) / 遅延線の張り付き (5回中4回、k=30) を一次資料と突き合わせる
+(`test_readme_experiment_03_*`)。README の 02 節と 03 節は数値の書式が同じなので、
+**節を切り出してから**照合する (切り出さないと 02 の `wall_time_s` を拾う。実際に踏んだ)。
+
+### 5. §11.1 の古くなった記述を1段落だけ直した
+
+「`capacity.csv` (117行) / `capacity_profile.csv` (21,636行) / 図4枚」は 3b-1 時点の値で、
+3-C の追加後は 118 行 / 21,812 行 / 図5枚である。行数を書き直す代わりに**行数の記述を
+§11.5 の機械照合される表へ寄せた** (同じ数字が2か所にあると必ず片方が古くなる)。
+「数値の考察は 3b-2 (T5) で追記する」という将来形も現在形に直した。
+
+### 6. 実測 (本番 `make figures-03`、Darwin 25.3.0 / Python 3.12)
+
+| 区間 | 実測 | 予算 |
+|---|---|---|
+| `make figures-03` 全体 | **328.19s** (計算 326.98s。3-A 29.00s / 3-B 74.49s / 3-B' 220.49s / 3-C 0.33s / しきい値比較 2.66s) | < 900s |
+| 状態生成の合計 | **35.80s** | < 60s |
+| ピーク RSS | **1.01 GB** | < 4 GB |
+| `results/03_capacity/*.csv` | **1,846,204 B** (1.76 MB) | < 5 MB |
+| `make ci` | 682 passed / 30.99s | 03 の追加ぶん < 60s |
+
+しきい値比較の追加は 2.66 秒 (全体の 0.8%) で、`make figures-03` の機械側の変動
+(2山の差 約44秒) より2桁小さい。全体時間 328.19s は既知の観測 (324.57 / 326.71 /
+330.06 / 352.98 / 368.73 / 370.42) の **fast 側の山**に入る。
+
+### 7. 触っていないもの
+
+- `diagnostics/` は**差分 0 行** (`git diff <base-ref> -- src/rc_basics_lab/diagnostics/` が空)。
+- 01・02 の成果物は base-ref からの差分が空 (`results/comparison*.csv` / `results/meta.json` /
+  `results/02_esp_and_dynamics/`)。
+- `experiment/capacity.py` / `narma.py` / `runner.py` / `config.py` / `seeds.py` は無変更。
+  T5 が触った実装は **`capacity_threshold.py` の新設**と、`capacity_pipeline.py` への
+  4行の配線 (呼び出し・`CapacityOutputs` のフィールド・`meta.json` の1キー) だけ。
+- 仕様 §4 T5 が挙げた成果物のうち **D-29〜D-31 / D-35〜D-39 は既に記録済み**だったので
+  触っていない (追記したのは D-32 のみ)。
+
+### 8. 残件 (04 へ)
+
+- `config.py` の package 化 (非空 615 行、着手条件 600 行に到達済み)。§11.5 に記録。
+- 3-C の `n_lags_grid` 上端 (k=30 に張り付き)。要件書の指定範囲なので 3b では動かさない。
+- `import rc_basics_lab.plotting` を最初に行うと循環 import (T3 メモ10、base-ref から同じ)。
+
+## 3b-2 round 1 (fixer) で直したこと (`F-3b2-1-xxx`)
+
+サイクル3を締める最終ラウンド。findings は `docs/review-findings-03b.md` の
+「サイクル 3b-2 round 1」に記録済み。**BLOCKER 0 / HIGH 2 / MEDIUM 4 / INFO 5**
+のうち HIGH 2件・MEDIUM 4件を修正し、`config.py` package 化 (M4 の代替として
+検討したが今回は選ばなかった) 以外はスコープどおり閉じた。
+
+- **HIGH 1 + M1 + M2 (`F-3b2-1-001`)**: 3-C (`run_narma10`) としきい値法比較
+  (`run_threshold_comparison`) が `experiment/capacity.py` の
+  `_validate_condition_bounds` (確保より前の上限検査、D-34) を1回も呼ばずに
+  素通りしていた (`CapacityCondition` を組み立てる経路が3-A/3-B/3-B'/
+  length_sweep の4本から、しきい値法比較を含めた5本目・6本目に増えていたのに
+  検査が個別追加式のままだった)。`simulate_condition_trajectory` (検査つきで
+  軌道を作る) と `capacity_context` (D-37 の ctx を1個作る) を `capacity.py` に
+  切り出し、`evaluate_capacity_condition` / `run_threshold_comparison` /
+  `run_narma10` の3か所を差し替えた。あわせて `tasks/narma.py` の `_validate`
+  に `length` 単体の絶対上限 (`_MAX_LENGTH`) と `length * n_units` の絶対上限
+  (`_MAX_STATE_ELEMENTS`) を追加し、3-C (`CapacityCondition` を持たないため
+  上の一本化では守れない経路) を課題層単体で塞いだ。
+- **HIGH 2 (`F-3b2-1-002`)**: D-29 の guard_test
+  (`test_matches_reference_recurrence`) が先頭5ステップ (`y[14]` まで) しか
+  照合しておらず、窓を `sum_{i=0}^{9}` から `sum_{i=0}^{10}` (11項) に広げる
+  変異を検出できなかった (`y[0..9]` が0初期化のため、11項目が非0を拾うのは
+  `t - 10 >= 10` すなわち `y[21]` を計算する時点から)。`REFERENCE_INPUT` を
+  22ステップに延ばし、`test_matches_reference_recurrence_through_extended_window`
+  で `y[21]` まで照合、`test_wider_window_would_not_match` で
+  「11項の変異は `y[21]` で初めて食い違う」ことをセルフテストとして固定した
+  (`test_shifted_index_would_not_match` と対になる形)。
+- **M3 (`F-3b2-1-003`)**: `docs/design.md` §11.5 の3表 (3-A の
+  `mc_effective_delay` 表、3-B の `ipc_total`/`ipc_linear`/`ipc_nonlinear` 表
+  12行、3-B' の `ipc_total`/`saturation_ratio` 表 9セル) が手書きのまま
+  `capacity.csv` と機械照合されていなかった。既存の `_table_after` +
+  `_assert_cell_matches` パターンで3本のテストを追加し (`groupby` で
+  rho/leak_rate または n_units/state_noise ごとにレプリケート平均を取って
+  照合)、表の1セルを書き換える変異で実際に落ちることを実測した。
+- **M4 (`F-3b2-1-004`)**: `SectionTiming.wall_time_s` が3-Cだけ
+  `run_task` を含む値 (`narma.wall_time_s`) に差し替わっており、
+  `CapacityRow.wall_time_s` (常に容量測定のみ) と同じ列名で意味が違っていた。
+  フィールド追加 (`wall_time_scope` 等) ではなく **docstring の訂正**を選んだ
+  (`SectionTiming.wall_time_s` と `capacity_row_from` の Args)。フィールドを
+  足すと `meta.json` のキーが増え、成果物の再生成と §11.5 の実行時間表の
+  機械照合を同時に更新する必要があったため。`results/03_capacity/` はコード
+  ロジック・出力キーとも変更していないのでバイト不変 (実測: base-ref との
+  diff が空)。
+
+### 04 への申し送り (reviewer-architecture 集約、8件・着手順)
+
+**後段ほど破壊的変更を含む**という理由での順序。上から着手すること。
+
+1. **`config.py` の package 化**: 非空615行、着手条件 (600行) に到達済み
+   (上の「残件」参照)。
+2. **ノイズ関連の決定の明文化**: `esn_propagator` (伝播器) が `esn.step` を
+   rng なしで呼んでおり、04 で 02 経路に `state_noise` を入れると D-36 が
+   防いだのと同じ `ValueError` が復活しうる (F-3b1-2-006)。比較軌道も
+   `state_noise=0` の間は乱数を引かないため 02 の軌道はバイト不変だが、
+   `state_noise>0` になると D-14 の3ストリーム分離に4本目の未制御な変動が
+   混ざりうる (F-3b1-2-007)。両方とも `decisions.yaml` に guard_test 付きで
+   記録すること。
+3. **`diagnostics/` の整理4件**: (a) F-03-1-006、(b) `max_targets` の単位が
+   ドキュメントと実装で揃っているかの整理、(c) `RowAlignment` の設計見直し、
+   (d) `chunk_size` の二重意味 (実効値と設定値が同じ名前を共有している) の
+   解消。**`diagnostics/` 配下は3b-2でも1行も変更していない**ため、04 の
+   architect が個別に設計判断 (`/design`) を通してから着手すること。
+4. **公開 API・レイヤ整理2件**: (a) `diagnostics.ipc` の名前隠蔽 (§10-1 の罠、
+   モジュールと再エクスポート関数が同じドット付き名前を共有する) の解消、
+   (b) `experiment` ⇄ `plotting` の相互依存 (循環 import、T3 メモ10) の解消。
+   いずれも公開シグネチャに触れるため、着手前に architect でのレビューを推奨。

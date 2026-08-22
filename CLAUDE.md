@@ -1,204 +1,184 @@
-# CLAUDE.md — Python モノレポ テンプレート
-
-<!-- ============================================================
-  使い方:
-  1. TODO コメントをすべて自分のプロジェクトに合わせて書き換える
-  2. 該当しないセクションは丸ごと削除する
-  3. 200行以下を維持する（長いほどコンテキストを圧迫する）
-  4. Claudeがミスをしたら都度このファイルに追記する
-  5. チェックリスト的な情報はSkillsに分離する
-============================================================ -->
+# CLAUDE.md — rc-basics-lab
 
 ## プロジェクト概要
 
-<!-- TODO: 1〜2行でプロジェクトの目的を書く -->
-このプロジェクトは _____ を行うPythonモノレポです。
-ISMS（ISO/IEC 27001）準拠の開発プロセスに従います。
+リザバーコンピューティング (RC) の**基礎編の連載記事のための実験リポジトリ**。
+numpy / scipy による数値実験を行い、記事に載せる図と CSV を再現可能な形で生成する。
 
-## 推奨される進め方
-
-1. Claude Code に /init でプロジェクトを分析させる
-2. その結果は参考程度に見る（採用しなくてOK）
-3. 今回のテンプレートをプロジェクトルートに配置
-4. Claude Code に「このCLAUDE.mdのTODOを埋めて」と指示
-5. 出力を自分でレビューし、不要な情報を削除
-6. 最終的に自分の目で200行以下に収まっていることを確認
-
-### 指示サンプル
-```
-このCLAUDE.mdテンプレートを読んで、
-現在のプロジェクト構成を調査した上で、
-TODOの部分を実際の内容に書き換えて。
-ただし構成やルールは変えないで。
-
-```
+このリポジトリの成果物は `results/` の CSV と PNG であり、**それが読者に届く唯一のもの**である。
+コードの正しさは成果物の正しさのためにある。
 
 ## プロジェクト構成
 
 ```
 /
-├── .devcontainer/         # Dev Container 設定 (Docker開発環境)
-├── .github/
-│   └── workflows/
-│       └── python-ci.yaml # GitHub Actions CI (make ci を実行)
-├── .vscode/               # VS Code 推奨設定・拡張機能
-├── .claude/
-│   ├── settings.json          # プロジェクト固有の設定のみ（ガード類はキット側）
-│   ├── decisions.yaml         # 意図的な設計判断（guard_test 必須。初期状態では未作成）
-│   ├── schemas/findings.schema.json  # reviewer→fixer の findings JSON 共通スキーマ
-│   └── tmp/                   # /review・/pdca の一時ファイル（gitignore 済み）
-│   # フック・ガード・スラッシュコマンド・スキル・agent 群はすべて
-│   # user スコープの claude-pdca-kit (~/.claude/) が提供する。
-│   # reviewer-uv もキット側にあるため、このリポジトリには置かない
-│   # （プロジェクト側にコピーを置くと、キットの改良が上書きで打ち消される）
-├── docs/
-│   ├── plans/             # planner の仕様書・タスクリスト
-│   └── adr/               # architect の設計判断記録 (ADR)
-├── .pre-commit-config.yaml # pre-commit フック設定
-├── Makefile               # 検証コマンドの単一の真実 (make ci)
-├── main.py                # エントリポイント
-├── tests/                 # pytest テスト
-├── pyproject.toml         # プロジェクト・依存関係定義 (uv)
-├── uv.lock                # 依存関係のロックファイル
-└── CLAUDE.md              # このファイル
+├── main.py                 # 全実験の入口 (EXPERIMENTS 辞書に1行ずつ登録)
+├── Makefile                # 検証コマンドの単一の真実 (make ci / figures-0N / data-05)
+├── experiments/0N_*/       # 実験ごとの run スクリプトと config.yaml (argparse の薄層)
+├── src/rc_basics_lab/
+│   ├── tasks/              # 課題 (データ生成)。純関数。readout も reservoir も I/O も知らない
+│   ├── datasets/           # 外部データの取得・キャッシュ・SHA256。**I/O を持つ唯一の場所**
+│   ├── reservoir/          # ESN 本体
+│   ├── readout/            # 特徴設計 (FeatureSpec) とリッジ回帰
+│   ├── diagnostics/        # ESP / 容量 / IPC / リアプノフ などの計量
+│   ├── experiment/         # 合成層。実験の骨格と成果物の書き出し
+│   ├── plotting/           # 作図層
+│   ├── config/             # 実験ごとの設定 dataclass + load_config_as
+│   └── metrics*.py         # 評価指標
+├── results/                # **成果物**。指紋を tests/artifact_manifest.csv にコミット済み
+├── tests/                  # pytest
+├── docs/                   # 要件 / 仕様 (plans/) / ADR (adr/) / サーベイ / 振り返り
+└── .claude/
+    ├── decisions.yaml      # 意図的な設計判断 (guard_test 必須)。**散文の正本はここ**
+    ├── agents/             # プロジェクト固有の reviewer (reviewer-deletion)
+    └── settings.json       # プロジェクト固有の設定のみ。ガード類はキット側
 ```
 
-<!-- サブパッケージを追加した場合、各ディレクトリにもCLAUDE.mdを配置可能。
-     Claude Codeはディレクトリ階層を遡って全CLAUDE.mdを読み込む。 -->
+フック・スラッシュコマンド・スキル・汎用 agent は user スコープの claude-pdca-kit が提供する。
+**プロジェクト側にコピーを置かない** (キットの改良が上書きで打ち消される)。
 
 ## コマンド一覧
 
 ```bash
-# 依存インストール
-uv sync                              # 依存関係の同期
-uv add <package>                     # パッケージ追加
-uv add --group dev <package>         # dev依存の追加
+uv sync                     # 依存の同期
+uv add --group dev <pkg>    # dev 依存の追加 (実行時依存は増やさない。下記の規約を参照)
 
-# テスト
-uv run pytest                        # 全テスト実行
-uv run pytest -k "test_name"         # 単一テスト
-uv run pytest --cov                  # カバレッジ付き
+make ci                     # lock-check + ruff + ruff format --check + mypy + pytest
+uv run pytest -q            # テスト
+uv run pytest -k "name"     # 単一テスト
+uv run mypy .               # 型チェック (strict)
 
-# リント・フォーマット（Claudeはこれらを自分で実行して確認すること）
-uv run ruff check .                  # リント
-uv run ruff format .                 # フォーマット
-uv run mypy .                        # 型チェック
-
-# pre-commit
-uv run pre-commit install            # フックの初期設定
-uv run pre-commit run --all-files    # 全ファイルに手動実行
-
-# 実行
-uv run python main.py                # エントリポイント実行
+make figures-0N             # 実験 N の成果物を results/ に再生成する
+make data-05                # 外部データセットを data/ に取得する (SHA256 照合つき)
+make artifacts-manifest     # 成果物の指紋を書き直す (**意図して変えたときだけ**)
 ```
 
 ## アーキテクチャ原則
 
-<!-- TODO: プロジェクト固有のアーキテクチャ原則を記載 -->
-- 認証・認可は既存の共通基盤を使用し、独自実装しない
+- **層の向きは一方向**: `experiment` → `diagnostics` / `readout` / `reservoir` / `tasks`。
+  `datasets` → `tasks`。逆流させない
+- **`tasks/` と `metrics*.py` は純関数層**。ネットワークもファイル I/O も持たない (D-59)
+- **外部 I/O は `datasets/` だけ**。取得・キャッシュ・SHA256 照合・ライセンス表記はここに閉じる
+- **`experiment` から `plotting` を module-level import しない** (D-53)。作図は関数内 import
+- **設定は実験ごとに独立した dataclass** (D-13)。既存の `ExperimentConfig` に足さない
+- **前処理・分割の係数を作れる場所は1つに閉じる** (D-41 / D-57)。
+  手法ごと・区間ごとに再推定する経路を構造上書けなくする
 
 ## コード規約
 
 - Python 3.12+、型アノテーション必須
-- `Any` 禁止（`object` か `Protocol` を使用）
+- **`Any` 禁止** (`object` か `Protocol` を使う)
 - 関数は単一責任、50行超は分割を検討
+- **1モジュール 600 行を上限とする** (D-63 / D-77)。超えたら割る。**上限のほうを緩めない**。
+  既に超えている9本は**現在値で凍結**してある (増えたら落ちる。減らすのは自由)。
+  **足すなら別モジュールへ。凍結値を上げて通すのはラチェットを外す操作である**
+- **実行時依存は増やさない** (現在 matplotlib / numpy / pyyaml / scipy の4つ)。
+  テストのオラクルに要るだけなら dev グループへ (D-62)
+- **`__init__.py` はモジュール名だけを再エクスポートする** (D-75)。ただし `config` は除く。
+  シンボルを並べると、次にモジュールを足す人が2箇所へ写経する義務だけが増える
+- **docstring に書くのは「何を返すか・前提・送出する例外」**。
+  「なぜ / 以前は / 代案 / 実測の経緯」は `.claude/decisions.yaml` か `docs/adr/` に置き、
+  コードには `(D-37)` のような ID 参照だけ残す。
+  **散文が3箇所 (decisions.yaml / design.md / docstring) にあると3箇所が独立にドリフトする**
+- `# type: ignore` / `# noqa` を理由なく使わない。**同じ ignore を複数箇所にコピーしない**
+  (1箇所に集約できるはず。実例: `plotting/style.py`)
 
-## セキュリティ原則（常時適用）
+### 実験を1本足すときに触る場所
 
-<!-- 詳細な手順・チェックリストは .claude/skills/isms-security/SKILL.md に記載 -->
-
-**絶対禁止:**
-- 認証情報（パスワード、APIキー、トークン）のハードコード
-- `.env`, 秘密鍵, `credentials.json` のコミット
-- ログへの個人情報・認証情報の出力
-- 本番データの開発環境への複製
-- 本番環境への直接アクセス・変更
-- セキュリティ機能の無効化、監査ログの削除
-
-**必須:**
-- シークレットは環境変数またはKey Vaultから取得
-- 全ユーザー入力を検証・サニタイズ（SQLi, XSS, コマンドインジェクション対策）
-- パラメータ化クエリの使用（生SQLの禁止）
-- エラーレスポンスにスタックトレースや内部実装の詳細を含めない
-- セキュリティに関わるコードは必ず人間がレビュー
-
-**ログ出力ルール:**
-- 含める: タイムスタンプ(UTC), イベント種別, ユーザーID, リソースID, 結果
-- 含めない: パスワード, トークン, カード番号, 氏名, 住所, メールアドレス
+`experiments/0N_*/` (run スクリプトと config.yaml) / `config/0N.py` (設定 dataclass) /
+`experiment/` (骨格。**既存の共通ヘルパを使う。write_rows_csv / to_summary を書き直さない**) /
+`plotting/figures_*.py` (**`style.py` の `new_figure` / `save_png` / `rc_context_for` を使う**) /
+`main.py` の `EXPERIMENTS` / `Makefile` の `figures-0N` / `README.md` / `docs/design.md`。
 
 ## テストルール
 
-- 新しいコードには必ずテストを書く
-- テストファイル: `test_{モジュール名}.py`
+- 新しいコードには必ずテストを書く。ファイル名は `test_{モジュール名}.py`
 - **実装後は `uv run pytest` を実行し全テストパスを確認してから完了とする**
-- カバレッジが下がる変更は理由をコミットメッセージに記載
+- **設定の全葉に「値を変えたら出力が変わる」テストを付ける** (D-13)。
+  効かないフィールドは設定ではなく飾りである
+- **ガードは「いま実行して確かめる」形で書かない。** 環境がそれを覆い隠して空振りする
+  (実例: 処理系のバージョンを実行時に確かめるガードが、venv に覆われて素通りした)。
+  **データで判定する形にし、変異注入で赤くなることを確認する**
 
-## Git / PRワークフロー
+## 成果物 (`results/`) の扱い
 
-- ブランチ: `feat/xxx`, `fix/xxx`, `refactor/xxx`
-- **作業前に必ず作業ブランチを切る。** キットの自動コミット (`auto-commit.sh`) は
-  `main` / `master` では動かないため、main のまま作業すると subagent の成果が
-  コミットされずに溜まり続ける
-- コミット: Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `ci:`)
-- コミット自体はキットの SubagentStop フックが自動で行う（wip コミット。PR 前に squash する）
-- コミット前に `git diff` で機密情報の混入がないことを確認。
-  ただし自動コミットにより `git diff` は空になり得るので、
+- **成果物のバイト不変が、リファクタリングの唯一の合否判定である** (D-74)。
+  `uv run pytest tests/test_artifact_invariance.py` が判定器
+- **指紋を「緑にするため」に書き直さない。** 意図して成果物を変えたときだけ
+  `make artifacts-manifest` を実行し、**なぜ変わったかをコミットメッセージに書く**
+- 指紋は「編集されていないこと」を測るが「再生成しても同じか」は測らない。
+  作図・書き出しを触ったら**一時ディレクトリに再生成して比較する**
+  (`--out <tmp>`)。**PNG はバイト一致する。CSV は `wall_time_s` 列だけ変わる**
+
+## Git / PR ワークフロー
+
+- ブランチ: `feat/xxx`, `fix/xxx`, `refactor/xxx`。**作業前に必ず作業ブランチを切る**
+  (キットの `auto-commit.sh` は `main` では動かず、subagent の成果が溜まり続ける)
+- コミットは SubagentStop フックが自動で行う (wip コミット)
+- **squash は求めない。** 9サイクルで wip は 978 件、squash は0回だった —— 守られない規約を
+  並べると `CLAUDE.md` 全体の拘束力が下がる。代わりに**サイクル境界にタグを打つ**ので、
+  履歴は `git log <前のタグ>..<今のタグ>` で追う
+- **`git diff` は自動コミットにより空になり得る。**
   差分は `git diff $(cat .claude/tmp/base-ref)` で見る
+- PR 手順: 実装+テスト → `make ci` → 差分確認 → push → `/pr`
 
-**レビュー必須の変更:**
-認証・認可、個人情報処理、外部API連携、DBスキーマ変更、インフラ構成
+## サイクル完了時にやること
 
-**PR手順:** 実装+テスト → ruff+mypy → pytest → git diff確認 → push → PR作成（`/pr` コマンド使用可）
+**「実装が終わった」ではサイクルは終わらない。** 以下を済ませて完了とする。
 
-## CI/CD
+1. `make ci` が緑
+2. **`reviewer-deletion` を1回走らせる** (`.claude/agents/reviewer-deletion.md`)。
+   規約だけでは新規コードが止まらないことは実測済み —— `CLAUDE.md` に docstring 規約を
+   入れた当のサイクルで、新規ファイルが規約前と同じ比率 (54% / 36%) で書かれた。
+   findings が0件でもよい。**走らせないことが問題である**
+3. **サイクル境界にタグを打つ** (`git tag cycle-0N`)。
+   `git log` が 978 件の同一メッセージで機能していないため、これが唯一の区切りになる
+4. **`git worktree prune`** を実行し、使い終わったワークツリーを消す。
+   実測: `.claude/worktrees/` 589MB の内訳は `.venv` 297M + `data/` 205M で、
+   **大半は gitignore 済みの再生成可能なもの**。放置してもコミットはされないが
+   (`.gitignore:185`)、ディスクは食い続ける
+5. 未対応の findings を `docs/` に実測値つきで残す
 
-- GitHub Actions (`.github/workflows/python-ci.yaml`) がPR時に `make ci` を実行: uv lock --check, ruff check, ruff format --check, mypy, pytest
-- シークレットはGitHub Secretsで管理（コードに含めない）
-- 本番デプロイは承認済みブランチからのみ
+## Claude への作業指示
 
-## Claudeへの作業指示
-
-- 複数ファイルにまたがる変更は **Plan Mode** で計画してから実装
-- 実装後は テスト + リント + 型チェック で検証
-- 既存コードパターンに合わせる。不明点は推測せず調査する
-- セキュリティ関連の詳細が必要なときは `isms-security` スキルを参照（user スコープの claude-pdca-kit が提供）
-- エージェント成果物の保存先: planner 仕様書 → `docs/plans/`、architect ADR → `docs/adr/`、doc-writer 資料 → `docs/`
-- reviewer 系エージェントの findings JSON は `.claude/schemas/findings.schema.json` に準拠させる
-  （`evidence` は必須。実測でないものを `measured` と書かない。
-  キットの `triage_findings.py` が機械検証し、裏付けの無い実測主張は推論へ降格する）
-- ファイル編集後は保存時フォーマットが自動実行される（キットの `format.sh`）
-- 「普通はこうするが、今回は理由があって別の選択をする」判断は
-  `.claude/decisions.yaml` に guard_test 付きで記録する。
-  雛形: `cp ~/.claude/templates/decisions.yaml .claude/decisions.yaml`
-  （散文で残すと後続の fixer が一貫性のために潰しても何も落ちない）
-- カスタムコマンド: `/security-review`（ISMSレビュー）、`/pr`（PR作成）、
-  `/retro`（エージェント運用の振り返り）※ user スコープの claude-pdca-kit が提供
-- エージェント運用でうまくいかなかったことは、その場で1行記録する:
+- 複数ファイルにまたがる変更は planner を通してから実装する
+- 既存コードパターンに合わせる。**不明点は推測せず調査する**
+- 成果物の保存先: planner 仕様書 → `docs/plans/`、ADR → `docs/adr/`、資料 → `docs/`
+- reviewer の findings は `.claude/schemas/findings.schema.json` に準拠させる。
+  **`evidence` は必須。実測でないものを `measured` と書かない**
+- **「普通はこうするが、今回は理由があって別の選択をする」判断は
+  `.claude/decisions.yaml` に guard_test 付きで記録する。**
+  **1決定 = 1約束 = 1 guard_test** (`check_decisions.py` は単一 node id しか解決しない)
+- **subagent の報告の数値を検証せずに転記しない。** 1コマンドで裏が取れるものは取る
+- 運用でうまくいかなかったことは、その場で1行記録する:
   `~/.claude/hooks/record-incident.sh note manual "<課題を1文で>"`
-
-## AI支援開発の制限
-
-- 本番環境への直接操作・認証情報の生成表示・未承認の外部連携は禁止
-- AI出力のセキュリティ関連コードは必ず人間がレビュー
-
-## Compaction時の保持ルール
-
-変更ファイル一覧 / テスト結果 / 未完了タスク / ブランチ名 / セキュリティ上の懸念事項
 
 ## やってはいけないこと
 
-- `print()` をプロダクションコードに残さない
+- `print()` をプロダクションコードに残さない (ruff T20)
 - テストなしで機能追加しない
-- パブリックAPIの型シグネチャを無断変更しない
-- `# type: ignore` / `# nosec` / `# noqa` を理由なく使わない
-- `.env` やシークレットをハードコードしない
-<!-- ============================================================
-  ↓ ここから下は、Claudeが間違えるたびに追記するセクション ↓
-  例: 「xxxモジュールのインポートパスは packages.core.xxx であること」
-============================================================ -->
+- 公開 API の型シグネチャを無断変更しない
+- **`results/01..04/` の既存成果物を、理由の説明なしに変えない**
+- **`.claude/settings.json` の `env` で処理系を固定しない** (D-73)。
+  マシン固有の解決は gitignore された `settings.local.json` の `PATH` で行う
+- **`decisions.yaml` の `guard_test` に載っているテストを消さない。**
+  決定を守っている唯一の機械であり、消すと決定が散文に戻る
 
-## 学習メモ（Claudeのミスから追記）
+## 学習メモ
 
-<!-- Claudeに間違いを修正させた後、
-     「CLAUDE.mdの学習メモに、今のミスを二度としないようルールを追記して」
-     と指示する。このセクションは運用しながら育てる。 -->
+実際に起きたことだけを書く。一般論は書かない。
+
+- **フックが動く処理系がリポジトリのコードを解析できない状態が8サイクル残っていた。**
+  `PYENV_VERSION: 3.10.0` の固定が回避策のまま恒久設定になり、PEP 695 の型エイリアスを
+  SyntaxError でしか読めなかった。**回避策を設定に残すときは、それが何を壊すかまで書く** (D-73)
+- **「いま実行して確かめる」ガードは環境に覆い隠される。**
+  上を防ぐガードを最初その形で書いたら、`uv run` 配下では venv の 3.12 が
+  pyenv shims を覆い隠し、固定を戻しても緑のまま通った。**データで判定する**
+- **reviewer の数値主張は外れることがある。** 存在しない関数を指して「100k点で26.7秒」と
+  報告された件は、実測 0.428 秒で **62倍ずれ**ていた。**数を主張されたら1コマンドで裏を取る**
+- **成果物を巻き戻すとコードと乖離する。** `results/` を過去の状態へ revert した際に
+  コード側のフィールドと食い違い、「編集していないこと」しか測っていなかったため
+  誰も気づけなかった。**巻き戻したら再生成して一致を確認する**
+- **削減量の見積りは実測より大きく出る。** 共通化は集約先のコストを伴うため
+  (呼び出し側 −64 行に対し共通ヘルパ +54 行、純減 −10 行)。
+  **過大な見積りは「言われたほど減らない」と判断されて途中でやめる原因になる**

@@ -1,0 +1,413 @@
+{
+  "cjk_font": "Hiragino Sans",
+  "commit": "3dc7322e6d6c8eed01ab2484981fd3e83aa5e100",
+  "config": {
+    "conservation": {
+      "leak_rate": 1.0,
+      "max_delay_by_degree": [
+        200,
+        60,
+        20,
+        10
+      ],
+      "n_replicates": null,
+      "n_steps": 200000,
+      "n_units_grid": [
+        25,
+        50,
+        100
+      ],
+      "rho": 0.95,
+      "sigma_u": 0.2,
+      "state_noise_grid": [
+        0.0,
+        0.01,
+        0.1
+      ]
+    },
+    "drive": {
+      "distribution": "uniform",
+      "washout": 200
+    },
+    "ipc": {
+      "alpha": 1e-09,
+      "basis": "legendre",
+      "chunk_size": 256,
+      "input_distribution": "uniform",
+      "max_degrees": 20,
+      "max_delay_by_degree": [
+        60,
+        20,
+        10,
+        6
+      ],
+      "max_targets": 200000,
+      "max_variables": 3,
+      "n_surrogate_targets": 4,
+      "n_surrogates": 100,
+      "surrogate_quantile": 0.99,
+      "threshold_mode": "surrogate"
+    },
+    "ipc_sweep": {
+      "leak_rate_grid": [
+        0.3,
+        0.6,
+        1.0
+      ],
+      "n_steps": 100000,
+      "n_units": 50,
+      "rho_grid": [
+        0.5,
+        0.8,
+        0.95,
+        1.1
+      ],
+      "sigma_u": 0.2
+    },
+    "length_sweep": {
+      "leak_rate": 1.0,
+      "n_steps_grid": [
+        100000,
+        200000,
+        500000,
+        1000000
+      ],
+      "n_units": 50,
+      "rho": 0.95,
+      "sigma_u": 0.2
+    },
+    "mc": {
+      "alpha": 1e-09,
+      "chunk_size": 256,
+      "max_delay": 400,
+      "n_surrogates": 100,
+      "surrogate_quantile": 0.99,
+      "threshold_mode": "surrogate"
+    },
+    "mc_sweep": {
+      "leak_rate_grid": [
+        0.3,
+        0.6,
+        1.0
+      ],
+      "n_steps": 20000,
+      "n_units": 200,
+      "rho_grid": [
+        0.5,
+        0.7,
+        0.9,
+        0.95,
+        1.0,
+        1.1
+      ],
+      "sigma_u": 0.1
+    },
+    "name": "03_capacity",
+    "narma": {
+      "base": {
+        "delay_parity": {
+          "delay": 1,
+          "length": 8000,
+          "n_bits": 2
+        },
+        "esn_delay_parity": {
+          "activation": "tanh",
+          "bias_scale": 0.1,
+          "density": 0.1,
+          "input_scale": 1.0,
+          "leak_rate": 1.0,
+          "n_units": 200,
+          "spectral_radius": 0.9,
+          "state_noise": 0.0
+        },
+        "esn_mackey_glass": {
+          "activation": "tanh",
+          "bias_scale": 0.1,
+          "density": 0.1,
+          "input_scale": 0.5,
+          "leak_rate": 0.3,
+          "n_units": 50,
+          "spectral_radius": 0.9,
+          "state_noise": 0.0
+        },
+        "mackey_glass": {
+          "beta": 0.2,
+          "exponent": 10,
+          "gamma": 0.1,
+          "horizon": 1,
+          "integration_burn_in": 1000,
+          "length": 8000,
+          "rk4_step": 0.1,
+          "sample_interval": 10,
+          "tau": 17.0
+        },
+        "n_replicates": 5,
+        "name": "03_narma10",
+        "ridge": {
+          "alpha_grid": [
+            1e-10,
+            1e-09,
+            1e-08,
+            1e-07,
+            1e-06,
+            1e-05,
+            0.0001,
+            0.001,
+            0.01,
+            0.1,
+            1.0,
+            10.0,
+            100.0
+          ],
+          "n_lags_grid": [
+            10,
+            15,
+            20,
+            25,
+            30
+          ]
+        },
+        "seeds": {
+          "reservoir": 0,
+          "split": 2,
+          "task": 1
+        },
+        "split": {
+          "max_start_offset": 200,
+          "test_ratio": 0.35,
+          "train_ratio": 0.5,
+          "val_ratio": 0.15,
+          "washout": 200
+        }
+      },
+      "length": 8000,
+      "n_lags_sweep": [
+        10,
+        30,
+        100,
+        300,
+        800,
+        1500,
+        2200,
+        2500
+      ],
+      "n_replicates_sweep": 3
+    },
+    "reservoir": {
+      "density": 0.1,
+      "input_scale": 1.0,
+      "n_replicates": 3
+    },
+    "seeds": {
+      "drive": 1,
+      "reservoir": 0,
+      "surrogate": 4
+    }
+  },
+  "matplotlib_version": "3.11.1",
+  "n_narma10_rows": 20,
+  "n_narma10_taps_rows": 48,
+  "n_profile_rows": 21812,
+  "n_rows": 118,
+  "narma10_tap_sweep": {
+    "n_lags_sweep": [
+      10,
+      30,
+      100,
+      300,
+      800,
+      1500,
+      2200,
+      2500
+    ],
+    "nmse_mean": {
+      "10": {
+        "delay_line": 0.34634302082529905,
+        "delay_line_ols": 0.34592516887791375
+      },
+      "100": {
+        "delay_line": 0.1546110883503308,
+        "delay_line_ols": 0.15835095915156824
+      },
+      "1500": {
+        "delay_line": 0.2808960543572905,
+        "delay_line_ols": 0.39287661106520716
+      },
+      "2200": {
+        "delay_line": 0.3607027004261971,
+        "delay_line_ols": 0.5784871875676595
+      },
+      "2500": {
+        "delay_line": 0.4368999130879702,
+        "delay_line_ols": 1.4529781114947167
+      },
+      "30": {
+        "delay_line": 0.1526882542573829,
+        "delay_line_ols": 0.15327061225157537
+      },
+      "300": {
+        "delay_line": 0.16515400062398924,
+        "delay_line_ols": 0.1691171488997275
+      },
+      "800": {
+        "delay_line": 0.20132534105790692,
+        "delay_line_ols": 0.20973628616180126
+      }
+    },
+    "ols_over_ridge": {
+      "10": 0.9987935314925948,
+      "100": 1.0241888912440957,
+      "1500": 1.398654786960735,
+      "2200": 1.6037783661839342,
+      "2500": 3.3256543843764925,
+      "30": 1.0038140326970457,
+      "300": 1.0239966834637042,
+      "800": 1.0417778758486003
+    },
+    "taps_per_train": {
+      "10": 0.002631578947368421,
+      "100": 0.02631578947368421,
+      "1500": 0.47619047619047616,
+      "2200": 0.7857142857142857,
+      "2500": 0.9433962264150944,
+      "30": 0.007894736842105263,
+      "300": 0.08,
+      "800": 0.22857142857142856
+    },
+    "worst_n_lags": 2500,
+    "worst_ols_over_ridge": 3.3256543843764925,
+    "worst_taps_per_train": 0.9433962264150944
+  },
+  "narma10_verdict": {
+    "best_method": "delay_line_ols",
+    "delay_line_beats_esn": true,
+    "delay_line_ols_beats_esn": true,
+    "nmse_mean": {
+      "delay_line": 0.15375010031359504,
+      "delay_line_ols": 0.15337183929690917,
+      "esn": 0.267298647253092,
+      "linear": 1.0181377822749034
+    },
+    "reference_nmse": {
+      "linear_ceiling": 0.16,
+      "nonlinear_rc": 0.107
+    },
+    "reference_note": "注: 参照値 NMSE = 0.16 (非線形性なしの天井) / 0.107 (良好な非線形 RC、N = 50 規模) は複数の物理 RC 論文が引用する値で、原典は未特定である (要件_rc-basics-03 未確定1)。",
+    "regularisation_changes_the_verdict": false,
+    "selected_n_lags": [
+      25,
+      30
+    ]
+  },
+  "numpy_version": "2.5.2",
+  "package_version": "0.1.0",
+  "platform": "macOS-26.3-arm64-arm-64bit",
+  "python_version": "3.12.5",
+  "scipy_version": "1.18.0",
+  "seeds": {
+    "drive": 1,
+    "reservoir": 0,
+    "surrogate": 4
+  },
+  "threshold_comparison": {
+    "condition": {
+      "experiment": "3B_ipc_sweep",
+      "leak_rate": 0.6,
+      "n_steps": 100000,
+      "n_units": 50,
+      "replicate": 0,
+      "rho": 0.95,
+      "sigma_u": 0.2,
+      "state_noise": 0.0
+    },
+    "default_ipc_mode": "surrogate",
+    "default_mc_mode": "surrogate",
+    "ipc": [
+      {
+        "ipc_linear": 11.545046203604633,
+        "ipc_nonlinear": 16.536670356076293,
+        "ipc_saturation_ratio": 0.5616343311936185,
+        "ipc_threshold_degree1": 0.0,
+        "ipc_total": 28.081716559680928,
+        "ipc_total_raw": 28.081716559680928,
+        "n_targets_kept": 601,
+        "threshold_mode": "none"
+      },
+      {
+        "ipc_linear": 11.539148374218383,
+        "ipc_nonlinear": 16.37871475943153,
+        "ipc_saturation_ratio": 0.5583572626729983,
+        "ipc_threshold_degree1": 0.0007420485266567672,
+        "ipc_total": 27.917863133649917,
+        "ipc_total_raw": 28.081716559680928,
+        "n_targets_kept": 324,
+        "threshold_mode": "surrogate"
+      },
+      {
+        "ipc_linear": 11.539148374218383,
+        "ipc_nonlinear": 16.384161495253025,
+        "ipc_saturation_ratio": 0.5584661973894282,
+        "ipc_threshold_degree1": 0.000763065042575278,
+        "ipc_total": 27.923309869471407,
+        "ipc_total_raw": 28.081716559680928,
+        "n_targets_kept": 330,
+        "threshold_mode": "chi2"
+      }
+    ],
+    "memory_capacity": [
+      {
+        "mc_effective_delay": 13.62799280464025,
+        "mc_ratio": 0.23427567336962196,
+        "mc_threshold": 0.0,
+        "mc_total": 11.713783668481097,
+        "mc_total_raw": 11.713783668481097,
+        "threshold_mode": "none"
+      },
+      {
+        "mc_effective_delay": 10.52676282379644,
+        "mc_ratio": 0.2308772015836458,
+        "mc_threshold": 0.0007364694436392173,
+        "mc_total": 11.54386007918229,
+        "mc_total_raw": 11.713783668481097,
+        "threshold_mode": "surrogate"
+      }
+    ],
+    "wall_time_s": 2.7241234170505777
+  },
+  "timestamp_utc": "2026-08-21T07:06:48.782742+00:00",
+  "wall_time_breakdown": [
+    {
+      "experiment": "3A_mc_sweep",
+      "n_conditions": 54,
+      "wall_time_ipc_s": 21.329774083162192,
+      "wall_time_mc_s": 2.946187544032,
+      "wall_time_s": 29.608626582601573,
+      "wall_time_state_s": 5.330272875668015
+    },
+    {
+      "experiment": "3B_ipc_sweep",
+      "n_conditions": 36,
+      "wall_time_ipc_s": 58.50728837499628,
+      "wall_time_mc_s": 6.754822209069971,
+      "wall_time_s": 76.64659275126178,
+      "wall_time_state_s": 11.38134417013498
+    },
+    {
+      "experiment": "3Bp_conservation",
+      "n_conditions": 27,
+      "wall_time_ipc_s": 191.31638220796594,
+      "wall_time_mc_s": 16.17448245792184,
+      "wall_time_s": 227.16985912702512,
+      "wall_time_state_s": 19.674930957029574
+    },
+    {
+      "experiment": "3C_narma10",
+      "n_conditions": 1,
+      "wall_time_ipc_s": 0.1379067079978995,
+      "wall_time_mc_s": 0.017971708031836897,
+      "wall_time_s": 0.3446099580032751,
+      "wall_time_state_s": 0.03310208301991224
+    }
+  ],
+  "wall_time_s": 343.87437041598605
+}

@@ -1,0 +1,462 @@
+"""``config`` package の形を固定する (D-49).
+
+サイクル04 T1 で ``src/rc_basics_lab/config.py`` (非空 615 行) を
+``src/rc_basics_lab/config/`` package へ**移動だけ**で割った。移動だけである
+ことの証明は2本立てで、片方はここに、もう片方は成果物のバイト一致
+(``make figures-01`` / ``figures-02`` / ``figures-03`` の再生成) にある。
+
+ここが固定するのは3つ:
+
+1. **公開シンボルの経路が変わらない** —— 分割前の ``rc_basics_lab.config`` から
+   取った公開名のスナップショットと突き合わせる。``__all__`` は分割前の 36 名を
+   **1つも落とさない**ことを要求し (増える側は ``CHAOS04_ADDITIONS`` のように
+   実験サイクルごとに明示的に記録する)、
+   ``dir()`` にしか出ない名前 (実装の都合で入っていた import) は**消える側も
+   増える側も全部書き出して固定する**。「``__all__`` さえ合っていればよい」に
+   すると、package 化のついでに実装 import が公開名として増えても気づけない
+2. **1モジュールあたりの行数の上限** —— 分割の目的そのもの
+3. **package 内の依存が非循環で、許可した辺しか無い** —— 依存が双方向になると
+   01 の設定を読むためだけに 02・03 の設定まで引き込まれる
+
+いずれも ``config.py`` を書き戻したり、``__init__.py`` にサイクル間の import を
+足したりすると落ちる。
+"""
+
+from __future__ import annotations
+
+import ast
+import pkgutil
+import re
+from pathlib import Path
+
+import pytest
+
+import rc_basics_lab.config as config_pkg
+
+ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_DIR = ROOT / "src" / "rc_basics_lab" / "config"
+DESIGN_DOC = ROOT / "docs" / "design.md"
+PACKAGE_NAME = "rc_basics_lab.config"
+
+MAX_NONEMPTY_LINES_PER_MODULE = 300
+"""1モジュールあたりの非空行数の上限 (仕様 docs/plans/rc-basics-04.md §4 T1)。
+
+分割前の ``config.py`` は非空 615 行で、サイクル03 が置いた着手条件
+(非空 600 行) に到達していた。上限を 300 にしておくと、次に到達した時点で
+「もう1段割る」判断を機械が要求する。
+"""
+
+PRE_SPLIT_ALL = (
+    "DEFAULT_ALPHA_GRID",
+    "DEFAULT_ESP_MAP_RHO_GRID",
+    "DEFAULT_ESP_MAP_SIGMA_GRID",
+    "TASK_LENGTH_FIELDS",
+    "Capacity03Config",
+    "CapacityDriveConfig",
+    "CapacityReservoirConfig",
+    "CapacitySeedConfig",
+    "ConfigError",
+    "ConservationConfig",
+    "DelayParityConfig",
+    "DriveConfig",
+    "ESNConfig",
+    "Esp02Config",
+    "EspConfig",
+    "EspDecayConfig",
+    "EspMapConfig",
+    "EspSeedConfig",
+    "ExperimentConfig",
+    "IpcConfig",
+    "IpcSweepConfig",
+    "LengthSweepConfig",
+    "LyapunovConfig",
+    "MackeyGlassConfig",
+    "McSweepConfig",
+    "MemoryCapacityConfig",
+    "Narma10Config",
+    "ReservoirSweepConfig",
+    "RidgeConfig",
+    "SplitConfig",
+    "TimescaleConfig",
+    "TimescaleSweepConfig",
+    "WashoutSweepConfig",
+    "esp_stream_seed",
+    "load_config",
+    "load_config_as",
+)
+"""分割**前**の ``config.py`` の ``__all__`` (実測スナップショット、36 名)。
+
+取得コマンド (base-ref 8810d4e 時点):
+``uv run python -c "import rc_basics_lab.config as c; print(sorted(c.__all__))"``
+
+このタプルはコード側から生成せず**リテラルで持つ**。``config.__all__`` から
+組み立てると「``__all__`` が ``__all__`` と一致する」という同語反復になり、
+package 化で名前を落としても落とせなくなる。
+"""
+
+PRE_SPLIT_DIR_ONLY = (
+    "Mapping",
+    "Path",
+    "Protocol",
+    "SeedConfig",
+    "SeedStream",
+    "Sequence",
+    "UnionType",
+    "annotations",
+    "cast",
+    "dataclass",
+    "dataclasses",
+    "field",
+    "get_args",
+    "get_origin",
+    "get_type_hints",
+    "np",
+    "yaml",
+)
+"""分割前の ``dir(config)`` に在って ``__all__`` に無かった公開名 (17 名)。
+
+すべて ``config.py`` が実装のために書いた import 文の副作用であり、API として
+公開したものではない (``__all__`` に入っていないので ``from ... import *`` にも
+乗らない)。``test_no_module_imported_the_dir_only_names_from_config`` が
+「リポジトリの誰もこの経路で import していない」ことを実測する。
+"""
+
+CHAOS04_ADDITIONS = (
+    "Chaos04Config",
+    "FreeRunConfig",
+    "LORENZ_LYAPUNOV_REFERENCE",
+    "LorenzConfig",
+    "MackeyGlassStandardizeConfig",
+    "MaxLyapunovConfig",
+    "StabilityConfig",
+)
+"""04 (T4 / T5) が ``config.__all__`` へ**足した**公開名。
+
+D-49 が守るのは「package 化**前と同一**の経路で引ける」ことであって、
+「以後どの実験も公開シンボルを増やせない」ことではない —— 増やせないなら 04 の
+設定 (``Chaos04Config``) を 01 の ``ExperimentConfig`` に相乗りさせるしかなく、
+D-13 と正面から衝突する。したがって**減る側は差分0**を要求したまま、
+**増える側はここに列挙したぶんだけ**を許す。列挙を忘れて増やせば落ちるので、
+「package 化のついでに実装 import が公開名として増えた」は従来どおり検出できる。
+
+``StabilityConfig`` は T5 が足した 4-C の掃引軸 (D-45)。
+``MaxLyapunovConfig`` は ``diagnostics/lyapunov.py`` の設定 (D-15) で、
+``EspConfig`` / ``IpcConfig`` などと同じく ``config -> diagnostics`` の許可された
+向きで再エクスポートしている。
+"""
+
+ANOMALY05_ADDITIONS = (
+    "Anomaly05Config",
+    "AnomalyDatasetConfig",
+    "AnomalyEvaluationConfig",
+    "AnomalyPreprocessConfig",
+    "AnomalyProtocolSweepConfig",
+    "AnomalyReservoirConfig",
+    "AnomalyRidgeConfig",
+    "AnomalySeedConfig",
+    "AnomalySizeSweepConfig",
+    "AnomalyThresholdConfig",
+    "SyntheticAnomalyConfig",
+    "SyntheticMackeyGlassConfig",
+    "anomaly_stream_seed",
+)
+"""05 (T2 / T3 準備) が ``config.__all__`` へ**足した**公開名。
+
+``CHAOS04_ADDITIONS`` と同じ扱い (減る側は差分0のまま、増える側はここに
+列挙したぶんだけ許す)。``SyntheticAnomalyConfig`` は合成異常源の設定で、
+``tasks/anomaly.py`` が読む —— 既存の課題層と同じ ``tasks -> config`` の向きを
+保つために課題層側ではなくここに置いてある (``config/anomaly05.py`` の
+モジュール docstring)。実験1本ぶんの ``Anomaly05Config`` は T3 が足す。
+
+``SyntheticMackeyGlassConfig`` は T3 の着手前に足した2つ目で、01 の
+``MackeyGlassConfig`` から ``length`` / ``horizon`` の2葉を落とした器である
+(D-69)。合成源はこの2葉を必ず上書きするため、内包したままでは「YAML から
+設定できるのに出力が1バイトも変わらない死んだ葉」になっていた。
+
+残りの9名は T3 が足した実験1本ぶんの設定 (``Anomaly05Config`` と、その
+セクション7個 + ストリーム対応の関数 ``anomaly_stream_seed``)。セクションを
+01 の ``ESNConfig`` / ``RidgeConfig`` の再利用で済ませなかったのは、
+``bias_scale`` / ``activation`` / ``state_noise`` / ``n_lags_grid`` が 05 の
+軸ではなく、内包すると死葉が4つ増えるためである (D-69 と同じ判断)。
+
+``AnomalyProtocolSweepConfig`` / ``AnomalySizeSweepConfig`` は T4 が
+5-C / 5-D の掃引の実装と**同時に**足した2つ (``config/anomaly05_sweep.py``)。
+T3 が置かなかったのは、掃引が無い時点では「値を変えても出力が1バイトも
+変わらない死葉」になるためである (D-69)。
+"""
+
+SURVIVING_DIR_ONLY = ("annotations",)
+"""分割後も ``dir(config)`` に残る ``PRE_SPLIT_DIR_ONLY`` の名前。
+
+``from __future__ import annotations`` は package の ``__init__.py`` でも
+書くので残る (このリポジトリの全モジュールが書いている慣習)。
+"""
+
+EXPECTED_SUBMODULES = (
+    "anomaly05",
+    "anomaly05_sweep",
+    "capacity03",
+    "chaos04",
+    "esp02",
+    "experiment01",
+)
+"""分割で ``dir(config)`` に**増える**公開名 (実験サイクル単位のサブモジュール)。
+
+``_common`` は ``_`` 始まりなので公開名には出ない。ここに書いていない名前が
+増えたら、``__init__.py`` が実装 import を公開名に漏らしている。
+"""
+
+ALLOWED_INTERNAL_EDGES = frozenset(
+    {
+        ("__init__", "_common"),
+        ("__init__", "experiment01"),
+        ("__init__", "esp02"),
+        ("__init__", "capacity03"),
+        ("__init__", "chaos04"),
+        ("__init__", "anomaly05"),
+        ("__init__", "anomaly05_sweep"),
+        ("anomaly05", "anomaly05_sweep"),
+        ("experiment01", "_common"),
+        ("esp02", "experiment01"),
+        ("capacity03", "experiment01"),
+        ("chaos04", "experiment01"),
+        ("anomaly05", "experiment01"),
+    }
+)
+"""``config`` package 内で許可する import の辺 (``from`` -> ``to``)。
+
+- ``experiment01 -> _common``: 01 向けの別名 ``load_config`` が
+  ``load_config_as`` に委譲する。``_common`` は package 内の**葉**で、
+  どのサイクルモジュールも import しない
+- ``esp02 -> experiment01``: ``WashoutSweepConfig.base: ExperimentConfig``
+  (2-D が 01 の ``run_experiment`` を再利用するための内包、D-19)
+- ``capacity03 -> experiment01``: ``Narma10Config.base: ExperimentConfig``
+  (3-C が 01 の ``run_task`` を再利用するための内包、D-31)
+- ``chaos04 -> experiment01``: ``Chaos04Config.base: ExperimentConfig``
+  (4-A / 4-B が 01 の ``run_task`` を再利用するための内包、D-31 と同じ形)
+- ``anomaly05 -> experiment01``: ``SyntheticMackeyGlassConfig`` が既定値を
+  ``MackeyGlassConfig()`` から引き、``to_mackey_glass`` が 01 の
+  ``MackeyGlassConfig`` を組み立てる (D-69 / D-70)。合成源の土台が MG である
+  以上、**既定値の**単一の真実は 01 側に残す —— 04 が MG のパラメータを
+  再定義しなかったのと同じ規律で、05 が絞ったのは値ではなく葉の集合である
+- ``anomaly05 -> anomaly05_sweep``: ``Anomaly05Config`` が 5-C / 5-D の格子を
+  節として内包する。逆向き (``anomaly05_sweep -> anomaly05``) を引かないのが
+  要点で、格子の既定値を ``AnomalyPreprocessConfig()`` から引こうとすると
+  この辺が生えて循環する —— 既定値はリテラルで書き写し、一致は
+  ``test_the_default_grids_contain_the_headline_condition`` が実測する
+
+サイクルのモジュール (``esp02`` / ``capacity03`` / ``chaos04``) は**互いを
+import しない**。3本はどれも 01 を内包する同じ形の辺で、向きが逆になることは
+無い (01 が 02・03・04 の設定を知ることは D-13 が禁じている)。
+"""
+
+CYCLE_MODULES = ("esp02", "capacity03", "chaos04", "anomaly05")
+"""実験サイクル単位のモジュール (``experiment01`` を内包する側)。互いに独立。"""
+
+
+def _module_paths() -> list[Path]:
+    return sorted(PACKAGE_DIR.glob("*.py"))
+
+
+def _nonempty_line_count(path: Path) -> int:
+    return sum(
+        1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
+
+
+def _internal_edges() -> set[tuple[str, str]]:
+    """``config/*.py`` の import 文から package 内の辺を集める。
+
+    実行時の属性ではなくソースの AST を見るのは、循環 import は「import 文が
+    どう書かれているか」の問題であり、実行して通ってしまえば検出できない
+    (Python は部分初期化されたモジュールを返すことがある) ため。
+    """
+    edges: set[tuple[str, str]] = set()
+    for path in _module_paths():
+        source = path.stem
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            targets: list[str] = []
+            if isinstance(node, ast.ImportFrom):
+                if node.level == 1 and node.module is not None:
+                    targets.append(node.module.split(".")[0])
+                elif node.level == 1:
+                    targets.extend(alias.name for alias in node.names)
+                elif node.module is not None and node.module.startswith(
+                    f"{PACKAGE_NAME}."
+                ):
+                    targets.append(node.module[len(PACKAGE_NAME) + 1 :].split(".")[0])
+            elif isinstance(node, ast.Import):
+                targets.extend(
+                    alias.name[len(PACKAGE_NAME) + 1 :].split(".")[0]
+                    for alias in node.names
+                    if alias.name.startswith(f"{PACKAGE_NAME}.")
+                )
+            edges.update((source, target) for target in targets if target != source)
+    return edges
+
+
+def test_public_symbols_are_importable_from_the_package_root() -> None:
+    """分割前の公開シンボルが ``rc_basics_lab.config`` から同じ名前で引ける (D-49)。
+
+    ``__all__`` は分割前のスナップショットと**差分0**であること、かつ列挙された
+    名前が実際に属性として解決できることの両方を要求する。``__all__`` に名前を
+    残したまま import 文を落とすと後者で落ちる。
+    """
+    actual = set(config_pkg.__all__)
+    assert not set(PRE_SPLIT_ALL) - actual, (
+        "config.__all__ から分割前の公開名が消えています (D-49): "
+        f"{sorted(set(PRE_SPLIT_ALL) - actual)}"
+    )
+    recorded_additions = set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS)
+    assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
+        "config.__all__ が記録していない公開名を増やしています "
+        f"(予定外={sorted(actual - set(PRE_SPLIT_ALL) - recorded_additions)}, "
+        f"記録済みだが不在={sorted(recorded_additions - actual)})"
+    )
+    assert len(config_pkg.__all__) == len(actual), "config.__all__ に重複があります"
+    missing = [name for name in EXPECTED_ALL if not hasattr(config_pkg, name)]
+    assert not missing, f"__all__ に在るが解決できない名前: {missing}"
+
+
+EXPECTED_ALL: tuple[str, ...] = PRE_SPLIT_ALL + CHAOS04_ADDITIONS + ANOMALY05_ADDITIONS
+"""``config.__all__`` に在るべき名前の全体 (36 + 04 の 7 名 + 05 の 1 名)。"""
+
+
+@pytest.mark.parametrize("name", EXPECTED_ALL)
+def test_each_public_symbol_resolves_through_the_import_statement(name: str) -> None:
+    """``from rc_basics_lab.config import <名前>`` が1つずつ通る (D-49)。
+
+    ``__import__(pkg, fromlist=[name])`` は ``from pkg import name`` が実際に
+    生成するバイトコードそのもので、名前が解決できなければ ``AttributeError``
+    になる。``__all__`` を1件ずつ展開するのは、集合比較だけだと「どの名前が
+    落ちたか」がテスト名から分からず、次の実装者が経路を復元しにくいため。
+    """
+    module = __import__(PACKAGE_NAME, fromlist=[name])
+    obj = getattr(module, name)
+    assert obj is not None, f"from {PACKAGE_NAME} import {name} が None を返します"
+
+
+def test_dir_only_names_changed_exactly_as_recorded() -> None:
+    """``dir()`` の公開名の差分が、記録した集合と**厳密に**一致する (D-49)。
+
+    分割前の公開名 (``__all__`` 36 + ``dir()`` のみ 17 = 53) に対して、
+    消えるのは ``PRE_SPLIT_DIR_ONLY`` から ``SURVIVING_DIR_ONLY`` を除いたもの、
+    増えるのは実験サイクル単位のサブモジュールと、記録した公開名
+    (``CHAOS04_ADDITIONS``) だけ。両側を固定するので、
+    ``__init__.py`` が numpy や yaml を公開名に漏らしても落ちる。
+    """
+    actual = {name for name in dir(config_pkg) if not name.startswith("_")}
+    before = set(PRE_SPLIT_ALL) | set(PRE_SPLIT_DIR_ONLY)
+    assert len(before) == 53, "スナップショットの名前数が実測 (53) と違います"
+
+    expected_removed = set(PRE_SPLIT_DIR_ONLY) - set(SURVIVING_DIR_ONLY)
+    assert before - actual == expected_removed
+    assert actual - before == (
+        set(EXPECTED_SUBMODULES) | set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS)
+    )
+
+
+def test_no_module_imported_the_dir_only_names_from_config() -> None:
+    """消える ``dir()`` 名を ``config`` 経由で import している箇所が無い (D-49)。
+
+    ``PRE_SPLIT_DIR_ONLY`` は ``config.py`` の実装 import が公開名として
+    見えていただけで API ではない —— という主張の実測。リポジトリ全体の
+    ``from rc_basics_lab.config import ...`` を AST で拾い、``__all__`` の外の
+    名前が1つも使われていないことを確かめる。使われていれば「移動だけ」では
+    済まないので、そのときは ``__all__`` を増やす判断が要る。
+    """
+    dir_only = set(PRE_SPLIT_DIR_ONLY)
+    offenders: list[str] = []
+    for path in sorted(ROOT.rglob("*.py")):
+        if ".venv" in path.parts or PACKAGE_DIR in path.parents:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or node.module != PACKAGE_NAME:
+                continue
+            offenders.extend(
+                f"{path.relative_to(ROOT)}: {alias.name}"
+                for alias in node.names
+                if alias.name in dir_only
+            )
+    assert not offenders, (
+        f"__all__ の外の名前を config から import しています: {offenders}"
+    )
+
+
+@pytest.mark.parametrize("path", _module_paths(), ids=lambda p: p.name)
+def test_each_config_module_stays_under_the_line_budget(path: Path) -> None:
+    """``config/`` の各モジュールが非空 300 行以下 (仕様 §4 T1 の受け入れ基準)。
+
+    分割前の ``config.py`` は非空 615 行だった。実測値そのものの照合は
+    ``tests/test_design_doc.py`` (design.md §11.5 の表) が行う。
+    """
+    nonempty = _nonempty_line_count(path)
+    assert nonempty <= MAX_NONEMPTY_LINES_PER_MODULE, (
+        f"{path.name} が非空 {nonempty} 行で上限 "
+        f"{MAX_NONEMPTY_LINES_PER_MODULE} 行を超えています"
+    )
+
+
+def test_design_doc_records_the_same_line_budget() -> None:
+    """``docs/design.md`` §11.5 に書いた上限が ``MAX_NONEMPTY_LINES_PER_MODULE``。
+
+    上限の正本はこの定数1つで、design.md はその写しである。両方に数字を書く
+    以上、片方だけ更新される事故は必ず起きるので機械で潰す (§11.5 の行数表
+    そのものの照合は ``tests/test_design_doc.py`` が行う)。
+    """
+    text = DESIGN_DOC.read_text(encoding="utf-8")
+    match = re.search(r"1モジュールあたり非空 (\d+) 行", text)
+    assert match, "docs/design.md §11.5 に1モジュールあたりの上限の記述がありません"
+    assert int(match[1]) == MAX_NONEMPTY_LINES_PER_MODULE
+
+
+def test_config_package_has_exactly_the_expected_modules() -> None:
+    """``config/`` の中身が ``_common`` + 実験サイクル3本 + ``__init__`` だけ。
+
+    04 T4 で ``chaos04.py`` (``Chaos04Config``) を、05 T2 で ``anomaly05.py``
+    (``SyntheticAnomalyConfig``) を足した。06 以降が新しいサイクルの
+    モジュールを足すときも同じ場所が赤くなる。
+    """
+    submodules = {info.name for info in pkgutil.iter_modules([str(PACKAGE_DIR)])}
+    assert submodules == {"_common", *EXPECTED_SUBMODULES}
+
+
+def test_config_package_internal_dependencies_are_one_way() -> None:
+    """package 内の import が許可した辺だけで、循環が無い (D-49)。
+
+    ``_common`` は葉であること (package 内の誰も import しない先を持たない) と、
+    実験サイクルのモジュール (``CYCLE_MODULES``) が互いを import しないことを
+    同時に固定する。
+    """
+    edges = _internal_edges()
+    assert edges <= ALLOWED_INTERNAL_EDGES, (
+        f"許可していない package 内 import: {sorted(edges - ALLOWED_INTERNAL_EDGES)}"
+    )
+    assert not [edge for edge in edges if edge[0] == "_common"], (
+        "_common は config package 内の葉でなければなりません"
+    )
+    for source in CYCLE_MODULES:
+        for target in CYCLE_MODULES:
+            if source == target:
+                continue
+            assert (source, target) not in edges, (
+                f"実験サイクル間の import があります: {(source, target)}"
+            )
+
+    # 許可した辺の集合だけで循環が作れないことを、到達可能性で確かめる
+    # (許可リストを書き換えて循環を足すと、ここで落ちる)。
+    reachable: dict[str, set[str]] = {}
+    for source, target in ALLOWED_INTERNAL_EDGES:
+        reachable.setdefault(source, set()).add(target)
+    for source in list(reachable):
+        seen: set[str] = set()
+        stack = list(reachable[source])
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(reachable.get(node, ()))
+        assert source not in seen, f"config package 内に循環があります: {source}"

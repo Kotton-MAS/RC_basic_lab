@@ -1,0 +1,91 @@
+# 実験1-A: 3ベースライン (線形 / 遅延線 / ESN) の比較
+#
+# 未知キーは ConfigError で即座に落ちる (D-09)。キー名のタイプミスが黙って
+# 無視されると「設定したのに効いていない」実験になるため。
+#
+# length は生成される総行数。分割に使えるのは
+#   length - max_start_offset - t0   (t0 = max(全手法の first_valid, washout))
+# であり、既定値では 8200 - 200 - 200 = 7800 行を 0.5 : 0.15 : 0.35 =
+# 3900 / 1170 / 2730 に切る (仕様 §3)。
+
+name: 01_what_is_rc
+n_replicates: 5
+
+seeds:
+  reservoir: 0
+  task: 1
+  split: 2
+
+split:
+  train_ratio: 0.5
+  val_ratio: 0.15
+  test_ratio: 0.35
+  washout: 200
+  max_start_offset: 200
+
+ridge:
+  # 全手法・全課題がこの単一格子を読む (D-04)。手法別キーは未知キー扱い。
+  #
+  # 下端を 1.0e-10 まで延ばしてある (初版は 1e-8)。初版では Mackey-Glass の
+  # 全3手法が 14/15 回で下端 1e-8 を選んでいた。
+  #
+  # ただし拡張後の実測で、MG の検証 NRMSE は alpha に対して単調増加であり
+  # **内点解が存在しない** ことが分かった (最適は alpha -> 0 = OLS)。
+  # したがって MG で下端が選ばれ続けるのは探索の失敗ではなく期待される挙動で、
+  # これを理由に格子をさらに下へ延ばさない (D-11 / docs/design.md §8.1)。
+  #
+  # 下端 1.0e-10 は数値的な限界であって、恣意的な打ち切りではない。実測で
+  # cond(Phi^T Phi) は遅延線 k=64 で 2.0e16、ESN N=200 で 8.0e18 に達しており、
+  # alpha <= 1.0e-11 では Cholesky (assume_a="pos") が特異行列として落ちる。
+  alpha_grid:
+    [
+      1.0e-10, 1.0e-9, 1.0e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3,
+      1.0e-2, 1.0e-1, 1.0, 10.0, 100.0,
+    ]
+  # 検証分割で選んでよいのは alpha と、この遅延線の n_lags だけ (D-08)。
+  #
+  # 上端を 64 まで延ばしてある。初版 (上端 16) では Mackey-Glass の遅延線が
+  # 5/5 回で上端 16 を選んでおり、遅延線を過少評価していた。n_lags は
+  # 遅延線だけが持つ軸なので、上端張り付きは対照に対して非対称に不利に働く。
+  # 拡張後の実測では k=64 でプラトーに達している (96 -> 128 の改善は 0.4%)。
+  # 上端 64 が選ばれ続けるのは効きの飽和であって、格子不足ではない
+  # (docs/design.md §8.2)。
+  n_lags_grid: [1, 2, 4, 8, 16, 32, 64]
+
+mackey_glass:
+  tau: 17.0
+  beta: 0.2
+  gamma: 0.1
+  exponent: 10
+  rk4_step: 0.1
+  sample_interval: 10   # Delta t = 1.0
+  integration_burn_in: 1000
+  length: 8200
+  horizon: 1
+
+delay_parity:
+  # y[t] = u[t-1] * u[t-2]。目標が {1, u[t-k]} の張る線形空間に厳密に直交する (D-07)。
+  n_bits: 2
+  delay: 1
+  length: 8200
+
+# ESN の構造ハイパーパラメータは文献既定値に固定し、検証分割で調整しない (D-08)。
+esn_mackey_glass:
+  n_units: 200
+  spectral_radius: 0.9
+  leak_rate: 0.3
+  input_scale: 0.5
+  bias_scale: 0.1
+  density: 0.1
+  activation: tanh
+  state_noise: 0.0
+
+esn_delay_parity:
+  n_units: 200
+  spectral_radius: 0.9
+  leak_rate: 1.0
+  input_scale: 1.0
+  bias_scale: 0.1
+  density: 0.1
+  activation: tanh
+  state_noise: 0.0

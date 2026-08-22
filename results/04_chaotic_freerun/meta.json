@@ -1,0 +1,554 @@
+{
+  "attractor_verdict": [
+    {
+      "median_return_map": 1.5529577779919659,
+      "median_return_map_surrogate": 0.4295906583421314,
+      "median_spectrum": 0.8588820219606008,
+      "median_spectrum_surrogate": 0.9321120941063261,
+      "method": "delay_line",
+      "n_closer": 0,
+      "n_rows": 10,
+      "sign_test_p": 1.0,
+      "task": "lorenz"
+    },
+    {
+      "median_return_map": 0.018084824392797377,
+      "median_return_map_surrogate": 0.4295906583421314,
+      "median_spectrum": 0.3853116467680987,
+      "median_spectrum_surrogate": 0.9321120941063261,
+      "method": "esn",
+      "n_closer": 10,
+      "n_rows": 10,
+      "sign_test_p": 0.0009765625,
+      "task": "lorenz"
+    },
+    {
+      "median_return_map": 1.943763360107107,
+      "median_return_map_surrogate": 0.4295906583421314,
+      "median_spectrum": 0.928768205605913,
+      "median_spectrum_surrogate": 0.9321120941063261,
+      "method": "linear",
+      "n_closer": 0,
+      "n_rows": 10,
+      "sign_test_p": 1.0,
+      "task": "lorenz"
+    },
+    {
+      "median_return_map": 0.7762543619297103,
+      "median_return_map_surrogate": 0.17050069337200874,
+      "median_spectrum": 0.7059417910098528,
+      "median_spectrum_surrogate": 0.9456507933243232,
+      "method": "delay_line",
+      "n_closer": 0,
+      "n_rows": 10,
+      "sign_test_p": 1.0,
+      "task": "mackey_glass"
+    },
+    {
+      "median_return_map": 0.006079631055727126,
+      "median_return_map_surrogate": 0.17050069337200874,
+      "median_spectrum": 0.2994429467598384,
+      "median_spectrum_surrogate": 0.9456507933243232,
+      "method": "esn",
+      "n_closer": 10,
+      "n_rows": 10,
+      "sign_test_p": 0.0009765625,
+      "task": "mackey_glass"
+    },
+    {
+      "median_return_map": NaN,
+      "median_return_map_surrogate": 0.17050069337200874,
+      "median_spectrum": 0.9999467138995024,
+      "median_spectrum_surrogate": 0.9456507933243232,
+      "method": "linear",
+      "n_closer": 0,
+      "n_rows": 10,
+      "sign_test_p": 1.0,
+      "task": "mackey_glass"
+    }
+  ],
+  "capacity_note": "注: 4-D の MC / IPC は自走と同じ状態行列 (Lorenz で駆動した ESN) に対して測っている。駆動が i.i.d. ではなく決定的な時系列なので遅延目標が互いに予測可能であり、mc_total / ipc_total は保存則 (<= N) を超える。絶対値は 03 の掃引と比較できず、読めるのは同じ駆動の下での条件間の相対比較だけである。",
+  "cjk_font": "Hiragino Sans",
+  "commit": "3dc7322e6d6c8eed01ab2484981fd3e83aa5e100",
+  "config": {
+    "base": {
+      "delay_parity": {
+        "delay": 1,
+        "length": 8000,
+        "n_bits": 2
+      },
+      "esn_delay_parity": {
+        "activation": "tanh",
+        "bias_scale": 0.1,
+        "density": 0.1,
+        "input_scale": 1.0,
+        "leak_rate": 1.0,
+        "n_units": 200,
+        "spectral_radius": 0.9,
+        "state_noise": 0.0
+      },
+      "esn_mackey_glass": {
+        "activation": "tanh",
+        "bias_scale": 0.1,
+        "density": 0.1,
+        "input_scale": 0.5,
+        "leak_rate": 0.3,
+        "n_units": 200,
+        "spectral_radius": 0.9,
+        "state_noise": 0.0
+      },
+      "mackey_glass": {
+        "beta": 0.2,
+        "exponent": 10,
+        "gamma": 0.1,
+        "horizon": 1,
+        "integration_burn_in": 1000,
+        "length": 8000,
+        "rk4_step": 0.1,
+        "sample_interval": 10,
+        "tau": 17.0
+      },
+      "n_replicates": 10,
+      "name": "04_chaotic_freerun_base",
+      "ridge": {
+        "alpha_grid": [
+          1e-08,
+          1e-07,
+          1e-06,
+          1e-05,
+          0.0001,
+          0.001,
+          0.01,
+          0.1,
+          1.0,
+          10.0,
+          100.0
+        ],
+        "n_lags_grid": [
+          1,
+          2,
+          4,
+          8,
+          16
+        ]
+      },
+      "seeds": {
+        "reservoir": 0,
+        "split": 2,
+        "task": 1
+      },
+      "split": {
+        "max_start_offset": 200,
+        "test_ratio": 0.35,
+        "train_ratio": 0.5,
+        "val_ratio": 0.15,
+        "washout": 200
+      }
+    },
+    "freerun": {
+      "free_run_steps": 2000,
+      "stats_steps": 20000,
+      "valid_time_threshold": 0.4,
+      "warmup_steps": 200
+    },
+    "ipc": {
+      "alpha": 1e-09,
+      "basis": "legendre",
+      "chunk_size": 256,
+      "input_distribution": "uniform",
+      "max_degrees": 20,
+      "max_delay_by_degree": [
+        60,
+        20,
+        10,
+        6
+      ],
+      "max_targets": 200000,
+      "max_variables": 3,
+      "n_surrogate_targets": 4,
+      "n_surrogates": 100,
+      "surrogate_quantile": 0.99,
+      "threshold_mode": "surrogate"
+    },
+    "lorenz": {
+      "horizon": 1,
+      "integration_burn_in": 1000,
+      "length": 8000,
+      "rk4_step": 0.002,
+      "sample_interval": 5,
+      "standardize_steps": 3000
+    },
+    "lyapunov": {
+      "estimator": {
+        "check_propagator": true,
+        "delta": 1e-08,
+        "max_growth": 1000.0,
+        "method": "perturbation",
+        "propagator_tol": 1e-10,
+        "renorm_interval": 10
+      },
+      "reference_rel_tol": 0.05,
+      "reference_value": 0.9056
+    },
+    "mackey_glass": {
+      "standardize_steps": 3000
+    },
+    "mc": {
+      "alpha": 1e-09,
+      "chunk_size": 256,
+      "max_delay": 400,
+      "n_surrogates": 100,
+      "surrogate_quantile": 0.99,
+      "threshold_mode": "surrogate"
+    },
+    "name": "04_chaotic_freerun",
+    "stability": {
+      "leak_rate_grid": [
+        0.1,
+        0.3,
+        0.6,
+        1.0
+      ],
+      "n_replicates": 5,
+      "spectral_radius_grid": [
+        0.7,
+        0.9,
+        1.1,
+        1.3
+      ],
+      "state_noise_grid": [
+        0.0,
+        0.0001,
+        0.001,
+        0.01
+      ],
+      "surrogate_seed": 4
+    }
+  },
+  "lorenz_dt": 0.01,
+  "lyapunov": {
+    "lyapunov_per_step": 0.009160616953558626,
+    "lyapunov_per_time": 0.9160616953558626,
+    "lyapunov_time": 1.0916295322353042,
+    "matches_reference": 1.0,
+    "max_observed_growth": 2.644159870980585,
+    "n_intervals": 800.0,
+    "reference_rel_error": 0.011552225437127441,
+    "reference_value": 0.9056
+  },
+  "lyapunov_params": {
+    "check_propagator": "True",
+    "delta": "1e-08",
+    "dt": "0.01",
+    "max_growth": "1000.0",
+    "method": "perturbation",
+    "propagator_tol": "1e-10",
+    "reference_rel_tol": "0.05",
+    "renorm_interval": "10",
+    "washout": "0"
+  },
+  "matplotlib_version": "3.11.1",
+  "n_capacity_rows": 320,
+  "n_freerun_rows": 60,
+  "n_profile_rows": 25660,
+  "n_rows": 60,
+  "n_stability_rows": 320,
+  "numpy_version": "2.5.2",
+  "package_version": "0.1.0",
+  "platform": "macOS-26.3-arm64-arm-64bit",
+  "python_version": "3.12.5",
+  "regime_counts": {
+    "attractor": 203,
+    "diverged": 115,
+    "periodic": 2
+  },
+  "regime_counts_by_noise": {
+    "0": {
+      "attractor": 49,
+      "diverged": 31
+    },
+    "0.0001": {
+      "attractor": 52,
+      "diverged": 28
+    },
+    "0.001": {
+      "attractor": 55,
+      "diverged": 24,
+      "periodic": 1
+    },
+    "0.01": {
+      "attractor": 47,
+      "diverged": 32,
+      "periodic": 1
+    }
+  },
+  "scipy_version": "1.18.0",
+  "seeds": {
+    "reservoir": 0,
+    "split": 2,
+    "task": 1
+  },
+  "timestamp_utc": "2026-08-21T07:10:31.441922+00:00",
+  "valid_time_by_regime": {
+    "attractor": 2.830630638649615,
+    "diverged": 0.8427767597273936,
+    "periodic": 0.7099478139007934
+  },
+  "valid_time_sensitivity": [
+    {
+      "max_lyapunov": 0.41222776291013813,
+      "median_lyapunov": 0.1419895627801587,
+      "method": "delay_line",
+      "min_lyapunov": 0.07328493562846901,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.2
+    },
+    {
+      "max_lyapunov": 0.44887023072437265,
+      "median_lyapunov": 0.16031079668727594,
+      "method": "delay_line",
+      "min_lyapunov": 0.09160616953558626,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.3
+    },
+    {
+      "max_lyapunov": 0.4855126985386072,
+      "median_lyapunov": 0.1786320305943932,
+      "method": "delay_line",
+      "min_lyapunov": 0.10076678648914487,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.4
+    },
+    {
+      "max_lyapunov": 0.5221551663528418,
+      "median_lyapunov": 0.19695326450151043,
+      "method": "delay_line",
+      "min_lyapunov": 0.1099274034427035,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.5
+    },
+    {
+      "max_lyapunov": 5.569655107763644,
+      "median_lyapunov": 3.710049866191243,
+      "method": "esn",
+      "min_lyapunov": 2.9680398929529948,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.2
+    },
+    {
+      "max_lyapunov": 5.899437318091755,
+      "median_lyapunov": 4.740619273466589,
+      "method": "esn",
+      "min_lyapunov": 3.142091615070609,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.3
+    },
+    {
+      "max_lyapunov": 5.9269191689524305,
+      "median_lyapunov": 4.827645134525396,
+      "method": "esn",
+      "min_lyapunov": 3.1787340828848434,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.4
+    },
+    {
+      "max_lyapunov": 5.9544010198131065,
+      "median_lyapunov": 5.239872897435534,
+      "method": "esn",
+      "min_lyapunov": 3.673407398377009,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.5
+    },
+    {
+      "max_lyapunov": 0.06412431867491039,
+      "median_lyapunov": 0.03206215933745519,
+      "method": "linear",
+      "min_lyapunov": 0.0,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.2
+    },
+    {
+      "max_lyapunov": 0.10076678648914487,
+      "median_lyapunov": 0.05496370172135175,
+      "method": "linear",
+      "min_lyapunov": 0.009160616953558626,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.3
+    },
+    {
+      "max_lyapunov": 0.13740925430337939,
+      "median_lyapunov": 0.0687046271516897,
+      "method": "linear",
+      "min_lyapunov": 0.027481850860675876,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.4
+    },
+    {
+      "max_lyapunov": 0.17405172211761388,
+      "median_lyapunov": 0.08244555258202763,
+      "method": "linear",
+      "min_lyapunov": 0.036642467814234504,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "lorenz",
+      "threshold": 0.5
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "delay_line",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.2
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "delay_line",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.3
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "delay_line",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.4
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "delay_line",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.5
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "esn",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.2
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "esn",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.3
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "esn",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.4
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "esn",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.5
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "linear",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.2
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "linear",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.3
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "linear",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.4
+    },
+    {
+      "max_lyapunov": NaN,
+      "median_lyapunov": NaN,
+      "method": "linear",
+      "min_lyapunov": NaN,
+      "n_censored": 0,
+      "n_rows": 10,
+      "task": "mackey_glass",
+      "threshold": 0.5
+    }
+  ],
+  "valid_time_threshold_grid": [
+    0.2,
+    0.3,
+    0.4,
+    0.5
+  ],
+  "wall_time_breakdown": {
+    "capacity_s": 55.01049784081988,
+    "figures_s": 0.8705338750150986,
+    "freerun_s": 16.305411875015125,
+    "lyapunov_s": 0.03421708301175386,
+    "onestep_s": 1.5410374999628402,
+    "stability_s": 148.29141686717048
+  },
+  "wall_time_s": 222.05386895802803
+}
