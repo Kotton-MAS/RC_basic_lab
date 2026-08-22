@@ -49,6 +49,7 @@ from rc_basics_lab.experiment.summary import aggregate_nrmse
 logger = logging.getLogger(__name__)
 
 HORIZON_CSV = "horizon.csv"
+FIG_ARCHITECTURE = "fig_architecture.png"
 FIG_HORIZON = "fig_horizon.png"
 FIG_COMPARISON = "fig_comparison.png"
 FIG_STATE_SPACE = "fig_state_space.png"
@@ -57,6 +58,7 @@ ARTIFACTS: tuple[str, ...] = (
     COMPARISON_CSV,
     COMPARISON_SUMMARY_CSV,
     HORIZON_CSV,
+    FIG_ARCHITECTURE,
     FIG_COMPARISON,
     FIG_HORIZON,
     FIG_STATE_SPACE,
@@ -133,6 +135,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
     from rc_basics_lab.plotting.figures_horizon import plot_horizon
+    from rc_basics_lab.plotting.schematic import plot_architecture
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -154,6 +157,9 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
         write_rows_csv(horizon_rows, out_dir / HORIZON_CSV, HORIZON_CSV_COLUMNS),
+        # 連載の第1図 (FIG-11 / D-107)。**データを取らない図**なので
+        # 行を渡さない。既存の図より先に書き出して記事の並び順に合わせる。
+        plot_architecture(out_dir / FIG_ARCHITECTURE, style=style),
         plot_comparison(rows, out_dir / FIG_COMPARISON, style=style),
         plot_horizon(horizon_rows, out_dir / FIG_HORIZON, style=style),
         plot_state_space(reports, out_dir / FIG_STATE_SPACE, style=style),
@@ -182,6 +188,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
 
 __all__ = [
     "ARTIFACTS",
+    "FIG_ARCHITECTURE",
     "FIG_COMPARISON",
     "FIG_HORIZON",
     "FIG_STATE_SPACE",
