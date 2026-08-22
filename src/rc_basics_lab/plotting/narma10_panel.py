@@ -23,6 +23,28 @@ from rc_basics_lab.experiment.runner import (
 from rc_basics_lab.plotting.labels import GOUDARZI_2014, METHOD_LABELS
 from rc_basics_lab.plotting.style import StyleContext
 
+REFERENCE_LABELS: dict[str, tuple[str, str]] = {
+    "linear_ceiling": ("参照 NMSE = {value:g}", "reference NMSE = {value:g}"),
+    "nonlinear_rc": ("参照 NMSE = {value:g}", "reference NMSE = {value:g}"),
+}
+"""3-C の参照線の凡例 (``NARMA10_REFERENCE_NMSE`` のキーに対応)。
+
+**キーが増減したら図を描く前に落とす** (``figures_capacity._reference_lines``)。
+値だけを実験層に置いて凡例を図の側に持つと、参照点を1本足したときに図から
+静かに消える。
+"""
+
+REFERENCE_CONDITIONS: dict[str, tuple[str, str]] = {
+    "linear_ceiling": ("非線形性なしの天井", "ceiling without nonlinearity"),
+    "nonlinear_rc": ("良好な非線形 RC・N = 50 規模", "a good nonlinear RC, ~50 nodes"),
+}
+"""参照値が測られた**動作点** (D-97)。``REFERENCE_LABELS`` と同じキー。
+
+値の説明とは別に持つのは、``cited_measurement`` が動作点を必須の引数として
+要求するからである。ラベル本文に混ぜて書くと「書いたつもり」で空欄を通せて
+しまい、条件を必須にした意味が消える。
+"""
+
 
 def narma10_method_labels(
     rows: Sequence[ResultRow], style: StyleContext
@@ -93,14 +115,20 @@ def narma10_subtitle(style: StyleContext) -> str:
     """
     return style.label(
         f"{GOUDARZI_2014} の対照 (正則化なし) を第4水準に足した"
-        " (同一分割・同一特徴。alpha だけが違う)。"
-        "この動作点は k/n_train <= 0.01 で、先行の k/n ≈ 0.9 とは違う"
-        " —— タップ数の軸は 3-C' を参照",
+        " (同一分割・同一特徴。alpha だけが違う)\n"
+        "この動作点は k/n_train <= 0.01 で先行の k/n ≈ 0.9 とは違う"
+        " (タップ数の軸は 3-C')",
         f"Added the unregularised control of {GOUDARZI_2014} as a fourth level"
-        " (identical splits and features; only alpha differs)."
-        " This operating point has k/n_train <= 0.01, unlike the prior"
-        " k/n ~ 0.9 -- see 3-C' for the tap-count axis",
+        " (identical splits and features; only alpha differs)\n"
+        "This operating point has k/n_train <= 0.01, unlike the prior"
+        " k/n ~ 0.9 (see 3-C' for the tap-count axis)",
     )
 
 
-__all__ = ["narma10_headline", "narma10_method_labels", "narma10_subtitle"]
+__all__ = [
+    "REFERENCE_CONDITIONS",
+    "REFERENCE_LABELS",
+    "narma10_headline",
+    "narma10_method_labels",
+    "narma10_subtitle",
+]

@@ -19,7 +19,11 @@ import numpy as np
 from rc_basics_lab.experiment.narma_taps import TapSweepRow
 from rc_basics_lab.experiment.runner import DELAY_LINE, DELAY_LINE_OLS
 from rc_basics_lab.plotting.capacity_grids import mean_std
-from rc_basics_lab.plotting.labels import GOUDARZI_2014, METHOD_LABELS, cited
+from rc_basics_lab.plotting.labels import (
+    GOUDARZI_2014,
+    METHOD_LABELS,
+    cited_measurement,
+)
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
@@ -119,14 +123,16 @@ def plot_narma10_taps(
             GOUDARZI_TAPS_PER_TRAIN,
             color=REFERENCE_COLOR,
             dashes=REFERENCE_DASHES[0],
-            label=cited(
+            label=cited_measurement(
                 style.label(
-                    f"先行の動作点 k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}"
-                    " (1,810 タップ / 訓練 2,000 点)",
-                    f"prior operating point k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}"
-                    " (1,810 taps / 2,000 training points)",
+                    f"先行の動作点 k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}",
+                    f"prior operating point k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}",
                 ),
                 GOUDARZI_2014,
+                style.label(
+                    "1,810 タップ / 訓練 2,000 点",
+                    "1,810 taps / 2,000 training points",
+                ),
             ),
         )
         axis.set_xscale("log")
