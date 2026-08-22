@@ -1593,10 +1593,30 @@ Lorenz / ESN / 10 レプリケートの閾値感度（`meta.json` の `valid_tim
 D 次元で二乗平均するが、こちらは真の系列の標準偏差1つで割る。Lorenz は成分ごとに分散が
 違うので、同じ閾値でも厳密に同じ量ではない。
 
-**参照線はまだ引いていない。** 一次資料は L63 の VPT を図（Figure 4 左 / Figure 5）の
-分布として示すだけで、本文に単一の代表値が無いためである。条件は読み取れており、
-Figure 4 は `N = 2000`、Figure 5 に `N = 250` の系統があり、いずれも 200 個のテスト
-初期条件を使う。**こちらは `N = 200` なので `N = 250` の系統が最も近い。**
+**参照線は別の一次資料から引いた（D-102）。** Platt et al. は L63 の VPT を図
+（Figure 4 左 / Figure 5）の分布として示すだけで本文に単一の代表値が無い（条件は読み取れ、
+Figure 4 は `N = 2000`、Figure 5 に `N = 250` の系統、いずれも 200 個のテスト初期条件）。
+そこで2本目を当たった。
+
+**Gauthier, Bollt, Griffith, Barbosa (2021)** *Next generation reservoir computing*,
+Nat. Commun. **12**:5564 の本文にはこうある:
+
+> The NG-RC forecasts well out to ~5 Lyapunov times.
+
+同じ段落が「**comparable to an optimized traditional RC with 100s to 1000s of reservoir
+nodes**」と述べており、こちらの `N = 200` はその範囲に入る。単位もそろっている ——
+同論文の Lorenz63 の Lyapunov 時間は **1.1 時間単位**で、こちらの数値推定
+（`1/λ_max = 1/0.9161 = 1.0916`）と実質一致する。
+
+| | こちら（4-B） | Gauthier et al. 2021 |
+|---|---|---|
+| 有効予測時間 | **4.83**（ESN 中央値） | **~5** |
+| リザバー規模 | `N = 200` | 従来型 RC で 100〜1000 ノード相当 |
+| Lyapunov 時間 | 1.0916（数値推定） | 1.1 |
+| 判定基準 | NRMSE 比 0.4（D-43） | 「forecasts well」（**定量的に未明示**） |
+
+**判定基準だけが一致しない**ので、その旨を参照線の動作点として凡例に入れてある（D-97）。
+比は目安として読むこと。
 
 同じしきい値 0.4 での手法別（Lorenz、中央値 [λ_max^-1]）:
 

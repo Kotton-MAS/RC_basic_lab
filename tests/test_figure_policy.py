@@ -34,6 +34,7 @@ from test_plotting_capacity import (
     mc_sweep_rows,
     narma10_rows,
 )
+from test_plotting_freerun import freerun_rows
 
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
@@ -56,8 +57,14 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_mc_sweep,
     plot_narma10_control,
 )
+from rc_basics_lab.plotting.figures_freerun import plot_valid_time
+from rc_basics_lab.plotting.freerun_headlines import (
+    LITERATURE_VALID_TIME,
+    LITERATURE_VALID_TIME_CONDITIONS,
+)
 from rc_basics_lab.plotting.labels import (
     APPELTANT_2011,
+    GAUTHIER_2021,
     METHOD_LABELS,
     SOURCE_UNIDENTIFIED,
     VINCKIER_2015,
@@ -488,7 +495,7 @@ FIGURE_MODULES: dict[str, tuple[str, ...]] = {
 #: 特定できていない実験がある。**この集合は増やせない** —— 増えるということは
 #: 新しい実験を文献照合なしで足したということで、それを黙って通さない。
 #: 減らしたらここから外す (下の検査が外し忘れを拾う)。
-KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01", "02", "04", "05"})
+KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01", "02", "05"})
 
 
 def _cites_literature(module: str) -> bool:
@@ -603,3 +610,47 @@ def test_the_reference_note_records_the_conditions_of_each_source() -> None:
         assert "0.107" in note and "0.16" in note, note
         assert "50" in note and "1000" in note, note
     assert "未特定" not in NARMA10_REFERENCE_NOTE
+
+
+def test_the_valid_time_figure_carries_a_literature_reference_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """4-B に文献の有効予測時間の参照線がある (FIG-2 / D-102)。
+
+    参照線が無いままタイトルで水準を主張していたのが指摘 B-3 だった。
+    一次資料 (Gauthier et al. 2021, Nat. Commun. 12:5564) の本文に
+    「The NG-RC forecasts well out to ~5 Lyapunov times.」とあり、
+    同じ段落が「100s to 1000s of reservoir nodes を持つ最適化された
+    従来型 RC に匹敵する」と書いている。こちらの N = 200 はその範囲で、
+    Lyapunov 時間も原典 1.1 / こちらの数値推定 1.09 とそろっている。
+
+    **出典と動作点の両方が凡例に届いていること**を見る (D-97)。
+    判定基準が原典と同じでないことも動作点に含める —— 原典は
+    「forecasts well」と定性的に述べており、こちらの閾値 0.4 とは違う。
+    """
+    # capture_figures は figures_capacity._save だけを見ているので、
+    # 04 の保存経路は自前で包む。
+    captured: list[Figure] = []
+    original = figures_freerun._save
+
+    def spy(figure: Figure, path: Path) -> Path:
+        captured.append(figure)
+        return original(figure, path)
+
+    monkeypatch.setattr(figures_freerun, "_save", spy)
+    plot_valid_time(freerun_rows(), tmp_path / "valid.png", style=CONTEXT)
+    assert captured, "図が保存されませんでした"
+    figure = captured[0]
+    labels = [
+        text.get_text()
+        for axis in figure.axes
+        if axis.get_legend() is not None
+        for text in axis.get_legend().get_texts()
+    ]
+    cited = [label for label in labels if GAUTHIER_2021 in label]
+    assert cited, f"文献の参照線が凡例にありません: {labels}"
+    legend = cited[0]
+    assert str(LITERATURE_VALID_TIME).rstrip("0").rstrip(".") in legend, legend
+    # 動作点が付いている (出典だけでは比較可能かを読者が判断できない)
+    assert ";" in legend, legend
+    assert CONTEXT.label(*LITERATURE_VALID_TIME_CONDITIONS) in legend, legend

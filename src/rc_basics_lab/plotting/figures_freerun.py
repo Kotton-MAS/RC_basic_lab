@@ -59,9 +59,19 @@ from rc_basics_lab.plotting.freerun_grids import (
     profile_points,
     tasks_of,
 )
-from rc_basics_lab.plotting.freerun_headlines import valid_time_headline
-from rc_basics_lab.plotting.labels import METHOD_LABELS
+from rc_basics_lab.plotting.freerun_headlines import (
+    LITERATURE_VALID_TIME,
+    LITERATURE_VALID_TIME_CONDITIONS,
+    valid_time_headline,
+)
+from rc_basics_lab.plotting.labels import (
+    GAUTHIER_2021,
+    METHOD_LABELS,
+    cited_measurement,
+)
 from rc_basics_lab.plotting.style import (
+    REFERENCE_COLOR,
+    REFERENCE_DASHES,
     StyleContext,
     add_provenance,
     method_color,
@@ -271,6 +281,20 @@ def plot_valid_time(
                 "有効予測時間 [Lyapunov 時間]", "valid prediction time [1 / lambda_max]"
             )
         )
+        axis.axhline(
+            LITERATURE_VALID_TIME,
+            color=REFERENCE_COLOR,
+            dashes=REFERENCE_DASHES[0],
+            label=cited_measurement(
+                style.label(
+                    f"文献の有効予測時間 ~{LITERATURE_VALID_TIME:g} Lyapunov 時間",
+                    f"literature valid time ~{LITERATURE_VALID_TIME:g} Lyapunov times",
+                ),
+                GAUTHIER_2021,
+                style.label(*LITERATURE_VALID_TIME_CONDITIONS),
+            ),
+        )
+        axis.legend(loc="upper left", fontsize=7)
         figure.suptitle(
             style.label(
                 f"実験 4-B: {valid_time_headline(rows, style)}",
@@ -280,11 +304,15 @@ def plot_valid_time(
         figure.supxlabel(
             style.label(
                 "注: lambda_max の数値推定は Lorenz だけ (D-42)。"
-                "**文献の有効予測時間との照合は未了** (引くべき値と条件が未特定)"
-                "のため、この図が言えるのは水準ではなく手法間の差である。",
+                "参照線の原典は Lyapunov 時間を 1.1 としており、"
+                "こちらの数値推定 (1.09) と実質一致するため単位はそろっている。"
+                "ただし原典は「forecasts well」と定性的に述べており、"
+                "**こちらの閾値 0.4 と同じ基準ではない** (D-102)。",
                 "Note: lambda_max is estimated only for Lorenz (D-42)."
-                " No literature valid time is plotted yet (value and conditions"
-                " unidentified), so this figure compares methods, not levels.",
+                " The cited work uses a Lyapunov time of 1.1, matching our"
+                " numerical estimate (1.09), so the units agree. But it states"
+                " the horizon qualitatively, which is not the same criterion as"
+                " our threshold of 0.4 (D-102).",
             ),
             fontsize=8,
         )

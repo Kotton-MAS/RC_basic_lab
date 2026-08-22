@@ -34,6 +34,7 @@ GOUDARZI_2014 = "Goudarzi et al. 2014"
 VISWANATH_1998 = "Viswanath 1998"
 VINCKIER_2015 = "Vinckier et al. 2015"
 APPELTANT_2011 = "Appeltant et al. 2011"
+GAUTHIER_2021 = "Gauthier et al. 2021"
 """図の中に書く出典 (著者 年)。"""
 
 MC_BOUND_SOURCE = f"{JAEGER_2002} / {DAMBRE_2012}"
@@ -132,6 +133,7 @@ def label(ja: str, en: str, *, cjk: bool) -> str:
 __all__ = [
     "APPELTANT_2011",
     "DAMBRE_2012",
+    "GAUTHIER_2021",
     "GOUDARZI_2014",
     "IPC_BOUND_SOURCE",
     "JAEGER_2002",
