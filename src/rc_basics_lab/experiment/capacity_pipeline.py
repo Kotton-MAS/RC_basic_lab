@@ -61,6 +61,7 @@ from rc_basics_lab.experiment.report import (
     write_rows_csv,
 )
 from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.waveform_data import waveform_predictions
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,7 @@ FIG_MEMORY_NONLINEARITY = "fig_memory_nonlinearity.png"
 FIG_IPC_CONSERVATION = "fig_ipc_conservation.png"
 FIG_NARMA10_CONTROL = "fig_narma10_control.png"
 FIG_NARMA10_TAPS = "fig_narma10_taps.png"
+FIG_NARMA10_WAVEFORM = "fig_narma10_waveform.png"
 
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
@@ -87,6 +89,7 @@ CAPACITY_ARTIFACTS: tuple[str, ...] = (
     FIG_IPC_CONSERVATION,
     FIG_NARMA10_CONTROL,
     FIG_NARMA10_TAPS,
+    FIG_NARMA10_WAVEFORM,
     META_JSON,
 )
 """1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV4枚 + 図6枚 + meta)。
@@ -292,6 +295,9 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         plot_narma10_taps,
     )
     from rc_basics_lab.plotting.style import setup_style
+    from rc_basics_lab.plotting.waveforms import (
+        plot_prediction_waveform,
+    )
 
     started = time.perf_counter()
     results = run_capacity_experiment(config)
@@ -369,6 +375,13 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             style=style,
         ),
         plot_narma10_taps(taps, out_dir / FIG_NARMA10_TAPS, style=style),
+        # FIG-11 追加図3 (D-107)。「NMSE 0.15 と 0.27 の違い」を目で見せる。
+        plot_prediction_waveform(
+            *waveform_predictions(config.narma.base, narma.plan0),
+            out_dir / FIG_NARMA10_WAVEFORM,
+            task_label=("NARMA10", "NARMA10"),
+            style=style,
+        ),
         write_meta_for(
             config,
             config.seeds,
@@ -450,6 +463,7 @@ __all__ = [
     "FIG_MEMORY_NONLINEARITY",
     "FIG_NARMA10_CONTROL",
     "FIG_NARMA10_TAPS",
+    "FIG_NARMA10_WAVEFORM",
     "NARMA10_CSV",
     "NARMA10_TAPS_CSV",
     "CapacityOutputs",

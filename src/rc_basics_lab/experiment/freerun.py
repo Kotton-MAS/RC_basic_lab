@@ -941,7 +941,10 @@ class FreeRunEvaluation:
             有効予測時間 [Lyapunov 時間] (閾値感度表の一次資料)。
         censored_by_threshold: 同じ並びの打ち切りフラグ。
         trajectory: 自走の有限行 ``(n_completed, D)``。
-        truth_series: 真の系列 ``(T, D)`` (図の重ね描きの相手)。
+        truth_series: 真の系列 ``(T, D)`` (位相図が全体を要る)。
+        truth_aligned: **自走区間だけ**の真値 ``(n_completed, D)``。
+            時間軸の図はこちらを使う —— ``truth_series`` は系列全体なので
+            長さが合わない (実測: truth 8000 / predicted 20000 で落ちた)。
     """
 
     row: FreeRunRow
@@ -949,6 +952,7 @@ class FreeRunEvaluation:
     censored_by_threshold: tuple[bool, ...]
     trajectory: FloatArray
     truth_series: FloatArray
+    truth_aligned: FloatArray
 
 
 def evaluate_free_run(
@@ -1072,6 +1076,7 @@ def evaluate_free_run(
         censored_by_threshold=tuple(item.censored for item in sensitivity),
         trajectory=trajectory,
         truth_series=truth_series,
+        truth_aligned=outcome.truth[: trajectory.shape[0]],
     )
 
 

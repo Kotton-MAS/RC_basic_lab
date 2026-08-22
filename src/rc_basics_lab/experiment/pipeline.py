@@ -33,7 +33,6 @@ from rc_basics_lab.experiment.report import (
 from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
     ResultRow,
-    build_methods,
     build_tasks,
     plan_replicate,
     run_experiment,
@@ -46,7 +45,7 @@ from rc_basics_lab.experiment.state_space import (
     summarize,
 )
 from rc_basics_lab.experiment.summary import aggregate_nrmse
-from rc_basics_lab.types import FloatArray
+from rc_basics_lab.experiment.waveform_data import waveform_predictions
 
 logger = logging.getLogger(__name__)
 
@@ -117,37 +116,6 @@ def _plan_zero_by_task(config: ExperimentConfig) -> dict[str, ReplicatePlan]:
     }
 
 
-def _waveform_predictions(
-    config: ExperimentConfig, plan: ReplicatePlan
-) -> tuple[FloatArray, dict[str, FloatArray]]:
-    """波形図に載せる (真値, 手法 -> 予測) を作る (D-107)。
-
-    **レプリケート 0 の plan をそのまま使う** —— 図のためにモデルを
-    作り直すと、`comparison.csv` の行と別物になる。
-
-    ``plotting`` は関数内 import にする (D-53: experiment 層から
-    module-level で作図層を引かない)。
-    """
-    from rc_basics_lab.plotting.waveforms import slice_window
-    from rc_basics_lab.readout.ridge import fit_ridge, predict
-
-    split = plan.split
-    start = split.test.start
-    truth = slice_window(plan.task.y, start)
-    predictions: dict[str, FloatArray] = {}
-    for method in build_methods(config):
-        design = plan.designs[method.name][0]
-        coefficients = fit_ridge(
-            design.phi[split.train.start : split.train.stop],
-            plan.task.y[split.train.start : split.train.stop],
-            config.ridge.alpha_grid[0],
-            bias_column=design.bias_column,
-        )
-        predicted = predict(design.phi, coefficients)
-        predictions[method.name] = slice_window(predicted, start)
-    return truth, predictions
-
-
 def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs:
     """実験を実行し、CSV2枚・図2枚・meta.json を書き出す。
 
@@ -191,7 +159,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
         write_rows_csv(horizon_rows, out_dir / HORIZON_CSV, HORIZON_CSV_COLUMNS),
         plot_prediction_waveform(
-            *_waveform_predictions(config, plans0[HORIZON_TASK]),
+            *waveform_predictions(config, plans0[HORIZON_TASK]),
             out_dir / FIG_WAVEFORM,
             task_label=("Mackey-Glass", "Mackey-Glass"),
             style=style,

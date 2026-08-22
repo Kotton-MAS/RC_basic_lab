@@ -63,6 +63,7 @@ from rc_basics_lab.experiment import (
     threshold,
     valid_time,
     washout,
+    waveform_data,
 )
 
 __all__ = [
@@ -95,4 +96,5 @@ __all__ = [
     "threshold",
     "valid_time",
     "washout",
+    "waveform_data",
 ]

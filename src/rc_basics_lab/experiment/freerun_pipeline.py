@@ -37,6 +37,7 @@ from rc_basics_lab.experiment.freerun import (
     FREERUN_CSV,
     FREERUN_PROFILE_CSV,
     ONESTEP_CSV,
+    FreeRunEvaluation,
     FreeRunResults,
     FreeRunRow,
     estimate_lorenz_lyapunov,
@@ -51,7 +52,7 @@ from rc_basics_lab.experiment.report import (
     DataclassSummaryMixin,
     write_meta_for,
 )
-from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.runner import ESN_METHOD, ResultRow
 from rc_basics_lab.experiment.stability import (
     CAPACITY_CSV,
     STABILITY_CSV,
@@ -62,12 +63,15 @@ from rc_basics_lab.experiment.stability import (
     write_stability_csv,
 )
 from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
+from rc_basics_lab.plotting.style import StyleContext
+from rc_basics_lab.plotting.waveforms import WAVEFORM_REPLICATE
 from rc_basics_lab.tasks.chaotic import sampling_interval
 
 logger = logging.getLogger(__name__)
 
 FIG_ONESTEP = "fig_onestep.png"
 FIG_FREERUN_ATTRACTOR = "fig_freerun_attractor.png"
+FIG_FREERUN_TIMELINE = "fig_freerun_timeline.png"
 FIG_VALID_TIME = "fig_valid_time.png"
 FIG_STABILITY_MAP = "fig_stability_map.png"
 FIG_FREERUN_STATS = "fig_freerun_stats.png"
@@ -80,6 +84,7 @@ FREERUN_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
     FIG_ONESTEP,
     FIG_FREERUN_ATTRACTOR,
+    FIG_FREERUN_TIMELINE,
     FIG_VALID_TIME,
     FIG_STABILITY_MAP,
     FIG_FREERUN_STATS,
@@ -173,6 +178,64 @@ def _log_timing(timing: SectionTiming, wall_time_s: float) -> None:
     )
 
 
+def _timeline_source(results: FreeRunResults) -> FreeRunEvaluation | None:
+    """時系列図に使う 1 本を選ぶ (D-107)。
+
+    **選び方を固定する**: Lorenz の ESN、レプリケートは
+    ``WAVEFORM_REPLICATE``。うまくいった 1 本を選べる図にしない。
+    """
+    for evaluation in results.evaluations:
+        row = evaluation.row
+        if (
+            row.task == "lorenz"
+            and row.method == ESN_METHOD
+            and row.replicate == WAVEFORM_REPLICATE
+        ):
+            return evaluation
+    return None
+
+
+def _plot_timeline(
+    results: FreeRunResults, lyapunov: object, path: Path, style: StyleContext
+) -> Path:
+    """4-B の時系列図を書く (D-107)。
+
+    ``_timeline_source`` が選ぶ 1 本を描く。選び方は固定である。
+    """
+    from rc_basics_lab.plotting.figures_freerun_time import plot_freerun_timeline
+
+    evaluation = _timeline_source(results)
+    if evaluation is None:
+        raise ValueError("時系列図に使う自走が見つかりません (lorenz / esn)")
+    # **truth_aligned** を使う (truth_series は系列全体で長さが合わない)。
+    # 自走は free_run_steps ぶん回るが真値は評価区間ぶんしか無いので、
+    # 短いほうに合わせる (実測: truth 2000 / predicted 20000)。
+    trajectory = evaluation.trajectory[:, 0]
+    truth = evaluation.truth_aligned[:, 0]
+    length = int(min(trajectory.size, truth.size))
+    trajectory = trajectory[:length]
+    truth = truth[:length]
+    row = evaluation.row
+    # **valid_time はステップではなく時間単位である。** 縦線はステップ軸に
+    # 引くので valid_time_steps を使う (実測: 混同して 6 ステップ目に線が出た
+    # —— 図の上では ~700 ステップで外れており、そこで気づいた)。
+    steps_per_lyapunov = (
+        row.valid_time_steps / row.valid_time_lyapunov
+        if row.valid_time_lyapunov
+        else float("nan")
+    )
+    return plot_freerun_timeline(
+        truth,
+        trajectory,
+        path,
+        method=row.method,
+        task_label=("Lorenz", "Lorenz"),
+        valid_steps=float(row.valid_time_steps),
+        lyapunov_time=steps_per_lyapunov,
+        style=style,
+    )
+
+
 def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutputs:
     """実験 4-A / 4-B / 4-C / 4-D を実行し、CSV5枚・図5枚・meta.json を書く。
 
@@ -227,6 +290,9 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
             freerun.profile_rows, out_dir / FIG_FREERUN_ATTRACTOR, style=style
         ),
         plot_valid_time(freerun.rows, out_dir / FIG_VALID_TIME, style=style),
+        # FIG-11 追加図4 (D-107)。位相図と valid time はあるのに
+        # **時間軸の図が無かった** —— 「いつ外れるか」は時間軸でしか見えない。
+        _plot_timeline(freerun, lyapunov, out_dir / FIG_FREERUN_TIMELINE, style),
         plot_stability_map(
             stability.rows,
             stability.capacity_rows,
