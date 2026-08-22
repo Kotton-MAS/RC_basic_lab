@@ -26,6 +26,7 @@ from matplotlib.collections import QuadMesh
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.text import Text
+from test_plotting_anomaly import anomaly_rows, threshold_rows
 from test_plotting_capacity import (
     conservation_rows,
     ipc_sweep_profile,
@@ -51,6 +52,11 @@ from rc_basics_lab.plotting.capacity_grids import (
     even_degree_note,
     even_degree_share,
 )
+from rc_basics_lab.plotting.figures_anomaly import (
+    RANDOM_SCORE_F1_CONDITIONS,
+    RANDOM_SCORE_PLAIN_F1,
+    plot_threshold_tradeoff,
+)
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
     plot_ipc_profile,
@@ -65,6 +71,7 @@ from rc_basics_lab.plotting.freerun_headlines import (
 from rc_basics_lab.plotting.labels import (
     APPELTANT_2011,
     GAUTHIER_2021,
+    KIM_2022,
     METHOD_LABELS,
     SOURCE_UNIDENTIFIED,
     VINCKIER_2015,
@@ -484,7 +491,7 @@ def test_the_ipc_profile_explains_why_the_even_degrees_are_empty(
 #: 実験 -> その実験の図を描くモジュール (``src/rc_basics_lab/plotting/`` 相対)。
 FIGURE_MODULES: dict[str, tuple[str, ...]] = {
     "01": ("figures.py",),
-    "02": ("figures_esp.py",),
+    "02": ("figures_esp.py", "esp_references.py"),
     "03": ("figures_capacity.py", "figures_narma_taps.py", "narma10_panel.py"),
     "04": ("figures_freerun.py", "freerun_headlines.py"),
     "05": ("figures_anomaly.py", "figures_anomaly_sweep.py"),
@@ -495,7 +502,7 @@ FIGURE_MODULES: dict[str, tuple[str, ...]] = {
 #: 特定できていない実験がある。**この集合は増やせない** —— 増えるということは
 #: 新しい実験を文献照合なしで足したということで、それを黙って通さない。
 #: 減らしたらここから外す (下の検査が外し忘れを拾う)。
-KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01", "02", "05"})
+KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01"})
 
 
 def _cites_literature(module: str) -> bool:
@@ -654,3 +661,45 @@ def test_the_valid_time_figure_carries_a_literature_reference_line(
     # 動作点が付いている (出典だけでは比較可能かを読者が判断できない)
     assert ";" in legend, legend
     assert CONTEXT.label(*LITERATURE_VALID_TIME_CONDITIONS) in legend, legend
+
+
+def test_the_threshold_tradeoff_figure_carries_a_literature_reference_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """05 の F1 パネルに文献の参照線がある (FIG-2 / D-103)。
+
+    一次資料は Kim, Choi, Choi, Lee, Yoon (2022) *Towards a Rigorous
+    Evaluation of Time-series Anomaly Detection*, AAAI-22。Table 2 の
+    Case 1 (Random anomaly score) が、**素の F1** で SWaT 0.216 /
+    WADI 0.109 / MSL 0.190 / SMAP 0.227 / SMD 0.080 を報告している。
+
+    比べる相手を ``F1PA`` 列 (0.804〜0.969) にしない。この図の F1 は
+    point-adjust を通していない (D-54 / D-55) ので、取り違えると
+    「乱数と同程度」を「最先端と同程度」と読むことになる。
+    """
+    captured: list[Figure] = []
+    original = figures_anomaly.save_png
+
+    def spy(figure: Figure, path: Path) -> Path:
+        captured.append(figure)
+        return original(figure, path)
+
+    monkeypatch.setattr(figures_anomaly, "save_png", spy)
+    plot_threshold_tradeoff(
+        anomaly_rows(), threshold_rows(), tmp_path / "t.png", style=CONTEXT
+    )
+    assert captured, "図が保存されませんでした"
+    labels = [
+        text.get_text()
+        for axis in captured[0].axes
+        if axis.get_legend() is not None
+        for text in axis.get_legend().get_texts()
+    ]
+    cited = [label for label in labels if KIM_2022 in label]
+    assert cited, f"文献の参照線が凡例にありません: {labels}"
+    legend = cited[0]
+    assert ";" in legend, legend
+    assert CONTEXT.label(*RANDOM_SCORE_F1_CONDITIONS) in legend, legend
+    # PA 側の値 (0.80 以上) と取り違えていない
+    low, high = RANDOM_SCORE_PLAIN_F1
+    assert high < 0.5, (low, high)

@@ -35,6 +35,7 @@ from rc_basics_lab.experiment.washout import (
     WashoutSensitivity,
     mean_nrmse_by_washout,
 )
+from rc_basics_lab.plotting.esp_references import plot_no_input_panel
 from rc_basics_lab.plotting.heatmap import cell_edges, grid_from_means
 from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
@@ -348,32 +349,6 @@ def plot_leak_timescale(
 # --- 2-C: rho x 入力強度 の ESP 成立領域 -----------------------------------
 
 
-def _plot_no_input_panel(
-    axis: Axes,
-    rates: FloatArray,
-    rhos: Sequence[float],
-    norm: Normalize,
-    style: StyleContext,
-) -> None:
-    """無入力 (sigma_u = 0) の列。駆動下の領域と同じ配色で別枠に出す。"""
-    axis.pcolormesh(
-        np.array([0.0, 1.0]),
-        cell_edges(rhos),
-        rates.reshape(-1, 1),
-        cmap="RdYlBu",
-        norm=norm,
-        shading="flat",
-    )
-    axis.set_xticks([0.5])
-    axis.set_xticklabels([style.label("無入力", "no input")])
-    axis.set_ylabel(style.label("スペクトル半径 rho", "spectral radius rho"))
-    axis.axhline(1.0, color="black", linestyle="--", linewidth=1.2)
-    axis.set_title(
-        style.label("sigma_u = 0", "sigma_u = 0"),
-        fontsize=10,
-    )
-
-
 def _plot_driven_panel(
     figure: Figure,
     axis: Axes,
@@ -458,7 +433,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
             axes = figure.subplots(
                 1, 2, squeeze=False, width_ratios=list(_ESP_MAP_WIDTH_RATIOS)
             )
-            _plot_no_input_panel(
+            plot_no_input_panel(
                 axes[0][0],
                 grid_from_means(converged, rhos, (0.0,))[0],
                 rhos,

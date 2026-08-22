@@ -25,6 +25,7 @@ pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI �
 
 from rc_basics_lab.plotting import (
     capacity_grids,
+    esp_references,
     figures,
     figures_anomaly,
     figures_anomaly_sweep,
@@ -42,6 +43,7 @@ from rc_basics_lab.plotting import (
 
 __all__ = [
     "capacity_grids",
+    "esp_references",
     "figures",
     "figures_anomaly",
     "figures_anomaly_sweep",
