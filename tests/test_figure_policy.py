@@ -19,6 +19,7 @@ from __future__ import annotations
 import ast
 import re
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pytest
@@ -160,6 +161,37 @@ def _texts(figure: Figure) -> list[str]:
 
 
 # --- FIG-3 / D-84: 参照線に出典 ---------------------------------------------
+
+
+def _legend_texts(figure: Figure) -> list[str]:
+    """図の凡例テキストを集める (凡例が無い軸は飛ばす)。"""
+    texts: list[str] = []
+    for axis in figure.axes:
+        legend = axis.get_legend()
+        if legend is not None:
+            texts.extend(text.get_text() for text in legend.get_texts())
+    return texts
+
+
+def _capture_saves(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType, name: str
+) -> list[Figure]:
+    """``module.<name>`` を包んで、保存直前の ``Figure`` を集める。
+
+    ``capture_figures`` は ``figures_capacity`` 専用なので、他のモジュールは
+    ここを通す。``getattr`` で引くのは、保存関数の名前がモジュールごとに
+    違う (``_save`` / ``save_png``) ためである。
+    """
+    captured: list[Figure] = []
+    original = getattr(module, name)
+
+    def spy(figure: Figure, path: Path) -> Path:
+        captured.append(figure)
+        result: Path = original(figure, path)
+        return result
+
+    monkeypatch.setattr(module, name, spy)
+    return captured
 
 
 def test_literature_reference_lines_carry_their_source_in_the_legend(
@@ -646,23 +678,11 @@ def test_the_valid_time_figure_carries_a_literature_reference_line(
     """
     # capture_figures は figures_capacity._save だけを見ているので、
     # 04 の保存経路は自前で包む。
-    captured: list[Figure] = []
-    original = figures_freerun._save
-
-    def spy(figure: Figure, path: Path) -> Path:
-        captured.append(figure)
-        return original(figure, path)
-
-    monkeypatch.setattr(figures_freerun, "_save", spy)
+    captured = _capture_saves(monkeypatch, figures_freerun, "_save")
     plot_valid_time(freerun_rows(), tmp_path / "valid.png", style=CONTEXT)
     assert captured, "図が保存されませんでした"
     figure = captured[0]
-    labels = [
-        text.get_text()
-        for axis in figure.axes
-        if axis.get_legend() is not None
-        for text in axis.get_legend().get_texts()
-    ]
+    labels = _legend_texts(figure)
     cited = [label for label in labels if GAUTHIER_2021 in label]
     assert cited, f"文献の参照線が凡例にありません: {labels}"
     legend = cited[0]
@@ -686,24 +706,12 @@ def test_the_threshold_tradeoff_figure_carries_a_literature_reference_line(
     point-adjust を通していない (D-54 / D-55) ので、取り違えると
     「乱数と同程度」を「最先端と同程度」と読むことになる。
     """
-    captured: list[Figure] = []
-    original = figures_anomaly.save_png
-
-    def spy(figure: Figure, path: Path) -> Path:
-        captured.append(figure)
-        return original(figure, path)
-
-    monkeypatch.setattr(figures_anomaly, "save_png", spy)
+    captured = _capture_saves(monkeypatch, figures_anomaly, "save_png")
     plot_threshold_tradeoff(
         anomaly_rows(), threshold_rows(), tmp_path / "t.png", style=CONTEXT
     )
     assert captured, "図が保存されませんでした"
-    labels = [
-        text.get_text()
-        for axis in captured[0].axes
-        if axis.get_legend() is not None
-        for text in axis.get_legend().get_texts()
-    ]
+    labels = _legend_texts(captured[0])
     cited = [label for label in labels if KIM_2022 in label]
     assert cited, f"文献の参照線が凡例にありません: {labels}"
     legend = cited[0]
@@ -731,22 +739,10 @@ def test_the_horizon_figure_carries_a_literature_reference_line(
     **予測長を合わせたから並べられる。** 01 本体は1ステップ先なので、
     そのままでは比較できない (D-105 がこの実験を足した理由)。
     """
-    captured: list[Figure] = []
-    original = figures_horizon.save_png
-
-    def spy(figure: Figure, path: Path) -> Path:
-        captured.append(figure)
-        return original(figure, path)
-
-    monkeypatch.setattr(figures_horizon, "save_png", spy)
+    captured = _capture_saves(monkeypatch, figures_horizon, "save_png")
     plot_horizon(_horizon_rows(), tmp_path / "h.png", style=CONTEXT)
     assert captured, "図が保存されませんでした"
-    labels = [
-        text.get_text()
-        for axis in captured[0].axes
-        if axis.get_legend() is not None
-        for text in axis.get_legend().get_texts()
-    ]
+    labels = _legend_texts(captured[0])
     cited = [label for label in labels if JAEGER_HAAS_2004 in label]
     assert len(cited) == 2, f"文献の参照線が2本ありません: {labels}"
     for legend in cited:
