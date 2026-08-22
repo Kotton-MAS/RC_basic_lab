@@ -85,8 +85,12 @@ WAVEFORM_REPLICATE = 0
 
 
 @dataclass(frozen=True, slots=True)
-class _OneReplicate:
-    """footnote に渡す「レプリケート {WAVEFORM_REPLICATE} を1本」の器。"""
+class FixedReplicate:
+    """footnote に渡す「レプリケート {WAVEFORM_REPLICATE} を1本」の器。
+
+    **波形系の図で共有する** (D-92)。図ごとに同じ器を書き直すと、
+    固定するレプリケートが2箇所で独立にずれる。
+    """
 
     replicate: int = WAVEFORM_REPLICATE
 
@@ -202,7 +206,7 @@ def plot_prediction_waveform(
         # この図は**レプリケート1本**しか使わない (D-107)。空の行を渡すと
         # replicates_field が「replicates が空です」で落ちるので、
         # 使った1本をそのまま渡す。
-        add_provenance(figure, conditions, (_OneReplicate(),), style=style)
+        add_provenance(figure, conditions, (FixedReplicate(),), style=style)
         return save_png(figure, path)
 
 
@@ -241,6 +245,7 @@ __all__ = [
     "WAVEFORM_REPLICATE",
     "WAVEFORM_STEPS",
     "WAVEFORM_STEPS_BY_TASK",
+    "FixedReplicate",
     "draw_prediction_waveform",
     "plot_prediction_waveform",
     "selection_is_fixed",

@@ -44,6 +44,7 @@ from rc_basics_lab.experiment.state_space import (
     collect_state_space,
     summarize,
 )
+from rc_basics_lab.experiment.state_waveform import state_waveform
 from rc_basics_lab.experiment.summary import aggregate_nrmse
 from rc_basics_lab.experiment.waveform_data import (
     WaveformPanel,
@@ -54,6 +55,7 @@ logger = logging.getLogger(__name__)
 
 HORIZON_CSV = "horizon.csv"
 FIG_COMPARISON = "fig_comparison.png"
+FIG_STATE_WAVEFORM = "fig_state_waveform.png"
 FIG_STATE_SPACE = "fig_state_space.png"
 
 ARTIFACTS: tuple[str, ...] = (
@@ -61,6 +63,7 @@ ARTIFACTS: tuple[str, ...] = (
     COMPARISON_SUMMARY_CSV,
     HORIZON_CSV,
     FIG_COMPARISON,
+    FIG_STATE_WAVEFORM,
     FIG_STATE_SPACE,
     META_JSON,
 )
@@ -165,6 +168,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     # subprocess guard の両方が落ちる。
     from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
+    from rc_basics_lab.plotting.figures_states import plot_state_waveform
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -195,6 +199,12 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
             style=style,
         ),
         plot_state_space(reports, out_dir / FIG_STATE_SPACE, style=style),
+        # FIG-11 追加図5。PCA 散布図の元になっている信号そのものを見せる。
+        plot_state_waveform(
+            state_waveform(config, plans0[HORIZON_TASK], HORIZON_TASK),
+            out_dir / FIG_STATE_WAVEFORM,
+            style=style,
+        ),
         write_meta(
             config,
             wall_time_s,
@@ -222,6 +232,7 @@ __all__ = [
     "ARTIFACTS",
     "FIG_COMPARISON",
     "FIG_STATE_SPACE",
+    "FIG_STATE_WAVEFORM",
     "HORIZON_CSV",
     "ExperimentOutputs",
     "run_and_report",

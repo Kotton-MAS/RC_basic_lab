@@ -1106,3 +1106,21 @@ def test_the_figures_that_fig12_folded_away_are_gone() -> None:
         f"FIG-12 で畳んだ図が単独で復活しています: {present}。"
         "パネルとして親figureへ入れてください (D-109)。"
     )
+
+
+def test_the_state_waveform_units_are_not_selectable() -> None:
+    """状態波形のユニットが**選べない**こと (FIG-11 追加図5 / D-107)。
+
+    「よく散っているユニット」を選べる図にすると、同じリザバーから
+    好きな結論の図が作れる。だから先頭から番号順に取る。
+    """
+    from rc_basics_lab.experiment import state_waveform as module
+
+    assert module.STATE_WAVEFORM_UNITS == 8, module.STATE_WAVEFORM_UNITS
+    parameters = inspect.signature(module.state_waveform).parameters
+    for name in ("units", "unit_indices", "n_units", "offset", "replicate"):
+        assert name not in parameters, (
+            f"ユニットの選び方が引数になっています: {name} (D-107)。\n"
+            "定数のままにしてください —— 引数にすると"
+            "「この図だけ別のユニット」が書けてしまいます。"
+        )

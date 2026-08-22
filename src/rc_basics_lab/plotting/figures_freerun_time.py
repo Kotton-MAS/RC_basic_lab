@@ -25,7 +25,7 @@ from rc_basics_lab.plotting.style import (
     rc_context_for,
     save_png,
 )
-from rc_basics_lab.plotting.waveforms import TRUTH_COLOR, WAVEFORM_REPLICATE
+from rc_basics_lab.plotting.waveforms import TRUTH_COLOR, FixedReplicate
 from rc_basics_lab.types import FloatArray
 
 
@@ -122,14 +122,8 @@ def plot_freerun_timeline(
             fontsize=8,
         )
         conditions = f"task = {task_label[1]}, method = {method}"
-        add_provenance(figure, conditions, (_Replicate(),), style=style)
+        add_provenance(figure, conditions, (FixedReplicate(),), style=style)
         return save_png(figure, path)
-
-
-class _Replicate:
-    """footnote に渡す「固定した 1 レプリケート」の器 (D-107)。"""
-
-    replicate: int = WAVEFORM_REPLICATE
 
 
 __all__ = ["plot_freerun_timeline"]
