@@ -48,22 +48,60 @@ SOURCE_UNIDENTIFIED: tuple[str, str] = ("原典未特定", "source unidentified"
 """
 
 
-def cited(text: str, source: str) -> str:
-    """参照線の凡例テキストに出典を付す (FIG-3、D-84)。
+def _with_source(text: str, source: str, conditions: str) -> str:
+    """``text [source]`` / ``text [source; conditions]`` を組む。"""
+    if not text or not source:
+        raise ValueError(f"参照線には出典が要ります: text={text!r}, source={source!r}")
+    inside = source if not conditions else f"{source}; {conditions}"
+    return f"{text} [{inside}]"
+
+
+def cited_bound(text: str, source: str) -> str:
+    """**理論上限・定義由来**の参照線に出典を付す (FIG-3 / D-84)。
+
+    上限は動作点に依らないので条件を求めない (``MC <= N`` は N がいくつでも
+    上限である)。D-84 の rationale が「定義由来の線 (1/e、``-1/log(1-a)``) には
+    出典を求めない」と書いているのと同じ線引きで、**そちら側の入口**にあたる。
 
     Args:
         text: 参照線が何かを述べる部分 (``上限 MC <= N = 200`` など)。
-        source: 出典 (``Jaeger 2002 / Dambre 2012``) か
-            ``SOURCE_UNIDENTIFIED``。
+        source: 出典 (``Jaeger 2002 / Dambre 2012`` など)。
 
     Raises:
-        ValueError: ``text`` か ``source`` が空の場合。値だけ足して出典を
-            書き忘れる事故を**描画前に**落とす (``figures_capacity`` の
-            「ラベルが欠けたら描く前に落とす」と同じ規律)。
+        ValueError: ``text`` か ``source`` が空の場合。
     """
-    if not text or not source:
-        raise ValueError(f"参照線には出典が要ります: text={text!r}, source={source!r}")
-    return f"{text} [{source}]"
+    return _with_source(text, source, "")
+
+
+def cited_measurement(text: str, source: str, conditions: str) -> str:
+    """**文献で測られた値**に出典と**動作点**を付す (D-97)。
+
+    実測値は測った条件でしか意味を持たない。条件を書かずに値だけ引くと、
+    読者は「その数字と自分の数字が比較可能か」を判断できないまま、
+    比較可能だと受け取る。
+
+    実例 (D-95): 3-C は先行 (Goudarzi et al. 2014) の「正則化なし」だけを
+    再現して「先行の対照を足した」と書いたが、先行の動作点は
+    ``k ≈ n_train`` でこちらは ``k/n_train <= 0.01`` だった。
+    **手法は再現したが動作点は再現していない。** 条件を必須の引数にすると、
+    この取り違えが引用を書く時点で1度は目に入る。
+
+    Args:
+        text: 参照線が何かを述べる部分 (``先行の動作点 k/n = 0.91`` など)。
+        source: 出典。原典が特定できていなければ ``SOURCE_UNIDENTIFIED``。
+        conditions: その値が測られた**動作点** (``1,810 タップ / 訓練 2,000 点``
+            や ``N = 50 規模``)。**空にできない。**
+
+    Raises:
+        ValueError: ``text`` / ``source`` / ``conditions`` のいずれかが空の場合。
+    """
+    if not conditions:
+        raise ValueError(
+            f"文献の実測値には動作点が要ります: text={text!r}, source={source!r}。"
+            "測った条件が分からない値は、読者が比較可能かを判断できません。"
+            "理論上限や定義由来の線なら cited_bound を使ってください (D-97)。"
+        )
+    return _with_source(text, source, conditions)
 
 
 def label(ja: str, en: str, *, cjk: bool) -> str:
@@ -94,6 +132,7 @@ __all__ = [
     "METHOD_LABELS",
     "SOURCE_UNIDENTIFIED",
     "VISWANATH_1998",
-    "cited",
+    "cited_bound",
+    "cited_measurement",
     "label",
 ]

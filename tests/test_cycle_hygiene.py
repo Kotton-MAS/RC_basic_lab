@@ -121,3 +121,88 @@ def test_all_artifacts_were_generated_from_the_same_commit() -> None:
         + "\n".join(f"  {path}: {commit[:7]}" for path, commit in commits.items())
         + "\n全実験を一斉再生成してください (make figures-01 .. figures-05)。"
     )
+
+
+# --- 完了手順2: reviewer-deletion の実行漏れ (D-98) ---------------------------
+
+#: サイクル境界のタグ -> そのサイクルの「削れるか」レビューの証跡。
+#: **タグ時点で存在していたこと**まで見る (後から足しても、そのサイクルを
+#: レビュー無しで締めたという事実は変わらない)。
+DELETION_REVIEW_DOCS: dict[str, str] = {
+    "cycle-05a": "docs/削減候補-05.md",
+}
+
+#: **証跡が無いまま締めたサイクル** (2026-08-21 の実測)。
+#: ``reviewer-deletion`` が手続き層に置かれていたため実行されず、
+#: 同じサイクルで重複が4件増えた (D-92 の rationale)。
+#: **この集合は増やせない。** 増えるということは、また手順2を飛ばして
+#: タグを打ったということである。
+KNOWN_WITHOUT_DELETION_REVIEW: frozenset[str] = frozenset({"cycle-05b"})
+
+_HOW_TO_FIX_DELETION = (
+    "サイクルを締める前に reviewer-deletion を1回走らせ、"
+    "その結果を docs/削減候補-<サイクル>.md に残して "
+    "DELETION_REVIEW_DOCS へ登録してください (findings が0件でもよい)。\n"
+    "**KNOWN_WITHOUT_DELETION_REVIEW に追記して通すのは"
+    "ラチェットを外す操作です。**"
+)
+
+
+def _cycle_tags() -> list[str]:
+    """``cycle-*`` のタグ (名前順)。"""
+    return sorted(
+        tag
+        for tag in _git("tag", "--list", "cycle-*").split()
+        if tag.startswith("cycle-")
+    )
+
+
+def test_every_cycle_tag_is_accounted_for() -> None:
+    """すべてのサイクルタグが、証跡ありか既知の穴かのどちらかであること。
+
+    **新しいタグは必ずここを通る。** 登録も既知の穴への記載も無いタグが
+    現れたら、それは「手順2を飛ばしてサイクルを締めた」ということである。
+    """
+    tags = _cycle_tags()
+    if not tags:
+        pytest.skip("cycle-* のタグがまだありません")
+    accounted = set(DELETION_REVIEW_DOCS) | KNOWN_WITHOUT_DELETION_REVIEW
+    unaccounted = sorted(set(tags) - accounted)
+    assert not unaccounted, (
+        f"証跡の登録が無いサイクルタグがあります: {unaccounted}\n{_HOW_TO_FIX_DELETION}"
+    )
+    stale = sorted(accounted - set(tags))
+    assert not stale, (
+        f"実在しないタグが登録されています: {stale}\n"
+        "タグを消したか改名したなら、この表からも外してください。"
+    )
+
+
+@pytest.mark.parametrize("tag", sorted(DELETION_REVIEW_DOCS))
+def test_the_deletion_review_existed_at_the_cycle_tag(tag: str) -> None:
+    """証跡が**そのタグの時点で**存在していたこと (D-98)。
+
+    後から足した文書でも「存在する」は満たせてしまう。しかしそれは
+    「レビュー無しでサイクルを締めた」という事実を消さない。
+    タグ時点で見るのは、締めた瞬間の状態を測るためである。
+    """
+    path = DELETION_REVIEW_DOCS[tag]
+    # core.quotepath の既定 (true) だと日本語のパスが \345... にエスケープされ、
+    # 文字列比較が常に外れる。**この検査は日本語のファイル名を扱う**ので
+    # 明示的に切る (実測: 切らないと存在するファイルを「無い」と報告した)。
+    listed = _git(
+        "-c", "core.quotepath=false", "ls-tree", "--name-only", "-r", tag, path
+    ).strip()
+    assert listed == path, (
+        f"{tag} の時点で {path} が存在しません。\n{_HOW_TO_FIX_DELETION}"
+    )
+
+
+def test_the_known_gap_list_has_no_stale_entries() -> None:
+    """穴が埋まったサイクルが既知の穴に残っていないこと。"""
+    filled = sorted(KNOWN_WITHOUT_DELETION_REVIEW & set(DELETION_REVIEW_DOCS))
+    assert not filled, (
+        f"証跡が登録されたのに既知の穴に残っています: {filled}\n"
+        "KNOWN_WITHOUT_DELETION_REVIEW から外してください"
+        " (ラチェットが1段締まります)。"
+    )

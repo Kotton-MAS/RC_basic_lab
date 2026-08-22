@@ -52,7 +52,12 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_mc_sweep,
     plot_narma10_control,
 )
-from rc_basics_lab.plotting.labels import METHOD_LABELS, SOURCE_UNIDENTIFIED, cited
+from rc_basics_lab.plotting.labels import (
+    METHOD_LABELS,
+    SOURCE_UNIDENTIFIED,
+    cited_bound,
+    cited_measurement,
+)
 from rc_basics_lab.plotting.style import (
     METHOD_COLORS,
     REFERENCE_COLOR,
@@ -131,7 +136,7 @@ def test_literature_reference_lines_carry_their_source_in_the_legend(
     本文の注は図が切り取られると消える。**凡例テキスト自体**に
     ``[Jaeger 2002 / Dambre 2012]`` / ``[原典未特定]`` を載せる。
 
-    変異注入: ``cited(...)`` を外して素のラベルに戻すと、その図の参照線が
+    変異注入: ``cited_*(...)`` を外して素のラベルに戻すと、その図の参照線が
     出典なしになってここが落ちる。
     """
     mc_rows = mc_sweep_rows()
@@ -154,12 +159,37 @@ def test_literature_reference_lines_carry_their_source_in_the_legend(
 
 def test_cited_refuses_a_reference_line_without_a_source() -> None:
     """出典を書き忘れた参照線は**描く前に**落とす (FIG-3 / D-84)。"""
-    assert cited("上限 MC <= N", "Jaeger 2002") == "上限 MC <= N [Jaeger 2002]"
+    assert cited_bound("上限 MC <= N", "Jaeger 2002") == "上限 MC <= N [Jaeger 2002]"
     assert SOURCE_UNIDENTIFIED[0] and SOURCE_UNIDENTIFIED[1]
-    with pytest.raises(ValueError, match="出典"):
-        cited("上限 MC <= N", "")
-    with pytest.raises(ValueError, match="出典"):
-        cited("", "Jaeger 2002")
+    for text, source in (("上限 MC <= N", ""), ("", "Jaeger 2002")):
+        with pytest.raises(ValueError, match="出典"):
+            cited_bound(text, source)
+        with pytest.raises(ValueError, match="出典"):
+            cited_measurement(text, source, "N = 50 規模")
+
+
+def test_a_literature_measurement_must_carry_its_operating_point() -> None:
+    """文献の実測値は**動作点**なしに引けない (D-97)。
+
+    実測値は測った条件でしか意味を持たない。条件を書かずに値だけ引くと、
+    読者は「その数字と自分の数字が比較可能か」を判断できないまま、
+    比較可能だと受け取る。実例 (D-95): 3-C は先行の「正則化なし」だけを
+    再現して「先行の対照を足した」と書いたが、動作点は再現していなかった。
+
+    **理論上限は別の入口** (``cited_bound``) にしてある —— 上限は動作点に
+    依らないので、そちらに条件を求めると意味の無い文字列を書かせることになる。
+    """
+    assert (
+        cited_measurement("k/n = 0.91", "Goudarzi et al. 2014", "1,810 タップ")
+        == "k/n = 0.91 [Goudarzi et al. 2014; 1,810 タップ]"
+    )
+    with pytest.raises(ValueError, match="動作点"):
+        cited_measurement("k/n = 0.91", "Goudarzi et al. 2014", "")
+
+    # 上限は条件を求められない (求めると空文字を埋めるだけの作業になる)
+    import inspect
+
+    assert "conditions" not in inspect.signature(cited_bound).parameters
 
 
 # --- FIG-5 / D-85: 手法の色 --------------------------------------------------
@@ -451,13 +481,19 @@ KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01", "02", "04", "05"})
 
 
 def _cites_literature(module: str) -> bool:
-    """そのモジュールが ``cited(...)`` で出典つきの参照線を描いているか。"""
+    """そのモジュールが**文献の実測値**と照合しているか (D-97)。
+
+    数えるのは ``cited_measurement`` だけで、``cited_bound`` は数えない。
+    理論上限 (``MC <= N``) に出典を付けるのは正しい作法だが、それは
+    **文献の数字とこちらの数字を並べたことにはならない** —— FIG-2 が
+    求めているのは後者である。
+    """
     path = ROOT / "src" / "rc_basics_lab" / "plotting" / module
     tree = ast.parse(path.read_text(encoding="utf-8"))
     return any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id == "cited"
+        and node.func.id == "cited_measurement"
         for node in ast.walk(tree)
     )
 

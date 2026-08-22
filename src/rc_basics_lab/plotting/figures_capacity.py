@@ -72,9 +72,12 @@ from rc_basics_lab.plotting.labels import (
     IPC_BOUND_SOURCE,
     MC_BOUND_SOURCE,
     SOURCE_UNIDENTIFIED,
-    cited,
+    cited_bound,
+    cited_measurement,
 )
 from rc_basics_lab.plotting.narma10_panel import (
+    REFERENCE_CONDITIONS,
+    REFERENCE_LABELS,
     narma10_headline,
     narma10_method_labels,
     narma10_subtitle,
@@ -115,16 +118,6 @@ _HEATMAP_GAMMA = 0.5
 _STACK_COLORS = (METHOD_COLORS[DELAY_LINE_METHOD], "#e08214")
 """積み上げ棒 (線形, 非線形) の色 (FIG-5: 単一の真実は ``style`` 側)。"""
 
-_REFERENCE_LABELS: dict[str, tuple[str, str]] = {
-    "linear_ceiling": (
-        "参照 NMSE = {value:g} (非線形性なしの天井)",
-        "reference NMSE = {value:g} (ceiling without nonlinearity)",
-    ),
-    "nonlinear_rc": (
-        "参照 NMSE = {value:g} (非線形 RC・N = 50 規模)",
-        "reference NMSE = {value:g} (nonlinear RC, ~50 nodes)",
-    ),
-}
 """参照線の凡例 (``NARMA10_REFERENCE_NMSE`` のキーに対応)。
 
 **キーが増減したら図を描く前に落とす** (下記 ``_reference_lines``)。値だけを
@@ -215,7 +208,7 @@ def _plot_mc_total_panel(
         axis.axhline(
             float(n_units),
             **reference_line_kwargs(index),
-            label=cited(
+            label=cited_bound(
                 style.label(f"上限 MC <= N = {n_units}", f"bound MC <= N = {n_units}"),
                 MC_BOUND_SOURCE,
             ),
@@ -584,7 +577,7 @@ def _draw_conservation_bound(
         x,
         y,
         **reference_line_kwargs(),
-        label=cited(
+        label=cited_bound(
             style.label(
                 "上限 IPC_total <= N (傾き1)", "bound IPC_total <= N (slope 1)"
             ),
@@ -671,17 +664,18 @@ def _reference_lines(axis: Axes, style: StyleContext) -> None:
     無いキーが在れば描く前に落とす —— 参照点を足したのに図に出ない、を
     黙って通さない。
     """
-    missing = set(NARMA10_REFERENCE_NMSE) - set(_REFERENCE_LABELS)
+    missing = set(NARMA10_REFERENCE_NMSE) - set(REFERENCE_LABELS)
     if missing:
         raise ValueError(f"参照線のラベルがありません: {sorted(missing)}")
     for index, (key, value) in enumerate(NARMA10_REFERENCE_NMSE.items()):
-        japanese, english = _REFERENCE_LABELS[key]
+        japanese, english = REFERENCE_LABELS[key]
         axis.axhline(
             value,
             **reference_line_kwargs(index),
-            label=cited(
+            label=cited_measurement(
                 style.label(japanese.format(value=value), english.format(value=value)),
                 style.label(*SOURCE_UNIDENTIFIED),
+                style.label(*REFERENCE_CONDITIONS[key]),
             ),
         )
 
