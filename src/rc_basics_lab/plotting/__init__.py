@@ -39,7 +39,6 @@ from rc_basics_lab.plotting import (
     heatmap,
     labels,
     narma10_panel,
-    schematic,
     style,
 )
 
@@ -59,6 +58,5 @@ __all__ = [
     "heatmap",
     "labels",
     "narma10_panel",
-    "schematic",
     "style",
 ]
