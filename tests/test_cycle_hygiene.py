@@ -119,12 +119,15 @@ def test_all_artifacts_were_generated_from_the_same_commit() -> None:
     assert len(unique) == 1, (
         f"成果物の生成 commit がそろっていません ({len(unique)} 種類):\n"
         + "\n".join(f"  {path}: {commit[:7]}" for path, commit in commits.items())
-        + "\n\n**一斉再生成は auto-commit を切って回してください**:\n"
-        "    PDCA_KIT_AUTO_COMMIT=off make figures-01 figures-02 "
-        "figures-03 figures-04 figures-05\n"
-        "切らずに回すと、SubagentStop の auto-commit が途中で HEAD を動かし、"
-        "実験ごとに違う commit が焼き込まれてこの検査が落ちます "
-        "(実測: 4 回連続で踏んだ)。"
+        + "\n\n**一斉再生成は『ターンを終えずに』前景で回してください**:\n"
+        "    make figures-01 figures-02 figures-03\n"
+        "    make figures-04 figures-05\n"
+        "全5実験で約 890 秒かかり前景の上限を超えるので2回に割りますが、"
+        "**その間に最終応答を返さないこと**。auto-commit が HEAD を動かすのは"
+        "ターン終了時だけなので、これで commit が固定されます。\n"
+        "`PDCA_KIT_AUTO_COMMIT=off` を make に付けても効きません "
+        "(auto-commit.sh は Claude プロセス側で動くため make の環境変数が届かない)。"
+        "settings.local.json の env に置く手も実測で効きませんでした。"
     )
 
 

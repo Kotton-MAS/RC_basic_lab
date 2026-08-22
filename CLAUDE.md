@@ -109,11 +109,16 @@ make artifacts-manifest     # 成果物の指紋を書き直す (**意図して�
 - 指紋は「編集されていないこと」を測るが「再生成しても同じか」は測らない。
   作図・書き出しを触ったら**一時ディレクトリに再生成して比較する**
   (`--out <tmp>`)。**PNG はバイト一致する。CSV は `wall_time_s` 列だけ変わる**
-- **一斉再生成は auto-commit を切って回す**:
-  `PDCA_KIT_AUTO_COMMIT=off make figures-01 figures-02 figures-03 figures-04 figures-05`。
-  切らずに回すと SubagentStop の auto-commit が途中で HEAD を動かし、実験ごとに
-  違う commit が焼き込まれて `test_cycle_hygiene` が落ちる (実測: 4 回連続で踏んだ)。
-  同じ文言はそのテストのエラーメッセージにも入れてある —— **落ちた瞬間に読む場所**が要る
+- **一斉再生成は「ターンを終えずに」前景で回す**。全5実験で約 890 秒
+  (01 約1s / 02 約91s / 03 約346s / 04 約222s / 05 約235s) かかり前景の上限を超えるので、
+  `make figures-01 figures-02 figures-03` と `make figures-04 figures-05` の
+  **2回に割り、その間に最終応答を返さない**。auto-commit が HEAD を動かすのは
+  ターン終了時だけなので、これで commit が固定される。
+  途中で HEAD が動くと実験ごとに違う commit が焼き込まれ `test_cycle_hygiene` が落ちる。
+- **`PDCA_KIT_AUTO_COMMIT=off` を `make` に付けても効かない。**
+  `auto-commit.sh` は Claude プロセス側のフックとして動くので、`make` の環境変数は
+  届かない。`.claude/settings.local.json` の `env` に置く手も試したが、それでも
+  途中で commit された (実測)。**この2つは効かないと確認済みなので繰り返さない**
 
 ## Git / PR ワークフロー
 
