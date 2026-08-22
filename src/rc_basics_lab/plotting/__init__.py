@@ -40,6 +40,7 @@ from rc_basics_lab.plotting import (
     labels,
     narma10_panel,
     style,
+    waveforms,
 )
 
 __all__ = [
@@ -59,4 +60,5 @@ __all__ = [
     "labels",
     "narma10_panel",
     "style",
+    "waveforms",
 ]

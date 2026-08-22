@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import re
 import struct
 from pathlib import Path
@@ -63,6 +64,7 @@ from rc_basics_lab.plotting.capacity_grids import (
     even_degree_note,
     even_degree_share,
 )
+from rc_basics_lab.plotting import waveforms
 from rc_basics_lab.plotting.figures_anomaly import (
     RANDOM_SCORE_F1_CONDITIONS,
     RANDOM_SCORE_PLAIN_F1,
@@ -913,3 +915,37 @@ def test_no_new_figure_falls_outside_the_aspect_ratio_range() -> None:
         "(FIG-13 / D-108)。\n"
         "**ASPECT_RATIO_EXCEPTIONS に追記して通すのはラチェットを外す操作です。**"
     )
+
+
+# --- FIG-11: 波形の選び方は自由変数にしない (D-107) ---------------------------
+
+
+def test_the_waveform_selection_is_not_a_free_parameter() -> None:
+    """波形の切り出しが**呼び出し側から選べない**こと (D-107)。
+
+    「よく当たっている区間」を選べる図にすると、同じデータから好きな結論の
+    図が作れる —— 仕様 §5 の禁止する構造そのものである。だから区間・長さ・
+    レプリケートはモジュール定数であり、引数として受け取らない。
+
+    **引数に足す変更をここで落とす。** 定数は残したまま引数を優先させる、
+    という形で決定が骨抜きになるのが一番起きやすい壊れ方なので、
+    シグネチャを直接見る。
+    """
+    selection = dict(waveforms.selection_is_fixed())
+    assert selection == {"offset": 0, "steps": 300, "replicate": 0}, selection
+
+    for name in ("offset", "start", "window", "replicate", "steps"):
+        parameters = inspect.signature(waveforms.plot_prediction_waveform).parameters
+        assert name not in parameters, (
+            f"波形の選び方が引数になっています: {name} (D-107)。\n"
+            "定数のままにしてください —— 引数にすると"
+            "「この図だけ別の区間」が書けてしまい、決定が実質無くなります。"
+        )
+
+    # 切り出しは常に同じ長さ・同じ位置 (start だけが外から来る)
+    series = np.arange(1000, dtype=np.float64)
+    first = waveforms.slice_window(series, 100)
+    again = waveforms.slice_window(series, 100)
+    assert np.array_equal(first, again)
+    assert first[0] == 100 + waveforms.WAVEFORM_OFFSET
+    assert first.size == waveforms.WAVEFORM_STEPS
