@@ -1007,8 +1007,27 @@ NARMA10 は普通に発散する（`np.random.default_rng(s)` の s=0..199 の�
 | 対照 | 線形回帰・遅延線（リッジ / OLS）・ESN が**同一の分割**を通る。alpha 格子も共有し、例外は正則化なし水準の alpha = 0 だけ（D-04 / D-05 / D-08 / D-90） | 対照が無い、または探索予算が非対称 |
 | 誤差指標 | NRMSE 主・NMSE 併記（D-02） | NMSE が多い（正規化の定義が書かれないことがある） |
 
-**参照値の扱い（原典未特定）。** 図に引く参照値は NMSE = 0.16（非線形性なしの天井）と 0.107（良好な非線形 RC、N = 50 規模）の2つで、これらは複数の物理 RC 論文が
-引用する値だが**原典は特定できていない**（要件_rc-basics-03 未確定1）。値と注記は
+**参照値の出典（特定済み、D-100）。** 図に引く参照値は NMSE = 0.16 と 0.107 の2つで、
+長く「複数の物理 RC 論文が引用する値だが原典未特定」として扱っていた（要件_rc-basics-03
+未確定1 / survey 未解決1）。**辿った結果、どちらも同じ論文に行き着いた。**
+
+| 値 | 出典 | 測定条件（原典の記述） |
+|---|---|---|
+| **0.107 ± 0.012** | Vinckier et al. (2015), *High-performance photonic reservoir computer based on a coherently driven passive cavity*, Optica **2**(5):438 —— **同論文自身の実験値** | `N = 50` 内部変数、訓練 1000 ステップ / テスト 1000 ステップ、10 回反復 |
+| **0.16** | 同論文が Appeltant et al. (2011), *Information processing using a single dynamical node as complex system*, Nat. Commun. **2**:468 に帰す値 | 線形シフトレジスタで得られる最良値 |
+
+根拠は Vinckier et al. の本文そのもの:
+
+> The value NMSE=0.16 in fact corresponds to the best that can be obtained with a linear shift register [12].
+
+> Using N=50 internal variables, we obtained a NMSE of 0.104±0.02 for the simulation and an
+> experimental NMSE of 0.107±0.012.
+
+その `[12]` が Appeltant et al. (2011) である（同論文の参考文献リストから）。
+
+**訓練長が 3.8 倍違う点に注意。** 原典は訓練 1000 点、こちらの 3-C は `n_train = 3800` である。
+図の凡例には出典と動作点の両方が入るので（D-97 の `cited_measurement`）、
+読者はこの差を図だけで判断できる。値と注記は
 `experiment/narma.py` の `NARMA10_REFERENCE_NMSE` / `NARMA10_REFERENCE_NOTE` が
 単一の真実で、`meta.json` の `narma10_verdict.reference_note` と
 `fig_narma10_control.png` の注（日本語・英語の2本、D-10）に同じ文言が出る。

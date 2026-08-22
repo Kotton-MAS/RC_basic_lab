@@ -60,6 +60,7 @@ from rc_basics_lab.experiment import (
     state_space,
     summary,
     threshold,
+    valid_time,
     washout,
 )
 
@@ -90,5 +91,6 @@ __all__ = [
     "state_space",
     "summary",
     "threshold",
+    "valid_time",
     "washout",
 ]

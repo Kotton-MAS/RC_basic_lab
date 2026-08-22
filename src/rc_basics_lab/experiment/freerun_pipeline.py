@@ -31,7 +31,6 @@ from pathlib import Path
 
 from rc_basics_lab.config import Chaos04Config
 from rc_basics_lab.diagnostics.base import DiagnosticResult
-from rc_basics_lab.experiment.attractor import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.experiment.capacity import CapacityRow
 from rc_basics_lab.experiment.capacity_pipeline import write_capacity_csv
 from rc_basics_lab.experiment.freerun import (
@@ -62,6 +61,7 @@ from rc_basics_lab.experiment.stability import (
     valid_time_by_regime,
     write_stability_csv,
 )
+from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.tasks.chaotic import sampling_interval
 
 logger = logging.getLogger(__name__)

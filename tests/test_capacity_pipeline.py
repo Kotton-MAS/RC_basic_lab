@@ -423,7 +423,8 @@ def test_meta_json_records_the_wall_time_breakdown(
     assert verdict["best_method"] in verdict["nmse_mean"]
     assert isinstance(verdict["delay_line_beats_esn"], bool)
     assert verdict["reference_nmse"] == {"linear_ceiling": 0.16, "nonlinear_rc": 0.107}
-    assert "未特定" in verdict["reference_note"]
+    assert "未特定" not in verdict["reference_note"]
+    assert "Vinckier" in verdict["reference_note"]
 
 
 # --- CSV の形 (D-38) ---------------------------------------------------------

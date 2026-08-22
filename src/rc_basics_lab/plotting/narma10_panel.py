@@ -20,7 +20,12 @@ from rc_basics_lab.experiment.runner import (
     LINEAR,
     ResultRow,
 )
-from rc_basics_lab.plotting.labels import GOUDARZI_2014, METHOD_LABELS
+from rc_basics_lab.plotting.labels import (
+    APPELTANT_2011,
+    GOUDARZI_2014,
+    METHOD_LABELS,
+    VINCKIER_2015,
+)
 from rc_basics_lab.plotting.style import StyleContext
 
 REFERENCE_LABELS: dict[str, tuple[str, str]] = {
@@ -35,9 +40,25 @@ REFERENCE_LABELS: dict[str, tuple[str, str]] = {
 """
 
 REFERENCE_CONDITIONS: dict[str, tuple[str, str]] = {
-    "linear_ceiling": ("非線形性なしの天井", "ceiling without nonlinearity"),
-    "nonlinear_rc": ("良好な非線形 RC・N = 50 規模", "a good nonlinear RC, ~50 nodes"),
+    "linear_ceiling": ("線形シフトレジスタの上限", "linear shift-register bound"),
+    "nonlinear_rc": ("N = 50・訓練 1000 点", "N = 50, 1000 training points"),
 }
+"""参照値が測られた**動作点** (D-97 / D-100)。``REFERENCE_LABELS`` と同じキー。
+
+出典を特定したので (D-100)、動作点も原典の記述に合わせてある ——
+0.107 は Vinckier et al. 2015 が N = 50 / 訓練 1000 点で測った実験値、
+0.16 は同論文が Appeltant et al. 2011 に帰す線形シフトレジスタの上限である。
+"""
+
+REFERENCE_SOURCES: dict[str, str] = {
+    "linear_ceiling": APPELTANT_2011,
+    "nonlinear_rc": VINCKIER_2015,
+}
+"""参照値の出典 (D-100)。``REFERENCE_LABELS`` と同じキー。
+
+**キーが欠けたら描画前に落ちる** (``figures_capacity._reference_lines`` が
+``cited_measurement`` を通すため)。値だけ足して出典を書き忘れる経路を残さない。
+"""
 """参照値が測られた**動作点** (D-97)。``REFERENCE_LABELS`` と同じキー。
 
 値の説明とは別に持つのは、``cited_measurement`` が動作点を必須の引数として
@@ -128,6 +149,7 @@ def narma10_subtitle(style: StyleContext) -> str:
 __all__ = [
     "REFERENCE_CONDITIONS",
     "REFERENCE_LABELS",
+    "REFERENCE_SOURCES",
     "narma10_headline",
     "narma10_method_labels",
     "narma10_subtitle",

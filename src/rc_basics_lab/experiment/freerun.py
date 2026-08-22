@@ -33,7 +33,6 @@ from rc_basics_lab.config import Chaos04Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.lyapunov import max_lyapunov
 from rc_basics_lab.experiment.attractor import (
-    VALID_TIME_THRESHOLD_GRID,
     AttractorDistance,
     RegimeVerdict,
     attractor_distance,
@@ -71,6 +70,7 @@ from rc_basics_lab.experiment.runner import (
     run_task,
 )
 from rc_basics_lab.experiment.split import Split
+from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.metrics_significance import sign_test_p_value
 from rc_basics_lab.readout.autoregressive import (
     FreeRunResult,

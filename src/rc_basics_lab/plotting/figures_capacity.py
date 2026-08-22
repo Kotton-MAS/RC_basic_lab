@@ -71,13 +71,13 @@ from rc_basics_lab.plotting.labels import (
     DAMBRE_2012,
     IPC_BOUND_SOURCE,
     MC_BOUND_SOURCE,
-    SOURCE_UNIDENTIFIED,
     cited_bound,
     cited_measurement,
 )
 from rc_basics_lab.plotting.narma10_panel import (
     REFERENCE_CONDITIONS,
     REFERENCE_LABELS,
+    REFERENCE_SOURCES,
     narma10_headline,
     narma10_method_labels,
     narma10_subtitle,
@@ -674,7 +674,7 @@ def _reference_lines(axis: Axes, style: StyleContext) -> None:
             **reference_line_kwargs(index),
             label=cited_measurement(
                 style.label(japanese.format(value=value), english.format(value=value)),
-                style.label(*SOURCE_UNIDENTIFIED),
+                REFERENCE_SOURCES[key],
                 style.label(*REFERENCE_CONDITIONS[key]),
             ),
         )

@@ -35,6 +35,10 @@ from test_plotting_capacity import (
     narma10_rows,
 )
 
+from rc_basics_lab.experiment.narma import (
+    NARMA10_REFERENCE_NOTE,
+    NARMA10_REFERENCE_NOTE_EN,
+)
 from rc_basics_lab.plotting import (
     figures_anomaly,
     figures_capacity,
@@ -53,10 +57,17 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_narma10_control,
 )
 from rc_basics_lab.plotting.labels import (
+    APPELTANT_2011,
     METHOD_LABELS,
     SOURCE_UNIDENTIFIED,
+    VINCKIER_2015,
     cited_bound,
     cited_measurement,
+)
+from rc_basics_lab.plotting.narma10_panel import (
+    REFERENCE_CONDITIONS,
+    REFERENCE_LABELS,
+    REFERENCE_SOURCES,
 )
 from rc_basics_lab.plotting.style import (
     METHOD_COLORS,
@@ -549,3 +560,46 @@ def test_the_known_gaps_list_has_no_stale_entries() -> None:
         f"文献照合が付いたのに既知の穴に残っています: {stale}\n"
         "KNOWN_WITHOUT_CITATION から外してください (ラチェットが1段締まります)。"
     )
+
+
+def test_every_narma10_reference_line_names_a_real_source() -> None:
+    """3-C の参照値が**特定済みの出典**を名乗ること (D-100)。
+
+    0.16 / 0.107 は長く「原典未特定」のまま引かれていた。実際に辿ると
+    どちらも Vinckier et al. 2015 (Optica 2:438) に行き着く ——
+    0.107 はその論文自身の実験値 (N = 50、訓練/テスト各 1000 ステップ、
+    10 回反復で s.d. 0.012)、0.16 は同論文が Appeltant et al. 2011
+    (Nat. Commun. 2:468) に帰す「線形シフトレジスタで得られる最良値」である。
+
+    **`SOURCE_UNIDENTIFIED` へ戻す変更をここで落とす。** 出典が分かった値を
+    「未特定」に戻すのは情報を捨てる操作であり、静かに起こり得る
+    (参照値を1本足すときに、既存の書き方をコピーすると起こる)。
+    """
+    assert set(REFERENCE_SOURCES) == set(REFERENCE_LABELS), (
+        "参照線のキーと出典のキーが一致していません: "
+        f"{sorted(REFERENCE_SOURCES)} vs {sorted(REFERENCE_LABELS)}"
+    )
+    assert set(REFERENCE_CONDITIONS) == set(REFERENCE_LABELS), (
+        "参照線のキーと動作点のキーが一致していません"
+    )
+    unidentified = sorted(
+        key
+        for key, source in REFERENCE_SOURCES.items()
+        if source in SOURCE_UNIDENTIFIED or not source.strip()
+    )
+    assert not unidentified, (
+        f"原典が特定済みの参照値が「未特定」に戻っています: {unidentified}\n"
+        "0.16 -> Appeltant et al. 2011 / 0.107 -> Vinckier et al. 2015 (D-100)。"
+    )
+    # 出典が実際に凡例へ届いていること (定数だけ直して配線を忘れる形を落とす)
+    assert REFERENCE_SOURCES["linear_ceiling"] == APPELTANT_2011
+    assert REFERENCE_SOURCES["nonlinear_rc"] == VINCKIER_2015
+
+
+def test_the_reference_note_records_the_conditions_of_each_source() -> None:
+    """図の注が出典と**測定条件**の両方を持つこと (D-100)。"""
+    for note in (NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN):
+        assert "Vinckier" in note and "Appeltant" in note, note
+        assert "0.107" in note and "0.16" in note, note
+        assert "50" in note and "1000" in note, note
+    assert "未特定" not in NARMA10_REFERENCE_NOTE
