@@ -29,6 +29,7 @@ METHOD_LABELS: dict[str, tuple[str, str]] = {
 """
 
 JAEGER_2002 = "Jaeger 2002"
+JAEGER_HAAS_2004 = "Jaeger & Haas 2004"
 DAMBRE_2012 = "Dambre 2012"
 GOUDARZI_2014 = "Goudarzi et al. 2014"
 VISWANATH_1998 = "Viswanath 1998"
@@ -139,6 +140,7 @@ __all__ = [
     "GOUDARZI_2014",
     "IPC_BOUND_SOURCE",
     "JAEGER_2002",
+    "JAEGER_HAAS_2004",
     "KIM_2022",
     "MC_BOUND_SOURCE",
     "METHOD_LABELS",

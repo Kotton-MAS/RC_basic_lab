@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import ExperimentConfig
+from rc_basics_lab.experiment.horizon import CSV_COLUMNS as HORIZON_CSV_COLUMNS
+from rc_basics_lab.experiment.horizon import TASK_NAME as HORIZON_TASK
+from rc_basics_lab.experiment.horizon import run_horizon, summarize_horizon
 from rc_basics_lab.experiment.report import (
     COMPARISON_CSV,
     COMPARISON_SUMMARY_CSV,
@@ -25,6 +28,7 @@ from rc_basics_lab.experiment.report import (
     write_comparison_csv,
     write_comparison_summary_csv,
     write_meta,
+    write_rows_csv,
 )
 from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
@@ -44,13 +48,17 @@ from rc_basics_lab.experiment.summary import aggregate_nrmse
 
 logger = logging.getLogger(__name__)
 
+HORIZON_CSV = "horizon.csv"
+FIG_HORIZON = "fig_horizon.png"
 FIG_COMPARISON = "fig_comparison.png"
 FIG_STATE_SPACE = "fig_state_space.png"
 
 ARTIFACTS: tuple[str, ...] = (
     COMPARISON_CSV,
     COMPARISON_SUMMARY_CSV,
+    HORIZON_CSV,
     FIG_COMPARISON,
+    FIG_HORIZON,
     FIG_STATE_SPACE,
     META_JSON,
 )
@@ -124,6 +132,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     # subprocess guard の両方が落ちる。
     from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
+    from rc_basics_lab.plotting.figures_horizon import plot_horizon
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -134,19 +143,30 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     _log_state_space(reports)
 
     stats = aggregate_nrmse(rows)
+    # 01' (D-105): 1ステップ先の行は1つも触らず、自走だけを別の CSV へ出す。
+    horizon_entry = next(
+        entry for entry in build_tasks(config) if entry.name == HORIZON_TASK
+    )
+    horizon_rows = run_horizon(config, horizon_entry)
     # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
     style = setup_style(commit=git_commit())
     paths = (
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
+        write_rows_csv(horizon_rows, out_dir / HORIZON_CSV, HORIZON_CSV_COLUMNS),
         plot_comparison(rows, out_dir / FIG_COMPARISON, style=style),
+        plot_horizon(horizon_rows, out_dir / FIG_HORIZON, style=style),
         plot_state_space(reports, out_dir / FIG_STATE_SPACE, style=style),
         write_meta(
             config,
             wall_time_s,
             len(rows),
             out_dir / META_JSON,
-            extra={"state_space": summarize(reports), "cjk_font": style.cjk_font},
+            extra={
+                "state_space": summarize(reports),
+                "cjk_font": style.cjk_font,
+                "horizon": summarize_horizon(horizon_rows),
+            },
         ),
     )
     logger.info(
@@ -163,7 +183,9 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
 __all__ = [
     "ARTIFACTS",
     "FIG_COMPARISON",
+    "FIG_HORIZON",
     "FIG_STATE_SPACE",
+    "HORIZON_CSV",
     "ExperimentOutputs",
     "run_and_report",
 ]

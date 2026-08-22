@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "ae9c42c3a2544e97d0ccb4d643b9572ff3d61a09",
+  "commit": "bd5b0fa0f9d74cd73fa45823b9f7575292ac7117",
   "config": {
     "delay_parity": {
       "delay": 1,
@@ -79,6 +79,14 @@
       "washout": 200
     }
   },
+  "horizon": {
+    "horizon": 84,
+    "log10_nrmse_mean": -2.1215429959264953,
+    "log10_nrmse_sd": 0.2917396376926038,
+    "n_diverged": 0,
+    "n_rows": 5,
+    "n_units": 200
+  },
   "matplotlib_version": "3.11.1",
   "n_rows": 30,
   "numpy_version": "2.5.2",
@@ -145,6 +153,6 @@
       "task": "delay_parity"
     }
   ],
-  "timestamp_utc": "2026-08-22T10:11:39.168723+00:00",
-  "wall_time_s": 0.8241752499016002
+  "timestamp_utc": "2026-08-22T10:37:55.845495+00:00",
+  "wall_time_s": 0.8281065410701558
 }

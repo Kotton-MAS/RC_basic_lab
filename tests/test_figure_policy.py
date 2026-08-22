@@ -37,6 +37,7 @@ from test_plotting_capacity import (
 )
 from test_plotting_freerun import freerun_rows
 
+from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
     NARMA10_REFERENCE_NOTE_EN,
@@ -45,6 +46,7 @@ from rc_basics_lab.plotting import (
     figures_anomaly,
     figures_capacity,
     figures_freerun,
+    figures_horizon,
     heatmap,
     style,
 )
@@ -64,6 +66,12 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_narma10_control,
 )
 from rc_basics_lab.plotting.figures_freerun import plot_valid_time
+from rc_basics_lab.plotting.figures_horizon import (
+    JAEGER_CONDITIONS,
+    JAEGER_LOG10_NRMSE84,
+    JAEGER_PREVIOUS_LOG10,
+    plot_horizon,
+)
 from rc_basics_lab.plotting.freerun_headlines import (
     LITERATURE_VALID_TIME,
     LITERATURE_VALID_TIME_CONDITIONS,
@@ -71,6 +79,7 @@ from rc_basics_lab.plotting.freerun_headlines import (
 from rc_basics_lab.plotting.labels import (
     APPELTANT_2011,
     GAUTHIER_2021,
+    JAEGER_HAAS_2004,
     KIM_2022,
     METHOD_LABELS,
     SOURCE_UNIDENTIFIED,
@@ -490,7 +499,7 @@ def test_the_ipc_profile_explains_why_the_even_degrees_are_empty(
 
 #: 実験 -> その実験の図を描くモジュール (``src/rc_basics_lab/plotting/`` 相対)。
 FIGURE_MODULES: dict[str, tuple[str, ...]] = {
-    "01": ("figures.py",),
+    "01": ("figures.py", "figures_horizon.py"),
     "02": ("figures_esp.py", "esp_references.py"),
     "03": ("figures_capacity.py", "figures_narma_taps.py", "narma10_panel.py"),
     "04": ("figures_freerun.py", "freerun_headlines.py"),
@@ -502,7 +511,7 @@ FIGURE_MODULES: dict[str, tuple[str, ...]] = {
 #: 特定できていない実験がある。**この集合は増やせない** —— 増えるということは
 #: 新しい実験を文献照合なしで足したということで、それを黙って通さない。
 #: 減らしたらここから外す (下の検査が外し忘れを拾う)。
-KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01"})
+KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset()
 
 
 def _cites_literature(module: str) -> bool:
@@ -703,3 +712,67 @@ def test_the_threshold_tradeoff_figure_carries_a_literature_reference_line(
     # PA 側の値 (0.80 以上) と取り違えていない
     low, high = RANDOM_SCORE_PLAIN_F1
     assert high < 0.5, (low, high)
+
+
+def test_the_horizon_figure_carries_a_literature_reference_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """01' に文献の NRMSE84 の参照線がある (FIG-2 / D-105)。
+
+    一次資料は Jaeger & Haas (2004) *Harnessing Nonlinearity*,
+    Science **304**:78-80。本文に
+
+        For testing, a 84-step continuation d(3001),...,d(3084) ...
+        The network output y(3084) was compared with the correct
+        continuation d(3084).
+
+    とあり、報告値は ``log10(NRMSE84) = -4.2``、従来手法はその 700 倍悪い。
+
+    **予測長を合わせたから並べられる。** 01 本体は1ステップ先なので、
+    そのままでは比較できない (D-105 がこの実験を足した理由)。
+    """
+    captured: list[Figure] = []
+    original = figures_horizon.save_png
+
+    def spy(figure: Figure, path: Path) -> Path:
+        captured.append(figure)
+        return original(figure, path)
+
+    monkeypatch.setattr(figures_horizon, "save_png", spy)
+    plot_horizon(_horizon_rows(), tmp_path / "h.png", style=CONTEXT)
+    assert captured, "図が保存されませんでした"
+    labels = [
+        text.get_text()
+        for axis in captured[0].axes
+        if axis.get_legend() is not None
+        for text in axis.get_legend().get_texts()
+    ]
+    cited = [label for label in labels if JAEGER_HAAS_2004 in label]
+    assert len(cited) == 2, f"文献の参照線が2本ありません: {labels}"
+    for legend in cited:
+        assert ";" in legend, legend
+        assert CONTEXT.label(*JAEGER_CONDITIONS) in legend, legend
+    # 従来手法の線は 700 倍悪い側 (取り違えると比較の向きが反転する)
+    assert JAEGER_PREVIOUS_LOG10 > JAEGER_LOG10_NRMSE84
+    assert pytest.approx(700.0) == 10.0 ** (
+        JAEGER_PREVIOUS_LOG10 - JAEGER_LOG10_NRMSE84
+    )
+
+
+def _horizon_rows() -> tuple[HorizonRow, ...]:
+    """図を描くのに足りる最小の行 (値そのものは検査しない)。"""
+    return tuple(
+        HorizonRow(
+            task="mackey_glass",
+            method="esn",
+            replicate=index,
+            n_units=200,
+            horizon=HORIZON_STEPS,
+            nrmse_horizon=0.006,
+            log10_nrmse_horizon=-2.2 + 0.1 * index,
+            nrmse_mean_to_horizon=0.004,
+            diverged=False,
+            wall_time_s=0.1,
+        )
+        for index in range(3)
+    )
