@@ -1124,3 +1124,54 @@ def test_the_state_waveform_units_are_not_selectable() -> None:
             "定数のままにしてください —— 引数にすると"
             "「この図だけ別のユニット」が書けてしまいます。"
         )
+
+
+# --- FIG-14: 出典入りの凡例が隣のパネルを潰さない (D-110) ----------------------
+
+
+def test_no_legend_spills_out_of_its_axes_in_the_main_figure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """01 の主図でも凡例が軸に収まっていること (FIG-14 / D-110)。
+
+    D-106 の検査は 2-C しか描いていなかった。**壊れ方は同じでも、
+    描いていない図は守られない** —— 実際 FIG-12 でパネルを詰めたとき、
+    自走パネルの出典つき凡例が軸をはみ出して隣のパネルにかぶった。
+    パネルを増やすと1枚あたりの幅が縮むので、この図が一番先に壊れる。
+
+    直し方は凡例をやめて注へ移すこと (``horizon_reference_note``)。
+    出典を消すのではなく置き場所を変えるだけなので、D-97 は満たせる。
+    """
+    from rc_basics_lab.plotting import figures
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    assert captured, "図が保存されませんでした"
+    figure = captured[0]
+    figure.canvas.draw()
+    spilled = [
+        index for index, axis in enumerate(figure.axes) if not _legend_fits(axis)
+    ]
+    assert not spilled, (
+        f"凡例が軸からはみ出しています (軸 {spilled})。\n"
+        "出典つきのラベルは長くなるので、パネルが増えて幅が縮んだ図では"
+        "**凡例をやめて注へ移してください** (FIG-14 / D-110)。"
+    )
+
+
+def test_legends_are_opaque_so_lines_do_not_show_through() -> None:
+    """凡例の背景が不透明であること (FIG-14 / D-110)。
+
+    掃引図では線が軸全体に渡るので、凡例をどこへ置いても下を線が通る
+    (実測: fig_esp_decay で 6 本)。**位置では解決できないので、
+    読めることのほうを保証する**。
+    """
+    params = style.rc_params_for(CONTEXT)
+    assert params["legend.frameon"] is True, params.get("legend.frameon")
+    assert params["legend.framealpha"] == 1.0, params.get("legend.framealpha")

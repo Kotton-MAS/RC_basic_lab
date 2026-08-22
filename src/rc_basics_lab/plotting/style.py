@@ -326,7 +326,15 @@ def rc_params_for(style: StyleContext) -> dict[str, object]:
         "axes.spines.top": False,
         "axes.spines.right": False,
         "font.size": 10,
-        "legend.frameon": False,
+        # **枠を出し、背景を不透明にする** (FIG-14)。frameon=False だと
+        # 背景そのものが無く、掃引図では凡例の文字の下を線が通る
+        # (実測: fig_esp_decay で 6 本)。位置を動かしても、線が軸全体に
+        # 渡る図では逃げ場が無いので、**読めることのほうを保証する**。
+        "legend.frameon": True,
+        "legend.framealpha": 1.0,
+        "legend.facecolor": "white",
+        "legend.edgecolor": "#cccccc",
+        "legend.fancybox": False,
     }
     if style.cjk_font is not None:
         sans_serif = list(matplotlib.rcParams["font.sans-serif"])
