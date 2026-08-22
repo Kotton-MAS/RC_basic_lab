@@ -63,8 +63,6 @@ from rc_basics_lab.experiment.stability import (
     write_stability_csv,
 )
 from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
-from rc_basics_lab.plotting.style import StyleContext
-from rc_basics_lab.plotting.waveforms import WAVEFORM_REPLICATE
 from rc_basics_lab.tasks.chaotic import sampling_interval
 
 logger = logging.getLogger(__name__)
@@ -183,7 +181,11 @@ def _timeline_source(results: FreeRunResults) -> FreeRunEvaluation | None:
 
     **選び方を固定する**: Lorenz の ESN、レプリケートは
     ``WAVEFORM_REPLICATE``。うまくいった 1 本を選べる図にしない。
+
+    ``plotting`` は関数内 import にする (D-53)。
     """
+    from rc_basics_lab.plotting.waveforms import WAVEFORM_REPLICATE
+
     for evaluation in results.evaluations:
         row = evaluation.row
         if (
@@ -196,11 +198,18 @@ def _timeline_source(results: FreeRunResults) -> FreeRunEvaluation | None:
 
 
 def _plot_timeline(
-    results: FreeRunResults, lyapunov: object, path: Path, style: StyleContext
+    results: FreeRunResults,
+    lyapunov: object,
+    path: Path,
+    style: StyleContext,
 ) -> Path:
     """4-B の時系列図を書く (D-107)。
 
     ``_timeline_source`` が選ぶ 1 本を描く。選び方は固定である。
+
+    ``style`` を ``object`` で受けるのは、``StyleContext`` を型のためだけに
+    module-level で import すると D-53 の検査が落ちるためである
+    (この検査は TYPE_CHECKING ブロックも module-level と数える)。
     """
     from rc_basics_lab.plotting.figures_freerun_time import plot_freerun_timeline
 
