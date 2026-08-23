@@ -102,6 +102,20 @@ uv run python main.py                # エントリポイント実行
 - Python 3.12+、型アノテーション必須
 - `Any` 禁止（`object` か `Protocol` を使用）
 - 関数は単一責任、50行超は分割を検討
+- **モジュールは非空 600 行以下**。超えたら分割を検討する
+  （`tests/test_module_size.py` が機械的に強制。既に超えている6モジュールは
+  現在値を記録しており、増やす方向には動かせない。`config/` は非空 300 行で
+  `tests/test_config_package_layout.py` が別に縛る）
+- **docstring に書くのは「何を返すか / 前提 / 送出する例外 / 呼び出し側が守るべき契約」まで。**
+  「なぜそうしたか / 以前はこうだった / 代案を採らなかった理由 / 実測の経緯」は
+  `.claude/decisions.yaml`（guard_test 付き）・`docs/adr/`・`docs/review-findings-*.md`
+  のいずれかに書き、コードには `(D-37)` `(F-03-1-013)` のような **ID 参照だけ**残す。
+  同じ理由を3箇所に書くと3箇所が独立にドリフトする
+  （ID が記録文書に実在することは `tests/test_finding_id_references_resolve.py` が検証する）
+- 実験を1本追加するとき、**新規作成してよいのは実験固有のモジュールだけ**。
+  作図の外枠（`plotting/_canvas.py`）・設定ローダ（`config/_common.py`）・
+  容量カーネル（`diagnostics/_capacity.py`）は共通層に足す。既存の実験から
+  骨格ごとコピーしない
 
 ## セキュリティ原則（常時適用）
 
