@@ -8,31 +8,25 @@ Lorenz 系::
 
 を古典的 RK4 (刻み ``rk4_step``) で積分し、``sample_interval`` ステップごとに
 サブサンプルする。パラメータは **(sigma, rho, beta) = (10, 28, 8/3)** に固定
-する (D-41): この1点だけが「蝶形アトラクタ」と文献値 lambda_max = 0.9056
-(``config.chaos04.LORENZ_LYAPUNOV_REFERENCE``) を同時に指すので、設定
-フィールドにすると照合値の意味が黙って失われる (``tasks/narma.py`` の係数を
-設定にしない D-29 と同じ流儀)。
+する (D-41)。設定フィールドにすると文献値 lambda_max = 0.9056
+(``config.chaos04.LORENZ_LYAPUNOV_REFERENCE``) との照合が意味を失う。
 
 **Mackey-Glass は再実装しない**。``generate_standardized_mackey_glass`` は
 ``tasks/mackey_glass.py`` の ``generate_mackey_glass`` へ委譲し、04 が要求する
 標準化だけを足す薄い adapter である。
 
 **標準化係数は訓練区間から推定した1組を全区間で使う** (D-41、仕様 §10-2)。
-自走中や評価区間で再推定すると、モデルが当てられていない区間でも予測と真値の
-平均・分散が揃うため「予測が当たっているように見える」壊れ方をし、
-**位相図でも有効予測時間でも検出できない**。``Standardizer`` を値として持ち回る
-のはこのためで、係数を作れる場所を ``Standardizer.from_training_prefix``
-1箇所に閉じてある。
+再推定すると「予測が当たっているように見える」壊れ方をし、位相図でも有効
+予測時間でも検出できない。係数を作れる場所は
+``Standardizer.from_training_prefix`` 1箇所に閉じてある。
 
 確保軸 (D-34 の規律「確保より前に落とす」) は2本ある:
 
 1. ``(length + horizon + integration_burn_in) * sample_interval`` = 積分ステップ数。
    ``_validate`` が**生成前**に検査する (``cfg`` だけで決まる量)
-2. ``n_samples * LORENZ_STATE_DIM`` = 真の軌道の配列要素数。``integrate_lorenz``
-   が確保する ``n_samples`` は ``cfg.length`` と一致する保証がない (公開 API で
-   独立に指定できる) ので、``cfg`` からではなく**確保するその場**
-   (``integrate_lorenz``) で ``n_samples`` そのものを検査する
-   (reviewer-security 実測: 検査量と確保量が5桁ずれていた)
+2. ``n_samples * LORENZ_STATE_DIM`` = 真の軌道の配列要素数。``n_samples`` は
+   ``cfg.length`` と一致する保証がない (公開 API で独立に指定できる) ので、
+   ``cfg`` からではなく**確保するその場** (``integrate_lorenz``) で検査する
 """
 
 from __future__ import annotations

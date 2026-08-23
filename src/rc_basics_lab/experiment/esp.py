@@ -18,16 +18,10 @@
 
 **状態行列の計算と、それを使う診断・回帰は別レイヤー** (F-1-005 / F-1-010)。
 ``simulate_reference_trajectory`` は ``ReservoirSweepConfig`` + ``DriveConfig``
-+ 基底シードだけで状態行列 ``X`` を1回計算して返す。02 (ESP) はこれに比較
-軌道 n_pairs 本を足す薄い層 (``simulate_condition``) を経由するが、03
-(MC/IPC) のように「同じ ``X`` に対して遅延・次数ごとに読み出し回帰だけを
-繰り返す」設計は ``simulate_reference_trajectory`` を1条件につき1回呼び、
-返ってきた ``states`` を使い回すことで、``ESN.run`` (T に線形) の再実行を
-避けられる。02 の ``_sweep`` は1条件=1回の ``evaluate_condition``呼び出しで
-十分なため (本番 336 条件・実測 53.65秒)、逐次ループのままで良いが、03 の
-想定規模 (delay x degree で 2395 通り) にこのパターンをそのまま複製すると
-``ESN.run`` の再実行コストが支配的になる (実測: N=200, T=1e6 で約4.7秒/回。
-2395 回なら約3.1時間)。
++ 基底シードだけで ``X`` を1回計算して返す。02 (ESP) はこれに比較軌道
+n_pairs 本を足す薄い層 (``simulate_condition``) を経由し、03 (MC/IPC) は
+1条件につき1回だけ呼んで ``states`` を使い回すことで ``ESN.run`` の再実行を
+避ける。
 """
 
 from __future__ import annotations
@@ -174,12 +168,10 @@ def require_deterministic_esn(
 ) -> None:
     """``state_noise`` が 0 でなければ ``ValueError`` にする (D-47 / D-48 共有)。
 
-    ノイズを 02 経路へ入れると壊れ方が2種類あり、直し方も別々である
-    (伝播器: ADR 0001 §2 / 比較軌道: 同 §3)。共通なのは「**なぜ拒否するのか**を
-    メッセージが自分で説明できないと、次の実装者が最も安い手 (``rng`` を渡す /
-    5本目のストリームを立てる) で黙らせる」という失敗の形の方なので、
-    判定と**4点そろったメッセージの組み立て**をここ1本に集約し、
-    呼び出し側は4点の中身だけを渡す。
+    ノイズを 02 経路へ入れたときの壊れ方は2種類あり、直し方も別々である
+    (伝播器: ADR 0001 §2 / 比較軌道: 同 §3)。共通なのは「なぜ拒否するのか」を
+    メッセージが自分で説明できないと最も安い手で黙らされる点なので、判定と
+    **4点そろったメッセージの組み立て**をここ1本に集約する。
 
     Args:
         state_noise: 検査する値。呼び出し側の引数でも ``esn.config`` 由来でもよい。
@@ -213,20 +205,11 @@ def esn_propagator(esn: ESN, u: FloatArray) -> StatePropagator:
     "それらしい値" で出てレビューでは気づけないため、``conditional_lyapunov``
     は既定でこの一致を実行時に検査する (``check_propagator``)。
 
-    **``state_noise > 0`` の ESN は受理しない** (D-48)。``conditional_lyapunov``
-    は同じ写像を2本の近接した状態に当てて摂動の成長率を測るので、伝播器は
-    決定的でなければならない。ノイズを入れると測っているのは「摂動の成長率」
-    ではなく「摂動 + ノイズ実現値の差の成長率」という別の量になる。D-36 の
-    「``ESN.run`` には常に ``rng`` を渡す」は**軌道を作る**呼び出しの規律であり、
-    伝播器はそこに含めない —— したがって ``esn.step`` に ``rng`` を渡して
-    ``ValueError`` を黙らせるのは誤りである (F-3b1-2-006)。
-
-    判定は**伝播器を作る時点**で行う。伝播器は ``conditional_lyapunov`` の深部で
-    初めて呼ばれるため、ここで落とさないと失敗が D-18 の
-    ``check_propagator`` のメッセージ (「参照軌道と別の入力で伝播している疑い」)
-    として出て、次の実装者を**存在しないバグの捜索**へ送り込む
-    (``tests/test_experiment_esp.py::test_noise_free_clone_fails_the_propagator_check``
-    がその誤診を実測として残してある)。
+    **``state_noise > 0`` の ESN は受理しない** (D-48)。伝播器は決定的でなければ
+    ならず、``esn.step`` に ``rng`` を渡して黙らせるのは誤り (F-3b1-2-006)。
+    判定を**伝播器を作る時点**で行うのは、深部で落ちると失敗が D-18 の
+    ``check_propagator`` の誤診として出るため
+    (``test_noise_free_clone_fails_the_propagator_check``)。
 
     Raises:
         ValueError: ``esn`` の ``state_noise`` が 0 でない場合 (D-48)。
@@ -373,18 +356,10 @@ def simulate_reference_trajectory(
 ) -> ReferenceTrajectory:
     """参照軌道1本を作る (``Esp02Config`` を要らない。F-1-005)。
 
-    ``ReservoirSweepConfig`` + ``DriveConfig`` + 基底シード
-    (``reservoir_seed`` / ``drive_seed``) だけで呼べるので、03 (MC/IPC) は
-    ``Esp02Config`` の3ストリーム配線 (``EspSeedConfig`` / D-14) を写経せずに
-    この関数を再利用できる。比較軌道の初期状態対 (``SeedStream.PROBE``) は
-    ESP 判定専用なのでここでは作らない。``x0`` を省略すると ``ESN.run`` の
-    既定 (零ベクトル) になる —— MC/IPC の読み出し回帰は washout で過渡を
-    捨てる前提なので、初期状態をどこから引くかは主要な関心事ではない。
-
-    ``simulate_condition`` はこの関数へ ``config.seeds.reservoir`` /
-    ``config.seeds.drive`` (D-14 の3ストリームのうち2本) と ESP 用の
-    ``x0`` (``SeedStream.PROBE`` から引いた初期状態) をそのまま渡す薄い層に
-    なっており、既存の成果物 (``results/``) はバイト単位で不変である。
+    ``ReservoirSweepConfig`` + ``DriveConfig`` + 基底シードだけで呼べるので、
+    03 (MC/IPC) は ``Esp02Config`` の3ストリーム配線 (D-14) を写経せずに
+    再利用できる。比較軌道の初期状態対 (``SeedStream.PROBE``) は ESP 判定専用
+    なのでここでは作らない。``x0`` を省略すると ``ESN.run`` の既定 (零ベクトル)。
 
     Args:
         reservoir: リザバー構造 (掃引軸を除く4フィールド)。
@@ -396,9 +371,8 @@ def simulate_reference_trajectory(
         sigma_u: 駆動信号の標準偏差 (D-17)。
         replicate: レプリケート番号 (0 始まり)。
         x0: 初期状態 ``(N,)``。``None`` なら ``ESN.run`` の既定 (零ベクトル)。
-        state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。**既定値
-            つきキーワード**なので 02 の呼び出しは書き換えない。0 のとき
-            ``ESN`` は乱数を1個も引かず、既存の成果物はバイト単位で不変である。
+        state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。0 のとき
+            ``ESN`` は乱数を1個も引かない。
 
     Returns:
         ESN・駆動入力・状態系列 ``(T, N)``。
@@ -480,13 +454,9 @@ def simulate_condition(
     独立なので、「初期状態だけを振ったときに判定が変わるか」を重みを固定した
     まま測れる。
 
-    **この経路は ``state_noise > 0`` を受理しない** (D-47)。``state_noise`` を
-    **既定値つきキーワードで受けて拒否する**のは、``build_esn_config`` /
-    ``simulate_reference_trajectory`` の2つが同じ形で ``state_noise`` を受けて
-    いる (D-36) ため、次の実装者が「上の2つと同じように流せばいい」と考えて
-    必ずここへ手を伸ばすからである。**その手が触れる場所に停止標識を置く**のが
-    この決定の実体であり、引数が無いと guard_test が monkeypatch 依存の
-    間接的なものになる。
+    **この経路は ``state_noise > 0`` を受理しない** (D-47)。引数で受けて拒否
+    する形にしてあるのは、次の実装者の手が触れる場所に停止標識を置くため
+    (rationale は D-47)。
 
     検査は二重に置く (経路非依存):
 
@@ -501,8 +471,7 @@ def simulate_condition(
         leak_rate: リーク率。
         sigma_u: 駆動信号の標準偏差 (D-17)。
         replicate: レプリケート番号 (0 始まり)。
-        state_noise: **0 以外を受理しない** (D-47)。既定値つきキーワードなので
-            既存の呼び出しは1つも書き換えない。
+        state_noise: **0 以外を受理しない** (D-47)。
 
     Raises:
         ValueError: ``state_noise`` が 0 でない場合、または ``config`` から

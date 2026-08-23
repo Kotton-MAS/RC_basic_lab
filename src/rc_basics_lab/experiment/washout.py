@@ -1,10 +1,8 @@
 """実験 2-D の配線層 —— washout 長への性能感度 (D-19).
 
 **手法比較の公平性はここで作らない**。実体は ``dataclasses.replace`` で
-``split.washout`` を差し替えて 01 の ``run_experiment`` を呼ぶだけのループであり、
-D-04 (alpha 格子は単一キー) / D-05 (全手法が同じ行 index) / D-08 (検証分割で
-構造ハイパーパラメータを選ばない) は既存経路がそのまま担保する。自前で比較
-ロジックを書くと、そこだけ公平性の保証が二重化して割れる。
+``split.washout`` を差し替えて 01 の ``run_experiment`` を呼ぶだけのループで、
+公平性 (D-04 / D-05 / D-08) は既存経路がそのまま担保する。
 
 **交絡の除去 (D-19) がこのモジュールの本体**である。``make_split`` は
 
@@ -17,12 +15,10 @@ D-04 (alpha 格子は単一キー) / D-05 (全手法が同じ行 index) / D-08 (
 ``t0`` の増分ぶんだけ系列長を伸ばし、行数を格子全体で一定に保つ。
 ``pad_series=False`` は交絡ありの設計を再現する対比用モードとして残す。
 
-対象は Mackey-Glass と遅延パリティの**両方**である (``run_experiment`` が両方を
-回すので追加コストはほぼゼロ)。図の主役は MG で、パリティは「washout に反応
-しない対照」として重ねる: パリティ用 ESN は ``leak_rate = 1.0`` (前ステップの
-状態を持ち越さない) かつ目標が直近2入力にしか依存しないため、過渡を捨てる量を
-変えても性能が動かないはずである。この**予測が外れた場合はそれ自体が発見**なので、
-閾値を動かして予測に合わせない。
+対象は Mackey-Glass と遅延パリティの**両方**である。図の主役は MG で、
+パリティは「washout に反応しない対照」として重ねる (``leak_rate = 1.0`` かつ
+目標が直近2入力にしか依存しないため)。**予測が外れた場合はそれ自体が発見**
+なので、閾値を動かして予測に合わせない。
 """
 
 from __future__ import annotations
@@ -320,22 +316,15 @@ def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
     基準は**格子の最小値**での ``t0`` なので、補償は常に「伸ばす」側に
     働き、01 の本番設定より短い系列で測ることはない。
 
-    仕様 §4 T4 の式は ``length = base_length + (max(grid) - washout)`` と
-    書かれていたが、この式は washout が大きいほど系列を**短く**するので
-    ``n_usable`` の差が広がる (符号が逆)。ここでは仕様が述べている目的
-    (「行数を格子全体で一定に保つ」) を満たす式を採る。加えて ``t0`` は
+    補償は ``washout`` の差分ではなく ``t0`` の差分で行う。``t0`` は
     ``max(washout, first_valid)`` なので、washout が遅延線の最大ラグより
-    小さい領域では ``washout`` の差分ではなく ``t0`` の差分で補償しないと
-    行数がそろわない (実測: 本番格子の washout=0 と 50 はどちらも
-    ``t0 = 64`` になる)。
+    小さい領域では ``washout`` の差分では行数がそろわない (仕様 §4 T4 の式が
+    採れない理由は ``docs/design.md`` §9.6)。
 
-    ``build_tasks`` の課題は ``_task_names`` (``config.TASK_LENGTH_FIELDS``) が
-    唯一の真実として検証するが、実際に系列を伸ばす ``dataclasses.replace`` の
-    キーワード引数は ``mackey_glass`` / ``delay_parity`` の2つを名指しで書く
-    (``dataclasses.replace`` は動的なキーワード展開をフィールドごとに型検査
-    できないため)。3つ目の課題が ``TASK_LENGTH_FIELDS`` に登録されても
-    ここに配線が無ければ ``NotImplementedError`` になり、黙って補償が効かな
-    くなることはない。
+    系列を伸ばす ``dataclasses.replace`` のキーワードは ``mackey_glass`` /
+    ``delay_parity`` を名指しで書く (動的なキーワード展開は型検査できない)。
+    3つ目の課題が ``TASK_LENGTH_FIELDS`` に登録されてもここに配線が無ければ
+    ``NotImplementedError`` になり、黙って補償が効かなくなることはない。
 
     Raises:
         ValueError: ``washout`` が格子の最小値より小さい場合 (補償が負になる)。

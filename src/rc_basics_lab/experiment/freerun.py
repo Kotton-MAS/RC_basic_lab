@@ -1,22 +1,17 @@
 """実験 4-A (教師強制の1ステップ先予測) と自走の入口の配線 (D-31 / D-44 / D-50).
 
-4-A は **01 の ``run_task`` をそのまま通す** (D-31 と同じ形)。手法の列挙
-(``build_methods``)・alpha 格子の共有 (D-04)・全手法が同一の行 index で学習評価
-すること (D-05)・ESN の構造ハイパーパラメータを検証分割で選ばないこと (D-08)
-は、すべて 01 の経路が担保する。ここが組み立てるのは ``TaskEntry`` (課題の生成
-関数 + ESN 設定) だけで、**``build_tasks`` にも ``ExperimentConfig`` にも 04 の
-課題を足さない** (足すと 01 の ``comparison.csv`` に行が増えて 01 の成果物が
-変わる)。
+4-A は **01 の ``run_task`` をそのまま通す** (D-31)。公平性の担保 (D-04 /
+D-05 / D-08) は 01 の経路が持つ。ここが組み立てるのは ``TaskEntry`` だけで、
+``build_tasks`` にも ``ExperimentConfig`` にも 04 の課題を足さない (足すと 01
+の ``comparison.csv`` が変わる)。
 
 自走の入口もここにある。``readout/autoregressive.py`` は ``reservoir`` を
-知らない (D-50) ので、ESN を ``StateUpdater`` に適合させるアダプタ
-(``esn_state_updater``) と、確保軸の検査 (``validate_free_run_bounds``) は
-実験層の責任である。
+知らない (D-50) ので、``StateUpdater`` へのアダプタ (``esn_state_updater``)
+と確保軸の検査 (``validate_free_run_bounds``) は実験層の責任である。
 
 **自走は教師強制で学習した係数をそのまま使う** (D-44)。``fit_teacher_forced``
 が返した係数オブジェクトが ``FreeRunResult.coefficients`` に**同一オブジェクト
-として**現れるので、自走のたびに学習し直す実装 (仕様 §5 禁止する構造1) は
-同一性の検査で落ちる。
+として**現れるので、自走のたびに学習し直す実装は同一性の検査で落ちる。
 """
 
 from __future__ import annotations
@@ -348,11 +343,10 @@ def fit_teacher_forced(
 ) -> TeacherForcedReadout:
     """教師強制で読み出しを学習する (01 の ``_evaluate`` と同じ2段)。
 
-    ``select_alpha`` (検証分割で候補と alpha を選ぶ) -> ``fit_ridge`` (訓練区間で
-    係数を解く) の順序も、渡す行集合 (``plan.split``) も、同点のときに先に
-    評価した候補を残す規律も 01 と同一である。**同じ (候補, alpha) が選ばれる
-    こと**は ``test_free_run_readout_matches_the_one_step_selection`` が 4-A の
-    行と突き合わせて実測する (経路が2本あることを主張だけで済ませない)。
+    ``select_alpha`` -> ``fit_ridge`` の順序も、渡す行集合 (``plan.split``) も、
+    同点処理も 01 と同一である。同じ (候補, alpha) が選ばれることは
+    ``test_free_run_readout_matches_the_one_step_selection`` が 4-A の行と
+    突き合わせて実測する。
 
     Args:
         config: 04 の設定。
@@ -429,12 +423,10 @@ def esn_state_updater(esn: ESN, rng: np.random.Generator | None = None) -> State
     ``u[t+1]`` が ``y_hat[t]`` に依存するので、入力系列が既知でないと動かない
     ``run`` では書けない。
 
-    **``state_noise > 0`` なら ``rng`` を渡すのが正しい** —— 自走は伝播器では
-    なく**軌道を作る**呼び出しであり、学習時の状態にノイズを入れた設定で自走中
-    だけノイズを外すと、学習時と評価時で別の系を測ることになる (D-36)。02 の
-    ``esn_propagator`` が決定的でなければならない (D-48) のは、条件付き
-    Lyapunov 指数が「同じ軌道のまわりの摂動の成長率」を測るからであって、
-    「ESN は常に決定的に回す」という規則ではない。
+    **``state_noise > 0`` なら ``rng`` を渡すのが正しい** —— 自走は軌道を作る
+    呼び出しであり、学習時だけノイズを入れると学習時と評価時で別の系を測る
+    ことになる (D-36)。02 の ``esn_propagator`` が決定的である (D-48) のは
+    伝播器としての要請で、ここには及ばない。
 
     Raises:
         ValueError: ``state_noise > 0`` なのに ``rng`` が ``None`` の場合。
@@ -455,17 +447,14 @@ def esn_state_updater(esn: ESN, rng: np.random.Generator | None = None) -> State
 def delay_line_state_updater(n_inputs: int) -> StateUpdater:
     """遅延線を ``StateUpdater`` (D-50) に適合させるアダプタ (シフトレジスタ)。
 
-    遅延線には内部状態が無い、というのは**設計行列から見た話**にすぎない。
-    閉ループにすると「直前まで自分が吐いた出力」を保持する必要があり、それは
-    シフトレジスタという**状態**である。``x[k] = [u[k], u[k-1], ..., u[k-K]]``
-    と置けば ``[1, x[k]]`` (``ReservoirSpec(include_input=False)``) が
-    ``DelayLineSpec(n_lags=K)`` の ``[1, u[k], ..., u[k-K]]`` と**同じ列**に
-    なるので、教師強制で学んだ係数をそのまま流せる (D-44)。
+    遅延線に内部状態が無いのは設計行列から見た話で、閉ループにすると「直前まで
+    自分が吐いた出力」を保持する必要がある。``x[k] = [u[k], ..., u[k-K]]`` と
+    置けば ``[1, x[k]]`` が ``DelayLineSpec(n_lags=K)`` と**同じ列**になるので、
+    教師強制で学んだ係数をそのまま流せる (D-44)。
 
-    これは受け入れ条件3 の後半 (「自走では対照が成立しない」) を**数値で**
-    測るための配線である。対照を自走させずに「原理的に不利」とだけ書くと、
-    主張が実測から切り離される。同時に、ESN を1行も参照しない外部状態生成器で
-    ``free_run`` が動くこと (D-50) の2つ目の実例でもある。
+    受け入れ条件3 の後半 (「自走では対照が成立しない」) を数値で測るための
+    配線であり、ESN を参照しない外部状態生成器で ``free_run`` が動くこと
+    (D-50) の実例でもある。
 
     Args:
         n_inputs: 入力次元 ``D_in`` (レジスタは ``D_in`` ずつずれる)。
@@ -624,26 +613,19 @@ def run_free_run(
        渡す (D-44)。自走側は学習の入口を1つも呼ばない。
 
     ウォームアップの状態を作り直さず ``plan.states`` の該当行を使うのは、
-    「教師強制した ESN」と「自走を始める ESN」が同一のリザバー・同一の状態列で
-    あることを構造で保証するためである (3-C が ``plan0`` を共有しているのと
-    同じ形)。
+    「教師強制した ESN」と「自走を始める ESN」の同一性を構造で保証するため。
 
     Args:
         config: 04 の設定。
         task_entry: ``chaos_task_entries`` が組んだ課題。**ESN 設定は
             ``task_entry.esn`` が単一の真実**である (4-C は条件ごとに
-            ``spectral_radius`` / ``leak_rate`` / ``state_noise`` を差し替えた
-            entry を渡す)。教師強制の状態を作る ``plan_replicate`` も同じ
-            entry を見るので、「温めた ESN」と「自走する ESN」が食い違う経路が
-            構造上ない。
+            差し替えた entry を渡す)。``plan_replicate`` も同じ entry を見る。
         replicate: レプリケート番号。
         n_steps: 自走させるステップ数。``None`` なら ``freerun.free_run_steps``。
             4-B は ``freerun.stats_steps`` を渡して**1本の軌道**を長く回し、
             その先頭 ``free_run_steps`` を有効予測時間 (D-43)、全体を長時間統計
-            (D-46) に使う (自走を2回回すと同じ軌道を2度計算することになる)。
-            真の軌道と突き合わせる区間は常に ``free_run_steps`` ぶんである。
-        method: 自走させる手法。既定は ESN。**対照 (線形・遅延線) も同じ
-            経路で自走させる** —— 受け入れ条件3 の後半を数値で示すため。
+            (D-46) に使う。真の軌道と突き合わせる区間は常に ``free_run_steps``。
+        method: 自走させる手法。既定は ESN。対照も同じ経路で自走させる。
         plan: すでに作ってある ``ReplicatePlan`` (同じ (課題, レプリケート) の
             3手法で1個を共有する)。``None`` なら作る。
 
@@ -967,9 +949,7 @@ def evaluate_free_run(
     3. **長時間統計** (D-46): リターンマップとパワースペクトルの距離を、
        自走と**真の軌道のシャッフル代替**の両方について測る。
 
-    シャッフル用の乱数は **task ストリームの続き**である (D-14: 5本目の
-    ストリームを新設しない)。代替は真の系列の並べ替えなので、素性としても
-    課題側の乱数に属する。
+    シャッフル用の乱数は **task ストリームの続き**である (D-14)。
 
     Args:
         config: 04 の設定。
@@ -1369,8 +1349,7 @@ def run_freerun_experiment(
     **確保軸4 (``stats_steps``) をここで、自走を1ステップも回す前に検査する。**
 
     1レプリケートにつき ``ReplicatePlan`` は1個だけ作り、3手法で共有する
-    (01 の ``run_task(..., plan0=...)`` と同じ形)。共有しないと「同じ分割・
-    同じ状態行列で比べた」が構造ではなく偶然になる。
+    (01 の ``run_task(..., plan0=...)`` と同じ形)。
 
     Args:
         config: 04 の設定。

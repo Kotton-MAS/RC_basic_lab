@@ -15,20 +15,14 @@ Dambre 2012 の情報処理容量。入力の正規直交多項式の積
   ``Σ n_i = d``、``k_i <= max_delay_by_degree[d-1]``」の全組合せ。数が
   ``max_targets`` を超えたら **黙って切り詰めず** ``ValueError``。
 - **行集合は全目標で同一** (D-24)。``t0 = max(ctx.washout, 全次数の最大遅延)``。
-  目標ごとに使える行数を変えると、深い遅延・高い次数ほど標本数が減って容量が
-  系統的に下がり、それは「記憶が減衰している」という測りたい現象と同じ向きに出る。
-  基準点の算出も窓の切り出しも ``RowAlignment`` (共有カーネル) 1本に置き、
-  MC 側と式を複製しない。
+  目標ごとに行数を変えると、深い遅延・高い次数ほど容量が系統的に下がり、
+  測りたい現象と同じ向きの偏りが出る。基準点も窓も ``RowAlignment`` 1本。
 - **Gram は1回、solve はチャンク数だけ** (D-26)。目標は ``chunk_size`` 列ずつ
-  生成して ``rhs`` に畳んだら捨てる。``fit_ridge_from_gram`` の呼び出し回数は
-  ``ceil(K / chunk_size)`` に比例し、目標数 ``K`` には比例しない。
-  ``(T, K)`` を実体化しないのはメモリ制約でもある (T=1e6 x 2395 列 = 19 GB)。
-- **しきい値は次数ごと** (D-27)。有限標本による容量のかさ上げは目標の周辺分布に
-  依存し、それは次数で変わる。サロゲートは**通常の目標とまったく同じ経路**
-  (``capacity_of_targets``) に流す。乱数は ``ctx.seed`` のみ。
-- **基底は宣言された入力分布に対して正規直交** (D-28)。``(input_distribution,
-  basis)`` は**対でのみ意味を持つ**ので、``ipc()`` が入口で1度だけ
-  ``InputMeasure`` に畳む。未対応な組はその**構築時点**で ``ValueError``。
+  生成して畳んだら捨てる。``(T, K)`` を実体化しない。
+- **しきい値は次数ごと** (D-27)。かさ上げ量は目標の周辺分布に依存し、それは
+  次数で変わる。サロゲートは通常の目標と同じ経路に流す。乱数は ``ctx.seed``。
+- **基底は宣言された入力分布に対して正規直交** (D-28)。``ipc()`` が入口で
+  1度だけ ``InputMeasure`` に畳み、未対応な組は構築時点で ``ValueError``。
 
 回帰と容量の計算は ``_capacity`` の共有カーネルにあり、MC と1本の実装を共有する。
 設定値は ``DiagnosticContext`` ではなく既定値つきキーワード引数 ``cfg`` で渡す (D-15)。
@@ -410,19 +404,11 @@ def count_targets(cfg: IpcConfig) -> int:
     ``max_targets`` の検査に到達する前にメモリと時間が尽きる。組合せ数は
     ``Σ_d Σ_m C(K_d, m) * C(d-1, m-1)`` で閉じるので先に数える。
 
-    F-03-3-018 (CWE-400): ``count_targets`` / ``enumerate_targets`` は
-    ``__all__`` の公開関数だが ``ipc()`` の外から直接呼ぶと ``_validate_config``
-    を経由しないため、``max_degrees`` / ``max_variables`` の上限が一切かから
-    ない (実測: ``max_delay_by_degree=(10**6,)*1600``, ``max_variables=1600``
-    を ``count_targets`` に直接渡すと 107.89s)。先頭で
-    ``_validate_combinatorial_bounds`` を呼び、``enumerate_targets`` は
-    ``count_targets`` 経由で自動的に保護される。組合せ計算量に無関係な
-    ``max_targets`` / ``heatmap_cells`` の検査 (F-03-1-016) は含めない
-    (``count_targets`` を目標数の下見に使う既存の呼び出し側の意味を変えない
-    ため。それらは ``ipc()`` の ``_validate_config`` 経由で別途効く)。下記の
-    早期打ち切り自体は comb と数学的に等価な純粋な最適化で、**検証を通った
-    cfg にのみ有効な防御ではなく、検証前の呼び出しからも保護する** ように
-    なった (この関数自身が検証するため)。
+    公開関数なので ``ipc()`` の外から直接呼ばれても上限がかかるよう、先頭で
+    ``_validate_combinatorial_bounds`` を呼ぶ (F-03-3-018 / CWE-400)。
+    ``enumerate_targets`` は ``count_targets`` 経由で自動的に保護される。
+    組合せ計算量に無関係な ``max_targets`` / ``heatmap_cells`` の検査
+    (F-03-1-016) はここには含めず、``ipc()`` の ``_validate_config`` が持つ。
     """
     _validate_combinatorial_bounds(cfg)
     total = 0
@@ -581,22 +567,16 @@ def _picked_target_blocks(
 ) -> Iterator[FloatArray]:
     """代表目標 ``picked`` を**確保軸**の幅でブロック化して生成する (D-33)。
 
-    F-03-2-015: ``n_surrogate_targets`` には上限が無いため ``len(picked)`` が
-    大きくなりうる (実測: K=400, T=1e6, ``n_surrogate_targets=400``,
-    ``chunk_size=1`` で base 単独 peak RSS 3.23GB)。一度に実体化する列数を
-    128 MiB 予算で縛る必要がある。
+    ``n_surrogate_targets`` に上限が無く ``len(picked)`` は大きくなりうるので、
+    一度に実体化する列数を 128 MiB 予算で縛る (F-03-2-015)。
 
     幅を決めるのは ``rows.block_width(len(picked))`` であり
-    **``cfg.chunk_size`` を読まない** —— ここは1回の solve に畳む列数
-    (性能軸) ではなく「一度に何列を実体化してよいか」(確保軸) の話で、
-    性能上の意味を持たない。旧実装は性能軸の実効値
-    (``solve_width(cfg.chunk_size)``) をそのまま確保幅に使っており、
-    運用者の性能ノブが確保上限を動かしていた
+    **``cfg.chunk_size`` を読まない** —— ここは確保軸で、運用者の性能ノブが
+    確保上限を動かしてはならない
     (``test_representative_blocks_do_not_follow_chunk_size``)。
 
-    分位点計算は呼び出し側 (``surrogate_threshold``) に一本化するため、
-    ここではブロック (``(T_eff, M_i)``) を生成するだけで容量やしきい値には
-    触れない (F-03-3-002)。
+    分位点計算は呼び出し側 (``surrogate_threshold``) に一本化するため、ここは
+    ブロックを生成するだけで容量やしきい値には触れない (F-03-3-002)。
     """
     n_samples = rows.n_samples
     width = rows.block_width(len(picked))
