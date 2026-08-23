@@ -1182,7 +1182,14 @@ def test_legends_are_opaque_so_lines_do_not_show_through() -> None:
 
 # --- FIG-1: タイトルは結論文 / FIG-5: 手法名は対応表を通す (D-111) --------------
 
-QUESTION_ENDINGS: tuple[str, ...] = ("か", "か。", "?", "？", "か?", "か？")
+QUESTION_ENDINGS: tuple[str, ...] = (
+    "か",
+    "か。",
+    "?",
+    "\uff1f",  # 全角の疑問符。字面が半角と紛らわしいのでコードポイントで書く
+    "か?",
+    "か\uff1f",
+)
 """疑問形と判定する語尾 (FIG-1)。
 
 **「結論文か」は機械で判定できないので、疑問形の禁止という下限だけを置く。**
