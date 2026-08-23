@@ -1,0 +1,55 @@
+{
+  "cases": {
+    "01_what_is_rc": {
+      "comparison.csv": "sha256:566057abfa06e83816cadc031b1440045b255eaed549ffc7051dea58970581c0",
+      "comparison_summary.csv": "sha256:42adbd744790cf55b01102aa8242e8e4412af072192c14055246266c3924184d",
+      "fig_comparison.png": "sha256:d7684f4233dfce748ee838f90bbcf452493576c282c52a55614aac3521a3a6ca",
+      "fig_state_space.png": "sha256:c5764e8239fd17662b68ac31ba6218f68b7e161ccef706f7e67936a4ac9a0304",
+      "meta.json": "sha256:36786c6fae76325d12626b05da3bde583a6576f7a7dce9922cac33237a3ca008"
+    },
+    "02_esp_and_dynamics": {
+      "esp_diagnostics.csv": "sha256:ff0358f71b1fb12d325cba456bfdd311cb7c9af133832c3bba349ebba0a91c1b",
+      "esp_threshold_sensitivity.csv": "sha256:85550c59e7cdf11aa3e877ab718444ca0b4e16726d66d17d37fc0d3808301731",
+      "fig_esp_decay.png": "sha256:ac5d475227de6d4e528e7b499f410d2978f585967613654c9d5a4db5419ee18d",
+      "fig_esp_map.png": "sha256:21d0d0ee7843b08209b28d8c135245c6ddf772e6fdac993c5be2d473a47870da",
+      "fig_leak_timescale.png": "sha256:dff625a72c84a7de9088d405c04884b58fa6855ebcaf4c9a3827ab9b7bab3409",
+      "fig_washout_sensitivity.png": "sha256:d0cc8fab54fb5223602a45ae95e8bec0a2a79c116ba611b7b32e8e315508c3f5",
+      "meta.json": "sha256:0b7665b3b90705d3089ba61b6a6fcb111b8a086c8ef229b190dbe4567045c8ca",
+      "washout_sensitivity.csv": "sha256:4a2c44d4e21eb798b92c89388cabe93d263db5c760c85fe89bef1f5067448a4d"
+    },
+    "03_capacity": {
+      "capacity.csv": "sha256:2fb5a5902244f5857ff734e3c440f43e4444bbf788587fe7f1a7a0dfb81499a6",
+      "capacity_length.csv": "sha256:bc74333a05241b03987e5f67955b0806a61c95e31f13041caf099443637a27ca",
+      "capacity_profile.csv": "sha256:b196cc0466746c6738592ac9141f20bbe35c82851a8596a5160029a887cbff4a",
+      "fig_ipc_conservation.png": "sha256:d19be94d248f8a037a756cc058942a3510286397205992375b86af71b17b09a3",
+      "fig_ipc_profile.png": "sha256:090a3abc73fde65b5941c905373de11904c12eb2b0c40773b075ab47892a6cea",
+      "fig_mc_sweep.png": "sha256:b60ebd77ca5a083808ac2c1efc1502558a31d11457c6adc9cd9dd78e82c77686",
+      "fig_memory_nonlinearity.png": "sha256:d81c1ab8f7530dc69a43fffc8aa53a9aad314db201af5ea3a2d535834d1e66c0",
+      "fig_narma10_control.png": "sha256:8e581f5c312774e104997e17544fa0d2795e51ef5870b222f8e11fa81d50ac1f",
+      "meta.json": "sha256:23b38d86c55c6ebaf84695402ba5cfe14cfdf8280f7f81219f05d63a6c8304cc",
+      "narma10.csv": "sha256:58020fd3299314e0cbb53690bf0b4de4f2480f38700e55b6948dd5264283fc9d"
+    },
+    "04_chaotic_freerun": {
+      "capacity.csv": "sha256:5bf30fe94900fde5114ec5a1207e3177a15001e057708e66020f3771b95de51e",
+      "fig_freerun_attractor.png": "sha256:34d3cf73c1ed11958ba3c7989f1c12576bfaaf28b169627905a091ec7c99e451",
+      "fig_freerun_stats.png": "sha256:a67840262d5316c5a3c06eb081dc25c3e849dba108695230915dfa82b52b8ee9",
+      "fig_onestep.png": "sha256:a79224d384d9c4e1d4da306285c42195815c8f6177629f80ce0fc5c7ead04227",
+      "fig_stability_map.png": "sha256:5a7c669aef82b699f3b72bbf06c1bde88c740fd9c1b9ebffff129d5f1188bc2a",
+      "fig_valid_time.png": "sha256:2e5d29bdebbb5e490e4d6b5babb9acfc21830e06e5d25dfa58fb956558fde5a9",
+      "freerun.csv": "sha256:a64527beaee767d8ecf64a732fca2fec38eca3d3dce3ae5c108d8e54638a6cc2",
+      "freerun_profile.csv": "sha256:f6d53207fde0eead81e7d57532fe855f48a0d6aef10a588a3ba5ed1257f118e2",
+      "meta.json": "sha256:9236116bd4eda0a53c393b9296768baa01b7b9181123ff78b949c138ebfb6a96",
+      "onestep.csv": "sha256:d20b164c1279eeac828c6535883690abf56102c777c5dbb3de78e163e8475737",
+      "stability.csv": "sha256:bd25566a356e0c96b320426ff79d15519bfaa3d0c6d6a3e74fafc5cb1b665939"
+    }
+  },
+  "fingerprint": {
+    "cjk_font": "Hiragino Sans",
+    "matplotlib_version": "3.11.1",
+    "numpy_version": "2.5.2",
+    "package_version": "0.1.0",
+    "platform": "macOS-26.3-arm64-arm-64bit",
+    "python_version": "3.12.5",
+    "scipy_version": "1.18.0"
+  }
+}
