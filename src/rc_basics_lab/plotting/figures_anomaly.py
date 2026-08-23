@@ -63,7 +63,10 @@ from rc_basics_lab.experiment.anomaly_score import (
     PERSISTENCE_RESIDUAL,
     RANDOM_CONTROL,
 )
+from rc_basics_lab.plotting.labels import KIM_2022, cited_measurement
 from rc_basics_lab.plotting.style import (
+    REFERENCE_COLOR,
+    REFERENCE_DASHES,
     StyleContext,
     add_provenance,
     new_figure,
@@ -167,6 +170,31 @@ def _legend_with_auprc(
     """凡例に AUPRC の平均±標準偏差と印を出す (図だけで数が読めるようにする)。"""
     label = method_label(method, style, mark=aggregate.distinguishable)
     return f"{label}: AUPRC {aggregate.auprc_mean:.3f} +- {aggregate.auprc_sd:.3f}"
+
+
+RANDOM_SCORE_PLAIN_F1: tuple[float, float] = (0.080, 0.227)
+"""乱数スコアの**素の** F1 の実測範囲 (D-103)。
+
+一次資料は Kim, Choi, Choi, Lee, Yoon (2022)
+*Towards a Rigorous Evaluation of Time-series Anomaly Detection*, AAAI-22。
+Table 2 の Case 1 (Random anomaly score) の F1 列が
+SWaT 0.216 / WADI 0.109 / MSL 0.190 / SMAP 0.227 / SMD 0.080 で、
+その最小と最大がこの範囲である。
+
+**この図の F1 は point-adjust を通していない** (D-54 / D-55) ので、
+比べる相手は同論文の ``F1PA`` 列 (0.804〜0.969) ではなく**素の F1 列**である。
+取り違えると「乱数と同程度」を「最先端と同程度」と読むことになる。
+"""
+
+RANDOM_SCORE_F1_CONDITIONS: tuple[str, str] = (
+    "多変量5データセット (SWaT/WADI/MSL/SMAP/SMD)・PA なし",
+    "5 multivariate datasets (SWaT/WADI/MSL/SMAP/SMD), without PA",
+)
+"""参照値の**動作点** (D-97 / D-103)。
+
+こちらは MGAB / UCR の単変量で異常率も違うため、**同じ条件の再現ではない**。
+比べているのは「乱数スコアが素の F1 でどのあたりに出るか」という水準である。
+"""
 
 
 def plot_pr_curves(
@@ -306,7 +334,10 @@ def plot_score_timeline(
     ]
     spans = _anomaly_spans(rows)
     with rc_context_for(style):
-        figure = new_figure(9.0, 1.5 * len(methods) + 1.2)
+        # **縦長にしない** (FIG-13)。手法を縦に積むのは時間軸を共有する
+        # ためで、そこは変えない。1枚あたりの高さを詰め、幅を広げて
+        # 上限内 (1.0〜3.2 : 1) に収める。0.87 : 1 では画面に入らなかった。
+        figure = new_figure(11.0, 1.3 * len(methods) + 1.2)
         axes = np.atleast_1d(figure.subplots(len(methods), 1, sharex=True))
         for axis, method in zip(axes, methods, strict=True):
             indices, scores = _timeline_series(rows, method)
@@ -408,6 +439,23 @@ def plot_threshold_tradeoff(
                     markersize=13.0,
                     linestyle="none",
                 )
+        # 帯にすると縦軸が引き伸ばされて実測値が潰れるので**上端の1本**だけ引く。
+        low, high = RANDOM_SCORE_PLAIN_F1
+        axes[1].axhline(
+            high,
+            color=REFERENCE_COLOR,
+            dashes=REFERENCE_DASHES[0],
+            linewidth=1.2,
+            label=cited_measurement(
+                style.label(
+                    f"乱数スコアの素の F1 の上端 {high:.2f} ({low:.2f}〜)",
+                    f"upper end of a random score's plain F1: {high:.2f}"
+                    f" (from {low:.2f})",
+                ),
+                KIM_2022,
+                style.label(*RANDOM_SCORE_F1_CONDITIONS),
+            ),
+        )
         optimal = [
             row.f1_test_optimal
             for row in rows

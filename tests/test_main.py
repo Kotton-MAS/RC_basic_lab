@@ -48,12 +48,12 @@ ridge:
   alpha_grid: [1.0e-4, 1.0e-1]
   n_lags_grid: [1, 4]
 mackey_glass:
-  length: 300
+  length: 500
   integration_burn_in: 50
 delay_parity:
   n_bits: 2
   delay: 1
-  length: 300
+  length: 500
 esn_mackey_glass:
   n_units: 20
   density: 0.3

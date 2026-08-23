@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib.axes import Axes
 
+from rc_basics_lab.experiment.horizon import HorizonRow
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.experiment.state_space import (
     DELAY_EMBEDDED_INPUT,
@@ -29,6 +30,7 @@ from rc_basics_lab.experiment.state_space import (
     StateSpaceReport,
 )
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
+from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
@@ -43,6 +45,7 @@ from rc_basics_lab.plotting.style import (
 )
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
+from rc_basics_lab.plotting.waveforms import WAVEFORM_OFFSET
 from rc_basics_lab.types import FloatArray
 
 REFERENCE_NRMSE = 1.0
@@ -136,6 +139,24 @@ def _annotate_means(axis: Axes, positions: FloatArray, means: FloatArray) -> Non
         )
 
 
+_SHORT_TASK_LABELS: dict[str, tuple[str, str]] = {
+    "mackey_glass": ("Mackey-Glass", "Mackey-Glass"),
+    "delay_parity": ("遅延パリティ", "delay parity"),
+}
+"""パネル見出し用の短い課題名。
+
+``_TASK_LABELS`` は式まで含むので、結論文と並べると見出しが軸幅を超える
+(実測: 遅延パリティのパネルで隣まではみ出した)。**軸ラベルは式つき、
+見出しは短い名前**と使い分ける。
+"""
+
+_TASK_MARKERS: tuple[str, ...] = ("o", "s", "^", "D")
+"""課題を分けるマーカー。**色は手法が持っている** (FIG-5) ので形で分ける。"""
+
+HORIZON_TASK_LABEL: tuple[str, str] = ("Mackey-Glass", "Mackey-Glass")
+"""波形パネルに描く課題の表示名 (``HORIZON_TASK`` に対応)。"""
+
+
 def _style_task_axis(
     axis: Axes,
     task: str,
@@ -209,38 +230,159 @@ def _plot_task_panel(
     )
 
 
+def _draw_scalar_panel(
+    axis: Axes,
+    tasks: Sequence[str],
+    methods: Sequence[str],
+    stats: Mapping[tuple[str, str], Aggregate],
+    style: StyleContext,
+) -> None:
+    """全課題の NRMSE を **1 つの軸に**まとめる (FIG-12)。
+
+    かつては課題ごとに1パネルだった。**点は課題あたり 3 個しかなく、両方の
+    パネルに同じ基準線と同じ凡例が2回出ていた。** 課題は横位置のずらしで
+    分ける (色は手法の固定色 FIG-5 のままにする)。
+
+    Args:
+        axis: 描画先。
+        tasks: 課題名の並び。
+        methods: 手法名の並び。
+        stats: ``aggregate_nrmse`` の出力。
+        style: 配色・言語。
+    """
+    positions = np.arange(len(methods), dtype=np.float64)
+    lowest = float("inf")
+    highest = 0.0
+    for index, task in enumerate(tasks):
+        means, lower, stds = _compute_errorbars(stats, task, methods)
+        shift = 0.16 * (index - 0.5 * (len(tasks) - 1))
+        axis.errorbar(
+            positions + shift,
+            means,
+            yerr=np.vstack([lower, stds]),
+            fmt="none",
+            capsize=5,
+            color="#666666",
+        )
+        # 課題はマーカーの形で分ける。色は手法の固定色 (FIG-5) が持っている。
+        marker = _TASK_MARKERS[index % len(_TASK_MARKERS)]
+        axis.scatter(
+            positions + shift,
+            means,
+            c=[method_color(method) for method in methods],
+            marker=marker,
+            s=70,
+            zorder=3,
+        )
+        # 凡例は**無彩色の代理**にする。実点の色をそのまま凡例に出すと、
+        # 先頭の手法の色が「その課題の色」に見えてしまう (色は手法の意味)。
+        axis.scatter(
+            [],
+            [],
+            c="#666666",
+            marker=marker,
+            s=70,
+            label=_lookup(_TASK_LABELS, task, style),
+        )
+        lowest = min(lowest, float(np.min(means - lower)))
+        highest = max(highest, float(np.max(means + stds)))
+    _draw_reference_line(axis, style)
+    axis.set_yscale("log")
+    axis.set_ylim(lowest / 3.0, max(highest, REFERENCE_NRMSE) * 3.0)
+    axis.set_xticks(positions)
+    axis.set_xticklabels([_lookup(METHOD_LABELS, method, style) for method in methods])
+    axis.set_xlim(-0.5, len(methods) - 0.5)
+    n_replicates = max(stats[(tasks[0], method)].n for method in methods)
+    axis.set_ylabel(
+        style.label(
+            f"NRMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
+            f"NRMSE (test split, mean ± s.d. of {n_replicates} replicates)",
+        )
+    )
+    axis.set_title(style.label("課題別の誤差", "error by task"))
+    axis.legend(loc="best", fontsize=8)
+
+
 def plot_comparison(
-    rows: Sequence[ResultRow], path: Path, *, style: StyleContext
+    rows: Sequence[ResultRow],
+    path: Path,
+    *,
+    waveforms: Sequence[WaveformPanel],
+    horizon_rows: Sequence[HorizonRow],
+    style: StyleContext,
 ) -> Path:
-    """3手法の NRMSE 比較図を書く。
+    """**01 の主図**: 手法の誤差・予測波形・自走 84 ステップ先を1枚に並べる。
+
+    かつては3枚の figure だった (``fig_comparison`` / ``fig_waveform`` /
+    ``fig_horizon``)。FIG-12 により1枚へ畳んである —— スカラー比較は
+    課題あたり 3 点、自走は 5 点しかなく、**単独の figure では面積の大半が
+    空白**で、``fig_horizon`` では凡例が参照線と重なって読めなかった。
+
+    3 つは「1ステップ先では差が小さい → 波形でもほぼ重なる → 自走させると
+    桁で開く」という**一続きの主張**なので、並べると往復が要らなくなる。
 
     Args:
         rows: ``comparison.csv`` と同じ長形式の行。
         path: 出力先 PNG。
+        waveforms: 課題ごとの波形パネル。**2 課題とも渡す** ——
+            片方だけだと「差が見えない側」しか載らない (FIG-11 追加図2)。
+        horizon_rows: ``horizon.csv`` と同じ行。右のパネルに使う。
         style: ``setup_style()`` の戻り値 (ラベル言語の決定に使う)。
 
+    Returns:
+        書き出した PNG のパス。
+
     Raises:
-        ValueError: ``rows`` が空の場合。
+        ValueError: ``rows`` が空、または ``waveforms`` が空の場合。
     """
+    from rc_basics_lab.plotting.figures_horizon import (
+        draw_horizon_panel,
+        horizon_headline,
+        horizon_reference_note,
+    )
+    from rc_basics_lab.plotting.waveforms import (
+        draw_prediction_waveform,
+        waveform_headline,
+    )
+
     require_rows(rows)
+    if not waveforms:
+        raise ValueError("waveforms が空です (課題ごとに1枚必要です)")
     tasks = _unique(row.task for row in rows)
     methods = _unique(row.method for row in rows)
     stats = aggregate_nrmse(rows)
 
     with rc_context_for(style):
-        figure = _new_figure(4.2 * len(tasks), 4.0)
-        axes = figure.subplots(1, len(tasks), squeeze=False)
-        positions = np.arange(len(methods), dtype=np.float64)
-        for index, task in enumerate(tasks):
-            _plot_task_panel(
-                axes[0][index],
-                task,
-                methods,
-                positions,
-                stats,
-                style,
-                show_ylabel=index == 0,
+        # **1段に並べない**。パネル4枚を横一列にすると 3.57 : 1 で D-108 の
+        # 上限を超える。2段に折ると 1.44 : 1 に収まる。
+        figure = _new_figure(13.0, 9.0)
+        axes = np.atleast_1d(figure.subplots(2, 2)).reshape(-1)
+        _draw_scalar_panel(axes[0], tasks, methods, stats, style)
+        # **課題ごとに長さが違う** (D-107)。最後のパネルの長さだけを脚注に
+        # 書くと、もう一方のパネルの条件を偽って書くことになる。
+        windows: list[str] = []
+        for index, panel in enumerate(waveforms):
+            axis = axes[1 + index]
+            drawn = draw_prediction_waveform(
+                figure, axis, panel.truth, panel.predictions, style
             )
+            windows.append(
+                f"{panel.task} {WAVEFORM_OFFSET}..{WAVEFORM_OFFSET + drawn.length}"
+            )
+            label = _lookup(_SHORT_TASK_LABELS, panel.task, style)
+            # 見出しは**残差から導く** (FIG-1 / C-1)。「どう見えるか」は
+            # 疑問形で、図が何を示したかを言っていない。
+            drawn.top.set_title(
+                f"{label}: {waveform_headline(panel.truth, panel.predictions, style)}",
+                fontsize=9,
+            )
+        logs = draw_horizon_panel(axes[1 + len(waveforms)], horizon_rows, style)
+        axes[1 + len(waveforms)].set_title(
+            style.label("自走 84 ステップ先の誤差", "error 84 steps into the free run")
+        )
+        # 余った枠は消す。空の軸を残すと「測ったが何も無かった」に見える。
+        for axis in axes[2 + len(waveforms) :]:
+            axis.set_axis_off()
         figure.suptitle(
             style.label(
                 "実験 1: 非線形な遅延パリティを解けるのは ESN だけ"
@@ -249,7 +391,25 @@ def plot_comparison(
                 " (identical splits and alpha grid)",
             )
         )
-        conditions = f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}"
+        # 結論文と出典は**注記に集約する**。パネル見出しに入れると、
+        # 幅が軸を超えて隣のパネルへかぶった (実測: FIG-14 と同じ症状)。
+        figure.supxlabel(
+            style.label(
+                f"自走のパネル: {horizon_headline(logs, style)}。"
+                f"{horizon_reference_note(style)}\n"
+                "注: 波形の区間もレプリケートも固定である (D-107)。"
+                "「よく当たっている区間」を選べる図にしない。",
+                f"Free-run panel: {horizon_headline(logs, style)}."
+                f" {horizon_reference_note(style)}\n"
+                "Note: the waveform window and replicate are fixed (D-107)."
+                " The figure must not let anyone pick a favourable window.",
+            ),
+            fontsize=8,
+        )
+        conditions = (
+            f"n_train = {rows[0].n_train}, n_test = {rows[0].n_test}, "
+            f"waveform steps = {' / '.join(windows)}"
+        )
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
 

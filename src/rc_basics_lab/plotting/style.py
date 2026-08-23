@@ -326,7 +326,15 @@ def rc_params_for(style: StyleContext) -> dict[str, object]:
         "axes.spines.top": False,
         "axes.spines.right": False,
         "font.size": 10,
-        "legend.frameon": False,
+        # **枠を出し、背景を不透明にする** (FIG-14)。frameon=False だと
+        # 背景そのものが無く、掃引図では凡例の文字の下を線が通る
+        # (実測: fig_esp_decay で 6 本)。位置を動かしても、線が軸全体に
+        # 渡る図では逃げ場が無いので、**読めることのほうを保証する**。
+        "legend.frameon": True,
+        "legend.framealpha": 1.0,
+        "legend.facecolor": "white",
+        "legend.edgecolor": "#cccccc",
+        "legend.fancybox": False,
     }
     if style.cjk_font is not None:
         sans_serif = list(matplotlib.rcParams["font.sans-serif"])
@@ -366,6 +374,34 @@ def require_rows(rows: Sequence[object]) -> None:
         raise ValueError("rows が空です")
 
 
+#: 標準の図サイズ [インチ] (FIG-13 / D-108)。**作図側はここから選ぶ。**
+#:
+#: 実測 (2026-08-22): 23 枚が 21 種類の比にばらけ、0.87 : 1 から 4.03 : 1 まで
+#: あった。記事に順に並べたとき、図ごとに幅と高さが変わって視線のリズムが崩れる。
+FIGURE_SIZES: dict[str, tuple[float, float]] = {
+    #: 1課題・1主張の図。
+    "single": (7.2, 5.4),
+    #: 2〜3パネル横並び (比較・掃引)。
+    "wide": (11.0, 6.2),
+    #: 帯状 (多パネル横並び・ヒートマップ列)。
+    "banner": (15.0, 5.0),
+}
+
+MAX_ASPECT_RATIO = 3.2
+"""図の横縦比の上限 (FIG-13)。
+
+``banner`` の 3 : 1 に丸め誤差ぶんの余裕を足した値。これを超えるなら
+**パネルを2段に折る** —— 実測で 4.03 : 1 だった ``fig_stability_map`` が該当する。
+"""
+
+MIN_ASPECT_RATIO = 1.0
+"""図の横縦比の下限 (FIG-13)。
+
+縦長 (1 : 1 未満) は使わない。実測で 0.87 : 1 だった ``fig_score_timeline`` は
+横に折るか系列を減らす。
+"""
+
+
 def new_figure(width: float, height: float) -> Figure:
     """constrained layout の ``Figure`` を作る (4本の作図モジュール共通の規律)。
 
@@ -396,11 +432,14 @@ __all__ = [
     "DELAY_LINE_OLS_METHOD",
     "ESN_METHOD",
     "FIGURE_DPI",
+    "FIGURE_SIZES",
     "FOOTNOTE_COLOR",
     "FOOTNOTE_FONTSIZE",
     "FOOTNOTE_OFFSET",
     "LINEAR_METHOD",
+    "MAX_ASPECT_RATIO",
     "METHOD_COLORS",
+    "MIN_ASPECT_RATIO",
     "REFERENCE_COLOR",
     "REFERENCE_DASHES",
     "REFERENCE_LINEWIDTH",

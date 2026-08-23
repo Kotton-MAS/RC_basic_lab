@@ -31,13 +31,13 @@ from pathlib import Path
 
 from rc_basics_lab.config import Chaos04Config
 from rc_basics_lab.diagnostics.base import DiagnosticResult
-from rc_basics_lab.experiment.attractor import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.experiment.capacity import CapacityRow
 from rc_basics_lab.experiment.capacity_pipeline import write_capacity_csv
 from rc_basics_lab.experiment.freerun import (
     FREERUN_CSV,
     FREERUN_PROFILE_CSV,
     ONESTEP_CSV,
+    FreeRunEvaluation,
     FreeRunResults,
     FreeRunRow,
     estimate_lorenz_lyapunov,
@@ -52,7 +52,7 @@ from rc_basics_lab.experiment.report import (
     DataclassSummaryMixin,
     write_meta_for,
 )
-from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.runner import ESN_METHOD, ResultRow
 from rc_basics_lab.experiment.stability import (
     CAPACITY_CSV,
     STABILITY_CSV,
@@ -62,12 +62,14 @@ from rc_basics_lab.experiment.stability import (
     valid_time_by_regime,
     write_stability_csv,
 )
+from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.tasks.chaotic import sampling_interval
+from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
 
-FIG_ONESTEP = "fig_onestep.png"
 FIG_FREERUN_ATTRACTOR = "fig_freerun_attractor.png"
+FIG_FREERUN_TIMELINE = "fig_freerun_timeline.png"
 FIG_VALID_TIME = "fig_valid_time.png"
 FIG_STABILITY_MAP = "fig_stability_map.png"
 FIG_FREERUN_STATS = "fig_freerun_stats.png"
@@ -78,8 +80,8 @@ FREERUN_ARTIFACTS: tuple[str, ...] = (
     FREERUN_PROFILE_CSV,
     STABILITY_CSV,
     CAPACITY_CSV,
-    FIG_ONESTEP,
     FIG_FREERUN_ATTRACTOR,
+    FIG_FREERUN_TIMELINE,
     FIG_VALID_TIME,
     FIG_STABILITY_MAP,
     FIG_FREERUN_STATS,
@@ -173,6 +175,71 @@ def _log_timing(timing: SectionTiming, wall_time_s: float) -> None:
     )
 
 
+def _timeline_source(results: FreeRunResults) -> FreeRunEvaluation | None:
+    """時系列図に使う 1 本を選ぶ (D-107)。
+
+    **選び方を固定する**: Lorenz の ESN、レプリケートは
+    ``WAVEFORM_REPLICATE``。うまくいった 1 本を選べる図にしない。
+
+    ``plotting`` は関数内 import にする (D-53)。
+    """
+    from rc_basics_lab.plotting.waveforms import WAVEFORM_REPLICATE
+
+    for evaluation in results.evaluations:
+        row = evaluation.row
+        if (
+            row.task == "lorenz"
+            and row.method == ESN_METHOD
+            and row.replicate == WAVEFORM_REPLICATE
+        ):
+            return evaluation
+    return None
+
+
+def _timeline_inputs(
+    results: FreeRunResults,
+) -> tuple[FloatArray, FloatArray, str, float, float]:
+    """時系列図に渡す (真値, 自走, 手法, 有効ステップ, Lyapunov 時間) を組む。
+
+    ``plotting`` の型に触れないのは D-53 のためである。図を描くのは
+    呼び出し側で、ここは**選び方と単位だけ**を決める。
+
+    Args:
+        results: 4-B の自走の結果。
+
+    Returns:
+        ``plot_freerun_timeline`` にそのまま渡せる 5 つ組。
+
+    Raises:
+        ValueError: 固定した 1 本 (lorenz / esn) が見つからない場合。
+    """
+    evaluation = _timeline_source(results)
+    if evaluation is None:
+        raise ValueError("時系列図に使う自走が見つかりません (lorenz / esn)")
+    # **truth_aligned** を使う (truth_series は系列全体で長さが合わない)。
+    # 自走は free_run_steps ぶん回るが真値は評価区間ぶんしか無いので、
+    # 短いほうに合わせる (実測: truth 2000 / predicted 20000)。
+    trajectory = evaluation.trajectory[:, 0]
+    truth = evaluation.truth_aligned[:, 0]
+    length = int(min(trajectory.size, truth.size))
+    row = evaluation.row
+    # **valid_time はステップではなく時間単位である。** 縦線はステップ軸に
+    # 引くので valid_time_steps を使う (実測: 混同して 6 ステップ目に線が出た
+    # —— 図の上では ~700 ステップで外れており、そこで気づいた)。
+    steps_per_lyapunov = (
+        row.valid_time_steps / row.valid_time_lyapunov
+        if row.valid_time_lyapunov
+        else float("nan")
+    )
+    return (
+        truth[:length],
+        trajectory[:length],
+        row.method,
+        float(row.valid_time_steps),
+        steps_per_lyapunov,
+    )
+
+
 def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutputs:
     """実験 4-A / 4-B / 4-C / 4-D を実行し、CSV5枚・図5枚・meta.json を書く。
 
@@ -193,10 +260,10 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
     from rc_basics_lab.plotting.figures_freerun import (
         plot_freerun_attractor,
         plot_freerun_stats,
-        plot_onestep,
-        plot_stability_map,
         plot_valid_time,
     )
+    from rc_basics_lab.plotting.figures_freerun_time import plot_freerun_timeline
+    from rc_basics_lab.plotting.figures_stability import plot_stability_map
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -214,6 +281,7 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
     figures_started = time.perf_counter()
     # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
     style = setup_style(commit=git_commit())
+    truth, trajectory, method, valid_steps, lyapunov_time = _timeline_inputs(freerun)
     paths = (
         write_onestep_csv(onestep_rows, out_dir / ONESTEP_CSV),
         write_freerun_csv(freerun.rows, out_dir / FREERUN_CSV),
@@ -222,11 +290,26 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
         # 列順は 03 の CAPACITY_CSV_COLUMNS (= CapacityRow の宣言順) をそのまま
         # 使う。04 専用の書き出しを作ると列順の単一の真実が2つになる。
         write_capacity_csv(stability.capacity_rows, out_dir / CAPACITY_CSV),
-        plot_onestep(onestep_rows, out_dir / FIG_ONESTEP, style=style),
+        # FIG-12: 4-A の 6 点は単独図をやめ、位相図と同じ figure のパネルへ。
         plot_freerun_attractor(
-            freerun.profile_rows, out_dir / FIG_FREERUN_ATTRACTOR, style=style
+            freerun.profile_rows,
+            out_dir / FIG_FREERUN_ATTRACTOR,
+            onestep_rows=onestep_rows,
+            style=style,
         ),
         plot_valid_time(freerun.rows, out_dir / FIG_VALID_TIME, style=style),
+        # FIG-11 追加図4 (D-107)。位相図と valid time はあるのに
+        # **時間軸の図が無かった** —— 「いつ外れるか」は時間軸でしか見えない。
+        plot_freerun_timeline(
+            truth,
+            trajectory,
+            out_dir / FIG_FREERUN_TIMELINE,
+            method=method,
+            task_label=("Lorenz", "Lorenz"),
+            valid_steps=valid_steps,
+            lyapunov_time=lyapunov_time,
+            style=style,
+        ),
         plot_stability_map(
             stability.rows,
             stability.capacity_rows,
@@ -334,7 +417,6 @@ __all__ = [
     "CAPACITY_NOTE",
     "FIG_FREERUN_ATTRACTOR",
     "FIG_FREERUN_STATS",
-    "FIG_ONESTEP",
     "FIG_STABILITY_MAP",
     "FIG_VALID_TIME",
     "FREERUN_ARTIFACTS",

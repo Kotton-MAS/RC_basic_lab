@@ -29,9 +29,15 @@ METHOD_LABELS: dict[str, tuple[str, str]] = {
 """
 
 JAEGER_2002 = "Jaeger 2002"
+JAEGER_HAAS_2004 = "Jaeger & Haas 2004"
 DAMBRE_2012 = "Dambre 2012"
 GOUDARZI_2014 = "Goudarzi et al. 2014"
 VISWANATH_1998 = "Viswanath 1998"
+VINCKIER_2015 = "Vinckier et al. 2015"
+APPELTANT_2011 = "Appeltant et al. 2011"
+GAUTHIER_2021 = "Gauthier et al. 2021"
+KIM_2022 = "Kim et al. 2022"
+YILDIZ_2012 = "Yildiz et al. 2012"
 """図の中に書く出典 (著者 年)。"""
 
 MC_BOUND_SOURCE = f"{JAEGER_2002} / {DAMBRE_2012}"
@@ -41,10 +47,14 @@ IPC_BOUND_SOURCE = DAMBRE_2012
 """情報処理容量の保存則 ``IPC_total <= N`` の出典。"""
 
 SOURCE_UNIDENTIFIED: tuple[str, str] = ("原典未特定", "source unidentified")
-"""出典を特定できていない参照値に付す印 (survey 未解決1)。ja / en の対。
+"""出典を特定できていない参照値に付す印。ja / en の対。
 
 **空欄にしない。** 「出典が無い」も情報であり、黙って値だけ引くと、後から
 出典が違っていたときに図の側から辿れない。
+
+NARMA10 の参照値 (0.16 / 0.107) は D-100 で原典を特定したので、この印は
+**現在どの参照線にも使われていない**。次に出典不明の値を引くときのために
+残してある (``cited_measurement`` の引数として渡せる形)。
 """
 
 
@@ -124,14 +134,20 @@ def label(ja: str, en: str, *, cjk: bool) -> str:
 
 
 __all__ = [
+    "APPELTANT_2011",
     "DAMBRE_2012",
+    "GAUTHIER_2021",
     "GOUDARZI_2014",
     "IPC_BOUND_SOURCE",
     "JAEGER_2002",
+    "JAEGER_HAAS_2004",
+    "KIM_2022",
     "MC_BOUND_SOURCE",
     "METHOD_LABELS",
     "SOURCE_UNIDENTIFIED",
+    "VINCKIER_2015",
     "VISWANATH_1998",
+    "YILDIZ_2012",
     "cited_bound",
     "cited_measurement",
     "label",

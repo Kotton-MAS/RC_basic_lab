@@ -14,6 +14,7 @@ README を自動生成する必要はない —— 「どこから引いた数�
 
 from __future__ import annotations
 
+import ast
 import csv
 import json
 import math
@@ -702,8 +703,9 @@ def test_readme_claims_the_same_experiments_it_documents() -> None:
     documented = {
         match.group(1) for match in re.finditer(r"^## 実験(\d{2})", text, re.MULTILINE)
     }
-    # 01 は「3コマンドで再現する」の節が兼ねているので、節見出しが無くても実装済み。
-    documented.add("01")
+    # **例外は無い。** かつては 01 だけ節見出しが無く、ここで documented に
+    # 足して回避していた。読者から見ると 01 だけ他と違う探し方になるうえ、
+    # 例外を持つ guard は「例外を1つ足せば通る」形になる。
     claimed = re.search(r"記事(\d{2})〜(\d{2}) の全範囲", text)
     assert claimed, (
         "README 冒頭に「記事NN〜MM の全範囲を実装している」の記述がありません。"
@@ -714,3 +716,77 @@ def test_readme_claims_the_same_experiments_it_documents() -> None:
         f"README 冒頭が主張する範囲 {sorted(span)} と、"
         f"実際に節がある実験 {sorted(documented)} が食い違っています。"
     )
+
+
+# --- 再現手順の所要時間 (D-99) -----------------------------------------------
+
+_REPRO_SECONDS_RE = re.compile(r"^# \d\. (?P<what>[^(]+?) \(約 (?P<seconds>\d+) 秒\)")
+
+
+def _repro_timings() -> dict[str, int]:
+    """README 冒頭「3コマンドで再現する」に書かれた所要時間。"""
+    found: dict[str, int] = {}
+    for line in README.read_text(encoding="utf-8").splitlines():
+        match = _REPRO_SECONDS_RE.match(line.strip())
+        if match:
+            found[match["what"].strip()] = int(match["seconds"])
+    return found
+
+
+def test_the_reproduction_steps_declare_their_runtime() -> None:
+    """再現手順に所要時間が書かれていること (D-99)。
+
+    表が消えたら下の検査が黙って何も測らなくなる。**測れない状態を先に潰す**
+    (D-93 と同じ規律)。
+    """
+    timings = _repro_timings()
+    assert timings, "README の再現手順に所要時間が書かれていません"
+    assert all(seconds > 0 for seconds in timings.values()), timings
+
+
+def test_the_declared_test_runtime_is_the_same_order_as_measured() -> None:
+    """README の「テスト」の所要時間が実測と同じ桁にあること (D-99)。
+
+    ここが古くなる形は実際に起きた —— テストが 439 件から 1431 件へ増える間、
+    README は「約 3 秒」のままで、**実測 61 秒との乖離は 20 倍**だった。
+    誰も見ていない数字だったからである。
+
+    実測は「このスイート自身の収集数」から見積もる。実行時間そのものを
+    ここで測ると、測っている最中の自分自身を測ることになるうえ、
+    マシン差で落ちる検査になる (D-89)。代わりに**テスト件数**を桁の
+    代理指標にする —— 件数が桁で増えたら所要時間も桁で増える。
+    """
+    timings = _repro_timings()
+    declared = next(
+        (seconds for what, seconds in timings.items() if "テスト" in what), None
+    )
+    assert declared is not None, f"「テスト」の行がありません: {timings}"
+
+    n_tests = _collected_test_count()
+    # 実測: 1431 件 / 61 秒 ≒ 23 件/秒。桁が変わらない範囲で縛る。
+    estimated = n_tests / 23.0
+    ratio = declared / estimated
+    assert 1 / 3 <= ratio <= 3, (
+        f"README の「テスト (約 {declared} 秒)」が実態とずれています。"
+        f"テストは {n_tests} 件あり、実測の処理速度 (約 23 件/秒) からは"
+        f" 約 {estimated:.0f} 秒です。README を書き直してください。"
+    )
+
+
+def _collected_test_count() -> int:
+    """このリポジトリのテスト件数 (``def test_`` の数を静的に数える)。
+
+    ``pytest --collect-only`` を呼ばないのは、テストの中から pytest を
+    起動すると入れ子になり実行時間が跳ねるためである。パラメータ化で
+    実件数はこれより増えるが、**桁の代理指標**としてはこれで足りる。
+    """
+    total = 0
+    for path in sorted(ROOT.glob("tests/test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        total += sum(
+            1
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+            and node.name.startswith("test_")
+        )
+    return total

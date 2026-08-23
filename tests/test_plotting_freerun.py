@@ -43,11 +43,10 @@ from rc_basics_lab.plotting.figures_freerun import (
     REGIME_LABELS,
     plot_freerun_attractor,
     plot_freerun_stats,
-    plot_onestep,
-    plot_stability_map,
     plot_valid_time,
     profile_points,
 )
+from rc_basics_lab.plotting.figures_stability import plot_stability_map
 from rc_basics_lab.plotting.style import StyleContext
 
 TASKS = ("lorenz", "mackey_glass")
@@ -232,12 +231,19 @@ def capacity_rows() -> list[CapacityRow]:
     ]
 
 
-def test_all_five_figures_are_written(tmp_path: Path) -> None:
-    """5枚が行から描ける (受け入れ条件6 の関数単位の確認)。"""
+def test_all_four_figures_are_written(tmp_path: Path) -> None:
+    """4枚が行から描ける (受け入れ条件6 の関数単位の確認)。
+
+    かつては5枚だった。4-A を単独図にするのをやめ、位相図と同じ figure の
+    パネルへ移したため1枚減った (FIG-12)。
+    """
     paths = (
-        plot_onestep(onestep_rows(), tmp_path / "fig_onestep.png", style=STYLE),
+        # FIG-12: 4-A は単独図をやめ、位相図と同じ figure のパネルになった。
         plot_freerun_attractor(
-            profile_rows(), tmp_path / "fig_freerun_attractor.png", style=STYLE
+            profile_rows(),
+            tmp_path / "fig_freerun_attractor.png",
+            onestep_rows=onestep_rows(),
+            style=STYLE,
         ),
         plot_valid_time(freerun_rows(), tmp_path / "fig_valid_time.png", style=STYLE),
         plot_stability_map(
@@ -250,7 +256,7 @@ def test_all_five_figures_are_written(tmp_path: Path) -> None:
             profile_rows(), tmp_path / "fig_freerun_stats.png", style=STYLE
         ),
     )
-    assert len({path.name for path in paths}) == 5
+    assert len({path.name for path in paths}) == 4
     for path in paths:
         assert path.stat().st_size > 0
 
@@ -275,7 +281,7 @@ def test_figures_never_run_an_experiment_or_a_diagnostic(tmp_path: Path) -> None
         patch.setattr(stability_module, "measure_capacity", forbidden)
         patch.setattr(mc_module, "memory_capacity", forbidden)
         patch.setattr(ipc_module, "ipc", forbidden)
-        test_all_five_figures_are_written(tmp_path)
+        test_all_four_figures_are_written(tmp_path)
 
 
 def test_profile_points_restores_the_drawing_order() -> None:
@@ -304,7 +310,9 @@ def test_unknown_task_label_fails_before_drawing(tmp_path: Path) -> None:
         for index in range(5)
     ]
     with pytest.raises(ValueError, match="ラベルの対応表"):
-        plot_freerun_attractor(rows, tmp_path / "fig.png", style=STYLE)
+        plot_freerun_attractor(
+            rows, tmp_path / "fig.png", onestep_rows=onestep_rows(), style=STYLE
+        )
 
 
 def test_regime_labels_cover_every_regime() -> None:

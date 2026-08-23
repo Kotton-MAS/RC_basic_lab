@@ -17,15 +17,22 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import re
+import struct
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pytest
+from matplotlib.axes import Axes
 from matplotlib.collections import QuadMesh
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.text import Text
+from test_esp_pipeline import TINY_CONFIG as _ESP_TINY
+from test_esp_pipeline import _write as _esp_write
+from test_plotting_anomaly import anomaly_rows, threshold_rows
 from test_plotting_capacity import (
     conservation_rows,
     ipc_sweep_profile,
@@ -33,39 +40,82 @@ from test_plotting_capacity import (
     mc_sweep_profile,
     mc_sweep_rows,
     narma10_rows,
+    plot_narma10_control,
 )
+from test_plotting_freerun import freerun_rows
 
+from rc_basics_lab.config import Esp02Config, load_config_as
+from rc_basics_lab.experiment.esp import EXPERIMENT_ESP_MAP
+from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
+from rc_basics_lab.experiment.freerun import FreeRunProfileRow
+from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
+from rc_basics_lab.experiment.narma import (
+    NARMA10_REFERENCE_NOTE,
+    NARMA10_REFERENCE_NOTE_EN,
+)
+from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting import (
     figures_anomaly,
     figures_capacity,
+    figures_esp,
     figures_freerun,
     heatmap,
     style,
+    waveforms,
 )
 from rc_basics_lab.plotting.capacity_grids import (
     even_degree_note,
     even_degree_share,
 )
+from rc_basics_lab.plotting.figures_anomaly import (
+    RANDOM_SCORE_F1_CONDITIONS,
+    RANDOM_SCORE_PLAIN_F1,
+    plot_threshold_tradeoff,
+)
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
     plot_ipc_profile,
     plot_mc_sweep,
-    plot_narma10_control,
+)
+from rc_basics_lab.plotting.figures_esp import plot_esp_map
+from rc_basics_lab.plotting.figures_freerun import plot_valid_time
+from rc_basics_lab.plotting.figures_horizon import (
+    JAEGER_CONDITIONS,
+    JAEGER_LOG10_NRMSE84,
+    JAEGER_PREVIOUS_LOG10,
+    draw_horizon_panel,
+)
+from rc_basics_lab.plotting.freerun_headlines import (
+    LITERATURE_VALID_TIME,
+    LITERATURE_VALID_TIME_CONDITIONS,
 )
 from rc_basics_lab.plotting.labels import (
+    APPELTANT_2011,
+    GAUTHIER_2021,
+    JAEGER_HAAS_2004,
+    KIM_2022,
     METHOD_LABELS,
     SOURCE_UNIDENTIFIED,
+    VINCKIER_2015,
     cited_bound,
     cited_measurement,
 )
+from rc_basics_lab.plotting.narma10_panel import (
+    REFERENCE_CONDITIONS,
+    REFERENCE_LABELS,
+    REFERENCE_SOURCES,
+)
 from rc_basics_lab.plotting.style import (
+    MAX_ASPECT_RATIO,
     METHOD_COLORS,
+    MIN_ASPECT_RATIO,
     REFERENCE_COLOR,
     StyleContext,
     method_color,
     reference_line_kwargs,
 )
-from rc_basics_lab.types import BoolArray
+from rc_basics_lab.types import BoolArray, FloatArray
 
 PLOTTING_DIR = Path(style.__file__).parent
 
@@ -126,6 +176,37 @@ def _texts(figure: Figure) -> list[str]:
 
 
 # --- FIG-3 / D-84: 参照線に出典 ---------------------------------------------
+
+
+def _legend_texts(figure: Figure) -> list[str]:
+    """図の凡例テキストを集める (凡例が無い軸は飛ばす)。"""
+    texts: list[str] = []
+    for axis in figure.axes:
+        legend = axis.get_legend()
+        if legend is not None:
+            texts.extend(text.get_text() for text in legend.get_texts())
+    return texts
+
+
+def _capture_saves(
+    monkeypatch: pytest.MonkeyPatch, module: ModuleType, name: str
+) -> list[Figure]:
+    """``module.<name>`` を包んで、保存直前の ``Figure`` を集める。
+
+    ``capture_figures`` は ``figures_capacity`` 専用なので、他のモジュールは
+    ここを通す。``getattr`` で引くのは、保存関数の名前がモジュールごとに
+    違う (``_save`` / ``save_png``) ためである。
+    """
+    captured: list[Figure] = []
+    original = getattr(module, name)
+
+    def spy(figure: Figure, path: Path) -> Path:
+        captured.append(figure)
+        result: Path = original(figure, path)
+        return result
+
+    monkeypatch.setattr(module, name, spy)
+    return captured
 
 
 def test_literature_reference_lines_carry_their_source_in_the_legend(
@@ -465,8 +546,8 @@ def test_the_ipc_profile_explains_why_the_even_degrees_are_empty(
 
 #: 実験 -> その実験の図を描くモジュール (``src/rc_basics_lab/plotting/`` 相対)。
 FIGURE_MODULES: dict[str, tuple[str, ...]] = {
-    "01": ("figures.py",),
-    "02": ("figures_esp.py",),
+    "01": ("figures.py", "figures_horizon.py"),
+    "02": ("figures_esp.py", "esp_references.py"),
     "03": ("figures_capacity.py", "figures_narma_taps.py", "narma10_panel.py"),
     "04": ("figures_freerun.py", "freerun_headlines.py"),
     "05": ("figures_anomaly.py", "figures_anomaly_sweep.py"),
@@ -477,7 +558,7 @@ FIGURE_MODULES: dict[str, tuple[str, ...]] = {
 #: 特定できていない実験がある。**この集合は増やせない** —— 増えるということは
 #: 新しい実験を文献照合なしで足したということで、それを黙って通さない。
 #: 減らしたらここから外す (下の検査が外し忘れを拾う)。
-KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset({"01", "02", "04", "05"})
+KNOWN_WITHOUT_CITATION: frozenset[str] = frozenset()
 
 
 def _cites_literature(module: str) -> bool:
@@ -548,4 +629,746 @@ def test_the_known_gaps_list_has_no_stale_entries() -> None:
     assert not stale, (
         f"文献照合が付いたのに既知の穴に残っています: {stale}\n"
         "KNOWN_WITHOUT_CITATION から外してください (ラチェットが1段締まります)。"
+    )
+
+
+def test_every_narma10_reference_line_names_a_real_source() -> None:
+    """3-C の参照値が**特定済みの出典**を名乗ること (D-100)。
+
+    0.16 / 0.107 は長く「原典未特定」のまま引かれていた。実際に辿ると
+    どちらも Vinckier et al. 2015 (Optica 2:438) に行き着く ——
+    0.107 はその論文自身の実験値 (N = 50、訓練/テスト各 1000 ステップ、
+    10 回反復で s.d. 0.012)、0.16 は同論文が Appeltant et al. 2011
+    (Nat. Commun. 2:468) に帰す「線形シフトレジスタで得られる最良値」である。
+
+    **`SOURCE_UNIDENTIFIED` へ戻す変更をここで落とす。** 出典が分かった値を
+    「未特定」に戻すのは情報を捨てる操作であり、静かに起こり得る
+    (参照値を1本足すときに、既存の書き方をコピーすると起こる)。
+    """
+    assert set(REFERENCE_SOURCES) == set(REFERENCE_LABELS), (
+        "参照線のキーと出典のキーが一致していません: "
+        f"{sorted(REFERENCE_SOURCES)} vs {sorted(REFERENCE_LABELS)}"
+    )
+    assert set(REFERENCE_CONDITIONS) == set(REFERENCE_LABELS), (
+        "参照線のキーと動作点のキーが一致していません"
+    )
+    unidentified = sorted(
+        key
+        for key, source in REFERENCE_SOURCES.items()
+        if source in SOURCE_UNIDENTIFIED or not source.strip()
+    )
+    assert not unidentified, (
+        f"原典が特定済みの参照値が「未特定」に戻っています: {unidentified}\n"
+        "0.16 -> Appeltant et al. 2011 / 0.107 -> Vinckier et al. 2015 (D-100)。"
+    )
+    # 出典が実際に凡例へ届いていること (定数だけ直して配線を忘れる形を落とす)
+    assert REFERENCE_SOURCES["linear_ceiling"] == APPELTANT_2011
+    assert REFERENCE_SOURCES["nonlinear_rc"] == VINCKIER_2015
+
+
+def test_the_reference_note_records_the_conditions_of_each_source() -> None:
+    """図の注が出典と**測定条件**の両方を持つこと (D-100)。"""
+    for note in (NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN):
+        assert "Vinckier" in note and "Appeltant" in note, note
+        assert "0.107" in note and "0.16" in note, note
+        assert "50" in note and "1000" in note, note
+    assert "未特定" not in NARMA10_REFERENCE_NOTE
+
+
+def test_the_valid_time_figure_carries_a_literature_reference_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """4-B に文献の有効予測時間の参照線がある (FIG-2 / D-102)。
+
+    参照線が無いままタイトルで水準を主張していたのが指摘 B-3 だった。
+    一次資料 (Gauthier et al. 2021, Nat. Commun. 12:5564) の本文に
+    「The NG-RC forecasts well out to ~5 Lyapunov times.」とあり、
+    同じ段落が「100s to 1000s of reservoir nodes を持つ最適化された
+    従来型 RC に匹敵する」と書いている。こちらの N = 200 はその範囲で、
+    Lyapunov 時間も原典 1.1 / こちらの数値推定 1.09 とそろっている。
+
+    **出典と動作点の両方が凡例に届いていること**を見る (D-97)。
+    判定基準が原典と同じでないことも動作点に含める —— 原典は
+    「forecasts well」と定性的に述べており、こちらの閾値 0.4 とは違う。
+    """
+    # capture_figures は figures_capacity._save だけを見ているので、
+    # 04 の保存経路は自前で包む。
+    captured = _capture_saves(monkeypatch, figures_freerun, "_save")
+    plot_valid_time(freerun_rows(), tmp_path / "valid.png", style=CONTEXT)
+    assert captured, "図が保存されませんでした"
+    figure = captured[0]
+    labels = _legend_texts(figure)
+    cited = [label for label in labels if GAUTHIER_2021 in label]
+    assert cited, f"文献の参照線が凡例にありません: {labels}"
+    legend = cited[0]
+    assert str(LITERATURE_VALID_TIME).rstrip("0").rstrip(".") in legend, legend
+    # 動作点が付いている (出典だけでは比較可能かを読者が判断できない)
+    assert ";" in legend, legend
+    assert CONTEXT.label(*LITERATURE_VALID_TIME_CONDITIONS) in legend, legend
+
+
+def test_the_threshold_tradeoff_figure_carries_a_literature_reference_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """05 の F1 パネルに文献の参照線がある (FIG-2 / D-103)。
+
+    一次資料は Kim, Choi, Choi, Lee, Yoon (2022) *Towards a Rigorous
+    Evaluation of Time-series Anomaly Detection*, AAAI-22。Table 2 の
+    Case 1 (Random anomaly score) が、**素の F1** で SWaT 0.216 /
+    WADI 0.109 / MSL 0.190 / SMAP 0.227 / SMD 0.080 を報告している。
+
+    比べる相手を ``F1PA`` 列 (0.804〜0.969) にしない。この図の F1 は
+    point-adjust を通していない (D-54 / D-55) ので、取り違えると
+    「乱数と同程度」を「最先端と同程度」と読むことになる。
+    """
+    captured = _capture_saves(monkeypatch, figures_anomaly, "save_png")
+    plot_threshold_tradeoff(
+        anomaly_rows(), threshold_rows(), tmp_path / "t.png", style=CONTEXT
+    )
+    assert captured, "図が保存されませんでした"
+    labels = _legend_texts(captured[0])
+    cited = [label for label in labels if KIM_2022 in label]
+    assert cited, f"文献の参照線が凡例にありません: {labels}"
+    legend = cited[0]
+    assert ";" in legend, legend
+    assert CONTEXT.label(*RANDOM_SCORE_F1_CONDITIONS) in legend, legend
+    # PA 側の値 (0.80 以上) と取り違えていない
+    low, high = RANDOM_SCORE_PLAIN_F1
+    assert high < 0.5, (low, high)
+
+
+def test_the_horizon_figure_carries_a_literature_reference_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """01' に文献の NRMSE84 の参照線がある (FIG-2 / D-105)。
+
+    一次資料は Jaeger & Haas (2004) *Harnessing Nonlinearity*,
+    Science **304**:78-80。本文に
+
+        For testing, a 84-step continuation d(3001),...,d(3084) ...
+        The network output y(3084) was compared with the correct
+        continuation d(3084).
+
+    とあり、報告値は ``log10(NRMSE84) = -4.2``、従来手法はその 700 倍悪い。
+
+    **予測長を合わせたから並べられる。** 01 本体は1ステップ先なので、
+    そのままでは比較できない (D-105 がこの実験を足した理由)。
+    """
+    from matplotlib.figure import Figure
+
+    from rc_basics_lab.plotting.figures_horizon import horizon_reference_note
+
+    figure = Figure()
+    draw_horizon_panel(figure.subplots(1, 1), _horizon_rows(), CONTEXT)
+    labels = _legend_texts(figure)
+    values = [label for label in labels if "-4.20" in label or "-1.35" in label]
+    assert len(values) == 2, f"文献の参照線が2本ありません: {labels}"
+    # **出典と条件は凡例ではなく注記が持つ** (FIG-14 で移した)。
+    # 凡例に入れると幅が軸の4倍になり、隣のパネルを潰した (実測)。
+    note = horizon_reference_note(CONTEXT)
+    assert JAEGER_HAAS_2004 in note, note
+    assert ";" in note, note
+    assert CONTEXT.label(*JAEGER_CONDITIONS) in note, note
+    # 従来手法の線は 700 倍悪い側 (取り違えると比較の向きが反転する)
+    assert JAEGER_PREVIOUS_LOG10 > JAEGER_LOG10_NRMSE84
+    assert pytest.approx(700.0) == 10.0 ** (
+        JAEGER_PREVIOUS_LOG10 - JAEGER_LOG10_NRMSE84
+    )
+
+
+def _horizon_rows() -> tuple[HorizonRow, ...]:
+    """図を描くのに足りる最小の行 (値そのものは検査しない)。"""
+    return tuple(
+        HorizonRow(
+            task="mackey_glass",
+            method="esn",
+            replicate=index,
+            n_units=200,
+            horizon=HORIZON_STEPS,
+            nrmse_horizon=0.006,
+            log10_nrmse_horizon=-2.2 + 0.1 * index,
+            nrmse_mean_to_horizon=0.004,
+            diverged=False,
+            wall_time_s=0.1,
+        )
+        for index in range(3)
+    )
+
+
+# --- FIG-14: 凡例が軸からはみ出さない (D-106) ---------------------------------
+
+#: 凡例が**軸の外へ出ている**軸 (2026-08-22 の実測)。
+#: この集合は増やせない。減らしたら外す。
+#: 幅比が 1 を超えると、軸ラベルや隣のパネルを潰す (実測: fig_esp_map の
+#: 無入力パネルで 4.19 倍になり、y 軸の目盛りが読めなくなっていた)。
+LEGENDS_OUTSIDE_THE_AXES: frozenset[str] = frozenset()
+
+
+def _legend_fits(axis: Axes) -> bool:
+    """凡例が軸の内側に収まっているか (FIG-14)。"""
+    legend = axis.get_legend()
+    if legend is None:
+        return True
+    legend_box = legend.get_window_extent()
+    axis_box = axis.get_window_extent()
+    return bool(
+        legend_box.x0 >= axis_box.x0 - 1
+        and legend_box.x1 <= axis_box.x1 + 1
+        and legend_box.y0 >= axis_box.y0 - 1
+        and legend_box.y1 <= axis_box.y1 + 1
+    )
+
+
+def test_no_legend_spills_out_of_its_axes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """凡例が軸からはみ出していないこと (FIG-14 / D-106)。
+
+    **重なりは目視でしか見つからないので機械に置く** (方針文書 FIG-14)。
+    実際に起きた形: 出典つきのラベル (FIG-3 で長くなる) を幅の狭いパネルの
+    凡例に置いたところ、**軸の 4.19 倍**の幅になり、はみ出して y 軸の
+    目盛りを潰した。直し方は凡例をやめて出典を注へ移すこと。
+
+    ここで描くのは、幅の狭いパネルを持つ 2-C (``plot_esp_map``) である ——
+    そこが実際に壊れた図であり、同じ壊れ方をもう一度作らないための検査になる。
+    """
+    config = load_config_as(_esp_write(tmp_path, _ESP_TINY), Esp02Config)
+    outputs = run_and_report_esp(config, tmp_path / "out")
+    rows = [row for row in outputs.rows if row.experiment == EXPERIMENT_ESP_MAP]
+    assert rows, "2-C の行が出ませんでした"
+    captured = _capture_saves(monkeypatch, figures_esp, "_save")
+    plot_esp_map(rows, tmp_path / "map.png", style=CONTEXT)
+    assert captured, "図が保存されませんでした"
+    figure = captured[0]
+    figure.canvas.draw()
+    spilled = [
+        index for index, axis in enumerate(figure.axes) if not _legend_fits(axis)
+    ]
+    assert not spilled, (
+        f"凡例が軸からはみ出しています (軸 {spilled})。\n"
+        "出典つきのラベルは長くなるので、幅の狭いパネルでは"
+        "**凡例をやめて注へ移してください** (FIG-14 / D-106)。"
+    )
+
+
+# --- FIG-13: アスペクト比を範囲に収める (D-108) --------------------------------
+
+#: **範囲の外にある図** (2026-08-22 の実測)。この集合は増やせない。
+#: 直したら外す (下の陳腐化検査が外し忘れを拾う)。
+ASPECT_RATIO_EXCEPTIONS: frozenset[str] = frozenset()
+"""アスペクト比の上限を外れてよい図。**空である。**
+
+かつては3枚あった (``fig_stability_map`` 4.03 : 1 / ``fig_ipc_profile``
+3.84 : 1 / ``fig_score_timeline`` 0.87 : 1)。FIG-13 で全部畳んだので、
+**ここへ追記して通すのはラチェットを外す操作である**。図が上限を外れたら、
+例外に足すのではなくパネルの並べ方を変える (2段に折る / 高さを取る)。
+"""
+
+
+def _png_aspect(path: Path) -> float:
+    """PNG の横縦比 (ヘッダから読む。画像を展開しない)。"""
+    header = path.read_bytes()[16:24]
+    width, height = struct.unpack(">II", header)
+    return float(width) / float(height)
+
+
+def _artifact_pngs() -> list[Path]:
+    return sorted((ROOT / "results").rglob("*.png"))
+
+
+def test_the_aspect_ratio_exception_list_has_no_stale_entries() -> None:
+    """例外リストが実在の図を指していること (FIG-13 / D-108)。
+
+    実在しない図が残っていると、その分だけ黙って例外を増やせる。
+    """
+    names = {path.name for path in _artifact_pngs()}
+    missing = sorted(ASPECT_RATIO_EXCEPTIONS - names)
+    assert not missing, f"例外リストに実在しない図があります: {missing}"
+    fixed = sorted(
+        name
+        for name in ASPECT_RATIO_EXCEPTIONS & names
+        if MIN_ASPECT_RATIO
+        <= _png_aspect(next(p for p in _artifact_pngs() if p.name == name))
+        <= MAX_ASPECT_RATIO
+    )
+    assert not fixed, (
+        f"範囲に収まったのに例外リストに残っています: {fixed}\n"
+        "ASPECT_RATIO_EXCEPTIONS から外してください (ラチェットが1段締まります)。"
+    )
+
+
+def test_no_new_figure_falls_outside_the_aspect_ratio_range() -> None:
+    """図の横縦比が ``MIN``〜``MAX`` に収まること (FIG-13 / D-108)。
+
+    実測 (2026-08-22): 23 枚が **21 種類**の比にばらけ、0.87 : 1 から
+    4.03 : 1 まであった。記事に順に並べたとき、図ごとに幅と高さが変わって
+    視線のリズムが崩れる。
+
+    **既存の範囲外3枚は凍結してある。** 直すにはパネル構成を変える必要が
+    あり、それは FIG-12 の統合と同じ回にやるほうが手戻りが少ない。
+    ここが止めるのは**新しく範囲外の図を足すこと**である。
+    """
+    offenders = {
+        path.name: round(_png_aspect(path), 2)
+        for path in _artifact_pngs()
+        if path.name not in ASPECT_RATIO_EXCEPTIONS
+        and not (MIN_ASPECT_RATIO <= _png_aspect(path) <= MAX_ASPECT_RATIO)
+    }
+    assert not offenders, (
+        f"横縦比が範囲外の図があります: {offenders}\n"
+        f"許容は {MIN_ASPECT_RATIO} 〜 {MAX_ASPECT_RATIO} : 1 です。"
+        "**超えるならパネルを2段に折り、縦長なら横に折ってください** "
+        "(FIG-13 / D-108)。\n"
+        "**ASPECT_RATIO_EXCEPTIONS に追記して通すのはラチェットを外す操作です。**"
+    )
+
+
+# --- FIG-11: 波形の選び方は自由変数にしない (D-107) ---------------------------
+
+
+def test_the_waveform_selection_is_not_a_free_parameter() -> None:
+    """波形の切り出しが**呼び出し側から選べない**こと (D-107)。
+
+    「よく当たっている区間」を選べる図にすると、同じデータから好きな結論の
+    図が作れる —— 仕様 §5 の禁止する構造そのものである。だから区間・長さ・
+    レプリケートはモジュール定数であり、引数として受け取らない。
+
+    **引数に足す変更をここで落とす。** 定数は残したまま引数を優先させる、
+    という形で決定が骨抜きになるのが一番起きやすい壊れ方なので、
+    シグネチャを直接見る。
+    """
+    selection = dict(waveforms.selection_is_fixed())
+    assert selection == {
+        "offset": 0,
+        "steps": 300,
+        "replicate": 0,
+        # 課題ごとの長さも定数表である (D-107)。反転や高周波の課題は
+        # 300 ステップでは塗り潰れ、図の主張が読めなかった (C-4)。
+        "delay_parity": 40,
+        "narma10": 100,
+    }, selection
+
+    for name in ("offset", "start", "window", "replicate", "steps"):
+        parameters = inspect.signature(waveforms.plot_prediction_waveform).parameters
+        assert name not in parameters, (
+            f"波形の選び方が引数になっています: {name} (D-107)。\n"
+            "定数のままにしてください —— 引数にすると"
+            "「この図だけ別の区間」が書けてしまい、決定が実質無くなります。"
+        )
+
+    # 切り出しは常に同じ長さ・同じ位置 (start だけが外から来る)
+    series = np.arange(1000, dtype=np.float64)
+    first = waveforms.slice_window(series, 100)
+    again = waveforms.slice_window(series, 100)
+    assert np.array_equal(first, again)
+    assert first[0] == 100 + waveforms.WAVEFORM_OFFSET
+    assert first.size == waveforms.WAVEFORM_STEPS
+
+
+def _comparison_rows() -> tuple[ResultRow, ...]:
+    """``plot_comparison`` に足りる最小の行 (2 課題 x 3 手法)。"""
+    return tuple(
+        ResultRow(
+            task=task,
+            method=method,
+            replicate=replicate,
+            seed_reservoir=0,
+            seed_task=1,
+            seed_split=2,
+            alpha=1e-4,
+            n_lags=0,
+            rmse=0.1,
+            nrmse=0.1,
+            nmse=0.01,
+            sign_accuracy=0.5,
+            n_train=100,
+            n_val=20,
+            n_test=50,
+            t0=1,
+            wall_time_s=0.1,
+        )
+        for task in ("mackey_glass", "delay_parity")
+        for method in ("linear", "delay_line", "esn")
+        for replicate in range(2)
+    )
+
+
+def _comparison_waveforms() -> tuple[WaveformPanel, ...]:
+    """波形パネル2枚 (01 は課題を2つ扱う) に足りる最小の入力。"""
+    truth: FloatArray = np.linspace(0.0, 1.0, 16)
+    return tuple(
+        WaveformPanel(task=task, truth=truth, predictions={"esn": truth * 0.99})
+        for task in ("mackey_glass", "delay_parity")
+    )
+
+
+def _profile_rows_for_two_tasks() -> tuple[FreeRunProfileRow, ...]:
+    """位相図パネル2枚に足りる最小の行。"""
+    return tuple(
+        FreeRunProfileRow(
+            experiment="4B_freerun",
+            task=task,
+            method="esn",
+            replicate=0,
+            source=source,
+            kind="phase",
+            index=index,
+            x=float(index),
+            y=float(index) * 0.5,
+        )
+        for task in ("lorenz", "mackey_glass")
+        for source in ("truth", "freerun")
+        for index in range(4)
+    )
+
+
+def _onestep_rows_for_two_tasks() -> tuple[ResultRow, ...]:
+    """4-A パネルに足りる最小の行。"""
+    return tuple(
+        ResultRow(
+            task=task,
+            method=method,
+            replicate=replicate,
+            seed_reservoir=0,
+            seed_task=1,
+            seed_split=2,
+            alpha=1e-4,
+            n_lags=0,
+            rmse=0.1,
+            nrmse=0.1,
+            nmse=0.01,
+            sign_accuracy=0.5,
+            n_train=100,
+            n_val=20,
+            n_test=50,
+            t0=1,
+            wall_time_s=0.1,
+        )
+        for task in ("lorenz", "mackey_glass")
+        for method in ("linear", "delay_line", "esn")
+        for replicate in range(2)
+    )
+
+
+# --- FIG-12: 点の少ないスカラー比較を単独図にしない (D-109) --------------------
+
+
+def test_sparse_scalar_figures_are_panels_not_standalone_figures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """01 / 04 の主図が、スカラー比較を**パネルとして**抱えていること (D-109)。
+
+    かつては ``fig_onestep`` (6 点) と ``fig_horizon`` (5 点) が単独の figure
+    だった。**点の数を数えるのではなく、軸の数を数える** —— 単独図に戻せば
+    軸が減るので、その形で退行が捕まる。
+
+    ``fig_waveform`` も同じ理由で ``fig_comparison`` のパネルになっている。
+    """
+    from rc_basics_lab.plotting import figures, figures_freerun
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    assert captured, "01 の主図が保存されませんでした"
+    # 波形パネルは**上段と残差の段**の2軸になる (C-3) ので、
+    # 4 パネル = 1 + 2x2 + 1 = 6 軸である。
+    assert len(captured[0].axes) == 6, (
+        "01 の fig_comparison は 課題別の誤差 / 波形2枚 (各2段) / 自走 の"
+        f"6軸であるべきです (実測 {len(captured[0].axes)})。"
+        "単独の figure に戻すのは D-109 の取り消しです。"
+    )
+
+    captured_freerun = _capture_saves(monkeypatch, figures_freerun, "_save")
+    figures_freerun.plot_freerun_attractor(
+        _profile_rows_for_two_tasks(),
+        tmp_path / "fig_freerun_attractor.png",
+        onestep_rows=_onestep_rows_for_two_tasks(),
+        style=CONTEXT,
+    )
+    assert captured_freerun, "04 の主図が保存されませんでした"
+    assert len(captured_freerun[0].axes) == 3, (
+        "04 の fig_freerun_attractor は 位相図2枚 + 4-A のスカラー比較の"
+        f"3パネルであるべきです (実測 {len(captured_freerun[0].axes)})。"
+    )
+
+
+def test_the_figures_that_fig12_folded_away_are_gone() -> None:
+    """畳んだ3枚が成果物として復活していないこと (D-109)。
+
+    **図を足すのは自由だが、この3つの名前で単独図に戻すのは統合の取り消し**
+    なので、名前で止める。
+    """
+    folded = ("fig_onestep.png", "fig_horizon.png", "fig_waveform.png")
+    present = [name for name in folded if list((ROOT / "results").rglob(name))]
+    assert not present, (
+        f"FIG-12 で畳んだ図が単独で復活しています: {present}。"
+        "パネルとして親figureへ入れてください (D-109)。"
+    )
+
+
+def test_the_state_waveform_units_are_not_selectable() -> None:
+    """状態波形のユニットが**選べない**こと (FIG-11 追加図5 / D-107)。
+
+    「よく散っているユニット」を選べる図にすると、同じリザバーから
+    好きな結論の図が作れる。だから先頭から番号順に取る。
+    """
+    from rc_basics_lab.experiment import state_waveform as module
+
+    assert module.STATE_WAVEFORM_UNITS == 8, module.STATE_WAVEFORM_UNITS
+    parameters = inspect.signature(module.state_waveform).parameters
+    for name in ("units", "unit_indices", "n_units", "offset", "replicate"):
+        assert name not in parameters, (
+            f"ユニットの選び方が引数になっています: {name} (D-107)。\n"
+            "定数のままにしてください —— 引数にすると"
+            "「この図だけ別のユニット」が書けてしまいます。"
+        )
+
+
+# --- FIG-14: 出典入りの凡例が隣のパネルを潰さない (D-110) ----------------------
+
+
+def test_no_legend_spills_out_of_its_axes_in_the_main_figure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """01 の主図でも凡例が軸に収まっていること (FIG-14 / D-110)。
+
+    D-106 の検査は 2-C しか描いていなかった。**壊れ方は同じでも、
+    描いていない図は守られない** —— 実際 FIG-12 でパネルを詰めたとき、
+    自走パネルの出典つき凡例が軸をはみ出して隣のパネルにかぶった。
+    パネルを増やすと1枚あたりの幅が縮むので、この図が一番先に壊れる。
+
+    直し方は凡例をやめて注へ移すこと (``horizon_reference_note``)。
+    出典を消すのではなく置き場所を変えるだけなので、D-97 は満たせる。
+    """
+    from rc_basics_lab.plotting import figures
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    assert captured, "図が保存されませんでした"
+    figure = captured[0]
+    figure.canvas.draw()
+    spilled = [
+        index for index, axis in enumerate(figure.axes) if not _legend_fits(axis)
+    ]
+    assert not spilled, (
+        f"凡例が軸からはみ出しています (軸 {spilled})。\n"
+        "出典つきのラベルは長くなるので、パネルが増えて幅が縮んだ図では"
+        "**凡例をやめて注へ移してください** (FIG-14 / D-110)。"
+    )
+
+
+def test_legends_are_opaque_so_lines_do_not_show_through() -> None:
+    """凡例の背景が不透明であること (FIG-14 / D-110)。
+
+    掃引図では線が軸全体に渡るので、凡例をどこへ置いても下を線が通る
+    (実測: fig_esp_decay で 6 本)。**位置では解決できないので、
+    読めることのほうを保証する**。
+    """
+    params = style.rc_params_for(CONTEXT)
+    assert params["legend.frameon"] is True, params.get("legend.frameon")
+    assert params["legend.framealpha"] == 1.0, params.get("legend.framealpha")
+
+
+# --- FIG-1: タイトルは結論文 / FIG-5: 手法名は対応表を通す (D-111) --------------
+
+QUESTION_ENDINGS: tuple[str, ...] = (
+    "か",
+    "か。",
+    "?",
+    "\uff1f",  # 全角の疑問符。字面が半角と紛らわしいのでコードポイントで書く
+    "か?",
+    "か\uff1f",
+)
+"""疑問形と判定する語尾 (FIG-1)。
+
+**「結論文か」は機械で判定できないので、疑問形の禁止という下限だけを置く。**
+粗いが、実際に破れた 2 件 (「どう外れていくか」「予測がどう見えるか」) は
+これで落ちる。図が何を示したかを言えないなら、その図はまだ主張していない。
+"""
+
+
+def _titles(figure: Figure) -> list[str]:
+    """figure と各軸の見出しを集める。
+
+    Args:
+        figure: 描画済みの figure。
+
+    ``figure.texts`` を見るのは、``suptitle`` が private 属性でしか
+    取れないためである (注 ``supxlabel`` も同じ列に入るが、
+    そちらは疑問形にならないので判定に影響しない)。
+
+    Returns:
+        空でない見出しの並び。
+    """
+    found = [text.get_text() for text in figure.texts]
+    found.extend(axis.get_title() for axis in figure.axes)
+    return [text.strip() for text in found if text.strip()]
+
+
+def _is_question(title: str) -> bool:
+    """見出しが疑問形で終わるか。
+
+    Args:
+        title: 見出し。
+
+    Returns:
+        疑問形なら ``True``。
+    """
+    stripped = title.strip().rstrip("。 ")
+    return stripped.endswith(QUESTION_ENDINGS)
+
+
+def test_no_figure_title_is_a_question(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """図と各パネルの見出しが疑問形で終わらないこと (FIG-1 / D-111)。
+
+    **FIG-1 だけ機械検査が無く、そこが新規図で破れた。** 既存 19 枚は
+    結論文だったのに、検査の無い 1 本だけが崩れている。文書だけの規約は
+    次に破れる、というこのリポジトリの繰り返しの確認の、図の側での再現。
+    """
+    from rc_basics_lab.plotting import figures, waveforms
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    captured += _capture_saves(monkeypatch, waveforms, "save_png")
+    waveforms.plot_prediction_waveform(
+        _comparison_waveforms()[0].truth,
+        _comparison_waveforms()[0].predictions,
+        tmp_path / "fig_waveform.png",
+        task_label=("NARMA10", "NARMA10"),
+        style=CONTEXT,
+    )
+    assert captured, "図が保存されませんでした"
+    questions = [
+        title for figure in captured for title in _titles(figure) if _is_question(title)
+    ]
+    assert not questions, (
+        f"疑問形の見出しがあります: {questions} (FIG-1 / D-111)。\n"
+        "**図が何を示したかを書いてください。** 「どう見えるか」は問いであって"
+        "結論ではありません。結論文は行から導くこと (D-90 と同じ規律)。"
+    )
+
+
+def test_no_legend_shows_a_raw_method_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """凡例に手法の生のキーが出ていないこと (FIG-5 / D-111)。
+
+    ``label=name`` で生のキーを渡すと、同じ図の x 軸ラベルが「線形」、
+    凡例が ``linear`` になり、**同じものが2通りに呼ばれる**。
+    ``style.label`` を通らないので、CJK フォントが無い環境の英語
+    フォールバックも効かない (豆腐の図が「正常に」生成される)。
+    """
+    from rc_basics_lab.plotting import figures
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    assert captured, "図が保存されませんでした"
+    raw = [
+        text
+        for figure in captured
+        for axis in figure.axes
+        for text in _legend_texts(figure)
+        if text in METHOD_LABELS
+    ]
+    assert not raw, (
+        f"凡例に生のキーが出ています: {sorted(set(raw))} (FIG-5 / D-111)。\n"
+        "``label_of(METHOD_LABELS, name, style)`` を通してください。"
+    )
+
+
+# --- FIG-12: 1記事あたりの図の枚数 (D-112) ------------------------------------
+
+MAX_FIGURES_PER_ARTICLE = 4
+"""``連載構成案_RC基礎編.md`` の想定 (2〜4 枚) の上限。"""
+
+#: 上限を超えている記事の**現在値**。**この辞書は増やせない** (2026-08-23 実測)。
+#: 減らすのは自由で、減らしたら値を下げる (下の陳腐化検査が下げ忘れを拾う)。
+FIGURE_COUNT_FROZEN: dict[str, int] = {
+    "03_capacity": 5,
+    "04_chaotic_freerun": 5,
+    "05_anomaly_detection": 5,
+}
+"""上限超過を凍結した記事。
+
+**ここへ追記して通すのはラチェットを外す操作である。** 図が増えたら、
+凍結値を上げるのではなくパネルへ畳む (03 は NARMA10 の 3 枚を 1 枚に
+畳んで 7 -> 5 枚にした)。
+"""
+
+
+def _figures_by_article() -> dict[str, int]:
+    """記事ごとの PNG 枚数。
+
+    Returns:
+        ``{記事ディレクトリ名: 枚数}``。01 は ``results/`` 直下にあるので
+        ``"01"`` というキーで数える。
+    """
+    root = ROOT / "results"
+    counts = {"01": len(list(root.glob("*.png")))}
+    for directory in sorted(root.iterdir()):
+        if directory.is_dir():
+            counts[directory.name] = len(list(directory.glob("*.png")))
+    return {name: count for name, count in counts.items() if count}
+
+
+def test_no_article_exceeds_its_figure_budget() -> None:
+    """1記事あたりの図が上限か凍結値を超えないこと (FIG-12 / D-112)。
+
+    **「足すだけでなく減らす」が FIG-12 の眼目だった**が、第3版の作業では
+    正味で 23 -> 24 枚と増えていた。枚数は目視では追えないので機械に置く。
+    """
+    over = {
+        name: count
+        for name, count in _figures_by_article().items()
+        if count > FIGURE_COUNT_FROZEN.get(name, MAX_FIGURES_PER_ARTICLE)
+    }
+    assert not over, (
+        f"記事あたりの図が上限を超えています: {over} (FIG-12 / D-112)。\n"
+        f"上限は {MAX_FIGURES_PER_ARTICLE} 枚 (凍結済みの記事は"
+        f" FIGURE_COUNT_FROZEN の値)。\n"
+        "**凍結値を上げて通すのはラチェットを外す操作です。** "
+        "同じ主張を支えている図はパネルへ畳んでください。"
+    )
+
+
+def test_the_frozen_figure_counts_have_no_stale_entries() -> None:
+    """減ったのに凍結値が古いままになっていないこと (D-112)。
+
+    減らしたのに値が古いと、その差分だけ**また増やせてしまう**。
+    """
+    counts = _figures_by_article()
+    slack = {
+        name: (frozen, counts[name])
+        for name, frozen in FIGURE_COUNT_FROZEN.items()
+        if name in counts and counts[name] < frozen
+    }
+    assert not slack, (
+        f"凍結値より少なくなった記事があります (凍結値, 実測): {slack}。\n"
+        "FIGURE_COUNT_FROZEN を実測値まで下げてください"
+        f" (上限 {MAX_FIGURES_PER_ARTICLE} 枚に収まったなら項目ごと消す)。"
     )

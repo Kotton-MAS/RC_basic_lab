@@ -348,9 +348,11 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
     assert entry.esn.n_units == config.ipc_sweep.n_units, (
         "D-39: 3-C の ESN は 3-B (IPC 掃引) と同じ規模にする"
     )
-    # 参照値が N = 50 規模の報告であることと対応している (原典は未特定)
+    # 参照値の原典 (Vinckier et al. 2015) が N = 50 で測っていることと対応する。
+    # **「未特定」に戻っていないこと**もここで見る (D-100)。
     assert set(NARMA10_REFERENCE_NMSE) == {"linear_ceiling", "nonlinear_rc"}
-    assert "未特定" in NARMA10_REFERENCE_NOTE
+    assert "未特定" not in NARMA10_REFERENCE_NOTE
+    assert "Vinckier" in NARMA10_REFERENCE_NOTE
 
 
 # --- 01 の成果物が動いていない -----------------------------------------------
@@ -402,7 +404,8 @@ def test_verdict_records_either_direction() -> None:
     )
     summary = verdict.to_summary()
     assert summary["reference_nmse"] == dict(NARMA10_REFERENCE_NMSE)
-    assert "未特定" in str(summary["reference_note"])
+    assert "未特定" not in str(summary["reference_note"])
+    assert "Appeltant" in str(summary["reference_note"])
 
     # 向きが逆でも同じ形 (人工の行で両方向を通す)
     def row(method: str, nmse: float, n_lags: int = 0) -> ResultRow:

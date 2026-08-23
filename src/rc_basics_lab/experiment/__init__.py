@@ -50,6 +50,7 @@ from rc_basics_lab.experiment import (
     esp_pipeline,
     freerun,
     freerun_pipeline,
+    horizon,
     narma,
     narma_taps,
     pipeline,
@@ -58,9 +59,13 @@ from rc_basics_lab.experiment import (
     split,
     stability,
     state_space,
+    state_updaters,
+    state_waveform,
     summary,
     threshold,
+    valid_time,
     washout,
+    waveform_data,
 )
 
 __all__ = [
@@ -80,6 +85,7 @@ __all__ = [
     "esp_pipeline",
     "freerun",
     "freerun_pipeline",
+    "horizon",
     "narma",
     "narma_taps",
     "pipeline",
@@ -88,7 +94,11 @@ __all__ = [
     "split",
     "stability",
     "state_space",
+    "state_updaters",
+    "state_waveform",
     "summary",
     "threshold",
+    "valid_time",
     "washout",
+    "waveform_data",
 ]

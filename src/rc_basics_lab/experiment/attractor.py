@@ -47,13 +47,6 @@ _MAX_STATS_STEPS = 1_000_000
 MIN_STATS_STEPS = 64
 """長時間統計に意味を与える最小のステップ数 (これ未満は ``ValueError``)。"""
 
-VALID_TIME_THRESHOLD_GRID: tuple[float, ...] = (0.2, 0.3, 0.4, 0.5)
-"""有効予測時間の閾値感度 (仕様 §8)。``docs/design.md`` §12 の感度表の一次資料。
-
-本番の閾値 (``freerun.valid_time_threshold``) はこの格子とは**独立**に設定から
-来る。格子は「閾値の取り方で結論が変わらないこと」を示すためだけに使う。
-"""
-
 AMPLITUDE_RATIO_MAX = 5.0
 """発散と判定する振幅比 (自走のピーク振幅 / 真の軌道のピーク振幅)。
 
@@ -693,7 +686,6 @@ __all__ = [
     "REGIME_ATTRACTOR",
     "REGIME_DIVERGED",
     "REGIME_PERIODIC",
-    "VALID_TIME_THRESHOLD_GRID",
     "AttractorDistance",
     "RegimeVerdict",
     "ValidTime",

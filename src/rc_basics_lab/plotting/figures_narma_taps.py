@@ -12,9 +12,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
+from matplotlib.axes import Axes
 
 from rc_basics_lab.experiment.narma_taps import TapSweepRow
 from rc_basics_lab.experiment.runner import DELAY_LINE, DELAY_LINE_OLS
@@ -28,11 +28,7 @@ from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
-    add_provenance,
     method_color,
-    new_figure,
-    rc_context_for,
-    save_png,
 )
 
 GOUDARZI_TAPS_PER_TRAIN = 1810.0 / 2000.0
@@ -85,88 +81,72 @@ def headline(rows: Sequence[TapSweepRow], style: StyleContext) -> str:
     )
 
 
-def plot_narma10_taps(
-    rows: Sequence[TapSweepRow], path: Path, *, style: StyleContext
-) -> Path:
-    """実験 3-C': ``k / n_train`` に対する NMSE をリッジと OLS で比べる。
+def draw_narma10_taps_panel(
+    axis: Axes, rows: Sequence[TapSweepRow], style: StyleContext
+) -> None:
+    """実験 3-C' (``k / n_train`` に対する NMSE) を1つの軸に描く。
+
+    単独の figure をやめてパネルにしたのは FIG-12 / C-6 による。
 
     Args:
+        axis: 描画先。
         rows: 掃引の行 (``run_narma10_tap_sweep`` の出力)。
-        path: 出力先の PNG。
-        style: 配色・言語・commit。
-
-    Returns:
-        書き出した PNG のパス。
+        style: 配色・言語。
 
     Raises:
         ValueError: ``rows`` が空の場合。
     """
     if not rows:
         raise ValueError("rows が空です")
-    with rc_context_for(style):
-        figure = new_figure(7.6, 5.0)
-        axis = figure.subplots(1, 1)
-        for method in (DELAY_LINE, DELAY_LINE_OLS):
-            ratios, means, stds = _series(rows, method)
-            if not ratios:
-                continue
-            axis.errorbar(
-                ratios,
-                means,
-                yerr=np.asarray(stds, dtype=np.float64),
-                fmt="o-",
-                capsize=4,
-                color=method_color(method),
-                label=style.label(*METHOD_LABELS[method]),
-            )
-        axis.axvline(
-            GOUDARZI_TAPS_PER_TRAIN,
-            color=REFERENCE_COLOR,
-            dashes=REFERENCE_DASHES[0],
-            label=cited_measurement(
-                style.label(
-                    f"先行の動作点 k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}",
-                    f"prior operating point k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}",
-                ),
-                GOUDARZI_2014,
-                style.label(
-                    "1,810 タップ / 訓練 2,000 点",
-                    "1,810 taps / 2,000 training points",
-                ),
+    for method in (DELAY_LINE, DELAY_LINE_OLS):
+        ratios, means, stds = _series(rows, method)
+        if not ratios:
+            continue
+        axis.errorbar(
+            ratios,
+            means,
+            yerr=np.asarray(stds, dtype=np.float64),
+            fmt="o-",
+            capsize=4,
+            color=method_color(method),
+            label=style.label(*METHOD_LABELS[method]),
+        )
+    axis.axvline(
+        GOUDARZI_TAPS_PER_TRAIN,
+        color=REFERENCE_COLOR,
+        dashes=REFERENCE_DASHES[0],
+        label=cited_measurement(
+            style.label(
+                f"先行の動作点 k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}",
+                f"prior operating point k/n = {GOUDARZI_TAPS_PER_TRAIN:.2f}",
             ),
-        )
-        axis.set_xscale("log")
-        axis.set_yscale("log")
-        # 対数軸の自動範囲は誤差棒の上端を切ることがある (実測: k/n=0.94 の
-        # OLS が枠外に出た)。壊れ方そのものが主題なので余白を明示する。
-        axis.margins(y=0.15)
-        axis.set_xlabel(
+            GOUDARZI_2014,
             style.label(
-                "タップ数 / 訓練長 (k / n_train)",
-                "taps per training point (k / n_train)",
-            )
+                "1,810 タップ / 訓練 2,000 点",
+                "1,810 taps / 2,000 training points",
+            ),
+        ),
+    )
+    axis.set_xscale("log")
+    axis.set_yscale("log")
+    # 対数軸の自動範囲は誤差棒の上端を切ることがある (実測: k/n=0.94 の
+    # OLS が枠外に出た)。壊れ方そのものが主題なので余白を明示する。
+    axis.margins(y=0.15)
+    axis.set_xlabel(
+        style.label(
+            "タップ数 / 訓練長 (k / n_train)",
+            "taps per training point (k / n_train)",
         )
-        n_replicates = len({row.replicate for row in rows})
-        axis.set_ylabel(
-            style.label(
-                f"NMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
-                f"NMSE (test split, mean +- s.d. of {n_replicates} replicates)",
-            )
+    )
+    n_replicates = len({row.replicate for row in rows})
+    axis.set_ylabel(
+        style.label(
+            f"NMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
+            f"NMSE (test split, mean +- s.d. of {n_replicates} replicates)",
         )
-        axis.legend(loc="best", fontsize=8)
-        figure.suptitle(
-            style.label(
-                f"実験 3-C': {headline(rows, style)}\n"
-                "遅延線の2水準は同一の特徴・同一の分割で、alpha だけが違う",
-                f"Experiment 3-C': {headline(rows, style)}\n"
-                "the two delay-line levels share features and splits;"
-                " only alpha differs",
-            )
-        )
-        conditions = f"task = narma10, k = {min(r.n_lags for r in rows)}"
-        conditions += f"..{max(r.n_lags for r in rows)}"
-        add_provenance(figure, conditions, rows, style=style)
-        return save_png(figure, path)
+    )
+    axis.legend(loc="best", fontsize=8)
+    axis.set_title(headline(rows, style), fontsize=9)
 
 
-__all__ = ["GOUDARZI_TAPS_PER_TRAIN", "headline", "plot_narma10_taps"]
+__all__ = ["GOUDARZI_TAPS_PER_TRAIN", "draw_narma10_taps_panel", "headline"]

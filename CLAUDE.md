@@ -109,6 +109,16 @@ make artifacts-manifest     # 成果物の指紋を書き直す (**意図して�
 - 指紋は「編集されていないこと」を測るが「再生成しても同じか」は測らない。
   作図・書き出しを触ったら**一時ディレクトリに再生成して比較する**
   (`--out <tmp>`)。**PNG はバイト一致する。CSV は `wall_time_s` 列だけ変わる**
+- **一斉再生成は「ターンを終えずに」前景で回す**。全5実験で約 890 秒
+  (01 約1s / 02 約91s / 03 約346s / 04 約222s / 05 約235s) かかり前景の上限を超えるので、
+  `make figures-01 figures-02 figures-03` と `make figures-04 figures-05` の
+  **2回に割り、その間に最終応答を返さない**。auto-commit が HEAD を動かすのは
+  ターン終了時だけなので、これで commit が固定される。
+  途中で HEAD が動くと実験ごとに違う commit が焼き込まれ `test_cycle_hygiene` が落ちる。
+- **`PDCA_KIT_AUTO_COMMIT=off` を `make` に付けても効かない。**
+  `auto-commit.sh` は Claude プロセス側のフックとして動くので、`make` の環境変数は
+  届かない。`.claude/settings.local.json` の `env` に置く手も試したが、それでも
+  途中で commit された (実測)。**この2つは効かないと確認済みなので繰り返さない**
 
 ## Git / PR ワークフロー
 
@@ -127,17 +137,27 @@ make artifacts-manifest     # 成果物の指紋を書き直す (**意図して�
 **「実装が終わった」ではサイクルは終わらない。** 以下を済ませて完了とする。
 
 1. `make ci` が緑
-2. **`reviewer-deletion` を1回走らせる** (`.claude/agents/reviewer-deletion.md`)。
-   規約だけでは新規コードが止まらないことは実測済み —— `CLAUDE.md` に docstring 規約を
-   入れた当のサイクルで、新規ファイルが規約前と同じ比率 (54% / 36%) で書かれた。
-   findings が0件でもよい。**走らせないことが問題である**
-3. **サイクル境界にタグを打つ** (`git tag cycle-0N`)。
+2. **サイクル境界にタグを打つ** (`git tag cycle-0N`)。
    `git log` が 978 件の同一メッセージで機能していないため、これが唯一の区切りになる
-4. **`git worktree prune`** を実行し、使い終わったワークツリーを消す。
-   実測: `.claude/worktrees/` 589MB の内訳は `.venv` 297M + `data/` 205M で、
-   **大半は gitignore 済みの再生成可能なもの**。放置してもコミットはされないが
-   (`.gitignore:185`)、ディスクは食い続ける
-5. 未対応の findings を `docs/` に実測値つきで残す
+3. 未対応の findings を `docs/` に実測値つきで残す
+
+**手順はこれだけである。** かつてここには「`reviewer-deletion` を1回走らせる」と
+「`git worktree prune`」もあった。3巡の実測で、**実行されたのは結果が目に見えるもの
+(`make ci` は赤になる、タグはログに出る) だけ**で、この2つは飛んだ。
+「走らせないことが問題である」と明記してあってなお飛んだ。
+
+文言の強さの問題ではないので、**結果側の機械へ移した**:
+
+| かつての手順 | 今それを見ているもの |
+|---|---|
+| `reviewer-deletion` を走らせる | `tests/test_cycle_hygiene.py` (D-98)。タグ時点の証跡を要求する |
+| 走らせ漏れたときの実害 (同名の重複) | `tests/test_duplicate_symbol_budget.py` (D-92) |
+| `git worktree prune` | `tests/test_cycle_hygiene.py` (D-93)。prunable が残っていたら赤 |
+
+`make ci` が赤くなるので、タグを打った時点で気づく。直し方はテストの
+エラーメッセージに書いてある。**守られない手順を並べると `CLAUDE.md` 全体の
+拘束力が下がる**ので、機械に移したものはここから消す (squash 規約を撤回したのと
+同じ判断)。
 
 ## Claude への作業指示
 

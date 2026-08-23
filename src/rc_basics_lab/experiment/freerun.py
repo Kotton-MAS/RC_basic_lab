@@ -33,7 +33,6 @@ from rc_basics_lab.config import Chaos04Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.lyapunov import max_lyapunov
 from rc_basics_lab.experiment.attractor import (
-    VALID_TIME_THRESHOLD_GRID,
     AttractorDistance,
     RegimeVerdict,
     attractor_distance,
@@ -71,6 +70,12 @@ from rc_basics_lab.experiment.runner import (
     run_task,
 )
 from rc_basics_lab.experiment.split import Split
+from rc_basics_lab.experiment.state_updaters import (
+    delay_line_state_updater,
+    esn_state_updater,
+    passthrough_state_updater,
+)
+from rc_basics_lab.experiment.valid_time import VALID_TIME_THRESHOLD_GRID
 from rc_basics_lab.metrics_significance import sign_test_p_value
 from rc_basics_lab.readout.autoregressive import (
     FreeRunResult,
@@ -423,83 +428,6 @@ def fit_teacher_forced(
         method=method,
         spec=specs[best_index],
     )
-
-
-def esn_state_updater(esn: ESN, rng: np.random.Generator | None = None) -> StateUpdater:
-    """ESN を ``StateUpdater`` (D-50) に適合させるアダプタ。
-
-    **``ESN.run`` ではなく ``ESN.step`` を使う** (仕様 §5 禁止する構造8)。自走は
-    ``u[t+1]`` が ``y_hat[t]`` に依存するので、入力系列が既知でないと動かない
-    ``run`` では書けない。
-
-    **``state_noise > 0`` なら ``rng`` を渡すのが正しい** —— 自走は伝播器では
-    なく**軌道を作る**呼び出しであり、学習時の状態にノイズを入れた設定で自走中
-    だけノイズを外すと、学習時と評価時で別の系を測ることになる (D-36)。02 の
-    ``esn_propagator`` が決定的でなければならない (D-48) のは、条件付き
-    Lyapunov 指数が「同じ軌道のまわりの摂動の成長率」を測るからであって、
-    「ESN は常に決定的に回す」という規則ではない。
-
-    Raises:
-        ValueError: ``state_noise > 0`` なのに ``rng`` が ``None`` の場合。
-    """
-    if esn.config.state_noise > 0.0 and rng is None:
-        raise ValueError(
-            "state_noise > 0 の自走には rng が必要です (D-36)。"
-            "黙ってノイズ無しで自走すると、学習時とは別の系を評価することに"
-            "なる。決定性が要るのは 02 の伝播器 (D-48) であって自走ではない"
-        )
-
-    def update(x: FloatArray, u: FloatArray) -> FloatArray:
-        return esn.step(x, u, rng)
-
-    return update
-
-
-def delay_line_state_updater(n_inputs: int) -> StateUpdater:
-    """遅延線を ``StateUpdater`` (D-50) に適合させるアダプタ (シフトレジスタ)。
-
-    遅延線には内部状態が無い、というのは**設計行列から見た話**にすぎない。
-    閉ループにすると「直前まで自分が吐いた出力」を保持する必要があり、それは
-    シフトレジスタという**状態**である。``x[k] = [u[k], u[k-1], ..., u[k-K]]``
-    と置けば ``[1, x[k]]`` (``ReservoirSpec(include_input=False)``) が
-    ``DelayLineSpec(n_lags=K)`` の ``[1, u[k], ..., u[k-K]]`` と**同じ列**に
-    なるので、教師強制で学んだ係数をそのまま流せる (D-44)。
-
-    これは受け入れ条件3 の後半 (「自走では対照が成立しない」) を**数値で**
-    測るための配線である。対照を自走させずに「原理的に不利」とだけ書くと、
-    主張が実測から切り離される。同時に、ESN を1行も参照しない外部状態生成器で
-    ``free_run`` が動くこと (D-50) の2つ目の実例でもある。
-
-    Args:
-        n_inputs: 入力次元 ``D_in`` (レジスタは ``D_in`` ずつずれる)。
-
-    Raises:
-        ValueError: ``n_inputs`` が 1 未満の場合。
-    """
-    if n_inputs < 1:
-        raise ValueError(f"n_inputs は 1 以上である必要があります: {n_inputs}")
-
-    def update(x: FloatArray, u: FloatArray) -> FloatArray:
-        shifted: FloatArray = np.concatenate((u, x[:-n_inputs]))
-        return shifted
-
-    return update
-
-
-def passthrough_state_updater() -> StateUpdater:
-    """線形ベースラインの ``StateUpdater`` (状態を持たない = 恒等写像)。
-
-    ``PassthroughSpec`` は状態を1列も使わないので、``free_run`` に渡す状態は
-    形だけのダミー1要素でよい。**恒等写像であること自体が主張**である ——
-    記憶を持たない手法を閉ループに入れると ``u[k+1] = W [1, u[k]]`` という
-    1次のアフィン写像になり、不動点へ落ちるか発散するかしかない
-    (要件書 位置づけ(b))。
-    """
-
-    def update(x: FloatArray, u: FloatArray) -> FloatArray:
-        return x
-
-    return update
 
 
 @dataclass(frozen=True, slots=True)
@@ -941,7 +869,10 @@ class FreeRunEvaluation:
             有効予測時間 [Lyapunov 時間] (閾値感度表の一次資料)。
         censored_by_threshold: 同じ並びの打ち切りフラグ。
         trajectory: 自走の有限行 ``(n_completed, D)``。
-        truth_series: 真の系列 ``(T, D)`` (図の重ね描きの相手)。
+        truth_series: 真の系列 ``(T, D)`` (位相図が全体を要る)。
+        truth_aligned: **自走区間だけ**の真値 ``(n_completed, D)``。
+            時間軸の図はこちらを使う —— ``truth_series`` は系列全体なので
+            長さが合わない (実測: truth 8000 / predicted 20000 で落ちた)。
     """
 
     row: FreeRunRow
@@ -949,6 +880,7 @@ class FreeRunEvaluation:
     censored_by_threshold: tuple[bool, ...]
     trajectory: FloatArray
     truth_series: FloatArray
+    truth_aligned: FloatArray
 
 
 def evaluate_free_run(
@@ -1072,6 +1004,7 @@ def evaluate_free_run(
         censored_by_threshold=tuple(item.censored for item in sensitivity),
         trajectory=trajectory,
         truth_series=truth_series,
+        truth_aligned=outcome.truth[: trajectory.shape[0]],
     )
 
 

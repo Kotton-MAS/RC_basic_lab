@@ -18,6 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import ExperimentConfig
+from rc_basics_lab.experiment.horizon import CSV_COLUMNS as HORIZON_CSV_COLUMNS
+from rc_basics_lab.experiment.horizon import TASK_NAME as HORIZON_TASK
+from rc_basics_lab.experiment.horizon import run_horizon, summarize_horizon
 from rc_basics_lab.experiment.report import (
     COMPARISON_CSV,
     COMPARISON_SUMMARY_CSV,
@@ -25,6 +28,7 @@ from rc_basics_lab.experiment.report import (
     write_comparison_csv,
     write_comparison_summary_csv,
     write_meta,
+    write_rows_csv,
 )
 from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
@@ -40,17 +44,26 @@ from rc_basics_lab.experiment.state_space import (
     collect_state_space,
     summarize,
 )
+from rc_basics_lab.experiment.state_waveform import state_waveform
 from rc_basics_lab.experiment.summary import aggregate_nrmse
+from rc_basics_lab.experiment.waveform_data import (
+    WaveformPanel,
+    waveform_predictions,
+)
 
 logger = logging.getLogger(__name__)
 
+HORIZON_CSV = "horizon.csv"
 FIG_COMPARISON = "fig_comparison.png"
+FIG_STATE_WAVEFORM = "fig_state_waveform.png"
 FIG_STATE_SPACE = "fig_state_space.png"
 
 ARTIFACTS: tuple[str, ...] = (
     COMPARISON_CSV,
     COMPARISON_SUMMARY_CSV,
+    HORIZON_CSV,
     FIG_COMPARISON,
+    FIG_STATE_WAVEFORM,
     FIG_STATE_SPACE,
     META_JSON,
 )
@@ -105,6 +118,37 @@ def _plan_zero_by_task(config: ExperimentConfig) -> dict[str, ReplicatePlan]:
     }
 
 
+def _waveform_panels(
+    config: ExperimentConfig, plans0: dict[str, ReplicatePlan]
+) -> tuple[WaveformPanel, ...]:
+    """**両方の課題**の波形パネルを作る (FIG-11 追加図2)。
+
+    Mackey-Glass だけを載せていた時期があるが、それでは 01 の主張
+    (「非線形な遅延パリティを解けるのは ESN だけ」) が図に出ない ——
+    Mackey-Glass では3手法とも真値にほぼ重なるので、
+    **差が見えない側だけを見せていた**ことになる。
+
+    Args:
+        config: 01 の設定。
+        plans0: 課題名 -> レプリケート0の ``ReplicatePlan``。
+
+    Returns:
+        ``build_tasks`` の並び順の ``WaveformPanel`` (課題名だけを持つ)。
+
+    Raises:
+        KeyError: ``plans0`` に課題が無い場合。
+    """
+    panels = []
+    for entry in build_tasks(config):
+        truth, predictions = waveform_predictions(
+            config, plans0[entry.name], entry.name
+        )
+        panels.append(
+            WaveformPanel(task=entry.name, truth=truth, predictions=predictions)
+        )
+    return tuple(panels)
+
+
 def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs:
     """実験を実行し、CSV2枚・図2枚・meta.json を書き出す。
 
@@ -124,6 +168,7 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     # subprocess guard の両方が落ちる。
     from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures import plot_comparison, plot_state_space
+    from rc_basics_lab.plotting.figures_states import plot_state_waveform
     from rc_basics_lab.plotting.style import setup_style
 
     started = time.perf_counter()
@@ -134,19 +179,42 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
     _log_state_space(reports)
 
     stats = aggregate_nrmse(rows)
+    # 01' (D-105): 1ステップ先の行は1つも触らず、自走だけを別の CSV へ出す。
+    horizon_entry = next(
+        entry for entry in build_tasks(config) if entry.name == HORIZON_TASK
+    )
+    horizon_rows = run_horizon(config, horizon_entry)
     # commit は meta.json と図の footnote (FIG-6 / D-87) で同じ値を使う。
     style = setup_style(commit=git_commit())
     paths = (
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
-        plot_comparison(rows, out_dir / FIG_COMPARISON, style=style),
+        write_rows_csv(horizon_rows, out_dir / HORIZON_CSV, HORIZON_CSV_COLUMNS),
+        # FIG-12: 波形と自走 (01') は単独図をやめ、比較図のパネルへ。
+        plot_comparison(
+            rows,
+            out_dir / FIG_COMPARISON,
+            waveforms=_waveform_panels(config, plans0),
+            horizon_rows=horizon_rows,
+            style=style,
+        ),
         plot_state_space(reports, out_dir / FIG_STATE_SPACE, style=style),
+        # FIG-11 追加図5。PCA 散布図の元になっている信号そのものを見せる。
+        plot_state_waveform(
+            state_waveform(config, plans0[HORIZON_TASK], HORIZON_TASK),
+            out_dir / FIG_STATE_WAVEFORM,
+            style=style,
+        ),
         write_meta(
             config,
             wall_time_s,
             len(rows),
             out_dir / META_JSON,
-            extra={"state_space": summarize(reports), "cjk_font": style.cjk_font},
+            extra={
+                "state_space": summarize(reports),
+                "cjk_font": style.cjk_font,
+                "horizon": summarize_horizon(horizon_rows),
+            },
         ),
     )
     logger.info(
@@ -164,6 +232,8 @@ __all__ = [
     "ARTIFACTS",
     "FIG_COMPARISON",
     "FIG_STATE_SPACE",
+    "FIG_STATE_WAVEFORM",
+    "HORIZON_CSV",
     "ExperimentOutputs",
     "run_and_report",
 ]

@@ -1007,8 +1007,27 @@ NARMA10 は普通に発散する（`np.random.default_rng(s)` の s=0..199 の�
 | 対照 | 線形回帰・遅延線（リッジ / OLS）・ESN が**同一の分割**を通る。alpha 格子も共有し、例外は正則化なし水準の alpha = 0 だけ（D-04 / D-05 / D-08 / D-90） | 対照が無い、または探索予算が非対称 |
 | 誤差指標 | NRMSE 主・NMSE 併記（D-02） | NMSE が多い（正規化の定義が書かれないことがある） |
 
-**参照値の扱い（原典未特定）。** 図に引く参照値は NMSE = 0.16（非線形性なしの天井）と 0.107（良好な非線形 RC、N = 50 規模）の2つで、これらは複数の物理 RC 論文が
-引用する値だが**原典は特定できていない**（要件_rc-basics-03 未確定1）。値と注記は
+**参照値の出典（特定済み、D-100）。** 図に引く参照値は NMSE = 0.16 と 0.107 の2つで、
+長く「複数の物理 RC 論文が引用する値だが原典未特定」として扱っていた（要件_rc-basics-03
+未確定1 / survey 未解決1）。**辿った結果、どちらも同じ論文に行き着いた。**
+
+| 値 | 出典 | 測定条件（原典の記述） |
+|---|---|---|
+| **0.107 ± 0.012** | Vinckier et al. (2015), *High-performance photonic reservoir computer based on a coherently driven passive cavity*, Optica **2**(5):438 —— **同論文自身の実験値** | `N = 50` 内部変数、訓練 1000 ステップ / テスト 1000 ステップ、10 回反復 |
+| **0.16** | 同論文が Appeltant et al. (2011), *Information processing using a single dynamical node as complex system*, Nat. Commun. **2**:468 に帰す値 | 線形シフトレジスタで得られる最良値 |
+
+根拠は Vinckier et al. の本文そのもの:
+
+> The value NMSE=0.16 in fact corresponds to the best that can be obtained with a linear shift register [12].
+
+> Using N=50 internal variables, we obtained a NMSE of 0.104±0.02 for the simulation and an
+> experimental NMSE of 0.107±0.012.
+
+その `[12]` が Appeltant et al. (2011) である（同論文の参考文献リストから）。
+
+**訓練長が 3.8 倍違う点に注意。** 原典は訓練 1000 点、こちらの 3-C は `n_train = 3800` である。
+図の凡例には出典と動作点の両方が入るので（D-97 の `cited_measurement`）、
+読者はこの差を図だけで判断できる。値と注記は
 `experiment/narma.py` の `NARMA10_REFERENCE_NMSE` / `NARMA10_REFERENCE_NOTE` が
 単一の真実で、`meta.json` の `narma10_verdict.reference_note` と
 `fig_narma10_control.png` の注（日本語・英語の2本、D-10）に同じ文言が出る。
@@ -1559,9 +1578,45 @@ Lorenz / ESN / 10 レプリケートの閾値感度（`meta.json` の `valid_tim
 | 0.3 | 4.74 | 3.14 | 5.90 | 0 |
 | **0.4（採用）** | **4.83** | **3.18** | **5.93** | **0** |
 | 0.5 | 5.24 | 3.67 | 5.95 | 0 |
-
 しきい値を 0.2 から 0.5 へ動かしても中央値は 3.71 → 5.24 の範囲に収まり、**対照との
 差（下記）に比べて桁が2つ小さい**。「0.4 だから出た結論」ではない。
+
+**文献と並べるときは 0.3 の行を使う（D-101）。** RC のカオス予測で使われる有効予測時間
+（VPT）の一次資料は Platt et al. (2022) *Neural Networks* 153:530 で、定義は
+
+> RMSE(t) = sqrt( (1/D) Σ_i [ (u_i^f(t) − u_i(t)) / σ_i ]² ) > ε,  ε は "arbitrarily to 0.3"
+
+である。**平方根が入っている**のでこちらの NRMSE 比（D-43）と同じ次元であり、閾値も 0.3
+なので、**格子に元から入っていた 0.3 がそのまま比較点**になる。その値は **4.74**。
+
+ただし正規化の仕方は完全には一致しない。一次資料は**成分ごとに** `σ_i` で割ってから
+D 次元で二乗平均するが、こちらは真の系列の標準偏差1つで割る。Lorenz は成分ごとに分散が
+違うので、同じ閾値でも厳密に同じ量ではない。
+
+**参照線は別の一次資料から引いた（D-102）。** Platt et al. は L63 の VPT を図
+（Figure 4 左 / Figure 5）の分布として示すだけで本文に単一の代表値が無い（条件は読み取れ、
+Figure 4 は `N = 2000`、Figure 5 に `N = 250` の系統、いずれも 200 個のテスト初期条件）。
+そこで2本目を当たった。
+
+**Gauthier, Bollt, Griffith, Barbosa (2021)** *Next generation reservoir computing*,
+Nat. Commun. **12**:5564 の本文にはこうある:
+
+> The NG-RC forecasts well out to ~5 Lyapunov times.
+
+同じ段落が「**comparable to an optimized traditional RC with 100s to 1000s of reservoir
+nodes**」と述べており、こちらの `N = 200` はその範囲に入る。単位もそろっている ——
+同論文の Lorenz63 の Lyapunov 時間は **1.1 時間単位**で、こちらの数値推定
+（`1/λ_max = 1/0.9161 = 1.0916`）と実質一致する。
+
+| | こちら（4-B） | Gauthier et al. 2021 |
+|---|---|---|
+| 有効予測時間 | **4.83**（ESN 中央値） | **~5** |
+| リザバー規模 | `N = 200` | 従来型 RC で 100〜1000 ノード相当 |
+| Lyapunov 時間 | 1.0916（数値推定） | 1.1 |
+| 判定基準 | NRMSE 比 0.4（D-43） | 「forecasts well」（**定量的に未明示**） |
+
+**判定基準だけが一致しない**ので、その旨を参照線の動作点として凡例に入れてある（D-97）。
+比は目安として読むこと。
 
 同じしきい値 0.4 での手法別（Lorenz、中央値 [λ_max^-1]）:
 

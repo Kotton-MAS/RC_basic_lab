@@ -77,6 +77,10 @@ from rc_basics_lab.experiment.runner import (
     plan_replicate,
 )
 from rc_basics_lab.experiment.split import make_split
+from rc_basics_lab.experiment.valid_time import (
+    LITERATURE_VPT_THRESHOLD,
+    VALID_TIME_THRESHOLD_GRID,
+)
 from rc_basics_lab.readout.design import ReservoirSpec, build_design_matrix
 from rc_basics_lab.readout.ridge import fit_ridge
 from rc_basics_lab.reservoir.esn import ESN
@@ -1029,3 +1033,28 @@ def test_committed_artifacts_match_the_declared_list() -> None:
         assert (CHAOS_RESULTS / name).exists(), name
     total = sum(path.stat().st_size for path in CHAOS_RESULTS.glob("*.csv"))
     assert total < 5 * 1024 * 1024, total
+
+
+def test_the_literature_vpt_threshold_is_in_the_sensitivity_grid() -> None:
+    """文献比較に使う閾値が感度格子に入っていること (D-101)。
+
+    一次資料は Platt et al. (2022) *Neural Networks* 153:530 で、VPT は
+    ``RMSE(t) = sqrt((1/D) sum_i [(u_i^f - u_i)/sigma_i]^2) > eps`` を初めて
+    超える時刻、``eps`` は「arbitrarily to 0.3」と定義されている。
+    **平方根が入っている**ので、こちらの NRMSE 比 (D-43) と同じ次元であり、
+    換算は要らない —— 比較点は**格子に元から入っていた 0.3** である。
+
+    最初にこの検査を書いたときは二次情報 (arXiv:2508.06730 の要約) を信じて
+    「正規化二乗差 0.4」だと思い込み、``sqrt(0.4)`` を格子に足していた。
+    **一次資料を読んだら定義が違った。** 数値主張は一次資料で裏を取る。
+
+    実測 (本番、Lorenz / ESN / 10 レプリケート): 閾値 0.3 で中央値 4.74、
+    採用値 0.4 で 4.83 [1/lambda_max]。
+    """
+    assert pytest.approx(0.3) == LITERATURE_VPT_THRESHOLD
+    assert LITERATURE_VPT_THRESHOLD in VALID_TIME_THRESHOLD_GRID, (
+        "文献比較に使う閾値が格子から外れています。"
+        "外すと、文献と並べるときに使う列が消えます (D-101)。"
+    )
+    # 換算 (sqrt(0.4)) は不要。戻ってきたら気づけるようにしておく。
+    assert LITERATURE_VPT_THRESHOLD < 0.4
