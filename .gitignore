@@ -184,3 +184,5 @@ settings.local.json
 .claude/tmp/
 # macOS
 .DS_Store
+
+.claude/worktrees/
