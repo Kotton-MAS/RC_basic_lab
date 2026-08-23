@@ -10,13 +10,13 @@ CSV の列順は ``runner.CSV_COLUMNS`` (= ``ResultRow`` の宣言順) を単一
 
 from __future__ import annotations
 
-import csv
 import dataclasses
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from rc_basics_lab.config import ExperimentConfig
+from rc_basics_lab.experiment._csv import write_rows
 from rc_basics_lab.experiment.runner import CSV_COLUMNS, ResultRow
 from rc_basics_lab.experiment.summary import Aggregate
 from rc_basics_lab.meta import collect_meta_for
@@ -38,13 +38,7 @@ SUMMARY_CSV_COLUMNS: tuple[str, ...] = (
 
 def write_comparison_csv(rows: Sequence[ResultRow], path: Path) -> Path:
     """長形式の結果を CSV に書く。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows((dataclasses.asdict(row) for row in rows), CSV_COLUMNS, path)
 
 
 def write_comparison_summary_csv(
@@ -55,22 +49,18 @@ def write_comparison_summary_csv(
     ``comparison.csv`` (長形式30行) と対になる集計版。集計ロジックそのものは
     ``experiment.summary.aggregate_nrmse`` にある。
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(SUMMARY_CSV_COLUMNS))
-        writer.writeheader()
-        for (task, method), aggregate in stats.items():
-            writer.writerow(
-                {
-                    "task": task,
-                    "method": method,
-                    "n": aggregate.n,
-                    "nrmse_mean": aggregate.mean,
-                    "nrmse_std": aggregate.std,
-                    "sign_accuracy_mean": aggregate.sign_accuracy_mean,
-                }
-            )
-    return path
+    rows = (
+        {
+            "task": task,
+            "method": method,
+            "n": aggregate.n,
+            "nrmse_mean": aggregate.mean,
+            "nrmse_std": aggregate.std,
+            "sign_accuracy_mean": aggregate.sign_accuracy_mean,
+        }
+        for (task, method), aggregate in stats.items()
+    )
+    return write_rows(rows, SUMMARY_CSV_COLUMNS, path)
 
 
 def write_meta_for(

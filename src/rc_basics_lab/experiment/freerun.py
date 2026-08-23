@@ -16,7 +16,6 @@ D-05 / D-08) は 01 の経路が持つ。ここが組み立てるのは ``TaskEn
 
 from __future__ import annotations
 
-import csv
 import dataclasses
 import logging
 import math
@@ -30,6 +29,7 @@ import numpy as np
 from rc_basics_lab.config import Chaos04Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.lyapunov import max_lyapunov
+from rc_basics_lab.experiment._csv import write_rows
 from rc_basics_lab.experiment.attractor import (
     VALID_TIME_THRESHOLD_GRID,
     AttractorDistance,
@@ -1446,24 +1446,16 @@ def run_freerun_experiment(
 
 def write_freerun_csv(rows: Sequence[FreeRunRow], path: Path) -> Path:
     """4-B の結果を CSV に書く (列順は ``FreeRunRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(FREERUN_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows(
+        (dataclasses.asdict(row) for row in rows), FREERUN_CSV_COLUMNS, path
+    )
 
 
 def write_freerun_profile_csv(rows: Sequence[FreeRunProfileRow], path: Path) -> Path:
     """図が読む長形式の行を CSV に書く (列順は宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(FREERUN_PROFILE_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows(
+        (dataclasses.asdict(row) for row in rows), FREERUN_PROFILE_CSV_COLUMNS, path
+    )
 
 
 ONESTEP_ARTIFACTS: tuple[str, ...] = (ONESTEP_CSV, META_JSON)
@@ -1482,13 +1474,7 @@ def write_onestep_csv(rows: Sequence[ResultRow], path: Path) -> Path:
     複製せず ``CSV_COLUMNS`` を参照する (D-05 の公平性の列が片方だけ欠ける事故を
     防ぐ)。
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows((dataclasses.asdict(row) for row in rows), CSV_COLUMNS, path)
 
 
 def run_and_report_onestep(config: Chaos04Config, out_dir: Path) -> tuple[Path, ...]:

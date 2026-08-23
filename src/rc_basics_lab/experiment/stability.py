@@ -18,7 +18,6 @@ Lyapunov 時間も ``estimate_lorenz_lyapunov`` が1回だけ推定した値を�
 
 from __future__ import annotations
 
-import csv
 import dataclasses
 import logging
 import time
@@ -30,6 +29,7 @@ import numpy as np
 
 from rc_basics_lab.config import Chaos04Config, ESNConfig
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
+from rc_basics_lab.experiment._csv import write_rows
 from rc_basics_lab.experiment.attractor import (
     REGIMES,
     RegimeVerdict,
@@ -580,13 +580,9 @@ def regime_map(
 
 def write_stability_csv(rows: Sequence[StabilityRow], path: Path) -> Path:
     """4-C の結果を CSV に書く (列順は ``StabilityRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(STABILITY_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows(
+        (dataclasses.asdict(row) for row in rows), STABILITY_CSV_COLUMNS, path
+    )
 
 
 def valid_time_by_regime(rows: Sequence[StabilityRow]) -> dict[str, float]:

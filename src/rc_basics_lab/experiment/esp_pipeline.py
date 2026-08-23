@@ -19,7 +19,6 @@ sigma_u と rho の分布まで残すので、記事で多安定性を説明す�
 
 from __future__ import annotations
 
-import csv
 import dataclasses
 import logging
 import time
@@ -28,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import Esp02Config
+from rc_basics_lab.experiment._csv import write_rows
 from rc_basics_lab.experiment.esp import (
     ESP_CSV_COLUMNS,
     EspResults,
@@ -113,39 +113,25 @@ class EspOutputs:
 
 def write_esp_csv(rows: Sequence[EspRow], path: Path) -> Path:
     """条件ごとの診断結果を CSV に書く (列順は ``EspRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(ESP_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows((dataclasses.asdict(row) for row in rows), ESP_CSV_COLUMNS, path)
 
 
 def write_washout_csv(rows: Sequence[WashoutRow], path: Path) -> Path:
     """2-D の結果を CSV に書く (列順は ``WashoutRow`` の宣言順)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(WASHOUT_CSV_COLUMNS))
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(dataclasses.asdict(row))
-    return path
+    return write_rows(
+        (dataclasses.asdict(row) for row in rows), WASHOUT_CSV_COLUMNS, path
+    )
 
 
 def write_threshold_csv(
     rows: Sequence[ThresholdRow], sigma_grid: Sequence[float], path: Path
 ) -> Path:
     """閾値感度の結果を CSV に書く (列順は ``threshold_csv_columns``)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(
-            handle, fieldnames=list(threshold_csv_columns(sigma_grid))
-        )
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(threshold_row_as_dict(row))
-    return path
+    return write_rows(
+        (threshold_row_as_dict(row) for row in rows),
+        threshold_csv_columns(sigma_grid),
+        path,
+    )
 
 
 def run_and_report_threshold_sweep(config: Esp02Config, out_dir: Path) -> Path:
