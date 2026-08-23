@@ -74,9 +74,7 @@ FIG_MC_SWEEP = "fig_mc_sweep.png"
 FIG_IPC_PROFILE = "fig_ipc_profile.png"
 FIG_MEMORY_NONLINEARITY = "fig_memory_nonlinearity.png"
 FIG_IPC_CONSERVATION = "fig_ipc_conservation.png"
-FIG_NARMA10_CONTROL = "fig_narma10_control.png"
-FIG_NARMA10_TAPS = "fig_narma10_taps.png"
-FIG_NARMA10_WAVEFORM = "fig_narma10_waveform.png"
+FIG_NARMA10 = "fig_narma10.png"
 
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
@@ -87,9 +85,7 @@ CAPACITY_ARTIFACTS: tuple[str, ...] = (
     FIG_IPC_PROFILE,
     FIG_MEMORY_NONLINEARITY,
     FIG_IPC_CONSERVATION,
-    FIG_NARMA10_CONTROL,
-    FIG_NARMA10_TAPS,
-    FIG_NARMA10_WAVEFORM,
+    FIG_NARMA10,
     META_JSON,
 )
 """1コマンド (``make figures-03``) で必ず出る 03 の成果物 (CSV4枚 + 図6枚 + meta)。
@@ -289,15 +285,9 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         plot_ipc_profile,
         plot_mc_sweep,
         plot_memory_nonlinearity,
-        plot_narma10_control,
     )
-    from rc_basics_lab.plotting.figures_narma_taps import (
-        plot_narma10_taps,
-    )
+    from rc_basics_lab.plotting.figures_narma10 import plot_narma10
     from rc_basics_lab.plotting.style import setup_style
-    from rc_basics_lab.plotting.waveforms import (
-        plot_prediction_waveform,
-    )
 
     started = time.perf_counter()
     results = run_capacity_experiment(config)
@@ -369,17 +359,12 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             out_dir / FIG_IPC_CONSERVATION,
             style=style,
         ),
-        plot_narma10_control(
+        # FIG-12 / C-6: 3-C・3-C'・予測波形は同じ主張を支えているので1枚へ。
+        plot_narma10(
             narma.rows,
-            out_dir / FIG_NARMA10_CONTROL,
-            style=style,
-        ),
-        plot_narma10_taps(taps, out_dir / FIG_NARMA10_TAPS, style=style),
-        # FIG-11 追加図3 (D-107)。「NMSE 0.15 と 0.27 の違い」を目で見せる。
-        plot_prediction_waveform(
-            *waveform_predictions(config.narma.base, narma.plan0),
-            out_dir / FIG_NARMA10_WAVEFORM,
-            task_label=("NARMA10", "NARMA10"),
+            taps,
+            waveform_predictions(config.narma.base, narma.plan0, "narma10"),
+            out_dir / FIG_NARMA10,
             style=style,
         ),
         write_meta_for(
@@ -461,9 +446,7 @@ __all__ = [
     "FIG_IPC_PROFILE",
     "FIG_MC_SWEEP",
     "FIG_MEMORY_NONLINEARITY",
-    "FIG_NARMA10_CONTROL",
-    "FIG_NARMA10_TAPS",
-    "FIG_NARMA10_WAVEFORM",
+    "FIG_NARMA10",
     "NARMA10_CSV",
     "NARMA10_TAPS_CSV",
     "CapacityOutputs",

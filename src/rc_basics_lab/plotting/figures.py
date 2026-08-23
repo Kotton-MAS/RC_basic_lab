@@ -139,6 +139,17 @@ def _annotate_means(axis: Axes, positions: FloatArray, means: FloatArray) -> Non
         )
 
 
+_SHORT_TASK_LABELS: dict[str, tuple[str, str]] = {
+    "mackey_glass": ("Mackey-Glass", "Mackey-Glass"),
+    "delay_parity": ("遅延パリティ", "delay parity"),
+}
+"""パネル見出し用の短い課題名。
+
+``_TASK_LABELS`` は式まで含むので、結論文と並べると見出しが軸幅を超える
+(実測: 遅延パリティのパネルで隣まではみ出した)。**軸ラベルは式つき、
+見出しは短い名前**と使い分ける。
+"""
+
 _TASK_MARKERS: tuple[str, ...] = ("o", "s", "^", "D")
 """課題を分けるマーカー。**色は手法が持っている** (FIG-5) ので形で分ける。"""
 
@@ -329,7 +340,10 @@ def plot_comparison(
         horizon_headline,
         horizon_reference_note,
     )
-    from rc_basics_lab.plotting.waveforms import draw_prediction_waveform
+    from rc_basics_lab.plotting.waveforms import (
+        draw_prediction_waveform,
+        waveform_headline,
+    )
 
     require_rows(rows)
     if not waveforms:
@@ -349,18 +363,18 @@ def plot_comparison(
         windows: list[str] = []
         for index, panel in enumerate(waveforms):
             axis = axes[1 + index]
-            length = draw_prediction_waveform(
-                axis, panel.truth, panel.predictions, style
+            drawn = draw_prediction_waveform(
+                figure, axis, panel.truth, panel.predictions, style
             )
             windows.append(
-                f"{panel.task} {WAVEFORM_OFFSET}..{WAVEFORM_OFFSET + length}"
+                f"{panel.task} {WAVEFORM_OFFSET}..{WAVEFORM_OFFSET + drawn.length}"
             )
-            label = _lookup(_TASK_LABELS, panel.task, style)
-            axis.set_title(
-                style.label(
-                    f"予測がどう見えるか: {label}",
-                    f"what the predictions look like: {label}",
-                )
+            label = _lookup(_SHORT_TASK_LABELS, panel.task, style)
+            # 見出しは**残差から導く** (FIG-1 / C-1)。「どう見えるか」は
+            # 疑問形で、図が何を示したかを言っていない。
+            drawn.top.set_title(
+                f"{label}: {waveform_headline(panel.truth, panel.predictions, style)}",
+                fontsize=9,
             )
         logs = draw_horizon_panel(axes[1 + len(waveforms)], horizon_rows, style)
         axes[1 + len(waveforms)].set_title(

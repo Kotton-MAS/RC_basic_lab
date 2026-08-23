@@ -40,6 +40,7 @@ from test_plotting_capacity import (
     mc_sweep_profile,
     mc_sweep_rows,
     narma10_rows,
+    plot_narma10_control,
 )
 from test_plotting_freerun import freerun_rows
 
@@ -76,7 +77,6 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
     plot_ipc_profile,
     plot_mc_sweep,
-    plot_narma10_control,
 )
 from rc_basics_lab.plotting.figures_esp import plot_esp_map
 from rc_basics_lab.plotting.figures_freerun import plot_valid_time
@@ -942,9 +942,10 @@ def test_the_waveform_selection_is_not_a_free_parameter() -> None:
         "offset": 0,
         "steps": 300,
         "replicate": 0,
-        # 課題ごとの長さも定数表である (D-107)。遅延パリティは 1 ステップごとに
-        # 反転するので 300 では塗り潰れ、01 の主張が図から読めなかった。
-        "delay_parity": 80,
+        # 課題ごとの長さも定数表である (D-107)。反転や高周波の課題は
+        # 300 ステップでは塗り潰れ、図の主張が読めなかった (C-4)。
+        "delay_parity": 40,
+        "narma10": 100,
     }, selection
 
     for name in ("offset", "start", "window", "replicate", "steps"):
@@ -1074,9 +1075,11 @@ def test_sparse_scalar_figures_are_panels_not_standalone_figures(
         style=CONTEXT,
     )
     assert captured, "01 の主図が保存されませんでした"
-    assert len(captured[0].axes) == 4, (
-        "01 の fig_comparison は 課題別の誤差 / 波形2枚 / 自走 84 ステップ先 の"
-        f"4パネルであるべきです (実測 {len(captured[0].axes)})。"
+    # 波形パネルは**上段と残差の段**の2軸になる (C-3) ので、
+    # 4 パネル = 1 + 2x2 + 1 = 6 軸である。
+    assert len(captured[0].axes) == 6, (
+        "01 の fig_comparison は 課題別の誤差 / 波形2枚 (各2段) / 自走 の"
+        f"6軸であるべきです (実測 {len(captured[0].axes)})。"
         "単独の figure に戻すのは D-109 の取り消しです。"
     )
 
@@ -1175,3 +1178,190 @@ def test_legends_are_opaque_so_lines_do_not_show_through() -> None:
     params = style.rc_params_for(CONTEXT)
     assert params["legend.frameon"] is True, params.get("legend.frameon")
     assert params["legend.framealpha"] == 1.0, params.get("legend.framealpha")
+
+
+# --- FIG-1: タイトルは結論文 / FIG-5: 手法名は対応表を通す (D-111) --------------
+
+QUESTION_ENDINGS: tuple[str, ...] = ("か", "か。", "?", "？", "か?", "か？")
+"""疑問形と判定する語尾 (FIG-1)。
+
+**「結論文か」は機械で判定できないので、疑問形の禁止という下限だけを置く。**
+粗いが、実際に破れた 2 件 (「どう外れていくか」「予測がどう見えるか」) は
+これで落ちる。図が何を示したかを言えないなら、その図はまだ主張していない。
+"""
+
+
+def _titles(figure: Figure) -> list[str]:
+    """figure と各軸の見出しを集める。
+
+    Args:
+        figure: 描画済みの figure。
+
+    ``figure.texts`` を見るのは、``suptitle`` が private 属性でしか
+    取れないためである (注 ``supxlabel`` も同じ列に入るが、
+    そちらは疑問形にならないので判定に影響しない)。
+
+    Returns:
+        空でない見出しの並び。
+    """
+    found = [text.get_text() for text in figure.texts]
+    found.extend(axis.get_title() for axis in figure.axes)
+    return [text.strip() for text in found if text.strip()]
+
+
+def _is_question(title: str) -> bool:
+    """見出しが疑問形で終わるか。
+
+    Args:
+        title: 見出し。
+
+    Returns:
+        疑問形なら ``True``。
+    """
+    stripped = title.strip().rstrip("。 ")
+    return stripped.endswith(QUESTION_ENDINGS)
+
+
+def test_no_figure_title_is_a_question(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """図と各パネルの見出しが疑問形で終わらないこと (FIG-1 / D-111)。
+
+    **FIG-1 だけ機械検査が無く、そこが新規図で破れた。** 既存 19 枚は
+    結論文だったのに、検査の無い 1 本だけが崩れている。文書だけの規約は
+    次に破れる、というこのリポジトリの繰り返しの確認の、図の側での再現。
+    """
+    from rc_basics_lab.plotting import figures, waveforms
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    captured += _capture_saves(monkeypatch, waveforms, "save_png")
+    waveforms.plot_prediction_waveform(
+        _comparison_waveforms()[0].truth,
+        _comparison_waveforms()[0].predictions,
+        tmp_path / "fig_waveform.png",
+        task_label=("NARMA10", "NARMA10"),
+        style=CONTEXT,
+    )
+    assert captured, "図が保存されませんでした"
+    questions = [
+        title for figure in captured for title in _titles(figure) if _is_question(title)
+    ]
+    assert not questions, (
+        f"疑問形の見出しがあります: {questions} (FIG-1 / D-111)。\n"
+        "**図が何を示したかを書いてください。** 「どう見えるか」は問いであって"
+        "結論ではありません。結論文は行から導くこと (D-90 と同じ規律)。"
+    )
+
+
+def test_no_legend_shows_a_raw_method_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """凡例に手法の生のキーが出ていないこと (FIG-5 / D-111)。
+
+    ``label=name`` で生のキーを渡すと、同じ図の x 軸ラベルが「線形」、
+    凡例が ``linear`` になり、**同じものが2通りに呼ばれる**。
+    ``style.label`` を通らないので、CJK フォントが無い環境の英語
+    フォールバックも効かない (豆腐の図が「正常に」生成される)。
+    """
+    from rc_basics_lab.plotting import figures
+
+    captured = _capture_saves(monkeypatch, figures, "_save")
+    figures.plot_comparison(
+        _comparison_rows(),
+        tmp_path / "fig_comparison.png",
+        waveforms=_comparison_waveforms(),
+        horizon_rows=_horizon_rows(),
+        style=CONTEXT,
+    )
+    assert captured, "図が保存されませんでした"
+    raw = [
+        text
+        for figure in captured
+        for axis in figure.axes
+        for text in _legend_texts(figure)
+        if text in METHOD_LABELS
+    ]
+    assert not raw, (
+        f"凡例に生のキーが出ています: {sorted(set(raw))} (FIG-5 / D-111)。\n"
+        "``label_of(METHOD_LABELS, name, style)`` を通してください。"
+    )
+
+
+# --- FIG-12: 1記事あたりの図の枚数 (D-112) ------------------------------------
+
+MAX_FIGURES_PER_ARTICLE = 4
+"""``連載構成案_RC基礎編.md`` の想定 (2〜4 枚) の上限。"""
+
+#: 上限を超えている記事の**現在値**。**この辞書は増やせない** (2026-08-23 実測)。
+#: 減らすのは自由で、減らしたら値を下げる (下の陳腐化検査が下げ忘れを拾う)。
+FIGURE_COUNT_FROZEN: dict[str, int] = {
+    "03_capacity": 5,
+    "04_chaotic_freerun": 5,
+    "05_anomaly_detection": 5,
+}
+"""上限超過を凍結した記事。
+
+**ここへ追記して通すのはラチェットを外す操作である。** 図が増えたら、
+凍結値を上げるのではなくパネルへ畳む (03 は NARMA10 の 3 枚を 1 枚に
+畳んで 7 -> 5 枚にした)。
+"""
+
+
+def _figures_by_article() -> dict[str, int]:
+    """記事ごとの PNG 枚数。
+
+    Returns:
+        ``{記事ディレクトリ名: 枚数}``。01 は ``results/`` 直下にあるので
+        ``"01"`` というキーで数える。
+    """
+    root = ROOT / "results"
+    counts = {"01": len(list(root.glob("*.png")))}
+    for directory in sorted(root.iterdir()):
+        if directory.is_dir():
+            counts[directory.name] = len(list(directory.glob("*.png")))
+    return {name: count for name, count in counts.items() if count}
+
+
+def test_no_article_exceeds_its_figure_budget() -> None:
+    """1記事あたりの図が上限か凍結値を超えないこと (FIG-12 / D-112)。
+
+    **「足すだけでなく減らす」が FIG-12 の眼目だった**が、第3版の作業では
+    正味で 23 -> 24 枚と増えていた。枚数は目視では追えないので機械に置く。
+    """
+    over = {
+        name: count
+        for name, count in _figures_by_article().items()
+        if count > FIGURE_COUNT_FROZEN.get(name, MAX_FIGURES_PER_ARTICLE)
+    }
+    assert not over, (
+        f"記事あたりの図が上限を超えています: {over} (FIG-12 / D-112)。\n"
+        f"上限は {MAX_FIGURES_PER_ARTICLE} 枚 (凍結済みの記事は"
+        f" FIGURE_COUNT_FROZEN の値)。\n"
+        "**凍結値を上げて通すのはラチェットを外す操作です。** "
+        "同じ主張を支えている図はパネルへ畳んでください。"
+    )
+
+
+def test_the_frozen_figure_counts_have_no_stale_entries() -> None:
+    """減ったのに凍結値が古いままになっていないこと (D-112)。
+
+    減らしたのに値が古いと、その差分だけ**また増やせてしまう**。
+    """
+    counts = _figures_by_article()
+    slack = {
+        name: (frozen, counts[name])
+        for name, frozen in FIGURE_COUNT_FROZEN.items()
+        if name in counts and counts[name] < frozen
+    }
+    assert not slack, (
+        f"凍結値より少なくなった記事があります (凍結値, 実測): {slack}。\n"
+        "FIGURE_COUNT_FROZEN を実測値まで下げてください"
+        f" (上限 {MAX_FIGURES_PER_ARTICLE} 枚に収まったなら項目ごと消す)。"
+    )

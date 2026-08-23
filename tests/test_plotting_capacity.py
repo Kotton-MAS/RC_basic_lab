@@ -50,6 +50,7 @@ from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, Resu
 from rc_basics_lab.plotting import figures_capacity, style
 from rc_basics_lab.plotting.figures_capacity import (
     conservation_bound,
+    draw_narma10_control_panel,
     ipc_heatmap_means,
     mc_profile_means,
     narma10_method_labels,
@@ -57,7 +58,6 @@ from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_profile,
     plot_mc_sweep,
     plot_memory_nonlinearity,
-    plot_narma10_control,
 )
 from rc_basics_lab.plotting.style import StyleContext, setup_style
 
@@ -77,6 +77,30 @@ _CJK_RANGES: tuple[tuple[int, int], ...] = (
     (0xFF00, 0xFFEF),  # 全角形
 )
 """日本語ラベルの検出に使う符号位置の範囲 (D-10 の「豆腐文字」判定)。"""
+
+
+def plot_narma10_control(
+    rows: Sequence[ResultRow], path: Path, *, style: StyleContext
+) -> Path:
+    """**テスト用の薄い層**: 3-C のパネルを1枚の figure に載せて保存する。
+
+    FIG-12 / C-6 で 3-C は単独の figure をやめ、``fig_narma10`` のパネルに
+    なった。ここで単独図に戻しているのは**検査のため**である ——
+    参照線・注記・空入力の扱いはパネル単位の性質なので、
+    親figure の都合から切り離して測るほうが壊れ方が読める。
+    """
+    from rc_basics_lab.plotting.style import new_figure, rc_context_for
+
+    with rc_context_for(style):
+        figure = new_figure(7.2, 5.0)
+        draw_narma10_control_panel(figure.subplots(1, 1), rows, style)
+        figure.supxlabel(
+            style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
+            fontsize=8,
+        )
+        # 保存は figures_capacity._save 経由にする —— 既存の検査が
+        # そこを差し替えて figure を捕まえている。
+        return figures_capacity._save(figure, path)
 
 
 def _row(

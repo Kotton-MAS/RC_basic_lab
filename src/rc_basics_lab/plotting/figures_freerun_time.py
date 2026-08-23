@@ -106,10 +106,19 @@ def plot_freerun_timeline(
         )
         axis.set_ylabel(style.label("値 (標準化後)", "value (standardised)"))
         axis.legend(loc="upper left", fontsize=8)
+        # 見出しは**行から導く** (FIG-1 / C-1)。「どう外れていくか」は疑問形で、
+        # 図が何を示したかを言っていない。この図が実際に示しているのは
+        # 「位相はずれるが振幅は保たれる」ことである。
+        lyapunov_times = valid_steps / lyapunov_time
+        amplitude = _amplitude_ratio(true_values, run_values)
         figure.suptitle(
             style.label(
-                f"実験 4-B: {task_label[0]} の自走はどう外れていくか",
-                f"Experiment 4-B: how the free run of {task_label[1]} drifts away",
+                f"実験 4-B: {task_label[0]} の自走は約 {lyapunov_times:.1f}"
+                " Lyapunov 時間で位相がずれるが、振幅は"
+                f"真値の {amplitude:.0%} を保つ",
+                f"Experiment 4-B: the free run of {task_label[1]} loses phase"
+                f" after about {lyapunov_times:.1f} Lyapunov times, but keeps"
+                f" {amplitude:.0%} of the amplitude",
             )
         )
         figure.supxlabel(
@@ -124,6 +133,26 @@ def plot_freerun_timeline(
         conditions = f"task = {task_label[1]}, method = {method}"
         add_provenance(figure, conditions, (FixedReplicate(),), style=style)
         return save_png(figure, path)
+
+
+def _amplitude_ratio(truth: FloatArray, predicted: FloatArray) -> float:
+    """自走の振幅が真値の何倍か (FIG-1 / C-1)。
+
+    位相がずれても振幅とアトラクタの形が保たれる、というのが 4-B の主張で、
+    その「振幅」の側を数える。**標準偏差の比**で測るのは、位相ずれの影響を
+    受けずに振れ幅だけを見るためである。
+
+    Args:
+        truth: 自走区間の真値。
+        predicted: 同じ長さの自走出力。
+
+    Returns:
+        ``std(predicted) / std(truth)``。真値が定数なら ``nan``。
+    """
+    spread = float(np.std(truth))
+    if spread <= 0.0:
+        return float("nan")
+    return float(np.std(predicted)) / spread
 
 
 __all__ = ["plot_freerun_timeline"]

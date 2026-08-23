@@ -48,8 +48,6 @@ from rc_basics_lab.experiment.capacity import (
 )
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NMSE,
-    NARMA10_REFERENCE_NOTE,
-    NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting.capacity_grids import (
@@ -80,7 +78,6 @@ from rc_basics_lab.plotting.narma10_panel import (
     REFERENCE_SOURCES,
     narma10_headline,
     narma10_method_labels,
-    narma10_subtitle,
 )
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
@@ -680,18 +677,18 @@ def _reference_lines(axis: Axes, style: StyleContext) -> None:
         )
 
 
-def plot_narma10_control(
-    rows: Sequence[ResultRow], path: Path, *, style: StyleContext
-) -> Path:
-    """実験 3-C: 探索予算をそろえた3手法の NARMA10 成績 (受け入れ条件5)。
+def draw_narma10_control_panel(
+    axis: Axes, rows: Sequence[ResultRow], style: StyleContext
+) -> None:
+    """実験 3-C (探索予算をそろえた3手法の NARMA10 成績) を1つの軸に描く。
 
-    横軸が手法 (線形 / 遅延線(選ばれた k) / ESN)、縦軸がテスト NMSE の
-    レプリケート平均±s.d.。参照線 (0.16 / 0.107) は**原典未特定**である旨を
-    図の注に書いて引く —— 数字だけを引くと、後から出典が違っていたときに
-    図の側から辿れない。
+    単独の figure をやめてパネルにしたのは FIG-12 / C-6 による。03 は図が
+    7 枚あり、うち NARMA10 の 3 枚は**同じ主張を支えている**。
 
-    誤差指標を NMSE にするのは、参照値が NMSE で流通しているからである
-    (D-02 の主指標 NRMSE は ``narma10.csv`` の ``nrmse`` 列に併記されている)。
+    Args:
+        axis: 描画先。
+        rows: ``narma10.csv`` と同じ行。
+        style: 配色・言語。
 
     Raises:
         ValueError: ``rows`` が空、または参照線のラベルが欠けている場合。
@@ -705,66 +702,53 @@ def plot_narma10_control(
     ]
     means = [mean for mean, _ in stats]
     stds = [std for _, std in stats]
-
-    with rc_context_for(style):
-        figure = _new_figure(7.2, 5.0)
-        axis = figure.subplots(1, 1)
-        axis.errorbar(
-            positions,
-            means,
-            # 対数軸なので下側の誤差棒が 0 以下に落ちないよう抑える
-            yerr=np.vstack(
-                [
-                    np.minimum(stds, np.asarray(means, dtype=np.float64) * 0.999),
-                    np.asarray(stds, dtype=np.float64),
-                ]
-            ),
-            fmt="o",
-            capsize=5,
-            color="#666666",
-        )
-        # 点の色は手法の固定色 (FIG-5)。記事をまたいで ESN は緑、遅延線は青。
-        axis.scatter(
-            positions, means, c=[method_color(method) for method, _ in labels], zorder=3
-        )
-        _reference_lines(axis, style)
-        for position, mean in zip(positions, means, strict=True):
-            axis.annotate(
-                f"{mean:.4f}",
-                (position, mean),
-                textcoords="offset points",
-                xytext=(0, 10),
-                ha="center",
-                fontsize=8,
-            )
-        axis.set_yscale("log")
-        axis.set_xticks(positions)
-        axis.set_xticklabels([text for _, text in labels])
-        axis.set_xlim(-0.5, len(labels) - 0.5)
-        n_replicates = len({row.replicate for row in rows})
-        axis.set_ylabel(
-            style.label(
-                f"NMSE (テスト区間・{n_replicates}レプリケートの平均±標準偏差)",
-                f"NMSE (test split, mean +- s.d. of {n_replicates} replicates)",
-            )
-        )
-        axis.legend(loc="best", fontsize=8)
-        figure.suptitle(
-            f"{style.label('実験 3-C', 'Experiment 3-C')}:"
-            f" {narma10_headline(rows, style)}\n{narma10_subtitle(style)}"
-        )
-        figure.supxlabel(
-            style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
+    axis.errorbar(
+        positions,
+        means,
+        # 対数軸なので下側の誤差棒が 0 以下に落ちないよう抑える
+        yerr=np.vstack(
+            [
+                np.minimum(stds, np.asarray(means, dtype=np.float64) * 0.999),
+                np.asarray(stds, dtype=np.float64),
+            ]
+        ),
+        fmt="o",
+        capsize=5,
+        color="#666666",
+    )
+    # 点の色は手法の固定色 (FIG-5)。記事をまたいで ESN は緑、遅延線は青。
+    axis.scatter(
+        positions, means, c=[method_color(method) for method, _ in labels], zorder=3
+    )
+    _reference_lines(axis, style)
+    for position, mean in zip(positions, means, strict=True):
+        axis.annotate(
+            f"{mean:.4f}",
+            (position, mean),
+            textcoords="offset points",
+            xytext=(0, 10),
+            ha="center",
             fontsize=8,
         )
-        conditions = f"n_train = {rows[0].n_train}, task = {rows[0].task}"
-        add_provenance(figure, conditions, rows, style=style)
-        return _save(figure, path)
+    axis.set_yscale("log")
+    axis.set_xticks(positions)
+    axis.set_xticklabels([text for _, text in labels], fontsize=8)
+    axis.set_xlim(-0.5, len(labels) - 0.5)
+    n_replicates = len({row.replicate for row in rows})
+    axis.set_ylabel(
+        style.label(
+            f"NMSE ({n_replicates}レプリケートの平均±s.d.)",
+            f"NMSE (mean +- s.d. of {n_replicates} replicates)",
+        )
+    )
+    axis.set_title(narma10_headline(rows, style), fontsize=9)
+    axis.legend(loc="best", fontsize=7)
 
 
 __all__ = [
     "BOUND_MARGIN",
     "conservation_bound",
+    "draw_narma10_control_panel",
     "ipc_heatmap_means",
     "mc_profile_means",
     "narma10_method_labels",
@@ -772,6 +756,5 @@ __all__ = [
     "plot_ipc_profile",
     "plot_mc_sweep",
     "plot_memory_nonlinearity",
-    "plot_narma10_control",
     "representative_leak_rate",
 ]
