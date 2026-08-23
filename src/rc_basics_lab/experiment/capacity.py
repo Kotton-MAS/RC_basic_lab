@@ -12,12 +12,10 @@ MC と IPC は同じ ``X`` と同じ駆動入力 ``u`` を見る。条件ごと�
 かつ「MC が見た系列と IPC が見た系列が違う」という比較不能な CSV になる。
 
 **``X`` は診断へ渡す前に読み取り専用にする** (D-35)。``CapacityProblem`` は
-``X`` の**ビュー**を持ち ``gram`` は構築時点の**スナップショット**なので、
-構築後に ``X`` を書き換えると両者が例外も警告もなく desync する
-(3a の実測では容量が 1.25e8 という桁違いの値になった)。``CapacityProblem``
-は自分が持つビューを読み取り専用にするが**元の ``X`` は塞げない**ため、
-呼び出し側であるここで塞ぐ。診断側でコピーすると T=1e6 で 1.6GB 増えて
-4GB 予算を壊す (F-03-1-013 で潰したのと同じ失敗)。
+``X`` のビューと構築時点のスナップショット (``gram``) を持つため、構築後に
+``X`` を書き換えると例外も警告もなく desync する (F-03-2-003)。
+``CapacityProblem`` は元の ``X`` を塞げないので呼び出し側であるここで塞ぐ。
+診断側でコピーする案は 4GB 予算を壊すため採らない (F-03-1-013)。
 
 なお MC と IPC は ``t0`` が異なる (MC は ``max(washout, mc.max_delay)``、
 IPC は ``max(washout, max(ipc.max_delay_by_degree))``) ため、
@@ -28,13 +26,11 @@ IPC は ``max(washout, max(ipc.max_delay_by_degree))``) ため、
 条件ごとに振ると、条件間の容量差にしきい値の推定ノイズが独立に乗る。
 
 **1条件の処理は3段に分かれている** (F-3b1-1-004)。``evaluate_capacity_condition``
-は軌道生成と下の2つを繋ぐ薄い層であり、``X`` を**外から**渡す経路
-(3-C は 01 の ``run_task`` が作った状態を測る) はこの2つを直接呼ぶ。
+は軌道生成と下の2つを繋ぐ薄い層で、``X`` を外から渡す経路 (3-C) はこの2つを
+直接呼ぶ。
 
-- ``measure_capacity(states, u, *, ctx, mc_cfg, ipc_cfg)`` —— read-only 化
-  (D-35) と2診断の呼び出し (D-37 の ``ctx`` 共有) だけ
-- ``capacity_row_from(measurement, *, experiment, ...)`` —— ``CapacityRow``
-  (約35フィールド) の組み立て。**実験ごとに複製しない**
+- ``measure_capacity`` —— read-only 化 (D-35) と2診断の呼び出し (D-37)
+- ``capacity_row_from`` —— ``CapacityRow`` の組み立て (実験ごとに複製しない)
 """
 
 from __future__ import annotations
@@ -156,20 +152,12 @@ _MAX_STATE_ELEMENTS = 200_000_000
 def _validate_condition_bounds(condition: CapacityCondition) -> None:
     """状態行列・ESN の確保より前に、確保量に上書き不能な絶対上限をかける。
 
-    D-34 の規律 (「確保より前に落とす」) を実験層の確保軸 (``n_units`` /
-    ``n_steps``) にも適用する (F-3b1-1-017)。**``CapacityCondition`` を組み立てる
-    経路すべてが ``simulate_condition_trajectory`` を通ることで守られる**
-    (F-3b2-1-001/HIGH-1)。3-A / 3-B / 3-B' / length_sweep
-    (``evaluate_capacity_condition`` 経由) としきい値法比較
-    (``run_threshold_comparison``、``CapacityCondition`` は組むが3-A/3-B/3-B'/
-    length_sweep のいずれでもない代表条件1本) の5経路が対象で、3-C
-    (``run_narma10``) だけは ``CapacityCondition`` を持たない (状態は 01 の
-    ``run_task`` が作る) ためここでは守れず、``tasks/narma.py`` の
-    ``_validate`` (``length`` 軸) と ``validate_state_matrix_bounds``
-    (``n_units`` 軸) の2本で塞ぐ。以前は ``evaluate_capacity_condition`` が
-    直接この関数を呼んでおり、``run_threshold_comparison`` は
-    ``CapacityCondition`` を組み立てながらここを1回も呼ばずに素通りしていた
-    (3b-2 reviewer-security の実測)。
+    D-34 の「確保より前に落とす」を実験層の確保軸 (``n_units`` / ``n_steps``)
+    にも適用する (F-3b1-1-017)。``CapacityCondition`` を組み立てる経路すべてが
+    ``simulate_condition_trajectory`` を通ることで守られる (F-3b2-1-001/HIGH-1)。
+    3-C だけは ``CapacityCondition`` を持たないためここでは守れず、
+    ``tasks/narma.py`` の ``_validate`` と ``validate_state_matrix_bounds`` の
+    2本で塞ぐ。
     """
     validate_state_matrix_bounds(condition.n_units, condition.n_steps)
 
@@ -178,10 +166,8 @@ def validate_n_units_bound(n_units: int) -> None:
     """``n_units`` 軸だけに絶対上限をかける (D-34)。
 
     ESN の重み行列は ``n_units**2`` で伸びるので、系列長と無関係にこの軸だけで
-    確保が膨らむ。状態行列の軸 (``n_units * n_steps``) と**別の軸**なので、
-    片方だけを縛る呼び出し側 (3-C は ``tasks/narma.py`` の ``_validate`` が
-    ``length`` と ``length * n_units`` を既に縛っており、欠けていたのは
-    ``n_units`` 単体だった) から独立に呼べる形にしてある。
+    確保が膨らむ。状態行列の軸 (``n_units * n_steps``) とは**別の軸**であり、
+    片方だけを縛る呼び出し側から独立に呼べる形にしてある。
 
     Args:
         n_units: リザバーのユニット数。
@@ -200,13 +186,9 @@ def validate_n_units_bound(n_units: int) -> None:
 def validate_state_matrix_bounds(n_units: int, n_steps: int) -> None:
     """確保軸 ``(n_units, n_steps)`` そのものに絶対上限をかける (D-34)。
 
-    ``CapacityCondition`` を持たない経路 (3-C の ``run_narma10``。状態は 01 の
-    ``run_task`` が作る) からも同じ上限を呼べるように、条件オブジェクトではなく
-    **軸の値そのもの**を引数に取る。以前は 3-C の ``n_units``
-    (``narma.base.esn_mackey_glass.n_units``) を縛るものが1つも無く、
-    ``tasks/narma.py`` の ``_validate`` が塞いでいたのは ``length`` 軸だけだった
-    (オーケストレータの実測: ``n_units=6000`` で ESN が実際に構築されてから
-    無関係な形状エラーで停止していた)。
+    ``CapacityCondition`` を持たない経路 (3-C の ``run_narma10``) からも同じ
+    上限を呼べるように、条件オブジェクトではなく**軸の値そのもの**を引数に
+    取る。
 
     Args:
         n_units: リザバーのユニット数。重み行列は ``n_units**2`` で伸びる。
@@ -245,14 +227,9 @@ threat model**。``config/chaos04.py`` / ``experiment/freerun.py`` は
 def validate_total_step_count(n_total_steps: int) -> None:
     """逐次シミュレーションの総ステップ数 (積の軸) に絶対上限をかける (CWE-834)。
 
-    ``_MAX_STATE_ELEMENTS`` と**同じ値・同じ threat model**を再利用する
-    (状態行列の要素数も、逐次シミュレーションの総ステップ数 (例: 4-C の
-    「条件数 x stats_steps」) も、どちらも「単位コストが一定の量が多重に
-    積み重なる」という同型の脅威モデルである)。個別の軸 (条件数の上限・
-    ステップ数の上限) がそれぞれ上限内でも、**積**は両方の軸検査をすり抜けて
-    膨らみうる (reviewer-security 実測: 4-C は条件数 <= 2000・stats_steps
-    <= 1e6 をどちらも通したまま、積が 1,984,000,000 ステップ = 約13時間
-    (予算300秒) に達した)。
+    ``_MAX_STATE_ELEMENTS`` と同じ値・同じ threat model を再利用する
+    (どちらも「単位コストが一定の量が多重に積み重なる」)。個別の軸が
+    それぞれ上限内でも、**積**は両方の軸検査をすり抜けて膨らみうる。
 
     Raises:
         ValueError: 総ステップ数が上限を超える場合。
@@ -285,10 +262,8 @@ def validate_sequential_run_count(n_runs: int) -> None:
 class CapacityCondition:
     """容量測定の1条件。掃引の違いはどの軸を振るかだけである。
 
-    02 の ``evaluate_condition`` はキーワード引数で軸を受けていたが、03 は軸が
-    8本 (実験ラベル・rho・リーク率・N・状態ノイズ・駆動強度・系列長・
-    レプリケート) あり、``n_units`` と ``n_steps`` がセクションごとに違う
-    (D-32) ため、条件そのものを1つの値として持ち回る。
+    軸が8本あり ``n_units`` / ``n_steps`` がセクションごとに違う (D-32) ため、
+    条件そのものを1つの値として持ち回る。
 
     Attributes:
         experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。CSV の ``experiment``
@@ -376,32 +351,21 @@ CAPACITY_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(CapacityRow
 class CapacityOutcome:
     """1条件ぶんの結果。行に加えて図が必要とする配列を持つ。
 
-    02 の ``ConditionOutcome`` と同型である。行だけ返すと、図 (3枚が配列を
-    直接使う) のために全条件をもう一度回すことになる。``row`` が
-    ``CapacityRow`` である以上、CSV 列順の単一の真実は変わらない。
+    行だけ返すと、図 (3枚が配列を直接使う) のために全条件をもう一度回すことに
+    なる。02 の ``ConditionOutcome`` と同型。
 
     Attributes:
         row: ``capacity.csv`` の1行。
         mc_profile: しきい値後の遅延プロファイル ``(mc.max_delay,)``
             (``fig_mc_sweep.png`` の右パネル)。
         ipc_heatmap: (次数, 遅延) のしきい値後の容量 (``fig_ipc_profile.png``)。
-        ipc_thresholds: 次数ごとのしきい値 (``ipc_threshold_degree{d}`` を
-            次数の昇順に並べたもの)。**cfg 依存で本数が変わる**ため
-            ``CapacityRow`` の列にはできず (D-38)、長形式の
-            ``CapacityProfileRow.threshold`` に落とす。ここに持たせるのは、
-            同じ条件で ``ipc`` をもう一度走らせて取り直すことを禁じるため
-            (1条件あたり数秒〜7秒の再計算になる)。
+        ipc_thresholds: 次数ごとのしきい値 (次数の昇順)。**cfg 依存で本数が
+            変わる**ため ``CapacityRow`` の列にはできず (D-38)、長形式の
+            ``CapacityProfileRow.threshold`` に落とす。ここに持たせるのは
+            ``ipc`` の再実行 (1条件あたり数秒〜7秒) を避けるため。
 
-    ``ipc_result.arrays["ipc_by_degree"]`` (次数ごとのしきい値後の容量) は
-    フィールドとして運ばない (F-3b1-1-002)。T3 で図を長形式へ切り替えた際
-    (D-38) に取り残された前設計の残骸で、``plot_memory_nonlinearity`` は
-    ``CapacityRow.ipc_linear`` / ``ipc_nonlinear`` しか読まず、
-    ``profile_rows`` も ``mc_profile`` / ``ipc_heatmap`` しか使わない
-    (全 outcome を ``-999`` で埋めて成果物を再生成しても capacity.csv /
-    capacity_profile.csv / 図4枚は wall_time_* を除きバイト一致することを
-    実測済み)。``n_degrees`` の算出には配列そのものではなく形状だけが要るので、
-    ``evaluate_capacity_condition`` 内のローカル変数として使い、outcome へは
-    運ばない。
+    ``ipc_result.arrays["ipc_by_degree"]`` は運ばない (F-3b1-1-002)。図も
+    ``profile_rows`` も読まず、``n_degrees`` の算出には形状しか要らない。
     """
 
     row: CapacityRow
@@ -414,30 +378,18 @@ class CapacityOutcome:
 class CapacityProfileRow:
     """``capacity_profile.csv`` の1行 (**長形式**、D-38)。宣言順が CSV の列順。
 
-    IPC の ``scalars`` は ``ipc_threshold_degree{d}`` を**次数の本数だけ**持つ
-    ため、キー集合が ``cfg.max_delay_by_degree`` に依存する (F-03-1-005)。
-    これを列にすると 3-B' (次数4) と 3-A/3-B (次数4) で列数が揃っていても、
-    打ち切りを1本増やした瞬間に CSV の列が変わる —— 「列は cfg に依らず一定」
-    という単一の真実が壊れる。次数と遅延を**行の値**に落とせば列は静的なままで、
-    しきい値も次数ごとの行に自然に乗る。
+    次数と遅延を**行の値**に落とすことで、CSV の列を ``cfg`` に依らず静的に
+    保つ (F-03-1-005: IPC の ``scalars`` は次数の本数だけキーを持つため、
+    列にすると打ち切りを1本増やした瞬間に列が変わる)。MC は次数の概念を
+    持たないので ``degree=1`` に固定し、``diagnostic`` 列で区別する。
 
-    MC は次数の概念を持たないので ``degree=1`` に固定する (次数1の線形容量で
-    あることは IPC の次数1と同じ意味であり、``diagnostic`` 列で区別する)。
-
-    **書くのはしきい値後の容量が厳密に正のセルだけ**である。全セルを書くと
-    本番設定で約6万行になり、``results/`` はコミット対象なのでリポジトリが
-    その分だけ重くなる。正値だけに絞る条件 (``capacity > 0``) は IPC の
-    ``n_targets_kept`` (``np.count_nonzero(kept)``) が「しきい値を超えた」を
-    判定する条件と同じ ``> 0`` だが、**行数が n_targets_kept と一致するとは
-    限らない** (F-3b1-1-003)。長形式の行は (次数, 遅延) の**ヒートマップセル
-    単位**、``n_targets_kept`` は**目標単位**で単位が異なり、1セルに複数目標
-    が畳み込まれるため行数は ``n_targets_kept`` 以下にしかならない
-    (本番成果物の実測: 117行すべてで行数 != n_targets_kept、例: 81セル vs
-    297目標)。行数の代わりに成果物単体で検算できる不変条件は
-    ``capacity`` 列の**総和**が ``ipc_total`` / ``mc_total`` と一致すること
-    であり、これは本番成果物117行すべてで成立する
-    (``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
-    が両方 (行数の上限・総和の一致) を実測で固定する)。
+    **書くのはしきい値後の容量が厳密に正のセルだけ**である (全セルだと本番で
+    約6万行になり ``results/`` はコミット対象)。行数は
+    ``n_targets_kept`` と一致しない —— 行は (次数, 遅延) のセル単位、
+    ``n_targets_kept`` は目標単位で、1セルに複数目標が畳み込まれる
+    (F-3b1-1-003)。成果物単体で検算できる不変条件は ``capacity`` 列の**総和**
+    が ``ipc_total`` / ``mc_total`` と一致することで、
+    ``test_profile_csv_columns_are_static_and_cells_are_positive`` が固定する。
 
     Attributes:
         experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。
@@ -543,14 +495,10 @@ def simulate_condition_trajectory(
     D-34/HIGH-1 (F-3b2-1-001)。
 
     ``evaluate_capacity_condition`` と ``run_threshold_comparison`` (しきい値法
-    比較) は、``CapacityCondition`` を組んでから ``simulate_reference_trajectory``
-    への9引数呼び出しをバイト一致で複製していた (F-3b2-1-001/M1)。かつ
-    ``_validate_condition_bounds`` を呼ぶのは前者だけで、後者は
-    ``CapacityCondition`` を組み立てながら上限検査を1回も呼ばずに素通り
-    していた (F-3b2-1-001/HIGH-1、3b-2 reviewer-security の実測)。ここへ
-    一本化することで、``CapacityCondition`` を組み立てる経路が増えても検査が
-    自動的に付いてくる (3-C はここを通らないので別途 ``tasks/narma.py`` の
-    ``_validate`` で塞ぐ)。
+    比較) が9引数の呼び出しを複製し、上限検査は前者しか呼んでいなかった
+    (F-3b2-1-001)。ここへ一本化することで、``CapacityCondition`` を組み立てる
+    経路が増えても検査が自動的に付いてくる (3-C はここを通らないので別途
+    ``tasks/narma.py`` の ``_validate`` で塞ぐ)。
 
     Args:
         config: 03 の設定。
@@ -641,18 +589,16 @@ def measure_capacity(
     1. ``X`` を読み取り専用にしてから診断へ渡す (D-35)。``CapacityProblem`` は
        ``X`` の**ビュー**を持ち ``gram`` は構築時点のスナップショットなので、
        構築後に ``X`` を書き換えると両者が例外も警告もなく desync する。
-       ``CapacityProblem`` は自分のビューしか塞げず**元の ``X`` は塞げない**
-       ため、呼び出し側であるここで塞ぐ。診断側でコピーすると T=1e6 で 1.6GB
-       増えて 4GB 予算を壊す (F-03-1-012/013)。
+       ``CapacityProblem`` は自分のビューしか塞げないため、呼び出し側である
+       ここで塞ぐ (診断側でのコピーは 4GB 予算を壊す、F-03-1-012/013)。
     2. 同じ ``X`` と同じ ``u`` で ``memory_capacity`` と ``ipc`` を呼ぶ
        (D-26 / 仕様 §5 の禁止構造「条件ごとに X を2回作る」を避ける)。
     3. ``ctx`` は**呼び出し側が作った1個**をそのまま両診断へ渡す (D-37:
        サロゲートのシードは全条件で共通)。``t0`` の違いは各診断が
        ``max(ctx.washout, 自分の最大遅延)`` として決める (D-24)。
 
-    ``ctx`` を引数で受け取り中で作らないのは、3-C のように条件が
-    ``CapacityCondition`` で表現できない経路でも「全条件で ``ctx`` は1個」
-    (D-37) を呼び出し側が保てるようにするためである。
+    ``ctx`` を引数で受け取り中で作らないのは、3-C のような経路でも「全条件で
+    ``ctx`` は1個」(D-37) を呼び出し側が保てるようにするため。
 
     Args:
         states: 状態行列 ``(n_steps, n_units)``。**この関数が読み取り専用に
@@ -717,17 +663,13 @@ def capacity_row_from(
 ) -> CapacityRow:
     """測定結果と条件の識別子から ``capacity.csv`` の1行を組む (**唯一の経路**)。
 
-    ``CapacityRow`` は約35フィールドあり、``mc`` / ``ipc`` の ``scalars`` と
-    ``params`` のどのキーがどの列になるかの対応もここにしかない。この組み立てを
-    実験ごとに複製すると「CSV の列順の単一の真実 = 行 dataclass の宣言順」
-    (§2.2-1) が実質的に破れる —— 列を1本足したときに複製側が置き去りになり、
-    かつ型検査では落ちない (キーワード引数の名前は一致したままなので)。
-    3-C (``experiment="3C_narma10"``) は ``CapacityCondition`` で表現できない
-    条件を持つが、行の作り方はここを通す (F-3b1-1-004)。
+    ``mc`` / ``ipc`` の ``scalars`` と ``params`` のどのキーがどの列になるかの
+    対応はここにしかない。実験ごとに複製すると「CSV の列順の単一の真実 = 行
+    dataclass の宣言順」が破れる (F-3b1-1-004)。3-C は
+    ``CapacityCondition`` で表現できない条件を持つが、行の作り方はここを通す。
 
-    ``experiment`` 以降がキーワード専用なのは、位置引数で並べると隣接する
-    同型の値 (``rho`` / ``leak_rate``、3本の ``seed_*``) を取り違えても
-    静かに通ってしまうためである。
+    ``experiment`` 以降がキーワード専用なのは、隣接する同型の値
+    (``rho`` / ``leak_rate``、3本の ``seed_*``) の取り違えを防ぐため。
 
     Args:
         measurement: ``measure_capacity`` の返り値。
@@ -748,15 +690,11 @@ def capacity_row_from(
         washout: ``ctx.washout`` として渡した値 (実効基準点は ``t0_mc`` /
             ``t0_ipc`` に別途出る、D-24)。
         wall_time_state_s: 状態行列の生成にかかった時間 [秒]。
-        wall_time_s: **容量測定 (状態生成 + MC + IPC) の合計時間** [秒]。3-C
-            (``run_narma10``) を含む全経路で同じ意味であり、``run_task``
-            (3手法 x 全レプリケート) は含まない (F-3b2-1-004/M4)。区間単位の
-            ``capacity_pipeline.SectionTiming.wall_time_s`` は3-C だけこれとは
-            別の値 (``run_task`` を含む3-C全体) に差し替わる —— 同じ列名
-            ``wall_time_s`` が行単位 (ここ) と区間単位 (``SectionTiming``) で
-            指す量が3-Cだけ食い違うので、``meta.json`` を読む側は
-            ``capacity.csv`` の行の ``wall_time_s`` と
-            ``wall_time_breakdown`` の ``wall_time_s`` を同一視しないこと。
+        wall_time_s: **容量測定 (状態生成 + MC + IPC) の合計時間** [秒]。全経路で
+            同じ意味で、``run_task`` は含まない (F-3b2-1-004/M4)。区間単位の
+            ``capacity_pipeline.SectionTiming.wall_time_s`` は 3-C だけ別の量を
+            指すため、``meta.json`` の ``wall_time_breakdown`` と同一視しない
+            こと。
 
     Returns:
         ``capacity.csv`` の1行。
