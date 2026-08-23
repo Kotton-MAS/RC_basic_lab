@@ -11,7 +11,7 @@
 - 縮小データ (2条件) と**縮退ケース** (条件が1つだけ / 全容量が 0) でも
   例外なく描ける
 
-の3点を固定する。1つ目は ``figures_capacity._save`` を差し替えて ``Figure`` を
+の3点を固定する。1つ目は ``_canvas.save_figure`` を差し替えて ``Figure`` を
 捕まえ、``conservation_bound`` が返す座標と一致する線が軸に在ることを見る
 (PNG の画素を見ると閾値の選び方でいくらでも偽の緑になる)。
 
@@ -47,7 +47,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
-from rc_basics_lab.plotting import figures_capacity, style
+from rc_basics_lab.plotting import _canvas, figures_capacity, style
 from rc_basics_lab.plotting.figures_capacity import (
     conservation_bound,
     ipc_heatmap_means,
@@ -281,19 +281,23 @@ def narma10_rows(
 
 @pytest.fixture
 def captured(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
-    """``_save`` を包んで描き上がった ``Figure`` を捕まえる。
+    """``_canvas.save_figure`` を包んで描き上がった ``Figure`` を捕まえる。
 
     図の主張 (上限線が在る / ラベルが英語に落ちた) は PNG の画素からは測れない。
     保存直前の ``Figure`` を掴んで artist を直接見る。
+
+    差し替え先は作図モジュールではなく ``_canvas`` である。保存は
+    ``figure_canvas`` の退出時に ``_canvas`` 内で呼ばれるため、モジュール属性
+    としての ``figures_capacity._save`` はもう存在しない。
     """
     figures: list[Figure] = []
-    original = figures_capacity._save
+    original = _canvas.save_figure
 
     def spy(figure: Figure, path: Path) -> Path:
         figures.append(figure)
         return original(figure, path)
 
-    monkeypatch.setattr(figures_capacity, "_save", spy)
+    monkeypatch.setattr(_canvas, "save_figure", spy)
     return figures
 
 

@@ -35,8 +35,6 @@ from typing import Protocol
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.attractor import (
     REGIME_ATTRACTOR,
@@ -56,7 +54,8 @@ from rc_basics_lab.experiment.freerun import (
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
 from rc_basics_lab.experiment.stability import StabilityRow, regime_map
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting._canvas import figure_canvas, require_non_empty
+from rc_basics_lab.plotting.style import StyleContext
 from rc_basics_lab.types import FloatArray
 
 METHOD_LABELS: dict[str, tuple[str, str]] = {
@@ -105,21 +104,6 @@ class _HasTask(Protocol):
     def task(self) -> str: ...
 
 
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
-
-
 def _label_of(table: dict[str, tuple[str, str]], key: str, style: StyleContext) -> str:
     """対応表からラベルを引く。**未知のキーは描く前に落とす**。"""
     if key not in table:
@@ -134,8 +118,7 @@ def _source_label(source: str, style: StyleContext) -> str:
 
 def _mean_std(values: Sequence[float]) -> tuple[float, float]:
     """レプリケート平均と標準偏差 (母標準偏差、``ddof=0``)。"""
-    if not values:
-        raise ValueError("値が空です")
+    require_non_empty(values, "値")
     array = np.asarray(values, dtype=np.float64)
     return float(np.mean(array)), float(np.std(array))
 
@@ -181,13 +164,11 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     tasks = _tasks_of(rows)
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
     positions = np.arange(len(methods), dtype=np.float64)
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(7.6, 5.0)
+    with figure_canvas(path, style=style, width=7.6, height=5.0) as figure:
         axis = figure.subplots(1, 1)
         for offset, task in enumerate(tasks):
             stats = [
@@ -230,7 +211,7 @@ def plot_onestep(rows: Sequence[ResultRow], path: Path, *, style: StyleContext) 
                 "Experiment 4-A: one-step-ahead prediction with teacher forcing",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 def plot_freerun_attractor(
@@ -246,10 +227,8 @@ def plot_freerun_attractor(
         ValueError: 位相図の行が1つも無い場合。
     """
     tasks = _tasks_of(rows)
-    if not tasks:
-        raise ValueError("profile 行が空です")
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(5.4 * len(tasks), 5.0)
+    require_non_empty(tasks, "profile 行")
+    with figure_canvas(path, style=style, width=5.4 * len(tasks), height=5.0) as figure:
         axes = np.atleast_1d(figure.subplots(1, len(tasks)))
         drawn = 0
         for axis, task in zip(axes, tasks, strict=True):
@@ -287,7 +266,7 @@ def plot_freerun_attractor(
                 "Experiment 4-B: phase portrait of the free run vs the true system",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 def plot_valid_time(
@@ -303,8 +282,7 @@ def plot_valid_time(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     # **lambda_max を数値推定してある系だけを描く** (D-42 / D-43)。04 が
     # 推定しているのは Lorenz だけで、Mackey-Glass の行は Lyapunov 列が nan
     # である (推定していない量を他の系の値で埋めない)。縦軸が Lyapunov 時間の
@@ -315,8 +293,7 @@ def plot_valid_time(
     tasks = _tasks_of(normalized)
     rows = normalized
     methods = [LINEAR, DELAY_LINE, ESN_METHOD]
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(6.4 * len(tasks), 5.0)
+    with figure_canvas(path, style=style, width=6.4 * len(tasks), height=5.0) as figure:
         axes = np.atleast_1d(figure.subplots(1, len(tasks), sharey=True))
         for axis, task in zip(axes, tasks, strict=True):
             _valid_time_panel(axis, rows, task, methods, style)
@@ -341,7 +318,7 @@ def plot_valid_time(
             ),
             fontsize=8,
         )
-        return _save(figure, path)
+    return path
 
 
 def _valid_time_panel(
@@ -417,11 +394,11 @@ def plot_stability_map(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     noises = sorted({row.state_noise for row in rows})
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(3.4 * (len(noises) + 1) + 1.0, 4.2)
+    with figure_canvas(
+        path, style=style, width=3.4 * (len(noises) + 1) + 1.0, height=4.2
+    ) as figure:
         axes = np.atleast_1d(figure.subplots(1, len(noises) + 1))
         for axis, noise in zip(axes[:-1], noises, strict=True):
             _regime_panel(axis, rows, noise, style)
@@ -450,7 +427,7 @@ def plot_stability_map(
                 " relation to capacity",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 def _regime_panel(
@@ -532,10 +509,8 @@ def plot_freerun_stats(
         ValueError: 描く点が1つも無い場合。
     """
     tasks = _tasks_of(rows)
-    if not tasks:
-        raise ValueError("profile 行が空です")
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(5.4 * len(tasks), 8.0)
+    require_non_empty(tasks, "profile 行")
+    with figure_canvas(path, style=style, width=5.4 * len(tasks), height=8.0) as figure:
         axes = np.atleast_2d(figure.subplots(2, len(tasks), squeeze=False))
         drawn = 0
         for column, task in enumerate(tasks):
@@ -581,7 +556,7 @@ def plot_freerun_stats(
                 " bottom: power spectrum)",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 __all__ = [

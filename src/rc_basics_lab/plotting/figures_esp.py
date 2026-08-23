@@ -25,7 +25,6 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 
@@ -37,7 +36,8 @@ from rc_basics_lab.experiment.washout import (
     WashoutSensitivity,
     mean_nrmse_by_washout,
 )
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting._canvas import figure_canvas, require_non_empty
+from rc_basics_lab.plotting.style import StyleContext
 from rc_basics_lab.types import FloatArray
 
 _DISTANCE_FLOOR = 1.0e-16
@@ -61,21 +61,6 @@ _GALLICCHIO = (
 """2-C の副題 (仕様 §4 T3: 先行研究の再実演であることを図に明記する)。"""
 
 _CONVERGED_LABEL = ("ESP 成立率 (レプリケート平均)", "ESP rate (mean over replicates)")
-
-
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
 
 
 def _unique_sorted(values: Sequence[float]) -> tuple[float, ...]:
@@ -170,13 +155,11 @@ def plot_esp_decay(
     Raises:
         ValueError: ``outcomes`` が空の場合。
     """
-    if not outcomes:
-        raise ValueError("outcomes が空です")
+    require_non_empty(outcomes, "outcomes")
     rhos = _unique_sorted([outcome.row.rho for outcome in outcomes])
     colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(rhos)))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(7.5, 4.6)
+    with figure_canvas(path, style=style, width=7.5, height=4.6) as figure:
         axis = figure.subplots(1, 1)
         for index, rho in enumerate(rhos):
             selected = [outcome for outcome in outcomes if outcome.row.rho == rho]
@@ -235,7 +218,7 @@ def plot_esp_decay(
                 "Experiment 2-A: spectral radius and the echo state property",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 # --- 2-B: リーク率と実効時定数 ---------------------------------------------
@@ -358,14 +341,12 @@ def plot_leak_timescale(
     Raises:
         ValueError: ``outcomes`` が空の場合。
     """
-    if not outcomes:
-        raise ValueError("outcomes が空です")
+    require_non_empty(outcomes, "outcomes")
     rows = [outcome.row for outcome in outcomes]
     leak_rates = _unique_sorted([row.leak_rate for row in rows])
     colors = matplotlib.colormaps["viridis"](np.linspace(0.0, 0.9, len(leak_rates)))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(11.0, 4.6)
+    with figure_canvas(path, style=style, width=11.0, height=4.6) as figure:
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_acf_panel(axes[0][0], outcomes, leak_rates, colors, style)
         _plot_timescale_panel(axes[0][1], rows, leak_rates, style)
@@ -378,7 +359,7 @@ def plot_leak_timescale(
                 f" (rho = {first.rho:g}, sigma_u = {first.sigma_u:g})",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 # --- 2-C: rho x 入力強度 の ESP 成立領域 -----------------------------------
@@ -479,8 +460,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     rhos = _unique_sorted([row.rho for row in rows])
     sigmas = _unique_sorted([row.sigma_u for row in rows])
     driven = tuple(sigma for sigma in sigmas if sigma > 0.0)
@@ -489,8 +469,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
     lyapunov = _group_mean(rows, "lyapunov_per_step")
     norm = Normalize(vmin=0.0, vmax=1.0)
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(9.5, 5.4)
+    with figure_canvas(path, style=style, width=9.5, height=5.4) as figure:
         if has_no_input:
             axes = figure.subplots(
                 1, 2, squeeze=False, width_ratios=list(_ESP_MAP_WIDTH_RATIOS)
@@ -527,7 +506,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
                 + _GALLICCHIO[1],
             )
         )
-        return _save(figure, path)
+    return path
 
 
 # --- 2-D: washout 長への性能感度 ------------------------------------------
@@ -750,15 +729,13 @@ def plot_washout_sensitivity(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     pairs = sorted(
         {(row.task, row.method) for row in rows},
         key=lambda pair: (pair[0] != HEADLINE_TASK, pair[1] != HEADLINE_METHOD, pair),
     )
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(11.0, 4.8)
+    with figure_canvas(path, style=style, width=11.0, height=4.8) as figure:
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_absolute_panel(axes[0][0], rows, pairs, sensitivity, style)
         _plot_relative_panel(axes[0][1], rows, pairs, sensitivity, style)
@@ -779,7 +756,7 @@ def plot_washout_sensitivity(
                 f"Experiment 2-D: sensitivity to the washout length\n{design_en}",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 __all__ = [

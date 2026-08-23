@@ -37,10 +37,8 @@ from pathlib import Path
 import matplotlib
 import numpy as np
 from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import QuadMesh
 from matplotlib.colors import Normalize, PowerNorm
-from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.capacity import (
     DIAGNOSTIC_IPC,
@@ -54,7 +52,8 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ResultRow
-from rc_basics_lab.plotting.style import StyleContext, rc_params_for
+from rc_basics_lab.plotting._canvas import figure_canvas, require_non_empty
+from rc_basics_lab.plotting.style import StyleContext
 from rc_basics_lab.types import FloatArray
 
 BOUND_MARGIN = 0.1
@@ -113,21 +112,6 @@ _REFERENCE_COLORS: dict[str, str] = {
     "linear_ceiling": "tab:red",
     "nonlinear_rc": "tab:green",
 }
-
-
-def _new_figure(width: float, height: float) -> Figure:
-    """constrained layout の Figure を作る (``figures.py`` と同じ規律)。"""
-    figure = Figure(figsize=(width, height))
-    figure.set_layout_engine("constrained")
-    return figure
-
-
-def _save(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    FigureCanvasAgg(figure)
-    figure.savefig(path, format="png")
-    return path
 
 
 def _unique_sorted(values: Sequence[float]) -> tuple[float, ...]:
@@ -194,8 +178,7 @@ def representative_leak_rate(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     totals: dict[float, list[float]] = {}
     for row in rows:
         totals.setdefault(row.leak_rate, []).append(float(value_of(row)))
@@ -267,8 +250,7 @@ def conservation_bound(units: Sequence[int]) -> tuple[FloatArray, FloatArray]:
     Raises:
         ValueError: ``units`` が空の場合。
     """
-    if not units:
-        raise ValueError("units が空です")
+    require_non_empty(units, "units")
     low = min(units) * (1.0 - BOUND_MARGIN)
     high = max(units) * (1.0 + BOUND_MARGIN)
     edge: FloatArray = np.array([low, high], dtype=np.float64)
@@ -404,11 +386,9 @@ def plot_mc_sweep(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     leak_rate = representative_leak_rate(rows, lambda row: row.mc_total)
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(12.0, 4.8)
+    with figure_canvas(path, style=style, width=12.0, height=4.8) as figure:
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_mc_total_panel(axes[0][0], rows, style)
         _plot_mc_profile_panel(axes[0][1], rows, profile, leak_rate, style)
@@ -421,7 +401,7 @@ def plot_mc_sweep(
                 f" (N = {first.n_units}, sigma_u = {first.sigma_u:g})",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 # --- 3-B: 次数 x 遅延 のヒートマップ ---------------------------------------
@@ -474,16 +454,16 @@ def plot_ipc_profile(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     leak_rate = representative_leak_rate(rows, lambda row: row.ipc_total)
     means = ipc_heatmap_means(rows, profile, leak_rate)
     rhos = tuple(means)
     ceiling = max((float(cells.max()) for cells in means.values()), default=0.0)
     norm = PowerNorm(gamma=_HEATMAP_GAMMA, vmin=0.0, vmax=max(ceiling, _MIN_COLOR_MAX))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(3.4 * len(rhos) + 1.2, 3.6)
+    with figure_canvas(
+        path, style=style, width=3.4 * len(rhos) + 1.2, height=3.6
+    ) as figure:
         axes = figure.subplots(1, len(rhos), squeeze=False)
         meshes = [
             _plot_heatmap_panel(
@@ -508,7 +488,7 @@ def plot_ipc_profile(
                 f" (a = {leak_rate:g}, N = {first.n_units})",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 # --- 3-B: 線形 / 非線形 の配分 ----------------------------------------------
@@ -612,11 +592,11 @@ def plot_memory_nonlinearity(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     leaks = _unique_sorted([row.leak_rate for row in rows])
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(4.0 * len(leaks) + 1.0, 4.4)
+    with figure_canvas(
+        path, style=style, width=4.0 * len(leaks) + 1.0, height=4.4
+    ) as figure:
         axes = figure.subplots(1, len(leaks), squeeze=False, sharey=True)
         ceiling = max(
             _plot_stack_panel(axes[0][index], rows, leak, style, show_ylabel=index == 0)
@@ -633,7 +613,7 @@ def plot_memory_nonlinearity(
                 f" nonlinear split (N = {first.n_units}, sigma_u = {first.sigma_u:g})",
             )
         )
-        return _save(figure, path)
+    return path
 
 
 # --- 3-B': 保存則 IPC_total <= N --------------------------------------------
@@ -672,14 +652,12 @@ def plot_ipc_conservation(
     Raises:
         ValueError: ``rows`` が空の場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     units = sorted({row.n_units for row in rows})
     noises = _unique_sorted([row.state_noise for row in rows])
     colors = matplotlib.colormaps["plasma"](np.linspace(0.0, 0.75, len(noises)))
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(7.2, 5.0)
+    with figure_canvas(path, style=style, width=7.2, height=5.0) as figure:
         axis = figure.subplots(1, 1)
         for index, noise in enumerate(noises):
             stats = [
@@ -721,7 +699,7 @@ def plot_ipc_conservation(
             )
         )
         axis.legend(loc="upper left", fontsize=8)
-        return _save(figure, path)
+    return path
 
 
 # --- 3-C: 公平な対照での NARMA10 -------------------------------------------
@@ -789,8 +767,7 @@ def plot_narma10_control(
     Raises:
         ValueError: ``rows`` が空、または参照線のラベルが欠けている場合。
     """
-    if not rows:
-        raise ValueError("rows が空です")
+    require_non_empty(rows, "rows")
     labels = narma10_method_labels(rows, style)
     positions = np.arange(len(labels), dtype=np.float64)
     stats = [
@@ -800,8 +777,7 @@ def plot_narma10_control(
     means = [mean for mean, _ in stats]
     stds = [std for _, std in stats]
 
-    with matplotlib.rc_context(rc_params_for(style)):  # type: ignore[arg-type]
-        figure = _new_figure(7.2, 5.0)
+    with figure_canvas(path, style=style, width=7.2, height=5.0) as figure:
         axis = figure.subplots(1, 1)
         axis.errorbar(
             positions,
@@ -851,7 +827,7 @@ def plot_narma10_control(
             style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
             fontsize=8,
         )
-        return _save(figure, path)
+    return path
 
 
 __all__ = [
