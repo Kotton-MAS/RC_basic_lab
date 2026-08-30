@@ -47,7 +47,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
-from rc_basics_lab.plotting import figures_capacity, style
+from rc_basics_lab.plotting import figures_capacity, figures_ipc_profile, style
 from rc_basics_lab.plotting.figures_capacity import (
     conservation_bound,
     draw_narma10_control_panel,
@@ -55,10 +55,10 @@ from rc_basics_lab.plotting.figures_capacity import (
     mc_profile_means,
     narma10_method_labels,
     plot_ipc_conservation,
-    plot_ipc_profile,
     plot_mc_sweep,
     plot_memory_nonlinearity,
 )
+from rc_basics_lab.plotting.figures_ipc_profile import plot_ipc_profile
 from rc_basics_lab.plotting.style import StyleContext, setup_style
 
 RETINA_DPI = 200
@@ -318,6 +318,8 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
         return original(figure, path)
 
     monkeypatch.setattr(figures_capacity, "_save", spy)
+    # plot_ipc_profile は figures_ipc_profile へ移った (D-77)。両方を差し替える。
+    monkeypatch.setattr(figures_ipc_profile, "save_png", spy)
     return figures
 
 

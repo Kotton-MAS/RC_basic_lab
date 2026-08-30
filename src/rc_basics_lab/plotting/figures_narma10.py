@@ -21,6 +21,7 @@ from rc_basics_lab.experiment.narma_taps import TapSweepRow
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting.figures_capacity import draw_narma10_control_panel
 from rc_basics_lab.plotting.figures_narma_taps import draw_narma10_taps_panel
+from rc_basics_lab.plotting.layout import wrapped_note
 from rc_basics_lab.plotting.narma10_panel import narma10_subtitle
 from rc_basics_lab.plotting.style import (
     StyleContext,
@@ -83,10 +84,14 @@ def plot_narma10(
         )
         # **原典未特定の注を落とさない。** 参照値 (0.16 / 0.107) は出典が
         # 特定できていないので、数字だけを置くと後から図の側から辿れない。
+        # **行ごとに折り返す** (1-8)。この注記は2行構成なので、まとめて折ると
+        # 段落の切れ目が消える。実測でこの図の最終行が図幅いっぱいだった。
         figure.supxlabel(
-            narma10_subtitle(style)
+            wrapped_note(narma10_subtitle(style))
             + "\n"
-            + style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN),
+            + wrapped_note(
+                style.label(NARMA10_REFERENCE_NOTE, NARMA10_REFERENCE_NOTE_EN)
+            ),
             fontsize=8,
         )
         conditions = (

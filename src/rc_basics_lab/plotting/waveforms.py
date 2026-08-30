@@ -28,6 +28,7 @@ from matplotlib.figure import Figure
 
 from rc_basics_lab.plotting.freerun_grids import label_of
 from rc_basics_lab.plotting.labels import METHOD_LABELS
+from rc_basics_lab.plotting.layout import wrapped_note
 from rc_basics_lab.plotting.style import (
     FIGURE_SIZES,
     METHOD_COLORS,
@@ -321,11 +322,13 @@ def plot_prediction_waveform(
             f"{waveform_headline(truth, predictions, style)}"
         )
         figure.supxlabel(
-            style.label(
-                "注: 区間もレプリケートも固定である (D-107)。"
-                "「よく当たっている区間」を選べる図にしない。",
-                "Note: the window and the replicate are fixed (D-107)."
-                " The figure must not let anyone pick a favourable window.",
+            wrapped_note(
+                style.label(
+                    "注: 区間もレプリケートも固定である (D-107)。"
+                    "「よく当たっている区間」を選べる図にしない。",
+                    "Note: the window and the replicate are fixed (D-107)."
+                    " The figure must not let anyone pick a favourable window.",
+                )
             ),
             fontsize=8,
         )

@@ -249,7 +249,9 @@ def plot_freerun_attractor(
     with rc_context_for(style):
         # パネルが1つ増えるぶん幅も増やす。1枚あたりの幅を保たないと
         # 位相図が潰れ、蝶形が読めなくなる (FIG-13 の上限 3.2:1 には収まる)。
-        figure = _new_figure(5.0 * (len(tasks) + 1), 5.4)
+        figure = _new_figure(
+            5.0 * (len(tasks) + 1), 7.2
+        )  # 1-6: Zenn の本文幅 700px で潰れないよう比を 2.0 前後に抑える
         axes = np.atleast_1d(figure.subplots(1, len(tasks) + 1))
         label_panels(list(axes), style=style)
         drawn = 0

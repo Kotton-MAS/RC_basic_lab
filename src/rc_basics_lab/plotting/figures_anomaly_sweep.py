@@ -28,6 +28,7 @@ from pathlib import Path
 import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.ticker import MaxNLocator
 
 from rc_basics_lab.experiment.anomaly_rows import ProtocolSweepRow, SizeSweepRow
 from rc_basics_lab.experiment.anomaly_score import ANOMALY_METHODS, ESN_RESIDUAL
@@ -156,6 +157,8 @@ def _protocol_reversal_panel(
         style.label("プロトコル (左と同じ並び)", "protocol (same order as the left)")
     )
     axis.set_ylabel(style.label("逆転した系統対の数", "number of reversed pairs"))
+    # y は**個数**なので 0.5 刻みの目盛りを出さない (2-14)。
+    axis.yaxis.set_major_locator(MaxNLocator(integer=True))
     axis.legend(loc="best", fontsize=7)
 
 

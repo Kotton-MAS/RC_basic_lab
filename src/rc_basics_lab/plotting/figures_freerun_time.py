@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+from rc_basics_lab.plotting.layout import wrapped_note
 from rc_basics_lab.plotting.style import (
     FIGURE_SIZES,
     REFERENCE_COLOR,
@@ -122,11 +123,13 @@ def plot_freerun_timeline(
             )
         )
         figure.supxlabel(
-            style.label(
-                "注: 縦線は有効予測時間 (D-43 の閾値をはじめて超えた点)。"
-                "レプリケートは固定である (D-107)。",
-                "Note: the vertical line marks the valid time (first crossing of"
-                " the D-43 threshold). The replicate is fixed (D-107).",
+            wrapped_note(
+                style.label(
+                    "注: 縦線は有効予測時間 (D-43 の閾値をはじめて超えた点)。"
+                    "レプリケートは固定である (D-107)。",
+                    "Note: the vertical line marks the valid time (first crossing of"
+                    " the D-43 threshold). The replicate is fixed (D-107).",
+                )
             ),
             fontsize=8,
         )

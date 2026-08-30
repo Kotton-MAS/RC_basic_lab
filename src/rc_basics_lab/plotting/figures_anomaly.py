@@ -269,7 +269,13 @@ def plot_pr_curves(
         )
         axis.set_ylabel(style.label("適合率", "precision"))
         axis.set_xlim(0.0, 1.0)
-        axis.set_ylim(0.0, None)
+        # **下限を 0 に固定しない** (2-6)。適合率は 0.05〜0.16 にしか無いのに
+        # y を 0 から取ると**パネルの下 6 割が完全な空白**になり、系統間の差が
+        # 潰れる。異常率の参照線 (一様乱数の期待値) は必ず入れる —— これが
+        # 「対照を超えたか」の基準線なので、切ると図の主張が読めなくなる。
+        axis.autoscale(axis="y")
+        low, high = axis.get_ylim()
+        axis.set_ylim(min(low, anomaly_rate * 0.9), high)
         # 7 系統の凡例が右上 1/4 を占め、ESN 曲線の立ち上がりに被っていた。
         legend_below(figure, [axis], style=style, ncol=3)
         figure.suptitle(
