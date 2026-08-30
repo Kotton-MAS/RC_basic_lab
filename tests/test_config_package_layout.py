@@ -185,6 +185,14 @@ T3 が置かなかったのは、掃引が無い時点では「値を変えて�
 変わらない死葉」になるためである (D-69)。
 """
 
+SYMMETRY_ADDITIONS = ("SymmetrySweepConfig",)
+"""3-S (D-116) で足した公開名。
+
+``make symmetry-03`` の設定セクション1つ。記事03 §2.1 の「偶数次のセルがほぼ空」
+の理由を実測で確かめる補助実験のためのもので、本番の ``figures-03`` は読まない。
+"""
+
+
 SURVIVING_DIR_ONLY = ("annotations",)
 """分割後も ``dir(config)`` に残る ``PRE_SPLIT_DIR_ONLY`` の名前。
 
@@ -308,7 +316,9 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
         "config.__all__ から分割前の公開名が消えています (D-49): "
         f"{sorted(set(PRE_SPLIT_ALL) - actual)}"
     )
-    recorded_additions = set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS)
+    recorded_additions = (
+        set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS) | set(SYMMETRY_ADDITIONS)
+    )
     assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
         "config.__all__ が記録していない公開名を増やしています "
         f"(予定外={sorted(actual - set(PRE_SPLIT_ALL) - recorded_additions)}, "
@@ -319,8 +329,13 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
     assert not missing, f"__all__ に在るが解決できない名前: {missing}"
 
 
-EXPECTED_ALL: tuple[str, ...] = PRE_SPLIT_ALL + CHAOS04_ADDITIONS + ANOMALY05_ADDITIONS
-"""``config.__all__`` に在るべき名前の全体 (36 + 04 の 7 名 + 05 の 1 名)。"""
+EXPECTED_ALL: tuple[str, ...] = (
+    PRE_SPLIT_ALL + CHAOS04_ADDITIONS + ANOMALY05_ADDITIONS + SYMMETRY_ADDITIONS
+)
+"""``config.__all__`` に在るべき名前の全体。
+
+36 + 04 の 7 名 + 05 の 1 名 + 3-S の 1 名。
+"""
 
 
 @pytest.mark.parametrize("name", EXPECTED_ALL)
@@ -353,7 +368,10 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
     expected_removed = set(PRE_SPLIT_DIR_ONLY) - set(SURVIVING_DIR_ONLY)
     assert before - actual == expected_removed
     assert actual - before == (
-        set(EXPECTED_SUBMODULES) | set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS)
+        set(EXPECTED_SUBMODULES)
+        | set(CHAOS04_ADDITIONS)
+        | set(ANOMALY05_ADDITIONS)
+        | set(SYMMETRY_ADDITIONS)
     )
 
 

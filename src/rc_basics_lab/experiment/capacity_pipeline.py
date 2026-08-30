@@ -61,6 +61,12 @@ from rc_basics_lab.experiment.report import (
     write_rows_csv,
 )
 from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.symmetry import (
+    SYMMETRY_CSV_COLUMNS,
+    SymmetryRow,
+    even_degree_share_at_offset,
+    run_symmetry_sweep,
+)
 from rc_basics_lab.experiment.waveform_data import waveform_predictions
 
 logger = logging.getLogger(__name__)
@@ -68,6 +74,7 @@ logger = logging.getLogger(__name__)
 CAPACITY_CSV = "capacity.csv"
 CAPACITY_PROFILE_CSV = "capacity_profile.csv"
 CAPACITY_LENGTH_CSV = "capacity_length.csv"
+CAPACITY_SYMMETRY_CSV = "capacity_symmetry.csv"
 NARMA10_CSV = "narma10.csv"
 NARMA10_TAPS_CSV = "narma10_taps.csv"
 FIG_MC_SWEEP = "fig_mc_sweep.png"
@@ -437,11 +444,40 @@ def run_and_report_length_sweep(config: Capacity03Config, out_dir: Path) -> Path
     return path
 
 
+def write_symmetry_csv(rows: Sequence[SymmetryRow], path: Path) -> Path:
+    """3-S の結果を CSV に書く (列順は ``SymmetryRow`` の宣言順)。"""
+    return write_rows_csv(rows, path, SYMMETRY_CSV_COLUMNS)
+
+
+def run_and_report_symmetry_sweep(config: Capacity03Config, out_dir: Path) -> Path:
+    """駆動入力の対称性の掃引を回し ``capacity_symmetry.csv`` に書く (D-116)。
+
+    本体の成果物とは独立に走る (``CAPACITY_ARTIFACTS`` に含めない)。
+    ``make symmetry-03`` として手動実行する (``saturation-03`` と同じ扱い)。
+    """
+    started = time.perf_counter()
+    rows = run_symmetry_sweep(config)
+    path = write_symmetry_csv(rows, out_dir / CAPACITY_SYMMETRY_CSV)
+    shares = {
+        ratio: even_degree_share_at_offset(rows, ratio)
+        for ratio in config.symmetry_sweep.offset_ratio_grid
+    }
+    logger.info(
+        "対称性の掃引: %d 行 / 偶数次の割合 = %s / wall_time=%.2fs / 出力=%s",
+        len(rows),
+        {ratio: f"{share:.4f}" for ratio, share in shares.items()},
+        time.perf_counter() - started,
+        path,
+    )
+    return path
+
+
 __all__ = [
     "CAPACITY_ARTIFACTS",
     "CAPACITY_CSV",
     "CAPACITY_LENGTH_CSV",
     "CAPACITY_PROFILE_CSV",
+    "CAPACITY_SYMMETRY_CSV",
     "FIG_IPC_CONSERVATION",
     "FIG_IPC_PROFILE",
     "FIG_MC_SWEEP",
@@ -453,7 +489,9 @@ __all__ = [
     "SectionTiming",
     "run_and_report_capacity",
     "run_and_report_length_sweep",
+    "run_and_report_symmetry_sweep",
     "summarize_timing",
     "write_capacity_csv",
     "write_capacity_profile_csv",
+    "write_symmetry_csv",
 ]

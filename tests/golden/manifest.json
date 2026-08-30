@@ -7,7 +7,7 @@
       "fig_state_space.png": "sha256:9c246969a8ef093d264442022f62c251044f30203b0d2902ccb413b7770bfb2e",
       "fig_state_waveform.png": "sha256:ad72c8eedba8584e0b119a97e8f5a1d40f0683c7469ed87f3793be67afe4ada9",
       "horizon.csv": "sha256:a33cd564f319703bc44e583aa6ebb8e17034f3959ac535f243fc15093d9d8e7d",
-      "meta.json": "sha256:b9aeff89e333ea0fae12175d448dc344c7c91f5eb8d46498e5068052f9737621"
+      "meta.json": "sha256:4d6164f415f09657a043ddc71dda04bdc86ebc4d29a4d6634ff0dcb4ae95b1e7"
     },
     "02_esp_and_dynamics": {
       "esp_diagnostics.csv": "sha256:ff0358f71b1fb12d325cba456bfdd311cb7c9af133832c3bba349ebba0a91c1b",
@@ -28,7 +28,7 @@
       "fig_mc_sweep.png": "sha256:c6726ee1eb9307aa337a8b2eb5932b615169272e2155c15c514408158c88f4f2",
       "fig_memory_nonlinearity.png": "sha256:3ff2557d7da4da75b4cdca2c37d730fdef6b2a8b4e39b5a66af06b48497bdce7",
       "fig_narma10.png": "sha256:db6a3e1b0ec7a0728c49c711142f55eb342057973d568d43448367ff4b21382d",
-      "meta.json": "sha256:11f03b672d8d81de5a398b668a52521f8b793244324b4544b26392ab5992f0f9",
+      "meta.json": "sha256:fc7a2d7b42208bfbce63f8ca168530c6aa6ce1ab172ba568a474465aef7fa78c",
       "narma10.csv": "sha256:eaf1ccb7adba69785cf50b3ccc9bb85e97dee93e395f691351a797ad1b36124e",
       "narma10_taps.csv": "sha256:92ca3189b69f1f8366bf82c26ea3f3fa5538b9e3d125d80a5971884d050cce41"
     },

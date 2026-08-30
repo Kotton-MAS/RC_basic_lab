@@ -69,6 +69,22 @@ conservation:
   # (仕様 §7 リスク1) のノブで、3-B' だけを 1 に落とせる。
   n_replicates: null
 
+# 3-S (D-116): 駆動入力の対称性と IPC の偶数次。make symmetry-03 用。
+# figures-03 には含めない。振るのは**平均のずれだけ**で、分布 (一様) と
+# 標準偏差 (sigma_u) は変えない —— 一様のままなら Legendre 基底は標準化後も
+# 厳密に正規直交で、D-28 を満たしたまま測れる。分布の形を歪めると容量が
+# 二重計上され、「偶数次が増えた」のか「二重計上が増えた」のかを分離できない。
+symmetry_sweep:
+  # sigma_u の倍数。0.0 がゼロ対称の基準点。
+  offset_ratio_grid: [0.0, 0.5, 1.0, 2.0, 3.0]
+  # 3-B と同じ動作点にそろえる (図をまたいで読めるように)。
+  rho: 0.95
+  leak_rate: 1.0
+  sigma_u: 0.2
+  n_units: 50
+  n_steps: 30000
+  n_replicates: 3
+
 length_sweep:
   # make saturation-03 用。figures-03 には含めない (T=1e6 まで回すため)。
   n_steps_grid: [100000, 200000, 500000, 1000000]

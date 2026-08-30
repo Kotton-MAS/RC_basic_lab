@@ -33,6 +33,7 @@ from rc_basics_lab.config import Capacity03Config, load_config_as
 from rc_basics_lab.experiment.capacity_pipeline import (
     run_and_report_capacity,
     run_and_report_length_sweep,
+    run_and_report_symmetry_sweep,
 )
 
 logger = logging.getLogger("rc_basics_lab.experiments.03_capacity")
@@ -48,6 +49,7 @@ class Args:
     config: Path
     out: Path
     length_sweep: bool
+    symmetry_sweep: bool
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
@@ -73,18 +75,26 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
             "再生成する (make saturation-03)"
         ),
     )
+    parser.add_argument(
+        "--symmetry-sweep",
+        action="store_true",
+        help="駆動入力の対称性の掃引 (capacity_symmetry.csv) だけを再生成する",
+    )
     namespace = parser.parse_args(argv)
     return Args(
         config=Path(str(namespace.config)),
         out=Path(str(namespace.out)),
         length_sweep=bool(namespace.length_sweep),
+        symmetry_sweep=bool(namespace.symmetry_sweep),
     )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """実験を実行し、CSV2枚と meta.json を書く。
 
-    ``--length-sweep`` のときは系列長掃引の CSV だけを書く。本体と分けるのは、
+    ``--symmetry-sweep`` のときは 3-S の CSV だけを、``--length-sweep`` のときは
+    系列長掃引の CSV だけを書く。**どちらも書いたら本体は走らせない**
+    (どちらの分岐も return する)。本体と分けるのは、
     T=1e6 まで回すので単独で ``make figures-03`` の予算 (900 秒) を食い潰す
     うえ、記事に載る成果物ではなく「容量が足りないのか T が足りないのか」を
     切り分ける補助実験だからである。
@@ -100,6 +110,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         config.ipc_sweep.n_steps,
         config.reservoir.n_replicates,
     )
+    if args.symmetry_sweep:
+        run_and_report_symmetry_sweep(config, args.out)
+        return 0
     if args.length_sweep:
         run_and_report_length_sweep(config, args.out)
         return 0

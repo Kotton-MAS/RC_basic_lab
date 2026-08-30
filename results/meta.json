@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "3620b812601c120d6fe2e2d9d9a99fcdeb1d4c4b",
+  "commit": "8a3025d25e7aac96c05be612098fcd1ba32dd0b9",
   "config": {
     "delay_parity": {
       "delay": 1,
@@ -124,7 +124,22 @@
           "space": "reservoir_state"
         }
       ],
-      "task": "mackey_glass"
+      "task": "mackey_glass",
+      "unit_activity": {
+        "dormant_fraction": 0.0,
+        "n_dormant": 0,
+        "n_units": 200,
+        "variance_median": 0.0029140578742996833,
+        "variance_min": 5.394732912299254e-05,
+        "variance_min_to_median": 0.018512785761318262,
+        "variance_quantiles": {
+          "variance_q05": 0.00030236792228864086,
+          "variance_q25": 0.0012215032166604258,
+          "variance_q50": 0.0029140578742996833,
+          "variance_q75": 0.00566466769002554,
+          "variance_q95": 0.012715238729704656
+        }
+      }
     },
     {
       "n_lags": 64,
@@ -150,9 +165,24 @@
           "space": "reservoir_state"
         }
       ],
-      "task": "delay_parity"
+      "task": "delay_parity",
+      "unit_activity": {
+        "dormant_fraction": 0.0,
+        "n_dormant": 0,
+        "n_units": 200,
+        "variance_median": 0.2792350311153323,
+        "variance_min": 0.01461173429631518,
+        "variance_min_to_median": 0.05232772635278738,
+        "variance_quantiles": {
+          "variance_q05": 0.06191726289576306,
+          "variance_q25": 0.14810468436036758,
+          "variance_q50": 0.2792350311153323,
+          "variance_q75": 0.4156196580311133,
+          "variance_q95": 0.5123646808993342
+        }
+      }
     }
   ],
-  "timestamp_utc": "2026-08-30T09:37:31.200861+00:00",
-  "wall_time_s": 1.2020675418898463
+  "timestamp_utc": "2026-08-30T12:02:33.829257+00:00",
+  "wall_time_s": 1.2046970408409834
 }

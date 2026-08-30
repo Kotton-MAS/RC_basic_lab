@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.diagnostics.base import DiagnosticResult
-from rc_basics_lab.diagnostics.state_space import state_pca
+from rc_basics_lab.diagnostics.state_space import state_pca, unit_activity
 from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
     TaskEntry,
@@ -83,6 +83,64 @@ class SpaceSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class UnitActivity:
+    """リザバー状態のユニット活性度の要約 (T4)。
+
+    記事01 §3.3 の「ほとんど動かないユニットが混ざっている」を**行の値**で
+    言えるようにするための量。``diagnostics.state_space.unit_activity`` の
+    スカラをそのまま持つ (計算はここではしない)。
+
+    Attributes:
+        n_units: ユニット数 N。
+        n_dormant: 分散が中央値の ``DORMANT_VARIANCE_RATIO`` 未満のユニット数。
+        dormant_fraction: その割合。**記事が引用するのはこの数値**。
+        variance_median: 分散の中央値。
+        variance_min: 最小の分散。
+        variance_min_to_median: 最小 / 中央値。
+        variance_quantiles: 分位点 (``{"q05": ..., ...}``)。分布の形を残す。
+    """
+
+    n_units: int
+    n_dormant: int
+    dormant_fraction: float
+    variance_median: float
+    variance_min: float
+    variance_min_to_median: float
+    variance_quantiles: tuple[tuple[str, float], ...]
+
+    @classmethod
+    def from_result(cls, result: DiagnosticResult) -> UnitActivity:
+        """``unit_activity`` の結果から作る。"""
+        scalars = result.scalars
+        quantiles = tuple(
+            (key, float(value))
+            for key, value in sorted(scalars.items())
+            if key.startswith("variance_q")
+        )
+        return cls(
+            n_units=int(scalars["n_units"]),
+            n_dormant=int(scalars["n_dormant"]),
+            dormant_fraction=float(scalars["dormant_fraction"]),
+            variance_median=float(scalars["variance_median"]),
+            variance_min=float(scalars["variance_min"]),
+            variance_min_to_median=float(scalars["variance_min_to_median"]),
+            variance_quantiles=quantiles,
+        )
+
+    def to_summary(self) -> dict[str, object]:
+        """``meta.json`` に載せるプレーンな dict。"""
+        return {
+            "n_units": self.n_units,
+            "n_dormant": self.n_dormant,
+            "dormant_fraction": self.dormant_fraction,
+            "variance_median": self.variance_median,
+            "variance_min": self.variance_min,
+            "variance_min_to_median": self.variance_min_to_median,
+            "variance_quantiles": dict(self.variance_quantiles),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class StateSpaceReport:
     """1課題ぶんの空間比較。"""
 
@@ -91,6 +149,7 @@ class StateSpaceReport:
     n_lags: int
     n_rows: int
     spaces: tuple[SpaceSummary, ...]
+    unit_activity: UnitActivity
 
     def space(self, name: str) -> SpaceSummary:
         """名前で要約を引く。"""
@@ -107,6 +166,7 @@ class StateSpaceReport:
             "n_lags": self.n_lags,
             "n_rows": self.n_rows,
             "spaces": [summary.to_summary() for summary in self.spaces],
+            "unit_activity": self.unit_activity.to_summary(),
         }
 
 
@@ -140,12 +200,16 @@ def analyze_task(
     spaces = tuple(
         SpaceSummary.from_result(name, state_pca(matrix)) for name, matrix in matrices
     )
+    reservoir_state = resolved_plan.states[start:stop]
     report = StateSpaceReport(
         task=task_entry.name,
         replicate=replicate,
         n_lags=n_lags,
         n_rows=stop - start,
         spaces=spaces,
+        # 活性度はリザバー状態にだけ意味がある (入力空間の「ユニット」は
+        # 遅延タップであって、動かないタップという概念が無い)。
+        unit_activity=UnitActivity.from_result(unit_activity(reservoir_state)),
     )
     for summary in spaces:
         logger.info(
@@ -195,6 +259,7 @@ __all__ = [
     "RESERVOIR_STATE",
     "SpaceSummary",
     "StateSpaceReport",
+    "UnitActivity",
     "analyze_task",
     "collect_state_space",
     "summarize",

@@ -183,6 +183,39 @@ class LengthSweepConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class SymmetrySweepConfig:
+    """実験 3-S: 駆動入力の対称性と IPC の偶数次 (``make symmetry-03``、D-116)。
+
+    「偶数次の容量が空なのは、入力がゼロ対称で tanh が奇関数だから」という
+    仮説を**行の値で**確かめるための補助実験。``make figures-03`` の予算の外で
+    手動実行する (``length_sweep`` と同じ扱い)。
+
+    振るのは**平均のずれだけ**で、分布の形 (一様) も標準偏差 (``sigma_u``) も
+    変えない。一様のままなので ``orthonormal_basis`` が実測の平均・標準偏差で
+    標準化したあとも Legendre 基底は厳密に正規直交で、D-28 を満たしたまま
+    測れる (**分布の形を歪めると容量が二重計上され、比較が無意味になる**)。
+
+    Attributes:
+        offset_ratio_grid: 駆動入力に加える定数を ``sigma_u`` の倍数で並べたもの。
+            ``0.0`` がゼロ対称の基準点。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        sigma_u: 駆動信号の標準偏差 (D-17)。
+        n_units: リザバーのユニット数 N。
+        n_steps: 系列長 [ステップ]。
+        n_replicates: レプリケート数。
+    """
+
+    offset_ratio_grid: tuple[float, ...] = (0.0, 0.5, 1.0, 2.0, 3.0)
+    rho: float = 0.95
+    leak_rate: float = 1.0
+    sigma_u: float = 0.2
+    n_units: int = 50
+    n_steps: int = 30_000
+    n_replicates: int = 3
+
+
+@dataclass(frozen=True, slots=True)
 class Narma10Config:
     """実験 3-C: 公平な対照下での NARMA10 (D-29 / D-31 / D-39)。
 
@@ -235,6 +268,7 @@ class Capacity03Config:
     ipc_sweep: IpcSweepConfig = field(default_factory=IpcSweepConfig)
     conservation: ConservationConfig = field(default_factory=ConservationConfig)
     length_sweep: LengthSweepConfig = field(default_factory=LengthSweepConfig)
+    symmetry_sweep: SymmetrySweepConfig = field(default_factory=SymmetrySweepConfig)
     mc: MemoryCapacityConfig = field(default_factory=MemoryCapacityConfig)
     ipc: IpcConfig = field(default_factory=IpcConfig)
     narma: Narma10Config = field(default_factory=Narma10Config)

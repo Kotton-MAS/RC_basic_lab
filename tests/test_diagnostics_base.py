@@ -142,6 +142,7 @@ def _minimal_input_ipc(states: FloatArray) -> _MinimalInput:
 MINIMAL_VALID_INPUT: dict[str, Callable[[FloatArray], _MinimalInput]] = {
     "rc_basics_lab.diagnostics.dummy.state_mean_norm": _minimal_input_no_extras,
     "rc_basics_lab.diagnostics.state_space.state_pca": _minimal_input_no_extras,
+    "rc_basics_lab.diagnostics.state_space.unit_activity": _minimal_input_no_extras,
     "rc_basics_lab.diagnostics.esp.esp_convergence": _minimal_input_esp_convergence,
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov": (
         _minimal_input_conditional_lyapunov
@@ -251,6 +252,7 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
 KNOWN_DIAGNOSTICS = (
     "rc_basics_lab.diagnostics.dummy.state_mean_norm",
     "rc_basics_lab.diagnostics.state_space.state_pca",
+    "rc_basics_lab.diagnostics.state_space.unit_activity",
     "rc_basics_lab.diagnostics.esp.esp_convergence",
     "rc_basics_lab.diagnostics.esp.conditional_lyapunov",
     "rc_basics_lab.diagnostics.lyapunov.max_lyapunov",
@@ -258,7 +260,8 @@ KNOWN_DIAGNOSTICS = (
     "rc_basics_lab.diagnostics.memory_capacity.memory_capacity",
     "rc_basics_lab.diagnostics.ipc.ipc",
 )
-"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の2本 + 04b-1 の1本)。
+"""現時点で存在する全診断 (サイクル1 の2本 + 2 の3本 + 3a の2本 + 04b-1 の1本
++ T4 の ``unit_activity`` 1本)。
 
 件数まで固定するのは、列挙条件を壊して件数が減っても
 ``test_all_diagnostics_conform_to_d01_signature_contract`` が緑のまま通る
@@ -273,7 +276,8 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
     間違えて0件になると、下の契約テストは何も検査せずに緑になってしまう。
     サイクル2 で ``esp`` / ``timescale`` の3本が加わって 2 から 5 に、
     サイクル3a で ``memory_capacity`` と ``ipc`` が加わって 7 に、
-    04b-1 で ``max_lyapunov`` (D-42) が加わって 8 になった。
+    04b-1 で ``max_lyapunov`` (D-42) が加わって 8 に、
+    T4 で ``unit_activity`` が加わって 9 になった。
     """
     names = {qualname for qualname, _ in _iter_diagnostic_callables()}
     assert names, "diagnostics 配下から診断関数が1件も列挙されませんでした"
@@ -282,7 +286,7 @@ def test_diagnostic_enumeration_finds_all_known_diagnostics() -> None:
         f"(不足={sorted(set(KNOWN_DIAGNOSTICS) - names)}, "
         f"余剰={sorted(names - set(KNOWN_DIAGNOSTICS))})"
     )
-    assert len(names) == 8
+    assert len(names) == 9
 
 
 def test_minimal_valid_input_registry_covers_all_diagnostics() -> None:
