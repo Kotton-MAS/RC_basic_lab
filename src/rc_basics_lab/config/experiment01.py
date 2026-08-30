@@ -16,16 +16,34 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import numpy as np
-
 from rc_basics_lab.config._common import load_config_as
 from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.seeds import SeedConfig
 
-DEFAULT_ALPHA_GRID: tuple[float, ...] = tuple(
-    float(value) for value in np.logspace(-8, 2, 11)
+DEFAULT_ALPHA_GRID: tuple[float, ...] = (
+    1e-08,
+    1e-07,
+    1e-06,
+    1e-05,
+    1e-04,
+    1e-03,
+    1e-02,
+    1e-01,
+    1.0,
+    10.0,
+    100.0,
 )
-"""既定の ridge alpha 格子 (仕様 T3)。全手法・全タスクがこの単一格子を読む (D-04)。"""
+"""既定の ridge alpha 格子 (仕様 T3)。全手法・全タスクがこの単一格子を読む (D-04)。
+
+**literal で書く。``np.logspace(-8, 2, 11)`` で計算してはならない。** 指数側
+(``linspace``) は厳密でも ``power(10.0, -5.0)`` の最下位ビットが libm 実装に
+依存し、macOS arm64 では ``1e-05``、Linux x86_64 では ``9.999999999999999e-06``
+になる。本番 YAML は literal (``1.0e-05``) を書くので、計算した既定と YAML が
+Linux でだけ食い違い、``tests/test_config_wiring_chaos.py::
+test_production_config_matches_the_committed_yaml`` が CI でだけ落ちていた。
+
+設定の既定値はプラットフォームに依存してはならない。
+"""
 
 
 @dataclass(frozen=True, slots=True)

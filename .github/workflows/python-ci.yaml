@@ -10,8 +10,22 @@ env:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # **macOS で回す (D-113)。ubuntu-latest ではない。**
+    #
+    # このリポジトリのガードは「成果物が1バイトも変わらないこと」で合否を出す
+    # (D-74 / tests/test_artifact_invariance.py) が、bit-exact なゴールデンは
+    # 原理的に**プラットフォームに固定される**。ゴールデンは macOS arm64 で
+    # 採ってあり、ubuntu-latest (x86_64) では BLAS / libm の実装差で下位桁が
+    # 動くため、CI は 4 run すべて失敗し一度も緑にならなかった。
+    #
+    # 許容誤差へ緩めると「1ビットも変わらない」という検査の価値そのものが
+    # 消えるので、**検査ではなく実行環境のほうをゴールデンに合わせる**。
+    # 戻すときは D-113 の見直しとセットで行うこと
+    # (tests/test_ci_workflow.py が理由ごと固定している)。
+    runs-on: macos-latest
+    # ubuntu では test だけで 184 秒だった。macOS runner はこれより遅いことが
+    # あるので余裕を取る (5 分では足りない可能性が高い)。
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
