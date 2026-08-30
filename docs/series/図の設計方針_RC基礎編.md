@@ -1,7 +1,7 @@
 # 図の設計方針【RC基礎編・連載通し】
 
 *作成: 2026-08-20 / 対象: `rc-basics-01` 〜 `05` のすべての図*
-*関連: `docs/連載構成案_RC基礎編.md`（各記事の図の枚数目安）、`docs/rc-basics-survey.md`（引用すべき先行研究と定量参照点）*
+*関連: `docs/series/連載構成案_RC基礎編.md`（各記事の図の枚数目安）、`docs/series/rc-basics-survey.md`（引用すべき先行研究と定量参照点）*
 
 ---
 
@@ -45,7 +45,7 @@
 
 - 図にする場合は、文献値を破線・実測を点＋誤差棒で重ねる
 - 「文献値が無い」も情報である。空欄ではなく**「文献値なし」と明示する**
-- 引用元は `docs/rc-basics-survey.md` に既に整理されている。survey に書いてある定量参照点が図に落ちていない状態を無くす
+- 引用元は `docs/series/rc-basics-survey.md` に既に整理されている。survey に書いてある定量参照点が図に落ちていない状態を無くす
 
 ---
 
@@ -121,7 +121,7 @@ N=50, sigma_u=0.2, seeds=0-9 (10 rep), commit=abc1234
 
 ### 3-C を最優先にする理由
 
-`docs/rc-basics-survey.md` は実験 3-C の位置づけを、
+`docs/series/rc-basics-survey.md` は実験 3-C の位置づけを、
 
 - 旧: 「NARMA10 は線形で解けるのでは?」
 - 新: 「**先行 (Goudarzi et al. 2014) の対照は正則化なし OLS だった。公平な対照で再実験する**」
@@ -140,7 +140,7 @@ N=50, sigma_u=0.2, seeds=0-9 (10 rep), commit=abc1234
 
 ## 未解決
 
-- Lorenz の有効予測時間について、参照線として引くべき文献値と条件（N・入力次元・観測ノイズ）の特定。`docs/rc-basics-survey.md` の「未解決の問い」に追加すること
+- Lorenz の有効予測時間について、参照線として引くべき文献値と条件（N・入力次元・観測ノイズ）の特定。`docs/series/rc-basics-survey.md` の「未解決の問い」に追加すること
 - NARMA10 の参照値 0.16 / 0.107 の原典特定（survey 未解決1）。特定できるまでは `[原典未特定]` の表記を外さない
 
 ---
@@ -210,7 +210,7 @@ D-77 のラチェットで1行も増やせないため、**描画でない部分
 
 *測定: ブランチ `feat/rc-basics-05`、HEAD `38412c0`*
 *上の「既存図の対応表」は**初版の調査結果**である。現状は本節末の対応表が正本。*
-*関連: `docs/agent-system-review-from-artifacts.md` 第3版 N〜Q 節（本節 FIG-8〜FIG-10 の元になった指摘）*
+*関連: `docs/process/agent-system-review-from-artifacts.md` 第3版 N〜Q 節（本節 FIG-8〜FIG-10 の元になった指摘）*
 
 FIG-1 / 3 / 4 / 5 / 6 / 7 は実装され、`tests/test_figure_policy.py` の 12 検査で機械化された。
 上の「実装記録」の 10 項目は、次に図を触る人が最初に読むべき記録として質が高い。
@@ -243,7 +243,7 @@ FIG-1（タイトルは結論文で書く）を入れた結果、**根拠より�
 
 - **(a) 記事の芯を成立させる**: `n_lags` を k / n_train が 1 に近づくところまで掃引し、
   OLS が壊れてリッジが壊れない点（あるいは両方壊れる点）を示す。
-  `docs/rc-basics-survey.md` 未解決3「Goudarzi の DL をリッジ化した追試は誰かやっているか」と接続する
+  `docs/series/rc-basics-survey.md` 未解決3「Goudarzi の DL をリッジ化した追試は誰かやっているか」と接続する
 - **(b) 射程を限定する**: 副題と注から「Goudarzi の対照」の主張を外し、
   「小さいタップ数では正則化の有無が結論を変えない」という限定された主張に書き換える
 
@@ -441,7 +441,7 @@ D-74 の規律の外に出る**。コードと乖離しても誰も気づけな�
 | `fig_horizon` を `fig_comparison` の第3パネルへ | 図が1枚減る |
 
 **足すだけでなく減らすこと。** 現在 23 枚 / 5 記事 = 平均 4.6 枚で、
-`docs/連載構成案_RC基礎編.md` が想定していた「図 2〜4 枚」を超えている。
+`docs/series/連載構成案_RC基礎編.md` が想定していた「図 2〜4 枚」を超えている。
 情報密度の低い図を残したまま波形を足すと、記事が図で埋まる。
 
 ---
@@ -587,7 +587,7 @@ src/rc_basics_lab/plotting/waveforms.py:192
 ### 診断
 
 このリポジトリが繰り返し確認してきた「機械に置いた規約は守られ、文書だけの規約は次に破れる」の、図の側での再現である。
-`docs/agent-system-review-from-artifacts.md` 第3版 U 節の一般則がそのまま当てはまる。
+`docs/process/agent-system-review-from-artifacts.md` 第3版 U 節の一般則がそのまま当てはまる。
 
 `fig_freerun_timeline` は特にもったいない。**あの図が実際に示しているのは
 「約 6 Lyapunov 時間で位相はずれるが、振幅とアトラクタの形は保たれる」という 4-B の主張そのもの**である。

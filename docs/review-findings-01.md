@@ -48,7 +48,7 @@ finding ID（`F-1-xxx` / `F-2-xxx`）を「なぜこうなっているか」の�
   実測値との一致が機械的に保証されていなかった。
   → `experiment/report.py::write_comparison_summary_csv` で `results/comparison_summary.csv` を書き出し、
   README の表がこの生成物と一致することを `tests/test_readme_summary.py` で固定。
-- **F-1-007** [INFO / architecture] `docs/要件_rc-basics-02.md` の設計判断1 が D-01 と異なる ESP 判定の署名
+- **F-1-007** [INFO / architecture] `docs/series/要件_rc-basics-02.md` の設計判断1 が D-01 と異なる ESP 判定の署名
   (`f(state_sequence_a, state_sequence_b) -> ESPResult`) を規定しており、02 着手時に D-01 と衝突する
   おそれがあった。
   → 要件_02 の設計判断1 を D-01 の共通署名に合わせて書き換え済み（実装変更なし、ドキュメントのみ）。
