@@ -35,10 +35,10 @@
     "04_chaotic_freerun": {
       "capacity.csv": "sha256:5bf30fe94900fde5114ec5a1207e3177a15001e057708e66020f3771b95de51e",
       "fig_freerun_attractor.png": "sha256:2d3b410e502f2999feb68542c64a67fe89b51970deccbe2e946cee86c18ea3d2",
-      "fig_freerun_stats.png": "sha256:60629cb66af669b39f5ce6c698acce65fa23856733418c479a389776370a0a6f",
+      "fig_freerun_stats.png": "sha256:e1d66af0f5683427f037060ff55c98a65d52fb7ca51bf68a45978fdb1c4f635d",
       "fig_freerun_timeline.png": "sha256:73be955f9dc47f6d7d458cc4bc5c11d1cc1041021a72e72510bd07cbd1bd23e1",
-      "fig_stability_map.png": "sha256:8b5fc9ed74d1ba2425534de08c5efdb4c4eb9027a1bd901b26c1355905a1ea3c",
-      "fig_valid_time.png": "sha256:8bc0db65d0015c2ac91c6d3b513c9541a91c1438507af9d141760b02252b079b",
+      "fig_stability_map.png": "sha256:dada9f79c03d540d0801ff2a65e52c755b39137ca14eda13149a56adf4003267",
+      "fig_valid_time.png": "sha256:6d288eb3be51aa23b53b0a479b171c51281369a7bfb3f544e7c2ba043753f417",
       "freerun.csv": "sha256:a64527beaee767d8ecf64a732fca2fec38eca3d3dce3ae5c108d8e54638a6cc2",
       "freerun_profile.csv": "sha256:f6d53207fde0eead81e7d57532fe855f48a0d6aef10a588a3ba5ed1257f118e2",
       "meta.json": "sha256:9236116bd4eda0a53c393b9296768baa01b7b9181123ff78b949c138ebfb6a96",

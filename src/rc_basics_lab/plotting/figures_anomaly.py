@@ -64,13 +64,12 @@ from rc_basics_lab.experiment.anomaly_score import (
     RANDOM_CONTROL,
 )
 from rc_basics_lab.plotting.labels import KIM_2022, cited_measurement
+from rc_basics_lab.plotting.layout import label_panels, legend_below
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
     add_provenance,
-    label_panels,
-    legend_below,
     new_figure,
     rc_context_for,
     reference_line_kwargs,

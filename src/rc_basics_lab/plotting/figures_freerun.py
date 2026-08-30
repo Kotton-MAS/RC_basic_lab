@@ -64,17 +64,15 @@ from rc_basics_lab.plotting.labels import (
     METHOD_LABELS,
     cited_measurement,
 )
+from rc_basics_lab.plotting.layout import label_panels, legend_below, wrapped_note
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
     add_provenance,
-    label_panels,
-    legend_below,
     method_color,
     rc_context_for,
     require_rows,
-    wrapped_note,
 )
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import save_png as _save
