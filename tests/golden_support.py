@@ -35,6 +35,7 @@ CI の不変性保証ではなく、**ローカルでリファクタの前後を
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import hashlib
 import io
@@ -42,7 +43,7 @@ import json
 import logging
 import platform
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,7 +51,7 @@ import matplotlib
 import numpy as np
 import scipy
 
-from rc_basics_lab import __version__
+from rc_basics_lab import __version__, meta
 from rc_basics_lab.config import (
     Capacity03Config,
     Chaos04Config,
@@ -151,6 +152,35 @@ def _run_04(config_path: Path, out_dir: Path) -> None:
     run_and_report_freerun(load_config_as(config_path, Chaos04Config), out_dir)
 
 
+PINNED_COMMIT = "0" * 40
+"""ゴールデン実行中に ``git_commit()`` が返す固定値。
+
+図の footnote には HEAD の先頭7桁が焼き込まれる (FIG-6 / D-87)。実測値なので
+**コミットするたびに全 PNG が変わる**。固定しないと PNG の照合は
+「直前にコミットしたか」を測るだけになり、リファクタリングの合否判定に使えない。
+
+CSV / meta.json 側の ``commit`` は ``_strip_json`` が落とすのでここには関係しない。
+"""
+
+
+@contextlib.contextmanager
+def pinned_commit() -> Iterator[None]:
+    """``meta.git_commit()`` が ``PINNED_COMMIT`` を返す間だけ処理を実行する。
+
+    各パイプラインは ``run_and_report_*`` の**関数本体で**
+    ``from rc_basics_lab.meta import git_commit`` している (D-53 の遅延 import と
+    同じ形) ため、束縛は呼び出しのたびに ``meta`` から解決される。したがって
+    ``meta`` 側1箇所の差し替えで全パイプラインに効き、パイプラインが増えても
+    ここは変わらない。
+    """
+    original = meta.git_commit
+    meta.git_commit = lambda: PINNED_COMMIT
+    try:
+        yield
+    finally:
+        meta.git_commit = original
+
+
 CASES: tuple[GoldenCase, ...] = (
     GoldenCase("01_what_is_rc", "01_what_is_rc.yaml", _run_01),
     GoldenCase("02_esp_and_dynamics", "02_esp_and_dynamics.yaml", _run_02),
@@ -226,7 +256,8 @@ def digest(path: Path) -> str:
 def run_case(case: GoldenCase, out_dir: Path) -> dict[str, str]:
     """ケースを実行し、``相対パス -> ダイジェスト`` を返す。"""
     out_dir.mkdir(parents=True, exist_ok=True)
-    case.run(CONFIG_DIR / case.config, out_dir)
+    with pinned_commit():
+        case.run(CONFIG_DIR / case.config, out_dir)
     return {
         path.relative_to(out_dir).as_posix(): digest(path)
         for path in sorted(out_dir.rglob("*"))
