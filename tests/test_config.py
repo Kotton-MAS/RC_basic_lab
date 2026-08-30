@@ -67,10 +67,55 @@ def test_alpha_grid_is_parsed_as_float_tuple(tmp_path: Path) -> None:
     assert all(isinstance(value, float) for value in grid)
 
 
-def test_default_alpha_grid_is_logspace_of_eleven_points() -> None:
-    assert len(DEFAULT_ALPHA_GRID) == 11
-    assert DEFAULT_ALPHA_GRID[0] == pytest.approx(1e-8)
-    assert DEFAULT_ALPHA_GRID[-1] == pytest.approx(1e2)
+def test_default_alpha_grid_is_exactly_eleven_decade_literals() -> None:
+    """既定の alpha 格子が 10 のべき乗の literal と**厳密に**一致する (D-114)。
+
+    ``pytest.approx`` ではなく厳密比較にする。かつては
+    ``np.logspace(-8, 2, 11)`` で計算しており、``power(10.0, -5.0)`` の最下位
+    ビットが libm 実装に依存した (macOS arm64: ``1e-05`` / Linux x86_64:
+    ``9.999999999999999e-06``)。本番 YAML は literal を書くので、Linux でだけ
+    既定と YAML が食い違い ``test_production_config_matches_the_committed_yaml``
+    が CI で落ちていた。
+    """
+    assert DEFAULT_ALPHA_GRID == (
+        1e-08,
+        1e-07,
+        1e-06,
+        1e-05,
+        1e-04,
+        1e-03,
+        1e-02,
+        1e-01,
+        1.0,
+        10.0,
+        100.0,
+    )
+
+
+def test_config_defaults_are_not_computed_with_floating_point_powers() -> None:
+    """設定の既定値を ``np.logspace`` で作らない (D-114)。
+
+    値の厳密比較 (上のテスト) はプラットフォーム依存の再発を**そのプラット
+    フォームでしか**捕まえない —— CI は macOS で回る (D-113) ので、Linux で
+    だけ壊れる書き方に戻されても緑のまま通ってしまう。ここは書き方そのものを
+    見るので、どのプラットフォームでも落ちる。
+    """
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "rc_basics_lab"
+        / "config"
+        / "experiment01.py"
+    ).read_text(encoding="utf-8")
+    offending = [
+        line
+        for line in source.splitlines()
+        if "np.logspace" in line and not line.lstrip().startswith(("#", "*", '"'))
+    ]
+    assert not offending, (
+        "設定の既定値を np.logspace で計算しています (D-114)。"
+        f" literal で書いてください: {offending}"
+    )
 
 
 def test_type_mismatch_raises(tmp_path: Path) -> None:
