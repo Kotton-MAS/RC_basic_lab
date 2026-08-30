@@ -253,7 +253,10 @@ def test_all_four_figures_are_written(tmp_path: Path) -> None:
             style=STYLE,
         ),
         plot_freerun_stats(
-            profile_rows(), tmp_path / "fig_freerun_stats.png", style=STYLE
+            profile_rows(),
+            freerun_rows(),
+            tmp_path / "fig_freerun_stats.png",
+            style=STYLE,
         ),
     )
     assert len({path.name for path in paths}) == 4

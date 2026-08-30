@@ -69,6 +69,8 @@ from rc_basics_lab.plotting.style import (
     REFERENCE_DASHES,
     StyleContext,
     add_provenance,
+    label_panels,
+    legend_below,
     new_figure,
     rc_context_for,
     reference_line_kwargs,
@@ -481,7 +483,14 @@ def plot_threshold_tradeoff(
                 style.label("警報予算 (較正区間の誤報率)", "alarm budget (target FAR)")
             )
             axis.set_ylabel(style.label(ylabel_ja, ylabel_en))
-            axis.legend(loc="best", fontsize=7)
+        # **参照線を画面内に入れる**。y 上限が 0.16 のままだと 0.23 の線は
+        # 描かれず、凡例だけが残る (実測: 描かれていない線の凡例が2本あった)。
+        low_f1, high_f1 = axes[1].get_ylim()
+        axes[1].set_ylim(low_f1, max(high_f1, RANDOM_SCORE_PLAIN_F1[1] * 1.05))
+        # 凡例は**図の外・下に1つ**。左右の軸それぞれに loc="best" で置くと、
+        # 8 行 + 長い引用が軸を押し潰して左右のパネルの高さが揃わなくなる。
+        label_panels(list(axes), style=style)
+        legend_below(figure, list(axes), style=style, ncol=3)
         figure.suptitle(
             style.label(
                 "実験 5-B: 警報予算を緩めた分だけ再現率が上がる"

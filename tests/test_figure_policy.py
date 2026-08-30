@@ -179,12 +179,19 @@ def _texts(figure: Figure) -> list[str]:
 
 
 def _legend_texts(figure: Figure) -> list[str]:
-    """図の凡例テキストを集める (凡例が無い軸は飛ばす)。"""
+    """図の凡例テキストを集める。
+
+    **軸の凡例と図の凡例の両方**を見る。FIG-17 で系列の多い図の凡例を
+    ``figure.legend`` へ移したので、軸だけを見ていると「凡例が無い」と誤判定する
+    (実測: fig_threshold_tradeoff で参照線の検査が空振りした)。
+    """
     texts: list[str] = []
     for axis in figure.axes:
         legend = axis.get_legend()
         if legend is not None:
             texts.extend(text.get_text() for text in legend.get_texts())
+    for legend in figure.legends:
+        texts.extend(text.get_text() for text in legend.get_texts())
     return texts
 
 

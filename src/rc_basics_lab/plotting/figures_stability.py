@@ -20,6 +20,7 @@ from rc_basics_lab.experiment.stability import StabilityRow, regime_map
 from rc_basics_lab.plotting.figures_freerun import (
     REGIME_COLORS,
     REGIME_LABELS,
+    REGIME_MARKERS,
 )
 from rc_basics_lab.plotting.freerun_grids import label_of
 from rc_basics_lab.plotting.style import (
@@ -69,7 +70,7 @@ def plot_stability_map(
             matplotlib.lines.Line2D(
                 [],
                 [],
-                marker="s",
+                marker=REGIME_MARKERS[regime],
                 linestyle="none",
                 color=REGIME_COLORS[regime],
                 label=label_of(REGIME_LABELS, regime, style),
@@ -103,11 +104,12 @@ def _regime_panel(
     rhos = sorted({key[0] for key in mapping})
     leaks = sorted({key[1] for key in mapping})
     for (rho, leak), regime in mapping.items():
+        # **色だけで符号化しない** (FIG-18)。形も 3 態で変える。
         axis.scatter(
             [rho],
             [leak],
             s=420,
-            marker="s",
+            marker=REGIME_MARKERS[regime],
             color=REGIME_COLORS[regime],
             edgecolors="white",
         )
@@ -147,7 +149,15 @@ def _capacity_panel(
             xs.append(capacity.mc_total)
             ys.append(row.valid_time_lyapunov)
         if xs:
-            axis.scatter(xs, ys, s=26, alpha=0.75, color=REGIME_COLORS[regime])
+            # 4-D も色だけにしない (FIG-18)。3態マップと同じ形を使う。
+            axis.scatter(
+                xs,
+                ys,
+                s=26,
+                alpha=0.75,
+                marker=REGIME_MARKERS[regime],
+                color=REGIME_COLORS[regime],
+            )
     axis.set_xlabel(style.label("線形メモリ容量 MC", "linear memory capacity MC"))
     axis.set_ylabel(
         style.label("有効予測時間 [Lyapunov 時間]", "valid time [1 / lambda_max]")
