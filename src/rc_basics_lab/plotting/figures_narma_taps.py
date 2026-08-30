@@ -34,7 +34,7 @@ from rc_basics_lab.plotting.style import (
 GOUDARZI_TAPS_PER_TRAIN = 1810.0 / 2000.0
 """先行の動作点 ``k / n_train`` (NARMA10 で 1,810 タップ / 訓練 2,000 点)。
 
-``docs/rc-basics-survey.md`` Q2 が記録している値。**タップ数そのものではなく
+``docs/series/rc-basics-survey.md`` Q2 が記録している値。**タップ数そのものではなく
 比を引く**のは、こちらの訓練長が違うので絶対値では重ならないからである。
 """
 

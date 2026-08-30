@@ -1,6 +1,6 @@
 # 仕様: rc-basics-03b —— 容量の実験と記事の図 (T3・T4・T5 の残り)
 
-*要件書: `docs/要件_rc-basics-03.md` / 前サイクル仕様: `docs/plans/rc-basics-03.md` (§4 T3・T4・T5)*
+*要件書: `docs/series/要件_rc-basics-03.md` / 前サイクル仕様: `docs/plans/rc-basics-03.md` (§4 T3・T4・T5)*
 *前提: サイクル1・2a・2b・**3a** 完了 (534 tests / D-01〜D-28 + D-33 + D-34 / `make ci` 緑)*
 
 > **本書の位置づけ**: `docs/plans/rc-basics-03.md` line 9 で承認済みの分割

@@ -1,6 +1,6 @@
 # 仕様: rc-basics-05 実験実装 — センサー時系列の異常検知
 
-*入力: `docs/要件_rc-basics-05.md` / `docs/survey_異常検知データセット_05.md` / `.claude/tmp/conventions.md`*
+*入力: `docs/series/要件_rc-basics-05.md` / `docs/series/survey_異常検知データセット_05.md` / `.claude/tmp/conventions.md`*
 *planner 出力 (2026-08-20)。⚠ 分割不足の警告あり (L タスク3本) — §8 Q3 参照*
 
 ---
@@ -24,7 +24,7 @@ ESN 0.3935 / 遅延線 0.1877 に対し一様乱数対照 0.0811 (異常率 0.07
 `.claude/decisions.yaml` **64 件** (D-54〜D-68) / `mypy` strict・`ruff` green /
 `results/01..04/` バイト不変 / 実行時依存は4件のまま (scikit-learn は dev のみ)。
 
-**05b に着手する前に `docs/next-pr-candidates-05a.md` §1 を読むこと。**
+**05b に着手する前に `docs/process/next-pr-candidates-05a.md` §1 を読むこと。**
 そこに挙げた3点 (`mackey_glass` の死葉 / `SeriesSource` Protocol / `datasets` の循環 import) は
 **T3 の planner への入力**であり、決めずに着手すると実装後に構造的な作り直しが要る。
 特に `mackey_glass.length` / `horizon` の死葉は、

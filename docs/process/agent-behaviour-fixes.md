@@ -1,6 +1,6 @@
 # エージェントの挙動の是正 — 第3版の指摘から
 
-*作成: 2026-08-21 / 対象ブランチ: `feat/rc-basics-05` / 起点: `docs/agent-system-review-from-artifacts.md` 第3版（指摘 B-1〜B-6）*
+*作成: 2026-08-21 / 対象ブランチ: `feat/rc-basics-05` / 起点: `docs/process/agent-system-review-from-artifacts.md` 第3版（指摘 B-1〜B-6）*
 
 ## この文書の位置づけ
 
@@ -234,13 +234,13 @@ CSV 合計が 5 MB 予算に収まることは別の assert で直接測る。
 |---|---|---|
 | **機械層（テスト）** | D-89 許容幅 / D-92 同名ラチェット / D-93 サイクル衛生 / D-94 偶数次の注 / D-96 FIG-2 ラチェット / **D-98 削除レビューの証跡**（提案 B） | — |
 | **機械層（構造）** | D-91 p 値の統合 / D-95 3-C' の新設 / 結論文の関数化 ×3 / **D-97 引用に動作点を必須化**（提案 A） | — |
-| **スキーマ層** | — | 提案 D（`observed` の必須化）→ `docs/kit-fixes-for-another-session.md` K-1 |
+| **スキーマ層** | — | 提案 D（`observed` の必須化）→ `docs/process/kit-fixes-for-another-session.md` K-1 |
 | **手続き層** | — | 提案 C（成果物を生まない手順を消す）→ 下記 |
 | **プロンプト層** | **意図的に何も足していない** | — |
 
 **提案 A・B は 2026-08-22 に実施した**（D-97 / D-98）。実施の詳細は各提案の節を参照。
 提案 D は kit リポジトリ（`~/app/Claude_multi_agent`）と本リポジトリの
-スキーマにまたがるため、`docs/kit-fixes-for-another-session.md` へ切り出した。
+スキーマにまたがるため、`docs/process/kit-fixes-for-another-session.md` へ切り出した。
 
 **提案 C は条件が整った。** D-92 / D-93 / D-98 が手順2・4 の結果側を
 機械で受け止めるようになったので、`CLAUDE.md` の完了手順から
@@ -261,7 +261,7 @@ CSV 合計が 5 MB 予算に収まることは別の assert で直接測る。
 3. 提案 A・B は入れたので、**その2つが次に破れる場所にならないか**
    —— 一般則が正しければ、対策を置いた層は当面もつ
 
-測り方は今回と同じで、**成果物の側から**測る（`docs/agent-system-review-from-artifacts.md` 第4版）。
+測り方は今回と同じで、**成果物の側から**測る（`docs/process/agent-system-review-from-artifacts.md` 第4版）。
 エージェントの自己申告ではなく、`results/` と `src/` の実測を入力にする。
 
 ---

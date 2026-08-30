@@ -1,6 +1,6 @@
 # 仕様: rc-basics-03 —— リザバーの能力を測る (MC と IPC)
 
-*要件書: `docs/要件_rc-basics-03.md` / サーベイ: `docs/rc-basics-survey.md` Q2・Q3*
+*要件書: `docs/series/要件_rc-basics-03.md` / サーベイ: `docs/series/rc-basics-survey.md` Q2・Q3*
 *前提: サイクル1・2a・2b 完了 (439 tests / D-01〜D-22 / `make ci` 緑)*
 
 > ✅ **確定 (ユーザー承認済み・2026-08-18)**: サイクルを2つに割る。

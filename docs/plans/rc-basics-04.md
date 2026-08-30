@@ -1,6 +1,6 @@
 # 仕様: rc-basics-04 —— カオス時系列の自由走行予測 (+ 03 からの技術的負債8件)
 
-*要件書: `docs/要件_rc-basics-04.md` / 前サイクル仕様: `docs/plans/rc-basics-03b.md` (§「04 への申し送り」)*
+*要件書: `docs/series/要件_rc-basics-04.md` / 前サイクル仕様: `docs/plans/rc-basics-03b.md` (§「04 への申し送り」)*
 *前提: サイクル1・2a・2b・3a・3b-1・3b-2 完了 (`make ci` 緑 / D-01〜D-40 が全件 guard_test つき)*
 
 > **本書の位置づけ**: 要件書の実装と、`rc-basics-03b.md` の「04 への申し送り」

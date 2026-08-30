@@ -136,6 +136,12 @@ def test_all_artifacts_were_generated_from_the_same_commit() -> None:
 #: サイクル境界のタグ -> そのサイクルの「削れるか」レビューの証跡。
 #: **タグ時点で存在していたこと**まで見る (後から足しても、そのサイクルを
 #: レビュー無しで締めたという事実は変わらない)。
+#:
+#: **値は「そのタグの時点でのパス」である。** 現在の置き場ではない。
+#: docs/ を役割別に再編した際に docs/削減候補-05.md は docs/process/ へ移したが、
+#: タグ cycle-05a の時点では docs/ 直下に在った。現在のパスへ書き換えると
+#: 「タグ時点に存在したか」を測れなくなる (git ls-tree が空を返す)。
+#: 以後のサイクルは _HOW_TO_FIX_DELETION が指す docs/process/ 配下に置く。
 DELETION_REVIEW_DOCS: dict[str, str] = {
     "cycle-05a": "docs/削減候補-05.md",
 }
@@ -149,7 +155,7 @@ KNOWN_WITHOUT_DELETION_REVIEW: frozenset[str] = frozenset({"cycle-05b"})
 
 _HOW_TO_FIX_DELETION = (
     "サイクルを締める前に reviewer-deletion を1回走らせ、"
-    "その結果を docs/削減候補-<サイクル>.md に残して "
+    "その結果を docs/process/削減候補-<サイクル>.md に残して "
     "DELETION_REVIEW_DOCS へ登録してください (findings が0件でもよい)。\n"
     "**KNOWN_WITHOUT_DELETION_REVIEW に追記して通すのは"
     "ラチェットを外す操作です。**"

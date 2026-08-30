@@ -1,4 +1,4 @@
-.PHONY: sync test cov lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
+.PHONY: sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -10,6 +10,8 @@ help:
 	@echo "  fmt-check    - Check formatting without modifying"
 	@echo "  type         - Run mypy"
 	@echo "  ci           - Full CI check: lint + fmt-check + type + test"
+	@echo "  golden       - Byte-invariance of REGENERATED artifacts (01-04, seconds)"
+	@echo "  golden-update - Re-record the golden baseline (tests/golden/manifest.json)"
 	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
 	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
 	@echo "  figures-03   - Regenerate results/ for experiment 03 (4 CSV + 6 figures + meta)"
@@ -48,6 +50,19 @@ fmt-check:
 
 type:
 	uv run mypy .
+
+# 再生成した成果物のバイト不変検査。リファクタリングの合否判定はこれで行う。
+# test_artifact_invariance (D-74) が「コミット済み results/ が変わっていないか」
+# を見るのに対し、こちらは「同じ設定から作り直した成果物が変わっていないか」を
+# 縮小設定 (tests/golden/configs/) で数秒で見る。実験05 は外部データセットが要る
+# ため対象外 (D-60: pytest はネットワークに触れない)。test に含まれるので ci でも走る。
+golden:
+	uv run pytest tests/test_golden.py -q
+
+# 基準値を取り直す。**成果物を意図的に変えたときだけ**実行する
+# (振る舞い不変のはずのリファクタでこれを打つと、検査そのものが無意味になる)。
+golden-update:
+	uv run python tests/golden_support.py --update
 
 lock-check:
 	uv lock --check

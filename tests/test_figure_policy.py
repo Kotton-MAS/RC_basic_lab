@@ -1,4 +1,4 @@
-"""連載通しの図の約束を固定する (docs/図の設計方針_RC基礎編.md / D-84〜D-88).
+"""連載通しの図の約束を固定する (docs/series/図の設計方針_RC基礎編.md / D-84〜D-88).
 
 図は記事から切り離されて流通する。切り離された時点で「何を主張しているか」
 「先行研究のどこに位置するか」「どの条件で測ったか」が読めなくなる、という
@@ -615,7 +615,7 @@ def test_no_experiment_loses_its_literature_comparison() -> None:
     assert not new_gaps, (
         f"文献照合図を持たない実験が増えました: {new_gaps}\n"
         "FIG-2 は各記事に文献照合を最低1枚求めています "
-        "(docs/図の設計方針_RC基礎編.md)。\n"
+        "(docs/series/図の設計方針_RC基礎編.md)。\n"
         "**KNOWN_WITHOUT_CITATION に追記して通すのはラチェットを外す操作です。**"
     )
 

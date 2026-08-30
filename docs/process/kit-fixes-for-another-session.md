@@ -1,7 +1,7 @@
 # kit 側の改修事項 — 別セッション向け
 
 *作成: 2026-08-22 / 対象リポジトリ: `~/app/Claude_multi_agent`（`~/.claude/{agents,hooks,scripts,skills}` の実体）*
-*起点: `docs/agent-behaviour-fixes.md` の提案 A〜D / `docs/agent-system-review-from-artifacts.md` 第3版*
+*起点: `docs/process/agent-behaviour-fixes.md` の提案 A〜D / `docs/process/agent-system-review-from-artifacts.md` 第3版*
 
 ## この文書の位置づけ
 
@@ -60,7 +60,7 @@ if method == "measured" and not observed:
 
 ### 実害
 
-`docs/agent-behaviour-fixes.md` 型5 の実例:
+`docs/process/agent-behaviour-fixes.md` 型5 の実例:
 reviewer が存在しない関数を指して「100k点で 26.7 秒」と報告し、実測は **0.428 秒**（62倍）。
 `repro_command` が書かれていれば `measured` のまま通る現在の実装では、これは止まらない。
 
@@ -79,7 +79,7 @@ description に「measured なら必須」と書いてあるだけである（**
 
 > ⚠️ **2つは必ず同時に入れること。** スキーマだけ厳しくしても
 > `triage_findings.py` が降格しなければ空振りする ——
-> それは `docs/agent-behaviour-fixes.md` が「空虚なガード」と呼んでいる形そのものである。
+> それは `docs/process/agent-behaviour-fixes.md` が「空虚なガード」と呼んでいる形そのものである。
 
 ### 検証方法
 

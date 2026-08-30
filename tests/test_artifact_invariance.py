@@ -3,7 +3,7 @@
 このリポジトリのガードは「壊れていないこと」を測るものばかりで、
 「読めるか・削れるか」を測る軸が無い —— 8サイクルで src は単調増加し、
 削除・統合を要求した findings は0件だった
-(docs/agent-system-review-from-artifacts.md 1 節)。
+(docs/process/agent-system-review-from-artifacts.md 1 節)。
 
 整理を進めるには「振る舞いを変えずに削れたか」を言える道具が要る。
 その判定は**成果物が1バイトも変わらないこと**であり、この検査がその道具である。
