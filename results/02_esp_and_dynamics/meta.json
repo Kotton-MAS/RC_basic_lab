@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "e9f1967c2c961b9cefa69352003c6cfd8bf70e9d",
+  "commit": "3620b812601c120d6fe2e2d9d9a99fcdeb1d4c4b",
   "config": {
     "decay": {
       "leak_rate": 1.0,
@@ -219,7 +219,7 @@
     "probe": 3,
     "reservoir": 0
   },
-  "timestamp_utc": "2026-08-23T01:31:19.968538+00:00",
+  "timestamp_utc": "2026-08-30T09:39:44.093352+00:00",
   "verdict_lyapunov_agreement": {
     "boundary_lambda": 0.01,
     "disagreement_by_rho": [
@@ -276,7 +276,7 @@
     "n_rows": 369,
     "strong_drive_sigma": 0.5
   },
-  "wall_time_s": 89.57523700001184,
+  "wall_time_s": 131.13293237495236,
   "washout_sensitivity": {
     "by_method": [
       {
