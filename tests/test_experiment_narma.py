@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -358,28 +359,147 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
 # --- 01 の成果物が動いていない -----------------------------------------------
 
 
-def _without_wall_time(csv_text: str) -> list[list[str]]:
+TOLERANT_COLUMNS: frozenset[str] = frozenset({"rmse", "nrmse", "sign_accuracy"})
+"""相対許容差で比べる列 (D-115)。これ以外の列は**厳密一致**を要求する。
+
+``wall_time_s`` は列ごと落とし (実測時間)、``nmse`` は ``DERIVED_COLUMNS`` として
+別扱いにする。
+"""
+
+DERIVED_COLUMNS: dict[str, str] = {"nmse": "nrmse"}
+"""他の列から厳密に導かれる列 -> 導出元 (D-115)。
+
+``nmse`` は ``metrics.nmse`` が ``nrmse(...) ** 2`` として計算するので、**同じ行の
+``nrmse`` の2乗と 1 ULP まで一致する**。コミット済みの値と突き合わせても ``nrmse``
+以上の情報は得られず、相対差だけが2倍になる (CI 実測: ``nrmse`` 1.506e-03 に対し
+``nmse`` 3.009e-03 と正確に2倍)。許容差を2倍側に合わせると構造変更との余裕がその分
+削れるので、**値の照合ではなく恒等式の検査に替える**。定義を変えたときはこちらが落ちる。
+"""
+
+DERIVED_RTOL = 1.0e-12
+"""``DERIVED_COLUMNS`` の恒等式に許す相対差 (丸め数 ULP ぶん)。"""
+
+ARTIFACT_RTOL = 5.0e-3
+"""``TOLERANT_COLUMNS`` に許す相対差 (D-115)。
+
+**「観測された実装差より十分大きく、最小の構造変更より小さい」という2つの実測に
+挟まれて決まる。** どちらもここに記録する。推測で動かさないこと。
+
+実装差 (下限側、GitHub Actions の macOS runner と開発機、run 33308520766 の実測。
+30 セルすべてが ``mackey_glass`` の2手法に集中し、``linear`` は 1e-6 未満):
+
+===============  ==============  ==============
+手法             ``nrmse`` 最大  ``nmse`` 最大
+===============  ==============  ==============
+``linear``       < 1e-6          < 1e-6
+``delay_line``   4.575e-05       9.151e-05
+``esn``          1.506e-03       3.009e-03
+===============  ==============  ==============
+
+``esn`` が最も動くのは ``cond(Phi^T Phi)`` が N=200 で 8.0e18 と遅延線 k=64 の
+2.0e16 より悪いためで、``experiments/01_what_is_rc/config.yaml`` の実測と整合する。
+float64 の eps (2.2e-16) を超える条件数なので、実装差が増幅されるのは想定内である。
+
+構造変更 (上限側、01 の本番設定で実測):
+
+- ``esn_mackey_glass.leak_rate`` を +1% : 7.6e-3
+- ``mackey_glass.length`` を +1%        : 2.1e-2
+- ``seeds.task`` を +1                  : 3.8e-2
+
+**余裕は広くない** —— 実装差 1.5e-3 と最小の構造変更 7.6e-3 の間は 5 倍しかない。
+``nmse`` を恒等式検査へ回した (``DERIVED_COLUMNS``) のは、値で照合すると相対差が
+2倍 (3.0e-3) になってこの余裕をさらに削るためである。したがって**この検査が保証
+するのは「5e-3 を超える変化は必ず捕まえる」までで、それ未満の値の変化は捕まえない**。
+構造変更のうち選択 (``alpha`` / ``n_lags``) と行数を動かすものは、許容差ではなく
+**厳密一致の列**が捕まえる (CI 実測でも離散列は 1 件も外れなかった)。
+"""
+
+
+def _rows_without_wall_time(csv_text: str) -> tuple[list[str], list[list[str]]]:
+    """``(ヘッダ, 行)``。``wall_time_s`` の列を落とす。"""
     rows = [line.split(",") for line in csv_text.strip().splitlines()]
     dropped = rows[0].index("wall_time_s")
-    return [
+    stripped = [
         [field for index, field in enumerate(row) if index != dropped] for row in rows
     ]
+    return stripped[0], stripped[1:]
+
+
+def _compare_artifact_rows(regenerated: str, committed: str) -> list[str]:
+    """2つの CSV を列ごとの規則で比べ、食い違いを列挙する。"""
+    header, actual = _rows_without_wall_time(regenerated)
+    committed_header, expected = _rows_without_wall_time(committed)
+    if header != committed_header:
+        return [f"列が違います: {header} != {committed_header}"]
+    if len(actual) != len(expected):
+        return [f"行数が違います: {len(actual)} != {len(expected)}"]
+
+    problems: list[str] = []
+    task_at = header.index("task")
+    method_at = header.index("method")
+    for index, (actual_row, expected_row) in enumerate(
+        zip(actual, expected, strict=True)
+    ):
+        label = f"{expected_row[task_at]}/{expected_row[method_at]}"
+        for column, (left, right) in zip(
+            header, zip(actual_row, expected_row, strict=True), strict=True
+        ):
+            if column in DERIVED_COLUMNS:
+                source = actual_row[header.index(DERIVED_COLUMNS[column])]
+                squared = float(source) ** 2
+                if not math.isclose(
+                    float(left), squared, rel_tol=DERIVED_RTOL, abs_tol=0.0
+                ):
+                    problems.append(
+                        f"{label} 行{index} {column}: {left} が"
+                        f" {DERIVED_COLUMNS[column]}^2 ({squared!r}) と一致しません"
+                        " (恒等式が壊れています)"
+                    )
+            elif column in TOLERANT_COLUMNS:
+                actual_value, expected_value = float(left), float(right)
+                if not math.isclose(
+                    actual_value, expected_value, rel_tol=ARTIFACT_RTOL, abs_tol=0.0
+                ):
+                    relative = abs(actual_value - expected_value) / abs(expected_value)
+                    problems.append(
+                        f"{label} 行{index} {column}: 相対差 {relative:.3e}"
+                        f" ({left} != {right})"
+                    )
+            elif left != right:
+                problems.append(
+                    f"{label} 行{index} {column}: {left!r} != {right!r}"
+                    " (厳密一致が必要)"
+                )
+    return problems
 
 
 def test_01_artifacts_are_unchanged(tmp_path: Path) -> None:
-    """01 の ``comparison.csv`` が (``wall_time_s`` を除いて) 一致する。
+    """01 の ``comparison.csv`` が動いていない (D-115)。
 
     3-C は 01 の ``run_task`` を**再利用**するので、``build_tasks`` や
     ``ExperimentConfig`` を触ると 01 の成果物が動く (D-31)。宣言
     (``build_tasks`` の中身) だけでなく、本番設定で実際に再生成した CSV を
     コミット済みの成果物と突き合わせる。
+
+    **列ごとに規則を分ける** (D-115)。識別子・シード・選ばれた
+    ``alpha`` / ``n_lags``・分割サイズは**厳密一致**を要求し、誤差指標の4列
+    (``TOLERANT_COLUMNS``) だけ ``ARTIFACT_RTOL`` の相対差を許す。
+
+    全列にバイト一致を要求していた版は、**開発機以外では通らなかった** ——
+    遅延線 k=64 の Gram は cond 2.0e16 で、BLAS 実装差が 0.15% まで増幅される。
+    再現できない計算に「1ビットも変わらない」を要求すると、CI は常に赤になり
+    誰も見なくなる (実際に 4 run すべて赤のまま8日間放置された)。捕まえたいのは
+    構造変更で、それは値を桁で動かす。
     """
     committed = (RESULTS_01 / COMPARISON_CSV).read_text(encoding="utf-8")
     rows = run_experiment(load_config(CONFIG_01))
     regenerated = write_comparison_csv(rows, tmp_path / COMPARISON_CSV).read_text(
         encoding="utf-8"
     )
-    assert _without_wall_time(regenerated) == _without_wall_time(committed)
+    problems = _compare_artifact_rows(regenerated, committed)
+    assert not problems, (
+        f"01 の成果物が動いています ({len(problems)} 件):\n" + "\n".join(problems[:40])
+    )
 
 
 # --- 勝敗の要約 (向きは問わない) ---------------------------------------------
