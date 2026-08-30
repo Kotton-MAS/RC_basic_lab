@@ -1,4 +1,4 @@
-.PHONY: sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 symmetry-03 washout-02-unpadded pre-commit clean help
+.PHONY: sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 symmetry-03 panels washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -21,6 +21,7 @@ help:
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
 	@echo "  symmetry-03  - Regenerate the drive-symmetry sweep CSV (manual, D-116)"
+	@echo "  panels       - Measure panels per figure (manual, ~20 min; FIG-15)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
@@ -146,6 +147,14 @@ saturation-03:
 # 厳密に正規直交のまま (D-28)。figures-03 の予算 (900 秒) には含めない。
 symmetry-03:
 	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity --symmetry-sweep
+
+# 各図のパネル数 (軸の本数) を実測する (FIG-15)。Figure.savefig を捕まえて
+# len(figure.axes) を数え、results/ には触れず一時ディレクトリへ生成する。
+# **ci には入れない** —— 本番設定の全実験を回すので約20分かかり、「CI は実験を
+# 回さない」という分担が壊れる。docs/series/図の設計方針_RC基礎編.md FIG-15 の
+# 表を更新するときに手で回す。
+panels:
+	uv run python scripts/count_panels.py
 
 # 補償なし (pad_series=False) の washout 感度 CSV を再生成する (docs/design.md
 # §9.6 の対比表の一次資料)。本番 config.yaml は編集しない —— このスクリプト

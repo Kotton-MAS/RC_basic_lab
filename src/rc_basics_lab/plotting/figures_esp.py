@@ -1,19 +1,16 @@
 """記事02の図4枚 (実験 2-A / 2-B / 2-C / 2-D).
 
 - ``plot_esp_decay``: rho 別の状態距離の減衰曲線 (受け入れ条件1)。
-- ``plot_leak_timescale``: リーク率と実効時定数。理論線 ``-1/log(1-a)`` を重ねる
-  (受け入れ条件4)。
+- ``plot_leak_timescale``: リーク率と 1/e 時定数 (受け入れ条件4)。理論線
+  ``-1/log(1-a)`` を重ねる。
 - ``plot_esp_map``: rho x 入力強度 の ESP 成立領域 (**記事の目玉**、受け入れ条件2)。
   無入力 (sigma_u=0) は別枠のパネルに出し、駆動下の領域と混ぜない。
 - ``plot_washout_sensitivity``: washout 長への性能感度 (受け入れ条件5、D-19)。
   01 の本番値に垂直線を引き、変動幅を数値で注記する。
 
-``figures.py`` と同じ規律に従う: pyplot を使わず ``Figure`` +
-``FigureCanvasAgg`` を直接組み、描画設定は ``matplotlib.rc_context`` で描画中
-だけ一時適用する (F-1-008)。ラベルは必ず ja/en の対で書く (D-10)。
-
-**ギリシャ文字は書かない**: ruff の RUF001/RUF002 が ASCII と紛らわしい文字を
-弾くため、ソース中では ``rho`` / ``sigma_u`` と綴る (T2 実装メモ17)。
+図の外枠 (rcParams の一時適用 / 保存) は ``plotting/style.py`` が持つ。ラベルは
+必ず ja/en の対で書く (D-10)。**ギリシャ文字は書かない** (RUF001/RUF002。
+ソース中では ``rho`` / ``sigma_u`` と綴る)。
 """
 
 from __future__ import annotations
@@ -294,11 +291,11 @@ def _plot_timescale_panel(
     axis.set_yscale("log")
     axis.set_xlabel(style.label("リーク率 a", "leak rate a"))
     axis.set_ylabel(
-        style.label("実効時定数 tau [ステップ]", "effective timescale tau [steps]")
+        style.label("1/e 時定数 tau_1e [ステップ]", "1/e timescale tau_1e [steps]")
     )
     axis.set_title(
         style.label(
-            "リーク率と実効時定数 (単調減少)",
+            "リーク率と 1/e 時定数 (単調減少)",
             "Leak rate versus effective timescale (monotone)",
         ),
         fontsize=10,
@@ -311,9 +308,10 @@ def plot_leak_timescale(
 ) -> Path:
     """リーク率と実効時定数の関係を描く (受け入れ条件4)。
 
-    左が自己相関曲線そのもの、右が 1/e 交差から求めた時定数と理論線
-    ``-1/log(1-a)`` の比較。理論線は線形域の値なので実測より小さく出るが、
-    **単調性が一致する**ことが受け入れ条件である。
+    左が自己相関曲線、右が 1/e 交差から求めた時定数と理論線 ``-1/log(1-a)``
+    の比較。理論線は線形域の値なので実測より小さく出るが、**単調性が一致する**
+    ことが受け入れ条件である。**描いているのは ``tau_1e`` だけ** (D-117)
+    —— ``tau_integrated`` は比が 1.58 -> 1.94 と開く (design.md §9.2)。
 
     Raises:
         ValueError: ``outcomes`` が空の場合。
@@ -332,9 +330,9 @@ def plot_leak_timescale(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 2-B: リーク率を下げると時定数は理論の約 1.4 倍で平行に伸びる",
-                "Experiment 2-B: lowering the leak rate stretches the timescale"
-                " parallel to the theory line (measured is about 1.4x)",
+                "実験 2-B: 1/e 時定数はリーク率によらず理論の約 1.3〜1.4 倍",
+                "Experiment 2-B: the 1/e timescale stays about 1.3-1.4x the"
+                " theory line across leak rates",
             )
         )
         conditions = (

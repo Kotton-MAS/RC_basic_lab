@@ -14,7 +14,7 @@
       "esp_threshold_sensitivity.csv": "sha256:85550c59e7cdf11aa3e877ab718444ca0b4e16726d66d17d37fc0d3808301731",
       "fig_esp_decay.png": "sha256:edf108ba6b984c9d3b37f7807b82d7c86c2c7d63661f920b18231b8d2472fb6c",
       "fig_esp_map.png": "sha256:831dcb93d9ba86664d3a54003cd1423be089eeaed3e9dfe7a84d049df50dea0d",
-      "fig_leak_timescale.png": "sha256:2c442573bd1a1926baf8c27013e1ea572a596e2b8f6dd62f13f9fd3e96a0e8e6",
+      "fig_leak_timescale.png": "sha256:8ee016a8e5458968a12071079f77886ae236fe83b83fb67826d8eb8dac54055a",
       "fig_washout_sensitivity.png": "sha256:e9514b13040e162aae1f4f36dd63283bf04a9b359aee762d48f12514632b7b5a",
       "meta.json": "sha256:0b7665b3b90705d3089ba61b6a6fcb111b8a086c8ef229b190dbe4567045c8ca",
       "washout_sensitivity.csv": "sha256:4a2c44d4e21eb798b92c89388cabe93d263db5c760c85fe89bef1f5067448a4d"
