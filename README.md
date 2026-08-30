@@ -338,7 +338,7 @@ make figures-05
 - **UCR (250系列のアーカイブ) も同じ経路で回せる**が、系列ごとに `train_end` が
   違うため 5-D の前提 (学習量が揃っていること) を満たさず `ValueError` になる。
   8系列での実測 (ESN が乱数より弱い系列が 2 本ある) は
-  `docs/checkpoint-05b-t3.md`
+  `docs/plans/checkpoint-05b-t3.md`
 
 図5枚 (`fig_pr_curves` / `fig_score_timeline` / `fig_threshold_tradeoff` /
 `fig_protocol_sensitivity` / `fig_size_vs_performance`) と既定値の出どころ・

@@ -1,13 +1,13 @@
 # エージェント運用の指摘 — 成果物側から見た修正点
 
 *作成: 2026-08-20 / 対象: `rc-basics-lab` のサイクル 01〜04 と、それを回した運用の仕組み*
-*先に読むもの: `docs/agent-operations-retrospective.md`*
+*先に読むもの: `docs/process/agent-operations-retrospective.md`*
 
 ---
 
 ## この文書の位置づけ
 
-`docs/agent-operations-retrospective.md`（以下「振り返り」）は**過程の記録**から書かれている。素材は `~/.claude/incidents.jsonl`（84 件）、`.claude/decisions.yaml`（53 件）、各サイクルの findings（199 件）である。
+`docs/process/agent-operations-retrospective.md`（以下「振り返り」）は**過程の記録**から書かれている。素材は `~/.claude/incidents.jsonl`（84 件）、`.claude/decisions.yaml`（53 件）、各サイクルの findings（199 件）である。
 
 本稿は**出来上がった成果物そのもの**を外部から読んで気づいた点を扱う。素材は `src/`、`tests/`、`results/`、`CLAUDE.md`、`.claude/settings.json`、`git log` である。
 
@@ -52,8 +52,8 @@
 
 結果として、どのガードにも触れないまま以下が残った。
 
-- 実験 4 本ぶんの同じ骨格が 4 回書かれている。`_new_figure` / `_save` が 4 コピー、`write_*_csv` が 11 本、`# type: ignore` が 16 箇所（詳細は `docs/リファクタリング方針.md`）
-- 図に文献比較がほとんど無い。成果物は「正しく生成されている」ので、どのテストも赤くならない（詳細は `docs/図の設計方針_RC基礎編.md`）
+- 実験 4 本ぶんの同じ骨格が 4 回書かれている。`_new_figure` / `_save` が 4 コピー、`write_*_csv` が 11 本、`# type: ignore` が 16 箇所（詳細は `docs/process/リファクタリング方針.md`）
+- 図に文献比較がほとんど無い。成果物は「正しく生成されている」ので、どのテストも赤くならない（詳細は `docs/series/図の設計方針_RC基礎編.md`）
 - docstring が 32% を占め、その中身が rationale の 3 重複になっている（指摘 3）
 
 いずれも**正しく、かつ読めない**。この系のガードはそれを検出できる設計になっていない。
@@ -88,7 +88,7 @@
 
 | 行き先 | 分量 | 次サイクルの Claude が最初に読むか |
 |---|---|---|
-| `docs/agent-operations-retrospective.md` | 321 行 | いいえ |
+| `docs/process/agent-operations-retrospective.md` | 321 行 | いいえ |
 | `docs/review-findings-01〜03b.md` | 506 行 | いいえ（ID 参照時のみ） |
 | `docs/plans/rc-basics-*.md` | 4,392 行 | いいえ |
 | `CLAUDE.md` 学習メモ | **0 行** | はい |
@@ -277,7 +277,7 @@ findings 数を品質指標として読むつもりがあるなら、レビュ�
 
 ---
 
-*本稿の数値の出所: `src/` と `tests/` の実測（`ast` / `tokenize` による行種別の集計）、`git log` / `git worktree list`、`CLAUDE.md`、`.claude/settings.json`、`.gitignore`、`docs/` 配下の各文書。findings 件数とテスト数の推移は `docs/agent-operations-retrospective.md` の記載を引用した。*
+*本稿の数値の出所: `src/` と `tests/` の実測（`ast` / `tokenize` による行種別の集計）、`git log` / `git worktree list`、`CLAUDE.md`、`.claude/settings.json`、`.gitignore`、`docs/` 配下の各文書。findings 件数とテスト数の推移は `docs/process/agent-operations-retrospective.md` の記載を引用した。*
 
 ---
 ---
@@ -286,7 +286,7 @@ findings 数を品質指標として読むつもりがあるなら、レビュ�
 
 *測定: 2026-08-21 / 対象: ブランチ `feat/rc-basics-05`（worktree `.claude/worktrees/rc-basics-05`、HEAD `920ae40`）*
 *比較の基準: 第1版の測定時点 `a293343`（ブランチ `feat/rc-basics-lab`）*
-*関連: `docs/削減候補-05.md`（「削れるか」reviewer の初回実行結果と実施記録）*
+*関連: `docs/process/削減候補-05.md`（「削れるか」reviewer の初回実行結果と実施記録）*
 
 第1版の指摘に対する修正が実施されたため、成果物を再測定した。本節は**残っているもの**と、**修正の過程で新しく生まれたもの**を扱う。
 
@@ -307,7 +307,7 @@ findings 数を品質指標として読むつもりがあるなら、レビュ�
 | `.gitignore` の `.claude/worktrees/` | 無し | 有り（185 行目） |
 | `settings.json` の `PYENV_VERSION` 固定 | 有り | 除去 + `tests/test_hook_interpreter.py` |
 
-`docs/削減候補-05.md` §「見積りと実測が食い違った理由」で、共通化が集約先のコストを伴うこと（呼び出し側 −64 行に対しヘルパ +54 行、純減 −10 行）を実測で記録している点は特に価値が高い。削減見積りの精度そのものを記録に残したことで、次の判断の質が上がる。
+`docs/process/削減候補-05.md` §「見積りと実測が食い違った理由」で、共通化が集約先のコストを伴うこと（呼び出し側 −64 行に対しヘルパ +54 行、純減 −10 行）を実測で記録している点は特に価値が高い。削減見積りの精度そのものを記録に残したことで、次の判断の質が上がる。
 
 ---
 
@@ -366,7 +366,7 @@ D-63 の rationale は「『後で割る』は必ず割られない」と書い�
 
 ### 観測
 
-`src/` 全体の docstring 比率は 32% → **29%**。`docs/削減候補-05.md` の自己申告（#1 は「部分完了 −135 行」）と整合する。
+`src/` 全体の docstring 比率は 32% → **29%**。`docs/process/削減候補-05.md` の自己申告（#1 は「部分完了 −135 行」）と整合する。
 
 問題は**規約が `CLAUDE.md` に入った後に書かれたコード**である。
 
@@ -407,7 +407,7 @@ D-63 の rationale は「『後で割る』は必ず割られない」と書い�
 | `capacity_context()` | `experiment/capacity.py:575` / `experiment/stability.py:340` |
 | `SectionTiming` | `experiment/capacity_pipeline.py:98` / `experiment/freerun_pipeline.py:107` |
 
-`grep -c "_sweep\|SectionTiming\|capacity_context" docs/削減候補-05.md` = **0**。
+`grep -c "_sweep\|SectionTiming\|capacity_context" docs/process/削減候補-05.md` = **0**。
 
 3 件目は `to_summary` が `DataclassSummaryMixin` に統合された一方で、**クラス本体は 2 本のまま**残っている。共通化が半分だけ進んだ状態である。
 
@@ -442,7 +442,7 @@ D-63 の rationale は「『後で割る』は必ず割られない」と書い�
 
 > このリポジトリの成果物は `results/` の CSV と PNG であり、**それが読者に届く唯一のもの**である。コードの正しさは成果物の正しさのためにある。
 
-この宣言は正しい。しかし `docs/図の設計方針_RC基礎編.md` の FIG-1〜FIG-7 は 1 つも実装されていない。
+この宣言は正しい。しかし `docs/series/図の設計方針_RC基礎編.md` の FIG-1〜FIG-7 は 1 つも実装されていない。
 
 - `plotting/` に `Jaeger 2002` / `Dambre 2012)` / `Goudarzi` / `MC / N` / footnote の痕跡なし（grep で 0 件）
 - `a293343..HEAD` で変わった `results/` は 02 の CSV と `meta.json` のみ。**PNG は 1 枚も変わっていない**
@@ -538,7 +538,7 @@ readout/design.py        tasks/base.py             types.py
 
 ## I. 補足: 本稿を含む 3 文書がどこにもコミットされていない
 
-`docs/削減候補-05.md` は本稿（`docs/agent-system-review-from-artifacts.md`）を根拠として明示的に参照している。しかし本稿・`docs/リファクタリング方針.md`・`docs/図の設計方針_RC基礎編.md` の 3 つは、
+`docs/process/削減候補-05.md` は本稿（`docs/process/agent-system-review-from-artifacts.md`）を根拠として明示的に参照している。しかし本稿・`docs/process/リファクタリング方針.md`・`docs/series/図の設計方針_RC基礎編.md` の 3 つは、
 
 - メインの作業ツリー（`feat/rc-basics-lab`）に **untracked** で置かれているだけ
 - ブランチ `feat/rc-basics-05` の worktree には**存在しない**
@@ -579,7 +579,7 @@ readout/design.py        tasks/base.py             types.py
 
 ---
 
-*第2版の数値の出所: worktree `.claude/worktrees/rc-basics-05`（HEAD `920ae40`）に対する `ast` / `tokenize` / `grep -c` / `wc -l` の実測、`git log` / `git worktree list` / `git diff --stat a293343 HEAD`、`CLAUDE.md`、`.claude/decisions.yaml`、`.claude/settings.json`、`.claude/agents/reviewer-deletion.md`、`docs/削減候補-05.md`。*
+*第2版の数値の出所: worktree `.claude/worktrees/rc-basics-05`（HEAD `920ae40`）に対する `ast` / `tokenize` / `grep -c` / `wc -l` の実測、`git log` / `git worktree list` / `git diff --stat a293343 HEAD`、`CLAUDE.md`、`.claude/decisions.yaml`、`.claude/settings.json`、`.claude/agents/reviewer-deletion.md`、`docs/process/削減候補-05.md`。*
 
 ---
 ---
@@ -588,7 +588,7 @@ readout/design.py        tasks/base.py             types.py
 
 *測定: 2026-08-21 / 対象: ブランチ `feat/rc-basics-05`（HEAD `38412c0`、`cycle-05b` タグ +65 コミット）*
 *比較の基準: 第2版の測定時点 `920ae40`*
-*関連: `docs/図の設計方針_RC基礎編.md`（本節 B-2〜B-4 はそちらの対応表にも反映すべき内容）*
+*関連: `docs/series/図の設計方針_RC基礎編.md`（本節 B-2〜B-4 はそちらの対応表にも反映すべき内容）*
 
 第2版の指摘 A-1〜A-7 / I に対する修正が実施された。本節は**残っているもの**と、**この巡で新しく生まれたもの**を扱う。
 
@@ -712,13 +712,13 @@ _rows  _sweep  _validate  _validate_config  capacity_context  sign_test_p_value
 - 図の footnote: `n_train = 3800`
 - タップ数 / 訓練長 = 最大でも **30 / 3800 ≒ 0.008**
 
-`docs/rc-basics-survey.md` が記録している Goudarzi の設定は **1,810〜2,000 タップ / 訓練 2,000 点**、つまり **k / n ≈ 1** である。彼らの対照の本質は「正則化なし」ではなく「**正則化なし かつ k ≈ n_train**」だった。
+`docs/series/rc-basics-survey.md` が記録している Goudarzi の設定は **1,810〜2,000 タップ / 訓練 2,000 点**、つまり **k / n ≈ 1** である。彼らの対照の本質は「正則化なし」ではなく「**正則化なし かつ k ≈ n_train**」だった。
 
 ### 診断
 
 「OLS ≒ リッジ」は実測として正しい。しかし k/n ≈ 0.008 の領域では OLS が壊れる理由が無いので、**この結果は先行の対照設計への批判を検証していない**。副題が「Goudarzi の対照を足した」と書いている分、読者は検証されたと受け取る。
 
-`docs/rc-basics-survey.md` は実験 3-C の位置づけを「先行の対照は正則化なし OLS だった。**公平な対照で再実験する**」に方向転換したが、公平化されたのは正則化の軸だけで、**タップ数の軸が動いていない**。
+`docs/series/rc-basics-survey.md` は実験 3-C の位置づけを「先行の対照は正則化なし OLS だった。**公平な対照で再実験する**」に方向転換したが、公平化されたのは正則化の軸だけで、**タップ数の軸が動いていない**。
 
 ### 対応
 
@@ -745,7 +745,7 @@ FIG-2（各記事に文献照合を最低1枚）は他の実験でも実装さ�
 
 ### 対応
 
-`docs/図の設計方針_RC基礎編.md` FIG-2 を実装し、`test_figure_policy.py` に「各実験に文献照合が 1 枚以上ある」検査を足す。Lorenz の有効予測時間の文献値と条件（N・入力次元・観測ノイズ）の特定は、同文書の「未解決」に既に挙げてある。
+`docs/series/図の設計方針_RC基礎編.md` FIG-2 を実装し、`test_figure_policy.py` に「各実験に文献照合が 1 枚以上ある」検査を足す。Lorenz の有効予測時間の文献値と条件（N・入力次元・観測ノイズ）の特定は、同文書の「未解決」に既に挙げてある。
 
 ---
 
@@ -812,7 +812,7 @@ footnote が正しく仕事をしている証拠でもある（揃っていな�
 | 5 | **B-6** `git worktree prune` | 手続き層 | 即時 | |
 | 6 | **B-5** 最終稿前の一斉再生成手順 | 手続き層 | 執筆直前 | |
 
-B-2〜B-4 は本稿の対象（エージェント運用）ではなく**記事と図の内容**の問題である。`docs/図の設計方針_RC基礎編.md` の対応表にも反映すること。
+B-2〜B-4 は本稿の対象（エージェント運用）ではなく**記事と図の内容**の問題である。`docs/series/図の設計方針_RC基礎編.md` の対応表にも反映すること。
 
 ---
 

@@ -3,7 +3,8 @@
 リファクタリングの合否判定に使う。「振る舞いを変えずに削れたか」は
 **成果物が1バイトも変わっていないこと**でしか言えないが、この判定は
 これまで手作業で行われており、実際に ``shasum`` (SHA-1) と ``sha256`` の
-取り違えが4サイクル続いた記録がある (docs/agent-operations-retrospective.md 2 節)。
+取り違えが4サイクル続いた記録がある
+(docs/process/agent-operations-retrospective.md 2 節)。
 
 さらに悪いことに、SubagentStop の自動コミットが作業ツリーを丸ごと拾うため、
 成果物が変わってもコミットされて ``git status`` は綺麗なままになる。
