@@ -335,10 +335,14 @@ make figures-05
   対し N=100 で 0.1392 (0.869 倍)、N=50 で 0.585 倍、N=25 で 0.469 倍 ——
   90% を初めて割るのは **N=100** (`n_units_at_90pct`、格子の端ではない)。
   全 24 行が `n_train=14800` で学習量は揃っている (D-80)
-- **UCR (250系列のアーカイブ) も同じ経路で回せる**が、系列ごとに `train_end` が
-  違うため 5-D の前提 (学習量が揃っていること) を満たさず `ValueError` になる。
-  8系列での実測 (ESN が乱数より弱い系列が 2 本ある) は
-  `docs/plans/checkpoint-05b-t3.md`
+- **記事05 の本番設定は MGAB 単独である (D-117)。`results/` に UCR の行は1つも
+  無い。** `anomaly.csv` は 90 行すべて `dataset=mgab`、`meta.json` の
+  `dataset.source` も `mgab`。UCR について本リポジトリにあるのは**取得と読み取りの
+  コードだけ**で、結果は無い
+- UCR も同じ経路で回せはするが、系列ごとに `train_end` が違うため 5-D の前提
+  (学習量が揃っていること) を満たさず `ValueError` になる。加えてライセンスが
+  未指定で再配布方針を決められない。8系列での実測 (ESN が乱数より弱い系列が
+  2 本ある) は `docs/plans/checkpoint-05b-t3.md`
 
 図5枚 (`fig_pr_curves` / `fig_score_timeline` / `fig_threshold_tradeoff` /
 `fig_protocol_sensitivity` / `fig_size_vs_performance`) と既定値の出どころ・
@@ -370,7 +374,7 @@ ZIP は member 名を検査してから必要な8ファイルだけを展開す�
 | データセット | ライセンス | 出典 | 本リポジトリでの扱い |
 |---|---|---|---|
 | MGAB (Mackey-Glass Anomaly Benchmark) | `CC0-1.0` | <https://github.com/MarkusThill/MGAB> / DOI <https://doi.org/10.5281/zenodo.3760086> | 取得スクリプトと SHA256 のみ。データ本体は同梱しない |
-| UCR Time Series Anomaly Archive (2021) | `未指定 (再配布可否不明・データ本体は同梱しない)` | <https://www.cs.ucr.edu/~eamonn/time_series_data_2018/> | 取得スクリプトと SHA256 のみ。**再配布はしない** |
+| UCR Time Series Anomaly Archive (2021) | `未指定 (再配布可否不明・データ本体は同梱しない)` | <https://www.cs.ucr.edu/~eamonn/time_series_data_2018/> | 取得スクリプトと SHA256 のみ。**再配布はしない。本番設定では回しておらず `results/` に行は無い** (D-117) |
 
 - **MGAB** は CC0-1.0 (パブリックドメイン相当)。引用のお願いとして
   Thill, Konen, Bäck, *MGAB: The Mackey-Glass Anomaly Benchmark* (2020),
