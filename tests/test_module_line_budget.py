@@ -53,8 +53,8 @@ LINE_BUDGET = 600
 #: **増やすために書き換えないこと。** 減らしたときだけ実測値へ更新する。
 FROZEN: dict[str, int] = {
     "rc_basics_lab/experiment/freerun.py": 1518,
-    "rc_basics_lab/experiment/capacity.py": 1192,
-    "rc_basics_lab/experiment/esp.py": 912,
+    "rc_basics_lab/experiment/capacity.py": 1187,
+    "rc_basics_lab/experiment/esp.py": 907,
     "rc_basics_lab/diagnostics/ipc.py": 910,
     "rc_basics_lab/plotting/figures_capacity.py": 760,
     "rc_basics_lab/diagnostics/_capacity.py": 829,

@@ -1,4 +1,4 @@
-.PHONY: sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 washout-02-unpadded pre-commit clean help
+.PHONY: sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 symmetry-03 washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -20,6 +20,7 @@ help:
 	@echo "  data-05      - Download + verify (SHA256) the experiment 05 datasets into data/"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
+	@echo "  symmetry-03  - Regenerate the drive-symmetry sweep CSV (manual, D-116)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"
 	@echo "  pre-commit   - Run pre-commit on all files"
 	@echo "  clean        - Remove caches and build artifacts"
@@ -138,6 +139,13 @@ threshold-02:
 # 「容量が足りないのか T が足りないのか」を分けるための補助実験。
 saturation-03:
 	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity --length-sweep
+
+# 駆動入力の対称性の掃引 (capacity_symmetry.csv) を再生成する (D-116)。
+# 記事03 §2.1 の「偶数次のセルがほぼ空」の理由を行の値で確かめる補助実験。
+# 平均だけをずらし、分布 (一様) と標準偏差は変えないので Legendre 基底は
+# 厳密に正規直交のまま (D-28)。figures-03 の予算 (900 秒) には含めない。
+symmetry-03:
+	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity --symmetry-sweep
 
 # 補償なし (pad_series=False) の washout 感度 CSV を再生成する (docs/design.md
 # §9.6 の対比表の一次資料)。本番 config.yaml は編集しない —— このスクリプト

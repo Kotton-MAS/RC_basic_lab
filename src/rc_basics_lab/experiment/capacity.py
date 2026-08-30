@@ -92,17 +92,22 @@ scope 検査 (``tests/test_config_wiring_capacity.py``) で測るためである
 気づけない。
 """
 
+EXPERIMENT_SYMMETRY = "3S_symmetry"
+"""3-S: 駆動入力の対称性と IPC の偶数次 (``make symmetry-03``、D-116)。"""
+
 CAPACITY_EXPERIMENTS: tuple[str, ...] = (
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_NARMA10,
     EXPERIMENT_LENGTH_SWEEP,
+    EXPERIMENT_SYMMETRY,
 )
 """``CapacityRow.experiment`` が取りうる値。
 
-``capacity.csv`` に出るのは先頭4つ (掃引3本 + 3-C) で、``3L_length_sweep``
-だけは ``capacity_length.csv`` (``make saturation-03``) 側にしか現れない。
+``capacity.csv`` に出るのは先頭4つ (掃引3本 + 3-C) で、``3L_length_sweep`` は
+``capacity_length.csv`` (``make saturation-03``)、``3S_symmetry`` は
+``capacity_symmetry.csv`` (``make symmetry-03``) 側にしか現れない。
 """
 
 FIGURE_EXPERIMENTS: tuple[str, ...] = (
@@ -409,26 +414,17 @@ class CapacityOutcome:
 class CapacityProfileRow:
     """``capacity_profile.csv`` の1行 (**長形式**、D-38)。宣言順が CSV の列順。
 
-    IPC の ``scalars`` は ``ipc_threshold_degree{d}`` を**次数の本数だけ**持つ
-    ため、キー集合が ``cfg.max_delay_by_degree`` に依存する (F-03-1-005)。
-    これを列にすると 3-B' (次数4) と 3-A/3-B (次数4) で列数が揃っていても、
-    打ち切りを1本増やした瞬間に CSV の列が変わる —— 「列は cfg に依らず一定」
-    という単一の真実が壊れる。次数と遅延を**行の値**に落とせば列は静的なままで、
-    しきい値も次数ごとの行に自然に乗る。
+    次数と遅延を**行の値**に落とすことで、CSV の列を ``cfg`` に依らず静的に
+    保つ (F-03-1-005: IPC の ``scalars`` は次数の本数だけキーを持つため、
+    列にすると打ち切りを1本増やした瞬間に列が変わる)。
 
     MC は次数の概念を持たないので ``degree=1`` に固定する (次数1の線形容量で
     あることは IPC の次数1と同じ意味であり、``diagnostic`` 列で区別する)。
 
-    **書くのはしきい値後の容量が厳密に正のセルだけ**である。全セルを書くと
-    本番設定で約6万行になり、``results/`` はコミット対象なのでリポジトリが
-    その分だけ重くなる。正値だけに絞る条件 (``capacity > 0``) は IPC の
-    ``n_targets_kept`` (``np.count_nonzero(kept)``) が「しきい値を超えた」を
-    判定する条件と同じ ``> 0`` だが、**行数が n_targets_kept と一致するとは
-    限らない** (F-3b1-1-003)。長形式の行は (次数, 遅延) の**ヒートマップセル
-    単位**、``n_targets_kept`` は**目標単位**で単位が異なり、1セルに複数目標
-    が畳み込まれるため行数は ``n_targets_kept`` 以下にしかならない
-    (本番成果物の実測: 117行すべてで行数 != n_targets_kept、例: 81セル vs
-    297目標)。行数の代わりに成果物単体で検算できる不変条件は
+    **書くのはしきい値後の容量が厳密に正のセルだけ**である (全セルだと本番で
+    約6万行になり ``results/`` はコミット対象)。行数は ``n_targets_kept`` と
+    一致しない —— 行は (次数, 遅延) のセル単位、``n_targets_kept`` は目標単位で、
+    1セルに複数目標が畳み込まれる (F-3b1-1-003)。成果物単体で検算できるのは
     ``capacity`` 列の**総和**が ``ipc_total`` / ``mc_total`` と一致すること
     であり、これは本番成果物117行すべてで成立する
     (``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
@@ -531,7 +527,10 @@ def ipc_config_for(config: Capacity03Config, experiment: str) -> IpcConfig:
 
 
 def simulate_condition_trajectory(
-    config: Capacity03Config, condition: CapacityCondition
+    config: Capacity03Config,
+    condition: CapacityCondition,
+    *,
+    drive_offset: float = 0.0,
 ) -> ReferenceTrajectory:
     """``CapacityCondition`` から参照軌道 ``X`` を作る (**確保より前に上限検査**)。
 
@@ -550,6 +549,8 @@ def simulate_condition_trajectory(
     Args:
         config: 03 の設定。
         condition: 回す1条件。
+        drive_offset: 駆動入力の平均のずれ (D-116)。既定 0.0 = ゼロ対称で、
+            3-S (``experiment/symmetry.py``) だけがここを振る。
 
     Returns:
         参照軌道 (``states`` / ``drive`` を持つ)。
@@ -569,6 +570,7 @@ def simulate_condition_trajectory(
         sigma_u=condition.sigma_u,
         replicate=condition.replicate,
         state_noise=condition.state_noise,
+        drive_offset=drive_offset,
     )
 
 
@@ -705,17 +707,10 @@ def capacity_row_from(
 ) -> CapacityRow:
     """測定結果と条件の識別子から ``capacity.csv`` の1行を組む (**唯一の経路**)。
 
-    ``CapacityRow`` は約35フィールドあり、``mc`` / ``ipc`` の ``scalars`` と
-    ``params`` のどのキーがどの列になるかの対応もここにしかない。この組み立てを
-    実験ごとに複製すると「CSV の列順の単一の真実 = 行 dataclass の宣言順」
-    (§2.2-1) が実質的に破れる —— 列を1本足したときに複製側が置き去りになり、
-    かつ型検査では落ちない (キーワード引数の名前は一致したままなので)。
-    3-C (``experiment="3C_narma10"``) は ``CapacityCondition`` で表現できない
-    条件を持つが、行の作り方はここを通す (F-3b1-1-004)。
-
-    ``experiment`` 以降がキーワード専用なのは、位置引数で並べると隣接する
-    同型の値 (``rho`` / ``leak_rate``、3本の ``seed_*``) を取り違えても
-    静かに通ってしまうためである。
+    ``mc`` / ``ipc`` の ``scalars`` のどのキーがどの列になるかの対応はここに
+    しかない。実験ごとに複製すると「CSV の列順の単一の真実 = 行 dataclass の
+    宣言順」が破れる (F-3b1-1-004)。``experiment`` 以降がキーワード専用なのは、
+    隣接する同型の値の取り違えを防ぐため。
 
     Args:
         measurement: ``measure_capacity`` の返り値。

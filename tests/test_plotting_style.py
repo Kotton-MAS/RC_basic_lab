@@ -29,6 +29,7 @@ from rc_basics_lab.experiment.state_space import (
     RESERVOIR_STATE,
     SpaceSummary,
     StateSpaceReport,
+    UnitActivity,
 )
 from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting import figures, style
@@ -205,7 +206,23 @@ def _report(task: str) -> StateSpaceReport:
         SpaceSummary(DELAY_EMBEDDED_INPUT, 17, 3, 2.5, curve, scores),
         SpaceSummary(RESERVOIR_STATE, 200, 2, 1.8, curve, scores),
     )
-    return StateSpaceReport(task=task, replicate=0, n_lags=16, n_rows=50, spaces=spaces)
+    return StateSpaceReport(
+        task=task,
+        replicate=0,
+        n_lags=16,
+        n_rows=50,
+        spaces=spaces,
+        # 図は活性度を読まないので、形だけそろえた値でよい (T4)。
+        unit_activity=UnitActivity(
+            n_units=200,
+            n_dormant=3,
+            dormant_fraction=0.015,
+            variance_median=0.1,
+            variance_min=0.0005,
+            variance_min_to_median=0.005,
+            variance_quantiles=(("variance_q05", 0.01), ("variance_q95", 0.3)),
+        ),
+    )
 
 
 def test_figures_are_written_at_retina_resolution(tmp_path: Path) -> None:

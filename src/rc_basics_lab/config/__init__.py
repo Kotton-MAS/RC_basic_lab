@@ -46,6 +46,7 @@ from rc_basics_lab.config.capacity03 import (
     LengthSweepConfig,
     McSweepConfig,
     Narma10Config,
+    SymmetrySweepConfig,
 )
 from rc_basics_lab.config.chaos04 import (
     LORENZ_LYAPUNOV_REFERENCE,
@@ -133,6 +134,7 @@ __all__ = [
     "RidgeConfig",
     "SplitConfig",
     "StabilityConfig",
+    "SymmetrySweepConfig",
     "SyntheticAnomalyConfig",
     "SyntheticMackeyGlassConfig",
     "TimescaleConfig",

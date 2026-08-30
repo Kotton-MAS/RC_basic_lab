@@ -84,6 +84,7 @@ from rc_basics_lab.config import (
     Narma10Config,
     RidgeConfig,
     SplitConfig,
+    SymmetrySweepConfig,
     load_config_as,
 )
 from rc_basics_lab.experiment.capacity import (
@@ -108,6 +109,14 @@ if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from _typeshed import DataclassInstance
 
 CHANNEL_PENDING = "pending"
+
+CHANNEL_SYMMETRY = "symmetry"
+"""3-S の対称性掃引 (``capacity_symmetry.csv``) だけを変える葉 (D-116)。
+
+``CHANNEL_TAPS`` と同じ理由で専用チャネルにする —— ``capacity.csv`` に行が
+出ないので ``CHANNEL_ROWS`` では測れないが、**変えたら出力が変わる**ことは
+ここでも実測する (効かないフィールドを ROWS 以外へ逃がす経路を作らない)。
+"""
 
 CHANNEL_TAPS = "taps"
 """3-C' のタップ数掃引 (``narma10_taps.csv``) だけを変える葉 (D-95)。
@@ -227,6 +236,15 @@ def base_config() -> Capacity03Config:
             n_steps=1100,
             max_delay_by_degree=(8, 4),
         ),
+        symmetry_sweep=SymmetrySweepConfig(
+            offset_ratio_grid=(0.0, 3.0),
+            rho=0.9,
+            leak_rate=0.9,
+            sigma_u=0.3,
+            n_units=8,
+            n_steps=1200,
+            n_replicates=1,
+        ),
         length_sweep=LengthSweepConfig(
             n_steps_grid=(1000, 1300),
             rho=0.85,
@@ -340,6 +358,15 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     section_case("length_sweep.sigma_u", 0.6, EXPERIMENT_LENGTH_SWEEP),
     section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
     # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
+    # --- 3-S: 駆動入力の対称性 (make symmetry-03。figures-03 には含めない) ---
+    case("symmetry_sweep.offset_ratio_grid", (0.0, 4.0), channel=CHANNEL_SYMMETRY),
+    case("symmetry_sweep.rho", 0.6, channel=CHANNEL_SYMMETRY),
+    case("symmetry_sweep.leak_rate", 0.5, channel=CHANNEL_SYMMETRY),
+    case("symmetry_sweep.sigma_u", 0.35, channel=CHANNEL_SYMMETRY),
+    case("symmetry_sweep.n_units", 9, channel=CHANNEL_SYMMETRY),
+    case("symmetry_sweep.n_steps", 1300, channel=CHANNEL_SYMMETRY),
+    case("symmetry_sweep.n_replicates", 2, channel=CHANNEL_SYMMETRY),
+    # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
     section_case("narma.length", 400, EXPERIMENT_NARMA10),
     # --- 3-C': タップ数掃引 (narma10_taps.csv だけを動かす) ---
     case("narma.n_lags_sweep", (4, 30), channel=CHANNEL_TAPS),
@@ -394,6 +421,31 @@ def _seed_fingerprints(config: Capacity03Config) -> dict[SeedStream, bytes]:
         stream: make_rng_for(seeds[stream], stream, 0).bytes(_N_BYTES)
         for stream in CAPACITY_SEED_STREAMS
     }
+
+
+def _symmetry_fingerprint(config: Capacity03Config) -> str:
+    """3-S の掃引の行の指紋 (実測時間の列は外す)。"""
+    from rc_basics_lab.experiment.symmetry import run_symmetry_sweep
+
+    rows = run_symmetry_sweep(config)
+    return json.dumps(
+        [
+            [
+                row.replicate,
+                row.offset_ratio,
+                row.drive_mean,
+                row.rho,
+                row.leak_rate,
+                row.n_units,
+                row.sigma_u,
+                row.n_steps,
+                row.degree,
+                row.capacity,
+            ]
+            for row in rows
+        ],
+        sort_keys=True,
+    )
 
 
 def _taps_fingerprint(config: Capacity03Config) -> str:
@@ -471,6 +523,15 @@ def test_each_capacity_parameter_changes_output(
     if wiring_case.channel == CHANNEL_ERROR:
         with pytest.raises(ValueError):
             run_case(wiring_case)
+        return
+
+    if wiring_case.channel == CHANNEL_SYMMETRY:
+        # 掃引の行が変わり、かつ capacity.csv の行は変わらない
+        # (3-S は本番の3掃引を1行も触らない)
+        assert _symmetry_fingerprint(changed_config) != _symmetry_fingerprint(base)
+        assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
+            f"{wiring_case.field} が本番の掃引の行まで変えています"
+        )
         return
 
     if wiring_case.channel == CHANNEL_TAPS:

@@ -105,6 +105,7 @@ def make_drive(
     rng: np.random.Generator,
     *,
     distribution: str = UNIFORM,
+    offset: float = 0.0,
 ) -> FloatArray:
     """i.i.d. 駆動入力 ``(n_steps, 1)`` を作る。**強度は標準偏差** (D-17)。
 
@@ -114,6 +115,8 @@ def make_drive(
         rng: 乱数生成器 (``SeedStream.TASK`` から引く)。
         distribution: 分布名。``"uniform"`` 以外は ``ValueError``
             (黙って一様として扱わない。設定値が効かない実験を作らないため)。
+        offset: 駆動信号に加える定数 (**平均のずれ**、D-116)。標準偏差も分布の
+            形 (一様) も変えないので Legendre 基底は正規直交のまま (D-28)。
 
     Returns:
         駆動入力 ``(n_steps, 1)``。一様分布なので振幅は ``sqrt(3) * sigma``。
@@ -131,10 +134,14 @@ def make_drive(
     if n_steps < 1:
         raise ValueError(f"n_steps は 1 以上である必要があります: {n_steps!r}")
     if sigma == 0.0:
-        zeros: FloatArray = np.zeros((n_steps, _N_INPUTS), dtype=np.float64)
+        zeros: FloatArray = np.full((n_steps, _N_INPUTS), offset, dtype=np.float64)
         return zeros
     amplitude = _SQRT3 * sigma
     drive: FloatArray = rng.uniform(-amplitude, amplitude, (n_steps, _N_INPUTS))
+    # offset=0.0 のときは加算しない。`+ 0.0` でも値は同じだが、既存の成果物と
+    # のバイト一致を「浮動小数の加算が恒等である」という性質に依存させない。
+    if offset != 0.0:
+        return drive + offset
     return drive
 
 
@@ -170,13 +177,9 @@ def require_deterministic_esn(
 ) -> None:
     """``state_noise`` が 0 でなければ ``ValueError`` にする (D-47 / D-48 共有)。
 
-    ノイズを 02 経路へ入れると壊れ方が2種類あり、直し方も別々である
-    (伝播器: ADR 0001 §2 / 比較軌道: 同 §3)。共通なのは「**なぜ拒否するのか**を
-    メッセージが自分で説明できないと、次の実装者が最も安い手 (``rng`` を渡す /
-    5本目のストリームを立てる) で黙らせる」という失敗の形の方なので、
-    判定と**4点そろったメッセージの組み立て**をここ1本に集約し、
-    呼び出し側は4点の中身だけを渡す。
-
+    ノイズを 02 経路へ入れたときの壊れ方は2種類あり、直し方も別々である
+    (伝播器: ADR 0001 §2 / 比較軌道: 同 §3)。判定と**4点そろったメッセージの
+    組み立て**をここ1本に集約する。
     Args:
         state_noise: 検査する値。呼び出し側の引数でも ``esn.config`` 由来でもよい。
         what: 何を拒否したか。
@@ -360,21 +363,14 @@ def simulate_reference_trajectory(
     replicate: int,
     x0: FloatArray | None = None,
     state_noise: float = 0.0,
+    drive_offset: float = 0.0,
 ) -> ReferenceTrajectory:
     """参照軌道1本を作る (``Esp02Config`` を要らない。F-1-005)。
 
-    ``ReservoirSweepConfig`` + ``DriveConfig`` + 基底シード
-    (``reservoir_seed`` / ``drive_seed``) だけで呼べるので、03 (MC/IPC) は
-    ``Esp02Config`` の3ストリーム配線 (``EspSeedConfig`` / D-14) を写経せずに
-    この関数を再利用できる。比較軌道の初期状態対 (``SeedStream.PROBE``) は
-    ESP 判定専用なのでここでは作らない。``x0`` を省略すると ``ESN.run`` の
-    既定 (零ベクトル) になる —— MC/IPC の読み出し回帰は washout で過渡を
-    捨てる前提なので、初期状態をどこから引くかは主要な関心事ではない。
-
-    ``simulate_condition`` はこの関数へ ``config.seeds.reservoir`` /
-    ``config.seeds.drive`` (D-14 の3ストリームのうち2本) と ESP 用の
-    ``x0`` (``SeedStream.PROBE`` から引いた初期状態) をそのまま渡す薄い層に
-    なっており、既存の成果物 (``results/``) はバイト単位で不変である。
+    ``ReservoirSweepConfig`` + ``DriveConfig`` + 基底シードだけで呼べるので、
+    03 (MC/IPC) は ``Esp02Config`` の3ストリーム配線 (D-14) を写経せずに
+    再利用できる。比較軌道の初期状態対 (``SeedStream.PROBE``) は ESP 判定専用
+    なのでここでは作らない。``x0`` を省略すると ``ESN.run`` の既定 (零ベクトル)。
 
     Args:
         reservoir: リザバー構造 (掃引軸を除く4フィールド)。
@@ -386,6 +382,7 @@ def simulate_reference_trajectory(
         sigma_u: 駆動信号の標準偏差 (D-17)。
         replicate: レプリケート番号 (0 始まり)。
         x0: 初期状態 ``(N,)``。``None`` なら ``ESN.run`` の既定 (零ベクトル)。
+        drive_offset: 駆動入力に加える定数 (**平均のずれ**、D-116)。3-S だけが振る。
         state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。**既定値
             つきキーワード**なので 02 の呼び出しは書き換えない。0 のとき
             ``ESN`` は乱数を1個も引かず、既存の成果物はバイト単位で不変である。
@@ -399,6 +396,7 @@ def simulate_reference_trajectory(
         drive_config.n_steps,
         drive_rng,
         distribution=drive_config.distribution,
+        offset=drive_offset,
     )
     reservoir_rng = make_rng_for(reservoir_seed, SeedStream.RESERVOIR, replicate)
     esn = ESN(
@@ -465,10 +463,8 @@ def simulate_condition(
 
     参照軌道の生成は ``simulate_reference_trajectory`` に委譲する (F-1-005)。
     ここで足すのは ESP 専用の比較軌道 n_pairs 本と、その初期状態対 (D-14 の
-    ``PROBE`` ストリーム) だけである。乱数は3ストリームに分ける (D-14)。
-    リザバー重み ``RESERVOIR`` / 駆動信号 ``TASK`` / 初期状態対 ``PROBE`` が
-    独立なので、「初期状態だけを振ったときに判定が変わるか」を重みを固定した
-    まま測れる。
+    ``PROBE`` ストリーム) だけ。3ストリームが独立なので「初期状態だけを振った
+    ときに判定が変わるか」を重みを固定したまま測れる。
 
     **この経路は ``state_noise > 0`` を受理しない** (D-47)。
 
@@ -485,8 +481,7 @@ def simulate_condition(
         leak_rate: リーク率。
         sigma_u: 駆動信号の標準偏差 (D-17)。
         replicate: レプリケート番号 (0 始まり)。
-        state_noise: **0 以外を受理しない** (D-47)。既定値つきキーワードなので
-            既存の呼び出しは1つも書き換えない。
+        state_noise: **0 以外を受理しない** (D-47)。
 
     Raises:
         ValueError: ``state_noise`` が 0 でない場合、または ``config`` から
