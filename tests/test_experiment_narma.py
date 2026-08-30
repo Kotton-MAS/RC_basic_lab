@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -358,28 +359,114 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
 # --- 01 の成果物が動いていない -----------------------------------------------
 
 
-def _without_wall_time(csv_text: str) -> list[list[str]]:
+TOLERANT_COLUMNS: frozenset[str] = frozenset({"rmse", "nrmse", "nmse", "sign_accuracy"})
+"""相対許容差で比べる列 (D-115)。これ以外の列は**厳密一致**を要求する。
+
+``wall_time_s`` は列ごと落とす (実測時間)。
+"""
+
+ARTIFACT_RTOL = 1.0e-6
+"""``TOLERANT_COLUMNS`` に許す相対差 (D-115)。
+
+**この値は「観測された実装差より十分大きく、最小の構造変更より十分小さい」
+という2つの実測に挟まれて決まる。** どちらも下に記録する。
+
+実装差 (下限側):
+
+- 解法を Cholesky (``assume_a="pos"``) から LU (``"gen"``) へ替えた実測 ——
+  数学的には等価なので差は丸めだけ: ``linear`` 1.9e-16 /
+  ``delay_line`` 8.7e-6 / ``esn`` 1.7e-5。選ばれた ``alpha`` / ``n_lags`` は
+  30 行すべてで不変だった (**離散列を厳密一致のままにしてよい根拠**)
+- GitHub Actions の macOS runner と開発機の差 (run 33307512431) ——
+  ``delay_line`` の1行で NRMSE 4.6e-5 / NMSE 9.1e-5
+
+構造変更 (上限側、01 の本番設定で実測):
+
+- ``esn_mackey_glass.leak_rate`` を +1% : 7.6e-3
+- ``mackey_glass.length`` を +1%       : 2.1e-2
+- ``seeds.task`` を +1                 : 3.8e-2
+
+**最小の構造変更 7.6e-3 と、観測された最大の実装差の間に置く。**
+遅延線 k=64 の ``cond(Phi^T Phi)`` は 2.0e16
+(``experiments/01_what_is_rc/config.yaml`` の実測) で float64 の eps を超えて
+おり、実装差が増幅されるのはこの条件数による。
+"""
+
+
+def _rows_without_wall_time(csv_text: str) -> tuple[list[str], list[list[str]]]:
+    """``(ヘッダ, 行)``。``wall_time_s`` の列を落とす。"""
     rows = [line.split(",") for line in csv_text.strip().splitlines()]
     dropped = rows[0].index("wall_time_s")
-    return [
+    stripped = [
         [field for index, field in enumerate(row) if index != dropped] for row in rows
     ]
+    return stripped[0], stripped[1:]
+
+
+def _compare_artifact_rows(regenerated: str, committed: str) -> list[str]:
+    """2つの CSV を列ごとの規則で比べ、食い違いを列挙する。"""
+    header, actual = _rows_without_wall_time(regenerated)
+    committed_header, expected = _rows_without_wall_time(committed)
+    if header != committed_header:
+        return [f"列が違います: {header} != {committed_header}"]
+    if len(actual) != len(expected):
+        return [f"行数が違います: {len(actual)} != {len(expected)}"]
+
+    problems: list[str] = []
+    task_at = header.index("task")
+    method_at = header.index("method")
+    for index, (actual_row, expected_row) in enumerate(
+        zip(actual, expected, strict=True)
+    ):
+        label = f"{expected_row[task_at]}/{expected_row[method_at]}"
+        for column, (left, right) in zip(
+            header, zip(actual_row, expected_row, strict=True), strict=True
+        ):
+            if column in TOLERANT_COLUMNS:
+                actual_value, expected_value = float(left), float(right)
+                if not math.isclose(
+                    actual_value, expected_value, rel_tol=ARTIFACT_RTOL, abs_tol=0.0
+                ):
+                    relative = abs(actual_value - expected_value) / abs(expected_value)
+                    problems.append(
+                        f"{label} 行{index} {column}: 相対差 {relative:.3e}"
+                        f" ({left} != {right})"
+                    )
+            elif left != right:
+                problems.append(
+                    f"{label} 行{index} {column}: {left!r} != {right!r}"
+                    " (厳密一致が必要)"
+                )
+    return problems
 
 
 def test_01_artifacts_are_unchanged(tmp_path: Path) -> None:
-    """01 の ``comparison.csv`` が (``wall_time_s`` を除いて) 一致する。
+    """01 の ``comparison.csv`` が動いていない (D-115)。
 
     3-C は 01 の ``run_task`` を**再利用**するので、``build_tasks`` や
     ``ExperimentConfig`` を触ると 01 の成果物が動く (D-31)。宣言
     (``build_tasks`` の中身) だけでなく、本番設定で実際に再生成した CSV を
     コミット済みの成果物と突き合わせる。
+
+    **列ごとに規則を分ける** (D-115)。識別子・シード・選ばれた
+    ``alpha`` / ``n_lags``・分割サイズは**厳密一致**を要求し、誤差指標の4列
+    (``TOLERANT_COLUMNS``) だけ ``ARTIFACT_RTOL`` の相対差を許す。
+
+    全列にバイト一致を要求していた版は、**開発機以外では通らなかった** ——
+    遅延線 k=64 の Gram は cond 2.0e16 で、BLAS 実装差が 0.15% まで増幅される。
+    再現できない計算に「1ビットも変わらない」を要求すると、CI は常に赤になり
+    誰も見なくなる (実際に 4 run すべて赤のまま8日間放置された)。捕まえたいのは
+    構造変更で、それは値を桁で動かす。
     """
     committed = (RESULTS_01 / COMPARISON_CSV).read_text(encoding="utf-8")
     rows = run_experiment(load_config(CONFIG_01))
     regenerated = write_comparison_csv(rows, tmp_path / COMPARISON_CSV).read_text(
         encoding="utf-8"
     )
-    assert _without_wall_time(regenerated) == _without_wall_time(committed)
+    problems = _compare_artifact_rows(regenerated, committed)
+    assert not problems, (
+        f"01 の成果物が動いています ({len(problems)} 件):\n" + "\n".join(problems[:40])
+    )
 
 
 # --- 勝敗の要約 (向きは問わない) ---------------------------------------------
