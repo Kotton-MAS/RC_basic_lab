@@ -11,13 +11,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
 from matplotlib.axes import Axes
 
 from rc_basics_lab.experiment.washout import (
+    HEADLINE_METHOD,
+    HEADLINE_TASK,
     WashoutRow,
     WashoutSensitivity,
     mean_nrmse_by_washout,
@@ -29,10 +31,66 @@ from rc_basics_lab.plotting.style import (
     method_color,
     new_figure,
     rc_context_for,
+    reference_line_kwargs,
     require_rows,
     save_png,
 )
 from rc_basics_lab.types import FloatArray
+
+_TASK_LABELS: Mapping[str, tuple[str, str]] = {
+    "mackey_glass": ("Mackey-Glass", "Mackey-Glass"),
+    "delay_parity": ("遅延パリティ", "delay parity"),
+}
+"""課題名の表示ラベル (D-10: ja/en の対)。未知の課題は名前をそのまま出す。"""
+
+
+_CONTROL_ALPHA = 0.40
+"""対照 (主役でない課題) の線の不透明度。「薄く重ねる」の実体。"""
+
+_HEADLINE_LINEWIDTH = 2.0
+_CONTROL_LINEWIDTH = 1.2
+
+
+def _mark_reference(
+    axis: Axes, sensitivity: WashoutSensitivity, style: StyleContext
+) -> None:
+    """01 の本番値に垂直線を引く (仕様 §4 T4)。"""
+    axis.axvline(
+        float(sensitivity.reference_washout),
+        **reference_line_kwargs(1),
+        label=style.label(
+            f"01 の本番値 (washout = {sensitivity.reference_washout})",
+            f"production value used in 01 (washout = {sensitivity.reference_washout})",
+        ),
+    )
+
+
+def _variation_note(sensitivity: WashoutSensitivity, style: StyleContext) -> str:
+    """変動幅の数値注記 (仕様 §4 T4: 「変動幅を数値注記する」)。
+
+    比だけでなく**レプリケート間のばらつきと比べてどうか**まで書く。比が
+    1.0 でないことだけを見て「効果があった」と読まれるのを防ぐため。
+    """
+    headline = sensitivity.headline
+    verdict_ja, verdict_en = (
+        ("レプリケート間のばらつきを超える", "exceeds the replicate spread")
+        if headline.exceeds_replicate_noise
+        else ("レプリケート間のばらつき以下", "within the replicate spread")
+    )
+    task_ja, task_en = _TASK_LABELS.get(headline.task, (headline.task, headline.task))
+    method_ja, method_en = METHOD_LABELS.get(
+        headline.method, (headline.method, headline.method)
+    )
+    return style.label(
+        f"{task_ja} x {method_ja}: 変動幅 (最大/最小) = {headline.ratio:.4f} 倍\n"
+        f"({headline.nrmse_min:.3g} .. {headline.nrmse_max:.3g}、"
+        f"レプリケート間 s.d. 最大 {headline.replicate_std_max:.3g})\n"
+        f"-> {verdict_ja}",
+        f"{task_en} x {method_en}: max/min = {headline.ratio:.4f}\n"
+        f"({headline.nrmse_min:.3g} .. {headline.nrmse_max:.3g}; "
+        f"max replicate s.d. {headline.replicate_std_max:.3g})\n"
+        f"-> {verdict_en}",
+    )
 
 
 def _series_label(style: StyleContext, task: str, method: str) -> str:

@@ -1,11 +1,12 @@
-"""記事02の図4枚 (実験 2-A / 2-B / 2-C / 2-D).
+"""記事02の図3枚 (実験 2-A / 2-B / 2-C).
 
 - ``plot_esp_decay``: rho 別の状態距離の減衰曲線 (受け入れ条件1)。
 - ``plot_leak_timescale``: リーク率と 1/e 時定数 (受け入れ条件4)。
 - ``plot_esp_map``: rho x 入力強度 の ESP 成立領域 (**記事の目玉**、受け入れ条件2)。
   無入力 (sigma_u=0) は別枠のパネルに出し、駆動下の領域と混ぜない。
-- ``plot_washout_sensitivity``: washout 長への性能感度 (受け入れ条件5、D-19)。
-  01 の本番値に垂直線を引き、変動幅を数値で注記する。
+
+2-D (``plot_washout_sensitivity``) は ``figures_washout.py`` にある —— この
+モジュールが行数上限 (D-77) に達したため。**上限は緩めない**。
 
 図の外枠 (rcParams の一時適用 / 保存) は ``plotting/style.py`` が持つ。ラベルは
 必ず ja/en の対で書く (D-10)。**ギリシャ文字は書かない** (RUF001/RUF002。
@@ -24,16 +25,12 @@ from matplotlib.colors import BoundaryNorm, ListedColormap, Normalize
 from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.esp import ConditionOutcome, EspRow
-from rc_basics_lab.experiment.washout import (
-    WashoutSensitivity,
-)
 from rc_basics_lab.plotting.esp_references import (
     GALLICCHIO,
     plot_no_input_panel,
     zero_input_boundary_note,
 )
 from rc_basics_lab.plotting.heatmap import cell_edges, grid_from_means
-from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.layout import label_panels, legend_below, wrapped_note
 from rc_basics_lab.plotting.style import (
     StyleContext,
@@ -502,65 +499,6 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
         conditions = f"N = {rows[0].n_units}, washout = {rows[0].washout}"
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)
-
-
-# --- 2-D: washout 長への性能感度 ------------------------------------------
-
-
-_TASK_LABELS: Mapping[str, tuple[str, str]] = {
-    "mackey_glass": ("Mackey-Glass", "Mackey-Glass"),
-    "delay_parity": ("遅延パリティ", "delay parity"),
-}
-"""課題名の表示ラベル (D-10: ja/en の対)。未知の課題は名前をそのまま出す。"""
-
-
-_CONTROL_ALPHA = 0.40
-"""対照 (主役でない課題) の線の不透明度。「薄く重ねる」の実体。"""
-
-_HEADLINE_LINEWIDTH = 2.0
-_CONTROL_LINEWIDTH = 1.2
-
-
-def _mark_reference(
-    axis: Axes, sensitivity: WashoutSensitivity, style: StyleContext
-) -> None:
-    """01 の本番値に垂直線を引く (仕様 §4 T4)。"""
-    axis.axvline(
-        float(sensitivity.reference_washout),
-        **reference_line_kwargs(1),
-        label=style.label(
-            f"01 の本番値 (washout = {sensitivity.reference_washout})",
-            f"production value used in 01 (washout = {sensitivity.reference_washout})",
-        ),
-    )
-
-
-def _variation_note(sensitivity: WashoutSensitivity, style: StyleContext) -> str:
-    """変動幅の数値注記 (仕様 §4 T4: 「変動幅を数値注記する」)。
-
-    比だけでなく**レプリケート間のばらつきと比べてどうか**まで書く。比が
-    1.0 でないことだけを見て「効果があった」と読まれるのを防ぐため。
-    """
-    headline = sensitivity.headline
-    verdict_ja, verdict_en = (
-        ("レプリケート間のばらつきを超える", "exceeds the replicate spread")
-        if headline.exceeds_replicate_noise
-        else ("レプリケート間のばらつき以下", "within the replicate spread")
-    )
-    task_ja, task_en = _TASK_LABELS.get(headline.task, (headline.task, headline.task))
-    method_ja, method_en = METHOD_LABELS.get(
-        headline.method, (headline.method, headline.method)
-    )
-    return style.label(
-        f"{task_ja} x {method_ja}: 変動幅 (最大/最小) = {headline.ratio:.4f} 倍\n"
-        f"({headline.nrmse_min:.3g} .. {headline.nrmse_max:.3g}、"
-        f"レプリケート間 s.d. 最大 {headline.replicate_std_max:.3g})\n"
-        f"-> {verdict_ja}",
-        f"{task_en} x {method_en}: max/min = {headline.ratio:.4f}\n"
-        f"({headline.nrmse_min:.3g} .. {headline.nrmse_max:.3g}; "
-        f"max replicate s.d. {headline.replicate_std_max:.3g})\n"
-        f"-> {verdict_en}",
-    )
 
 
 __all__ = [

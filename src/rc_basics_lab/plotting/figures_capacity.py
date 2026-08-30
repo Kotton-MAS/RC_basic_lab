@@ -488,29 +488,22 @@ def plot_ipc_conservation(
         figure = _new_figure(7.2, 5.0)
         axis = figure.subplots(1, 1)
         for index, noise in enumerate(noises):
+            # **比 (ipc_total / N) を縦軸にする** (2-7)。絶対値だと上限線が斜めになり、
+            # 「上限からどれだけ離れたか」が目分量になる。比なら水平線 1 から縦に読む。
             stats = [
                 mean_std(
                     [
-                        row.ipc_total
+                        row.ipc_total / n_units
                         for row in rows
                         if row.n_units == n_units and row.state_noise == noise
                     ]
                 )
                 for n_units in units
             ]
-            # **比 (ipc_total / N) を縦軸にする** (2-7)。絶対値だと上限線が
-            # 斜めになり、「上限からどれだけ離れたか」を目分量で測ることに
-            # なる。比なら水平線 1 からの距離として縦に読める。
             axis.errorbar(
                 [float(n_units) for n_units in units],
-                [
-                    mean / n_units
-                    for (mean, _), n_units in zip(stats, units, strict=True)
-                ],
-                yerr=[
-                    std / n_units
-                    for (_, std), n_units in zip(stats, units, strict=True)
-                ],
+                [mean for mean, _ in stats],
+                yerr=[std for _, std in stats],
                 fmt="o-",
                 capsize=4,
                 color=colors[index],

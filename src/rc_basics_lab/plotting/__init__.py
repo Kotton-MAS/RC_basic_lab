@@ -3,7 +3,8 @@
 - ``style``: rcParams (savefig.dpi=200) と CJK フォント探索 (D-10)
 - ``labels``: 日本語 / 英語ラベルの切り替え (豆腐文字を出さない)
 - ``figures``: 記事01の図2枚 (``fig_comparison`` / ``fig_state_space``)
-- ``figures_esp``: 記事02の図4枚 (``fig_esp_decay`` / ``fig_leak_timescale`` /
+- ``figures_washout``: 記事02の ``fig_washout_sensitivity`` (2-D)。
+- ``figures_esp``: 記事02の図3枚 (``fig_esp_decay`` / ``fig_leak_timescale`` /
   ``fig_esp_map`` / ``fig_washout_sensitivity``)
 - ``figures_capacity``: 記事03の図5枚 (``fig_mc_sweep`` / ``fig_ipc_profile`` /
   ``fig_memory_nonlinearity`` / ``fig_ipc_conservation`` /
@@ -39,6 +40,7 @@ from rc_basics_lab.plotting import (
     figures_narma_taps,
     figures_stability,
     figures_states,
+    figures_washout,
     freerun_grids,
     freerun_headlines,
     heatmap,
@@ -65,6 +67,7 @@ __all__ = [
     "figures_narma_taps",
     "figures_stability",
     "figures_states",
+    "figures_washout",
     "freerun_grids",
     "freerun_headlines",
     "heatmap",

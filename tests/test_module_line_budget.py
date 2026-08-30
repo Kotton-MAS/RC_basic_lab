@@ -58,7 +58,6 @@ FROZEN: dict[str, int] = {
     "rc_basics_lab/diagnostics/ipc.py": 910,
     "rc_basics_lab/plotting/figures_capacity.py": 643,
     "rc_basics_lab/diagnostics/_capacity.py": 829,
-    "rc_basics_lab/plotting/figures_esp.py": 716,
     "rc_basics_lab/experiment/attractor.py": 707,
     "rc_basics_lab/experiment/stability.py": 625,
 }

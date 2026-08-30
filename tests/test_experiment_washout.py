@@ -65,7 +65,7 @@ from rc_basics_lab.experiment.washout import (
     summarize_washout_sensitivity,
     variant_for,
 )
-from rc_basics_lab.plotting.figures_esp import plot_washout_sensitivity
+from rc_basics_lab.plotting.figures_washout import plot_washout_sensitivity
 from rc_basics_lab.plotting.style import setup_style
 from rc_basics_lab.tasks.delay_parity import TASK_NAME as DELAY_PARITY
 
