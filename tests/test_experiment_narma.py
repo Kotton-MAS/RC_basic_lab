@@ -359,37 +359,59 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
 # --- 01 の成果物が動いていない -----------------------------------------------
 
 
-TOLERANT_COLUMNS: frozenset[str] = frozenset({"rmse", "nrmse", "nmse", "sign_accuracy"})
+TOLERANT_COLUMNS: frozenset[str] = frozenset({"rmse", "nrmse", "sign_accuracy"})
 """相対許容差で比べる列 (D-115)。これ以外の列は**厳密一致**を要求する。
 
-``wall_time_s`` は列ごと落とす (実測時間)。
+``wall_time_s`` は列ごと落とし (実測時間)、``nmse`` は ``DERIVED_COLUMNS`` として
+別扱いにする。
 """
 
-ARTIFACT_RTOL = 1.0e-6
+DERIVED_COLUMNS: dict[str, str] = {"nmse": "nrmse"}
+"""他の列から厳密に導かれる列 -> 導出元 (D-115)。
+
+``nmse`` は ``metrics.nmse`` が ``nrmse(...) ** 2`` として計算するので、**同じ行の
+``nrmse`` の2乗と 1 ULP まで一致する**。コミット済みの値と突き合わせても ``nrmse``
+以上の情報は得られず、相対差だけが2倍になる (CI 実測: ``nrmse`` 1.506e-03 に対し
+``nmse`` 3.009e-03 と正確に2倍)。許容差を2倍側に合わせると構造変更との余裕がその分
+削れるので、**値の照合ではなく恒等式の検査に替える**。定義を変えたときはこちらが落ちる。
+"""
+
+DERIVED_RTOL = 1.0e-12
+"""``DERIVED_COLUMNS`` の恒等式に許す相対差 (丸め数 ULP ぶん)。"""
+
+ARTIFACT_RTOL = 5.0e-3
 """``TOLERANT_COLUMNS`` に許す相対差 (D-115)。
 
-**この値は「観測された実装差より十分大きく、最小の構造変更より十分小さい」
-という2つの実測に挟まれて決まる。** どちらも下に記録する。
+**「観測された実装差より十分大きく、最小の構造変更より小さい」という2つの実測に
+挟まれて決まる。** どちらもここに記録する。推測で動かさないこと。
 
-実装差 (下限側):
+実装差 (下限側、GitHub Actions の macOS runner と開発機、run 33308520766 の実測。
+30 セルすべてが ``mackey_glass`` の2手法に集中し、``linear`` は 1e-6 未満):
 
-- 解法を Cholesky (``assume_a="pos"``) から LU (``"gen"``) へ替えた実測 ——
-  数学的には等価なので差は丸めだけ: ``linear`` 1.9e-16 /
-  ``delay_line`` 8.7e-6 / ``esn`` 1.7e-5。選ばれた ``alpha`` / ``n_lags`` は
-  30 行すべてで不変だった (**離散列を厳密一致のままにしてよい根拠**)
-- GitHub Actions の macOS runner と開発機の差 (run 33307512431) ——
-  ``delay_line`` の1行で NRMSE 4.6e-5 / NMSE 9.1e-5
+===============  ==============  ==============
+手法             ``nrmse`` 最大  ``nmse`` 最大
+===============  ==============  ==============
+``linear``       < 1e-6          < 1e-6
+``delay_line``   4.575e-05       9.151e-05
+``esn``          1.506e-03       3.009e-03
+===============  ==============  ==============
+
+``esn`` が最も動くのは ``cond(Phi^T Phi)`` が N=200 で 8.0e18 と遅延線 k=64 の
+2.0e16 より悪いためで、``experiments/01_what_is_rc/config.yaml`` の実測と整合する。
+float64 の eps (2.2e-16) を超える条件数なので、実装差が増幅されるのは想定内である。
 
 構造変更 (上限側、01 の本番設定で実測):
 
 - ``esn_mackey_glass.leak_rate`` を +1% : 7.6e-3
-- ``mackey_glass.length`` を +1%       : 2.1e-2
-- ``seeds.task`` を +1                 : 3.8e-2
+- ``mackey_glass.length`` を +1%        : 2.1e-2
+- ``seeds.task`` を +1                  : 3.8e-2
 
-**最小の構造変更 7.6e-3 と、観測された最大の実装差の間に置く。**
-遅延線 k=64 の ``cond(Phi^T Phi)`` は 2.0e16
-(``experiments/01_what_is_rc/config.yaml`` の実測) で float64 の eps を超えて
-おり、実装差が増幅されるのはこの条件数による。
+**余裕は広くない** —— 実装差 1.5e-3 と最小の構造変更 7.6e-3 の間は 5 倍しかない。
+``nmse`` を恒等式検査へ回した (``DERIVED_COLUMNS``) のは、値で照合すると相対差が
+2倍 (3.0e-3) になってこの余裕をさらに削るためである。したがって**この検査が保証
+するのは「5e-3 を超える変化は必ず捕まえる」までで、それ未満の値の変化は捕まえない**。
+構造変更のうち選択 (``alpha`` / ``n_lags``) と行数を動かすものは、許容差ではなく
+**厳密一致の列**が捕まえる (CI 実測でも離散列は 1 件も外れなかった)。
 """
 
 
@@ -422,7 +444,18 @@ def _compare_artifact_rows(regenerated: str, committed: str) -> list[str]:
         for column, (left, right) in zip(
             header, zip(actual_row, expected_row, strict=True), strict=True
         ):
-            if column in TOLERANT_COLUMNS:
+            if column in DERIVED_COLUMNS:
+                source = actual_row[header.index(DERIVED_COLUMNS[column])]
+                squared = float(source) ** 2
+                if not math.isclose(
+                    float(left), squared, rel_tol=DERIVED_RTOL, abs_tol=0.0
+                ):
+                    problems.append(
+                        f"{label} 行{index} {column}: {left} が"
+                        f" {DERIVED_COLUMNS[column]}^2 ({squared!r}) と一致しません"
+                        " (恒等式が壊れています)"
+                    )
+            elif column in TOLERANT_COLUMNS:
                 actual_value, expected_value = float(left), float(right)
                 if not math.isclose(
                     actual_value, expected_value, rel_tol=ARTIFACT_RTOL, abs_tol=0.0
