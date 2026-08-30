@@ -1,25 +1,21 @@
 """記事03の図5枚 (実験 3-A / 3-B / 3-B' / 3-C).
 
-- ``plot_mc_sweep``: rho x リーク率 に対する線形メモリ容量と、遅延プロファイル
-  の伸び (受け入れ条件1)。左は上限線 y=N つきの ``mc_total``、右は代表リーク率
-  での遅延プロファイルを rho 別に重ねる。
+- ``plot_mc_sweep``: rho x リーク率 の線形メモリ容量と遅延プロファイルの伸び
+  (受け入れ条件1)。左は上限線 y=N つきの ``mc_total``、右は代表リーク率での
+  遅延プロファイル。
 - ``plot_ipc_profile``: (次数 x 遅延) の容量ヒートマップを rho 別のパネルに
   並べる (受け入れ条件4)。
 - ``plot_memory_nonlinearity``: ``ipc_linear`` と ``ipc_nonlinear`` の積み上げで
   線形/非線形の配分の移動を見せる (受け入れ条件4)。
 - ``plot_ipc_conservation``: x=N, y=``ipc_total`` に**傾き1の対角線 y=N** を
-  重ねる (受け入れ条件2)。この対角線は図の主張そのものなので、線が実際に
-  描かれていることを ``test_conservation_figure_draws_the_bound_line`` が固定する。
-- ``plot_narma10_control``: 実験 3-C。x=手法 (線形 / 遅延線 / ESN)、y=NMSE。
-  参照線 NMSE = 0.16 / 0.107 を**原典未特定と明記した注つき**で引く
-  (要件書 未確定1。数字だけを孤立して引かない)。
+  重ねる (受け入れ条件2)。線が在ることは
+  ``test_conservation_figure_draws_the_bound_line`` が固定する。
+- ``plot_narma10_control``: 実験 3-C。x=手法、y=NMSE。参照線 0.16 / 0.107 は
+  **原典未特定と明記した注つき**で引く (数字だけを孤立して引かない)。
 
-``figures.py`` / ``figures_esp.py`` と同じ規律に従う: pyplot を使わず ``Figure``
-+ ``FigureCanvasAgg`` を直接組み、描画設定は ``matplotlib.rc_context`` で描画中
-だけ一時適用する (F-1-008)。ラベルは必ず ``style.label(ja, en)`` を通す (D-10)。
-
-**ギリシャ文字は書かない**: ruff の RUF001/RUF002 が ASCII と紛らわしい文字を
-弾くため、ソース中では ``rho`` / ``sigma_u`` と綴る (02 の図と同じ)。
+図の外枠 (rcParams の一時適用 / 保存) は ``plotting/style.py`` が持つ。ラベルは
+必ず ``style.label(ja, en)`` を通す (D-10)。**ギリシャ文字は書かない**
+(RUF001/RUF002。ソース中では ``rho`` / ``sigma_u`` と綴る)。
 
 **配列ではなく長形式の行を読む** (D-38): 遅延プロファイルとヒートマップは
 ``CapacityProfileRow`` (= ``capacity_profile.csv`` の行) から復元する。
@@ -72,6 +68,7 @@ from rc_basics_lab.plotting.labels import (
     cited_bound,
     cited_measurement,
 )
+from rc_basics_lab.plotting.layout import label_panels
 from rc_basics_lab.plotting.narma10_panel import (
     REFERENCE_CONDITIONS,
     REFERENCE_LABELS,
@@ -304,6 +301,7 @@ def plot_mc_sweep(
     with rc_context_for(style):
         figure = _new_figure(12.0, 4.8)
         axes = figure.subplots(1, 2, squeeze=False)
+        label_panels(list(axes[0]), style=style)
         _plot_mc_total_panel(axes[0][0], rows, style)
         _plot_mc_profile_panel(axes[0][1], rows, profile, leak_rate, style)
         first = rows[0]
@@ -372,9 +370,8 @@ def plot_ipc_profile(
 ) -> Path:
     """実験 3-B の (次数 x 遅延) ヒートマップを rho 別に並べる (受け入れ条件4)。
 
-    パネルは代表リーク率 1本 x rho 4点。配色は全パネルで共通の上限を使う
-    (パネルごとに正規化すると「rho を上げると非線形が減る」という主張が
-    色の付け替えで消える)。
+    パネルは代表リーク率 1本 x rho 4点。配色は全パネル共通の上限を使う ——
+    パネルごとに正規化すると主張が色の付け替えで消える。
 
     Args:
         rows: 3-B の行。
@@ -383,8 +380,7 @@ def plot_ipc_profile(
         style: ``setup_style()`` の戻り値。
         max_delay_by_degree: 次数ごとの遅延の打ち切り (``cfg`` 由来)。
             与えると打ち切りの外を「未計算」のグレーに落とす (FIG-7 / D-88)。
-            **省略すると全セルが計算済みとして描かれる** —— 打ち切りが
-            分からないときに未計算の領域を捏造しないため。
+            **省略すると全セルが計算済みとして描かれる** (領域を捏造しない)。
 
     Raises:
         ValueError: ``rows`` が空の場合。
@@ -399,6 +395,7 @@ def plot_ipc_profile(
     with rc_context_for(style):
         figure = _new_figure(3.4 * len(rhos) + 1.2, 4.8)  # 高さは D-108 の上限
         axes = figure.subplots(1, len(rhos), squeeze=False)
+        label_panels(list(axes[0]), style=style)
         meshes = [
             _plot_heatmap_panel(
                 axes[0][index],
@@ -539,6 +536,7 @@ def plot_memory_nonlinearity(
     with rc_context_for(style):
         figure = _new_figure(4.0 * len(leaks) + 1.0, 4.4)
         axes = figure.subplots(1, len(leaks), squeeze=False, sharey=True)
+        label_panels(list(axes[0]), style=style)
         ceiling = max(
             _plot_stack_panel(axes[0][index], rows, leak, style, show_ylabel=index == 0)
             for index, leak in enumerate(leaks)
@@ -682,8 +680,8 @@ def draw_narma10_control_panel(
 ) -> None:
     """実験 3-C (探索予算をそろえた3手法の NARMA10 成績) を1つの軸に描く。
 
-    単独の figure をやめてパネルにしたのは FIG-12 / C-6 による。03 は図が
-    7 枚あり、うち NARMA10 の 3 枚は**同じ主張を支えている**。
+    単独の figure をやめてパネルにしたのは FIG-12 / C-6 による (NARMA10 の 3 枚は
+    同じ主張を支えている)。
 
     Args:
         axis: 描画先。

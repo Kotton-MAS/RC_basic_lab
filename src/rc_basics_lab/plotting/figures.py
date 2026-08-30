@@ -32,6 +32,7 @@ from rc_basics_lab.experiment.state_space import (
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
 from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting.labels import METHOD_LABELS
+from rc_basics_lab.plotting.layout import label_panels
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
     ESN_METHOD,
@@ -357,6 +358,7 @@ def plot_comparison(
         # 上限を超える。2段に折ると 1.44 : 1 に収まる。
         figure = _new_figure(13.0, 9.0)
         axes = np.atleast_1d(figure.subplots(2, 2)).reshape(-1)
+        label_panels(list(axes), style=style)
         _draw_scalar_panel(axes[0], tasks, methods, stats, style)
         # **課題ごとに長さが違う** (D-107)。最後のパネルの長さだけを脚注に
         # 書くと、もう一方のパネルの条件を偽って書くことになる。
@@ -509,6 +511,7 @@ def plot_state_space(
     with rc_context_for(style):
         figure = _new_figure(12.0, 4.0 * len(reports))
         axes = figure.subplots(len(reports), 3, squeeze=False)
+        label_panels(list(axes.ravel()), style=style)
         for index, report in enumerate(reports):
             _scatter_space(axes[index][0], report, RESERVOIR_STATE, style)
             _scatter_space(axes[index][1], report, DELAY_EMBEDDED_INPUT, style)

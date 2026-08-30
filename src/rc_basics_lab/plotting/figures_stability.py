@@ -23,6 +23,7 @@ from rc_basics_lab.plotting.figures_freerun import (
     REGIME_MARKERS,
 )
 from rc_basics_lab.plotting.freerun_grids import label_of
+from rc_basics_lab.plotting.layout import label_panels
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -66,6 +67,8 @@ def plot_stability_map(
         # 余った枠は消す。空の軸を残すと「測ったが何も無かった」に見える。
         for axis in axes[panels:]:
             axis.set_axis_off()
+        # 記号は**描いたパネルにだけ**振る (消した枠に (f) が付かないように)。
+        label_panels(list(axes[:panels]), style=style)
         handles = [
             matplotlib.lines.Line2D(
                 [],

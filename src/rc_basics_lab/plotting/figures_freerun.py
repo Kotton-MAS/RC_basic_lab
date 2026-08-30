@@ -66,6 +66,7 @@ from rc_basics_lab.plotting.labels import (
 )
 from rc_basics_lab.plotting.layout import label_panels, legend_below, wrapped_note
 from rc_basics_lab.plotting.style import (
+    METHOD_COLORS,
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
@@ -114,13 +115,30 @@ REGIME_MARKERS: dict[str, str] = {
 
 SOURCE_STYLE: dict[str, tuple[str, str]] = {
     SOURCE_TRUTH: ("#444444", "真の軌道"),
-    SOURCE_FREERUN: ("#d95f02", "自走"),
+    SOURCE_FREERUN: (METHOD_COLORS[ESN_METHOD], "自走 (ESN)"),
 }
+"""軌道の源の色とラベル。
+
+**自走は ESN 色 (緑) にする。** かつては橙 (#d95f02) で、同じ図の 4-A パネル
+では橙が Mackey-Glass を指しており、**1枚の図の中で橙の意味が2つあった**。
+自走は ESN の自走なので、連載共通の手法色 (D-85) をそのまま使えば衝突が消え、
+「どの手法の自走か」もラベルを読まずに分かる。
+"""
 """重ね描きの色と日本語ラベル (英語は ``_source_label``)。"""
+
+TASK_COLORS: dict[str, str] = {"lorenz": "#d95f02", "mackey_glass": "#7570b3"}
+"""4-A パネルで**課題**を区別する色 (``METHOD_COLORS`` とは別の次元)。
+
+色を指定していなかったため既定循環色 (青・橙) が当たり、同じ図の位相図で橙が
+「自走」を指していたのと衝突していた。形も変える (FIG-18)。
+"""
+
+TASK_MARKERS: dict[str, str] = {"lorenz": "o", "mackey_glass": "s"}
+"""4-A パネルで課題を区別するマーカー形状。"""
 
 _SOURCE_LABELS_EN: dict[str, str] = {
     SOURCE_TRUTH: "true trajectory",
-    SOURCE_FREERUN: "free run",
+    SOURCE_FREERUN: "free run (ESN)",
 }
 
 
@@ -168,7 +186,8 @@ def _draw_onestep_panel(
             positions + 0.12 * (offset - 0.5 * (len(tasks) - 1)),
             means,
             yerr=np.vstack([np.minimum(stds, means * 0.999), stds]),
-            fmt="o",
+            fmt=TASK_MARKERS.get(task, "o"),
+            color=TASK_COLORS.get(task, REFERENCE_COLOR),
             capsize=5,
             label=label_of(TASK_LABELS, task, style),
         )
@@ -232,16 +251,15 @@ def plot_freerun_attractor(
         # 位相図が潰れ、蝶形が読めなくなる (FIG-13 の上限 3.2:1 には収まる)。
         figure = _new_figure(5.0 * (len(tasks) + 1), 5.4)
         axes = np.atleast_1d(figure.subplots(1, len(tasks) + 1))
+        label_panels(list(axes), style=style)
         drawn = 0
         for axis, task in zip(axes[: len(tasks)], tasks, strict=True):
             for source in (SOURCE_TRUTH, SOURCE_FREERUN):
                 points = profile_points(rows, task, KIND_PHASE, source)
                 if points.shape[0] == 0:
                     continue
-                # 線でつなぐ。位相図の点列は確保軸6 で間引いてあるが、
-                # 間引き後も隣接点の間隔は Delta t x stride = 0.05 時間単位
-                # (Lorenz) しかないので、折れ線は軌道をなぞる。**点だけで描くと
-                # 蝶形の2枚翅が雲に潰れて読めなくなる** (実測)。
+                # 線でつなぐ。**点だけで描くと蝶形の2枚翅が雲に潰れる** (実測)。
+                # 間引き後も隣接点の間隔は 0.05 時間単位しかなく折れ線は軌道をなぞる。
                 axis.plot(
                     points[:, 0],
                     points[:, 1],
@@ -258,10 +276,14 @@ def plot_freerun_attractor(
             axis.set_ylabel(
                 style.label("第2成分 / 遅延座標", "component 2 / delay coordinate")
             )
-            axis.legend(loc="best", fontsize=8)
+            # アトラクタの**形**を見せる図なので縦横を等尺にする。歪めると
+            # 蝶形かどうかを目で判定できない。
+            axis.set_aspect("equal", adjustable="datalim")
         if drawn == 0:
             raise ValueError("位相図に描く点がありません")
         _draw_onestep_panel(axes[len(tasks)], onestep_rows, style)
+        # 同じ凡例が位相図の枚数ぶん繰り返されていたので図の外へ1つに統合する。
+        legend_below(figure, list(axes), style=style, ncol=4)
         figure.suptitle(
             style.label(
                 "実験 4-A / 4-B: 教師強制では遅延線と ESN に差が出ないが、"
@@ -308,6 +330,7 @@ def plot_valid_time(
     with rc_context_for(style):
         figure = _new_figure(6.4 * len(tasks), 5.0)
         axes = np.atleast_1d(figure.subplots(1, len(tasks), sharey=True))
+        label_panels(list(axes), style=style)
         for axis, task in zip(axes, tasks, strict=True):
             _valid_time_panel(axis, rows, task, methods, style)
         axes[0].set_ylabel(
@@ -328,7 +351,8 @@ def plot_valid_time(
                 style.label(*LITERATURE_VALID_TIME_CONDITIONS),
             ),
         )
-        axis.legend(loc="upper left", fontsize=7)
+        # 1 行の凡例が軸幅いっぱいに広がっていたので図の外へ出す。
+        legend_below(figure, list(axes), style=style, ncol=2)
         figure.suptitle(
             style.label(
                 f"実験 4-B: {valid_time_headline(rows, style)}",
@@ -559,7 +583,9 @@ __all__ = [
     "REGIME_COLORS",
     "REGIME_LABELS",
     "REGIME_MARKERS",
+    "TASK_COLORS",
     "TASK_LABELS",
+    "TASK_MARKERS",
     "plot_freerun_attractor",
     "plot_freerun_stats",
     "plot_valid_time",

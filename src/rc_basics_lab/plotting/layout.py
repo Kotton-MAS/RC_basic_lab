@@ -23,6 +23,7 @@ from collections.abc import Sequence
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+from matplotlib.ticker import NullFormatter
 
 from rc_basics_lab.plotting.style import StyleContext
 
@@ -171,12 +172,36 @@ def label_panels(axes: Sequence[Axes], *, style: StyleContext) -> None:
         panel_label(axis, chr(ord("a") + index), style=style)
 
 
+def hide_minor_tick_labels(axis: Axes, *, which: str = "x") -> None:
+    """対数軸の**副目盛りのラベル**を消す (FIG-19)。
+
+    測っていない点のラベルが軸に並ぶのを防ぐ。実測は 25/50/100/200 の4点だけ
+    なのに ``25 / 3x10^1 / 4x10^1 / 50 / 6x10^1 / 100 / 200`` と表示されていた
+    (``fig_size_vs_performance``)。主目盛りを ``set_xticks`` で明示している図
+    では、副目盛りのラベルは**必ず余計**である。
+
+    目盛り線そのものは残す (対数のスケール感が読めるため)。消すのはラベルだけ。
+
+    Args:
+        axis: 対象の軸。
+        which: ``"x"`` / ``"y"`` / ``"both"``。
+    """
+    targets = (
+        (axis.xaxis, axis.yaxis)
+        if which == "both"
+        else ((axis.xaxis,) if which == "x" else (axis.yaxis,))
+    )
+    for target in targets:
+        target.set_minor_formatter(NullFormatter())
+
+
 __all__ = [
     "LEGEND_BELOW_ANCHOR",
     "LEGEND_BELOW_FONTSIZE",
     "NOTE_WRAP_WIDTH",
     "PANEL_LABEL_FONTSIZE",
     "PANEL_LABEL_POSITION",
+    "hide_minor_tick_labels",
     "label_panels",
     "legend_below",
     "panel_label",

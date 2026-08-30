@@ -40,6 +40,7 @@ from rc_basics_lab.plotting.figures_anomaly import (
     method_label,
     method_line_style,
 )
+from rc_basics_lab.plotting.layout import hide_minor_tick_labels, label_panels
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_footnote,
@@ -173,6 +174,7 @@ def build_protocol_sensitivity_figure(
     require_rows(rows)
     figure = new_figure(12.0, 6.4)
     axes = np.atleast_1d(figure.subplots(1, 2))
+    label_panels(list(axes), style=style)
     _protocol_rank_panel(axes[0], rows, style)
     _protocol_reversal_panel(axes[1], rows, style)
     changed = len({_condition_key(row) for row in rows if row.rank_changed})
@@ -268,6 +270,7 @@ def plot_size_vs_performance(
         axis.set_xscale("log")
         axis.set_xticks(grid)
         axis.set_xticklabels([str(n_units) for n_units in grid])
+        hide_minor_tick_labels(axis)
         axis.set_xlabel(style.label("リザバーのユニット数 N", "reservoir size N"))
         axis.set_ylabel(style.label("AUPRC (平均±標準偏差)", "AUPRC (mean +- s.d.)"))
         axis.legend(loc="best", fontsize=7)
