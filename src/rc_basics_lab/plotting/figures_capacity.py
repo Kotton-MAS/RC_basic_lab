@@ -448,7 +448,7 @@ def plot_memory_nonlinearity(
 def _draw_conservation_bound(
     axis: Axes, units: Sequence[int], style: StyleContext
 ) -> None:
-    """上限線 y=N (傾き1の対角線) を描く (受け入れ条件2、**図の主張そのもの**)。
+    """上限線 (比 = 1 の水平線) を描く (受け入れ条件2、**図の主張そのもの**)。
 
     ``conservation_bound`` が返す座標をそのまま描く。テストは同じ関数から
     座標を取り、この線が軸に実在することを確かめる。
@@ -459,9 +459,7 @@ def _draw_conservation_bound(
         y,
         **reference_line_kwargs(),
         label=cited_bound(
-            style.label(
-                "上限 IPC_total <= N (傾き1)", "bound IPC_total <= N (slope 1)"
-            ),
+            style.label("上限 IPC_total / N <= 1", "bound IPC_total / N <= 1"),
             IPC_BOUND_SOURCE,
         ),
     )
@@ -500,10 +498,19 @@ def plot_ipc_conservation(
                 )
                 for n_units in units
             ]
+            # **比 (ipc_total / N) を縦軸にする** (2-7)。絶対値だと上限線が
+            # 斜めになり、「上限からどれだけ離れたか」を目分量で測ることに
+            # なる。比なら水平線 1 からの距離として縦に読める。
             axis.errorbar(
                 [float(n_units) for n_units in units],
-                [mean for mean, _ in stats],
-                yerr=[std for _, std in stats],
+                [
+                    mean / n_units
+                    for (mean, _), n_units in zip(stats, units, strict=True)
+                ],
+                yerr=[
+                    std / n_units
+                    for (_, std), n_units in zip(stats, units, strict=True)
+                ],
                 fmt="o-",
                 capsize=4,
                 color=colors[index],
@@ -515,8 +522,8 @@ def plot_ipc_conservation(
         axis.set_xlabel(style.label("リザバーのユニット数 N", "reservoir size N"))
         axis.set_ylabel(
             style.label(
-                "IPC_total (レプリケート平均±s.d.)",
-                "IPC_total (mean +- s.d. over reps)",
+                "IPC_total / N (レプリケート平均±s.d.)",
+                "IPC_total / N (mean +- s.d. over reps)",
             )
         )
         first = rows[0]
