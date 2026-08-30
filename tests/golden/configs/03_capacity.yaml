@@ -1,0 +1,123 @@
+# ゴールデンテスト用の縮小設定 (実験03)。用途は 01 の縮小設定と同じ。
+name: golden_03
+
+seeds:
+  reservoir: 0
+  drive: 1
+  surrogate: 4
+
+drive:
+  distribution: uniform
+  washout: 20
+
+reservoir:
+  input_scale: 1.0
+  density: 0.2
+  n_replicates: 2
+
+mc_sweep:
+  rho_grid: [0.5, 0.95]
+  leak_rate_grid: [0.3, 1.0]
+  sigma_u: 0.1
+  n_units: 30
+  n_steps: 2000
+
+ipc_sweep:
+  rho_grid: [0.5, 0.95]
+  leak_rate_grid: [1.0]
+  sigma_u: 0.2
+  n_units: 20
+  n_steps: 3000
+
+conservation:
+  n_units_grid: [10, 20]
+  state_noise_grid: [0.0, 0.01]
+  rho: 0.95
+  leak_rate: 1.0
+  sigma_u: 0.2
+  n_steps: 3000
+  max_delay_by_degree: [12, 6, 3]
+  n_replicates: 1
+
+length_sweep:
+  n_steps_grid: [2000, 3000]
+  rho: 0.95
+  leak_rate: 1.0
+  sigma_u: 0.2
+  n_units: 20
+
+mc:
+  max_delay: 20
+  alpha: 1.0e-9
+  threshold_mode: surrogate
+  n_surrogates: 8
+  surrogate_quantile: 0.99
+  chunk_size: 64
+
+ipc:
+  max_delay_by_degree: [8, 4, 2]
+  max_variables: 2
+  basis: legendre
+  input_distribution: uniform
+  alpha: 1.0e-9
+  threshold_mode: surrogate
+  n_surrogates: 8
+  n_surrogate_targets: 2
+  surrogate_quantile: 0.99
+  chunk_size: 64
+  max_targets: 20000
+  max_degrees: 20
+
+narma:
+  length: 800
+  # 3-C' (D-95) のタップ数掃引。本番は 8 点 x 3 レプリケートなので 2 点 x 2 に縮める。
+  n_lags_sweep: [10, 30]
+  n_replicates_sweep: 2
+  base:
+    name: golden_03_narma10
+    n_replicates: 2
+    seeds:
+      reservoir: 0
+      task: 1
+      split: 2
+    split:
+      train_ratio: 0.5
+      val_ratio: 0.15
+      test_ratio: 0.35
+      washout: 20
+      max_start_offset: 20
+    ridge:
+      alpha_grid: [1.0e-6, 1.0e-3, 1.0]
+      n_lags_grid: [10, 20]
+    mackey_glass:
+      tau: 17.0
+      beta: 0.2
+      gamma: 0.1
+      exponent: 10
+      rk4_step: 0.1
+      sample_interval: 10
+      integration_burn_in: 100
+      length: 800
+      horizon: 1
+    delay_parity:
+      n_bits: 2
+      delay: 1
+      length: 800
+    esn_mackey_glass:
+      n_units: 30
+      spectral_radius: 0.9
+      leak_rate: 0.3
+      input_scale: 0.5
+      bias_scale: 0.1
+      density: 0.2
+      activation: tanh
+      state_noise: 0.0
+    esn_delay_parity:
+      n_units: 30
+      spectral_radius: 0.9
+      leak_rate: 1.0
+      input_scale: 1.0
+      bias_scale: 0.1
+      density: 0.2
+      activation: tanh
+      state_noise: 0.0

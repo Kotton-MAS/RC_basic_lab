@@ -1,0 +1,58 @@
+{
+  "cases": {
+    "01_what_is_rc": {
+      "comparison.csv": "sha256:566057abfa06e83816cadc031b1440045b255eaed549ffc7051dea58970581c0",
+      "comparison_summary.csv": "sha256:42adbd744790cf55b01102aa8242e8e4412af072192c14055246266c3924184d",
+      "fig_comparison.png": "sha256:521675805950b58010d2223b3381f83441e2cd83670ed2e06ff22a70921619f5",
+      "fig_state_space.png": "sha256:b7a33f7b25388a8d7b5fc8219b1b312f6e0b0e04efd92da5ac027774750779bb",
+      "fig_state_waveform.png": "sha256:e5be5f5c65cdbb1ef29aba3c165a512a729162ba68a25de9b564adcb642b0cfb",
+      "horizon.csv": "sha256:a33cd564f319703bc44e583aa6ebb8e17034f3959ac535f243fc15093d9d8e7d",
+      "meta.json": "sha256:b9aeff89e333ea0fae12175d448dc344c7c91f5eb8d46498e5068052f9737621"
+    },
+    "02_esp_and_dynamics": {
+      "esp_diagnostics.csv": "sha256:ff0358f71b1fb12d325cba456bfdd311cb7c9af133832c3bba349ebba0a91c1b",
+      "esp_threshold_sensitivity.csv": "sha256:85550c59e7cdf11aa3e877ab718444ca0b4e16726d66d17d37fc0d3808301731",
+      "fig_esp_decay.png": "sha256:b9bfa2e27d060518430c7ebcb1768ae2afe074d0ead9d4d8fb08ba0e41cbc3ce",
+      "fig_esp_map.png": "sha256:12fe051badaebeac2192abd06f0581e825d029616137d53fb749f99ba5766a19",
+      "fig_leak_timescale.png": "sha256:78f33858767bceb8e29e6ff676d82bd84730c3bcc64700e884d7d2259053c87f",
+      "fig_washout_sensitivity.png": "sha256:cc91518e108e703603a1c3d09c04304f64d94fbd7723bee93c033a2c12b42a93",
+      "meta.json": "sha256:0b7665b3b90705d3089ba61b6a6fcb111b8a086c8ef229b190dbe4567045c8ca",
+      "washout_sensitivity.csv": "sha256:4a2c44d4e21eb798b92c89388cabe93d263db5c760c85fe89bef1f5067448a4d"
+    },
+    "03_capacity": {
+      "capacity.csv": "sha256:2fb5a5902244f5857ff734e3c440f43e4444bbf788587fe7f1a7a0dfb81499a6",
+      "capacity_length.csv": "sha256:bc74333a05241b03987e5f67955b0806a61c95e31f13041caf099443637a27ca",
+      "capacity_profile.csv": "sha256:b196cc0466746c6738592ac9141f20bbe35c82851a8596a5160029a887cbff4a",
+      "fig_ipc_conservation.png": "sha256:5440f9d8d726c2d3abf2a787305919d835686430ccbbd504f5fadf4956de928c",
+      "fig_ipc_profile.png": "sha256:0a41beb6e2dbc40434e0495d92de5d910c896944b0397a969c6ae5b2f588bb39",
+      "fig_mc_sweep.png": "sha256:83e7c449739a20b5cf7dd0da756c30604ee436535f4c38ff690fbd8ca8af9531",
+      "fig_memory_nonlinearity.png": "sha256:d82a3ce3e13c6af089fbc7ae62f0ed7597e18af33f27547c52b3bf9614ab6f1b",
+      "fig_narma10.png": "sha256:c7ce9fce65fb328db7a0e00d8773b3e6f98f78aa8121471058448d5c36a43d34",
+      "meta.json": "sha256:11f03b672d8d81de5a398b668a52521f8b793244324b4544b26392ab5992f0f9",
+      "narma10.csv": "sha256:eaf1ccb7adba69785cf50b3ccc9bb85e97dee93e395f691351a797ad1b36124e",
+      "narma10_taps.csv": "sha256:92ca3189b69f1f8366bf82c26ea3f3fa5538b9e3d125d80a5971884d050cce41"
+    },
+    "04_chaotic_freerun": {
+      "capacity.csv": "sha256:5bf30fe94900fde5114ec5a1207e3177a15001e057708e66020f3771b95de51e",
+      "fig_freerun_attractor.png": "sha256:928e72cbcf62d3b80de5d7c1fa54d0e543aef6de359622b1690cba63fd574cc3",
+      "fig_freerun_stats.png": "sha256:5dbac7492f43af48551a67260eeae2540b82b5717d2b636fb3a4fa0ede7c7aca",
+      "fig_freerun_timeline.png": "sha256:562846e089c2de6a511f0634e3c650013b3fdd073acabb690c3f8dc8807a988a",
+      "fig_stability_map.png": "sha256:7ee8cfd688ee34a32c5ca6e429e2e38f7102ddc57832f60e7afbc1f0e1f95f1a",
+      "fig_valid_time.png": "sha256:83c661ffb4d6c4f7a6ad1fc0c7d04ee99a181d08f6d5c10071196e500497727a",
+      "freerun.csv": "sha256:a64527beaee767d8ecf64a732fca2fec38eca3d3dce3ae5c108d8e54638a6cc2",
+      "freerun_profile.csv": "sha256:f6d53207fde0eead81e7d57532fe855f48a0d6aef10a588a3ba5ed1257f118e2",
+      "meta.json": "sha256:9236116bd4eda0a53c393b9296768baa01b7b9181123ff78b949c138ebfb6a96",
+      "onestep.csv": "sha256:d20b164c1279eeac828c6535883690abf56102c777c5dbb3de78e163e8475737",
+      "stability.csv": "sha256:bd25566a356e0c96b320426ff79d15519bfaa3d0c6d6a3e74fafc5cb1b665939"
+    }
+  },
+  "fingerprint": {
+    "cjk_font": "Hiragino Sans",
+    "matplotlib_version": "3.11.1",
+    "numpy_version": "2.5.2",
+    "package_version": "0.1.0",
+    "platform": "macOS-26.3-arm64-arm-64bit",
+    "python_version": "3.12.5",
+    "scipy_version": "1.18.0"
+  }
+}
