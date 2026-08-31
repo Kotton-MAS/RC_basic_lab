@@ -157,6 +157,20 @@ WIRING_CASES: tuple[WiringCase, ...] = (
     case("split.max_start_offset", 40),
     case("ridge.alpha_grid", (1e3, 1e4)),
     case("ridge.n_lags_grid", (1, 40)),
+    # 交差検証。**既定は無効 (n_folds=0)** なので、有効にすると選択の経路が
+    # 変わり行が動く。scheme と embargo は n_folds を有効にした状態でしか
+    # 効かないので、3 つとも n_folds=3 を添えて振る。
+    case("ridge.cv.n_folds", 3),
+    WiringCase(
+        field="ridge.cv.scheme",
+        overrides=(("ridge.cv.n_folds", 3), ("ridge.cv.scheme", "blocked")),
+        note="折り方は交差検証が有効なときだけ効く (n_folds を添える)",
+    ),
+    WiringCase(
+        field="ridge.cv.embargo",
+        overrides=(("ridge.cv.n_folds", 3), ("ridge.cv.embargo", 40)),
+        note="禁足区間も同様。既定 (null) は first_valid を使う",
+    ),
     case("mackey_glass.tau", 20.0, scope=MACKEY_GLASS),
     case("mackey_glass.beta", 0.3, scope=MACKEY_GLASS),
     case("mackey_glass.gamma", 0.15, scope=MACKEY_GLASS),
