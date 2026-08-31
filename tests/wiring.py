@@ -29,7 +29,15 @@ import pkgutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, get_type_hints
+from types import UnionType
+from typing import (
+    TYPE_CHECKING,
+    TypeAliasType,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 import yaml
 
@@ -126,16 +134,40 @@ def apply_case[T](config: T, wiring_case: WiringCase) -> T:
 
 
 def leaf_paths(cls: type, prefix: str = "") -> set[str]:
-    """dataclass の葉フィールドをドット区切りのパスで列挙する。"""
+    """dataclass の葉フィールドをドット区切りのパスで列挙する。
+
+    **型エイリアスと dataclass の union を開く。** ``type X = A`` (PEP 695) は
+    ``get_type_hints`` が解決せず ``TypeAliasType`` のまま返すので、開かないと
+    そのフィールドが葉に見えてしまう —— つまり ``A`` の中身が D-13 の検査から
+    黙って外れる (``esn_mackey_glass`` を ``ReservoirConfig`` にしたときに実際
+    そうなった)。union は**全要素の葉を合わせる**。どのモデルを選んでも、
+    その設定値には「変えたら出力が変わる」検査が要る。
+    """
     hints = get_type_hints(cls)
     paths: set[str] = set()
     for item in fields(cast("type[DataclassInstance]", cls)):
-        annotation = hints[item.name]
-        if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
-            paths |= leaf_paths(annotation, f"{prefix}{item.name}.")
-        else:
-            paths.add(f"{prefix}{item.name}")
+        paths |= _leaf_paths_of(hints[item.name], f"{prefix}{item.name}")
     return paths
+
+
+def _leaf_paths_of(annotation: object, path: str) -> set[str]:
+    """1フィールドぶんの葉パス。"""
+    if isinstance(annotation, TypeAliasType):
+        return _leaf_paths_of(annotation.__value__, path)
+    if get_origin(annotation) is UnionType:
+        members = [
+            arg
+            for arg in get_args(annotation)
+            if dataclasses.is_dataclass(arg) and isinstance(arg, type)
+        ]
+        if members and len(members) == len(get_args(annotation)):
+            return {
+                leaf for member in members for leaf in leaf_paths(member, f"{path}.")
+            }
+        return {path}
+    if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
+        return leaf_paths(annotation, f"{path}.")
+    return {path}
 
 
 def plain(value: object) -> object:

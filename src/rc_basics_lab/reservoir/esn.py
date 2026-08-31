@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 
@@ -41,7 +42,14 @@ class ESNConfig:
 
     値の検証は ``ESN.__init__`` で行う (設定 dataclass 群は T1 と同じく
     純粋なデータ保持に留める)。
+
+    ``KIND`` は YAML の ``kind: esn`` に対応する判別子である。**``ClassVar``
+    なので ``dataclasses.asdict`` に現れない** —— フィールドにすると
+    ``meta.json`` が変わり、既存の成果物の指紋が壊れる。判別子は「どの型を
+    作るか」の情報であって、その型の設定値ではない。
     """
+
+    KIND: ClassVar[str] = "esn"
 
     n_units: int = 200
     spectral_radius: float = 0.9

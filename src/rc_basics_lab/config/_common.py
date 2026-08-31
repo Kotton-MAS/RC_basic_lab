@@ -17,7 +17,7 @@ import dataclasses
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import UnionType
-from typing import Protocol, cast, get_args, get_origin, get_type_hints
+from typing import Protocol, TypeAliasType, cast, get_args, get_origin, get_type_hints
 
 import yaml
 
@@ -73,6 +73,59 @@ def _coerce_tuple(value: object, annotation: object, location: str) -> object:
     )
 
 
+KIND_KEY = "kind"
+"""判別子のキー名。``kind: esn`` のように書く。
+
+**値そのものは dataclass に入れない** (``ClassVar`` で持つ)。入れると
+``dataclasses.asdict`` に現れて ``meta.json`` が変わり、既存の成果物の指紋が
+壊れる。判別子は「どの型を作るか」の情報であって、その型の設定値ではない。
+"""
+
+
+def _kind_of(cls: object) -> str | None:
+    """union の要素が名乗る種別 (``KIND`` クラス変数)。無ければ ``None``。"""
+    kind = getattr(cls, "KIND", None)
+    return kind if isinstance(kind, str) else None
+
+
+def _coerce_tagged_union(value: object, annotation: object, location: str) -> object:
+    """``A | B`` (どちらも dataclass) を ``kind`` で選んで構築する。
+
+    **ローダは具体的な型を1つも知らない。** 各 dataclass が ``KIND`` という
+    ``ClassVar`` で自分の名前を名乗り、ローダはそれを突き合わせるだけである。
+    リザバーのモデル名をローダに書くと、モデルを足すたびに ``config`` を
+    触ることになる (``reservoir/registry.py`` に ``case`` を1つ足すだけ、
+    という約束が崩れる)。
+
+    ``kind`` を書かなければ**先頭の要素**を作る。既定を union の並び順で表す
+    ので、既存の YAML はそのまま通る。
+
+    Raises:
+        ConfigError: マッピングでない / ``kind`` が未知 / 要素が ``KIND`` を
+            名乗っていない場合。
+    """
+    members = [
+        arg
+        for arg in get_args(annotation)
+        if dataclasses.is_dataclass(arg) and isinstance(arg, type)
+    ]
+    known = {name: cls for cls in members if (name := _kind_of(cls)) is not None}
+    if len(known) != len(members):
+        raise _fail(location, f"KIND を名乗らない要素があります: {annotation!r}")
+    if not isinstance(value, Mapping):
+        raise _fail(location, f"マッピングが必要です: {value!r}")
+    raw_kind = value.get(KIND_KEY)
+    if raw_kind is None:
+        return _build(members[0], value, location)
+    if not isinstance(raw_kind, str) or raw_kind not in known:
+        raise _fail(
+            location,
+            f"未知の {KIND_KEY} です: {raw_kind!r} (既知: {', '.join(sorted(known))})",
+        )
+    body = {key: item for key, item in value.items() if key != KIND_KEY}
+    return _build(known[raw_kind], body, f"{location}.{raw_kind}")
+
+
 def _coerce_optional(value: object, annotation: object, location: str) -> object:
     """``X | None`` 型のフィールドを構築する (``None`` は素通しする)。
 
@@ -96,12 +149,23 @@ def _coerce_optional(value: object, annotation: object, location: str) -> object
 
 
 def _coerce(value: object, annotation: object, location: str) -> object:
+    # ``type X = ...`` (PEP 695) は ``get_type_hints`` が解決せず TypeAliasType の
+    # ままで返す。中身へ開かないと「未対応の設定型です: ReservoirConfig」で
+    # 落ちる。**別名を挟んだだけで設定が読めなくなるのは、別名を付けた側の
+    # 責任ではない**ので、ここで開く。
+    if isinstance(annotation, TypeAliasType):
+        return _coerce(value, annotation.__value__, location)
     if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
         return _build(annotation, value, location)
     origin = get_origin(annotation)
     if origin is tuple:
         return _coerce_tuple(value, annotation, location)
     if origin is UnionType:
+        args = get_args(annotation)
+        if type(None) not in args and all(
+            dataclasses.is_dataclass(arg) for arg in args
+        ):
+            return _coerce_tagged_union(value, annotation, location)
         return _coerce_optional(value, annotation, location)
     if isinstance(annotation, type):
         return _coerce_scalar(value, annotation, location)
@@ -109,9 +173,25 @@ def _coerce(value: object, annotation: object, location: str) -> object:
 
 
 def _build[T](cls: type[T], raw: object, location: str) -> T:
-    """dataclass ``cls`` を ``raw`` (マッピング) から構築する。"""
+    """dataclass ``cls`` を ``raw`` (マッピング) から構築する。
+
+    ``cls`` が ``KIND`` を名乗っていて ``raw`` に ``kind`` があれば、一致を
+    確かめて取り除く。**union が1要素のうちから ``kind: esn`` を書けるように
+    する**ためで、モデルが2つ目になった時点で YAML を書き換えずに済む
+    (``_coerce_tagged_union`` が選ぶ側に回るだけ)。一致しなければ落とす ——
+    書いたのに効かない ``kind`` を作らない。
+    """
     if not isinstance(raw, Mapping):
         raise _fail(location, f"マッピングが必要です: {raw!r}")
+    declared = _kind_of(cls)
+    if declared is not None and KIND_KEY in raw:
+        written = raw[KIND_KEY]
+        if written != declared:
+            raise _fail(
+                location,
+                f"未知の {KIND_KEY} です: {written!r} (既知: {declared})",
+            )
+        raw = {key: item for key, item in raw.items() if key != KIND_KEY}
     known = {f.name for f in dataclasses.fields(cast("type", cls))}
     provided = {str(key) for key in raw}
     unknown = sorted(provided - known)
