@@ -144,6 +144,7 @@ def test_all_artifacts_were_generated_from_the_same_commit() -> None:
 #: 以後のサイクルは _HOW_TO_FIX_DELETION が指す docs/process/ 配下に置く。
 DELETION_REVIEW_DOCS: dict[str, str] = {
     "cycle-05a": "docs/削減候補-05.md",
+    "cycle-figure-polish-3": "docs/process/削減候補-figure-polish-3.md",
 }
 
 #: **証跡が無いまま締めたサイクル** (2026-08-21 の実測)。

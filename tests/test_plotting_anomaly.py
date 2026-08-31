@@ -38,6 +38,9 @@ from rc_basics_lab.plotting.figures_anomaly import (
     METHOD_LABELS,
     UNMARKED_STYLE,
     UNMARKED_SUFFIX,
+    ZOOM_MARGIN,
+    _anomaly_spans,
+    _zoom_span,
     method_label,
     method_line_style,
     plot_pr_curves,
@@ -372,3 +375,63 @@ def test_figures_reject_empty_rows(tmp_path: Path) -> None:
         plot_size_vs_performance((), tmp_path / "c.png", style=STYLE)
     with pytest.raises(ValueError, match="rows が空です"):
         plot_pr_curves((), threshold_rows(), tmp_path / "d.png", style=STYLE)
+
+
+# --- 2-13: 拡大窓の選び方 ----------------------------------------------------
+
+
+def test_the_zoom_window_covers_the_longest_anomaly_span() -> None:
+    """拡大するのは**いちばん長い異常区間**であること (2-13 / D-107)。
+
+    「よく跳ねている区間」を呼び出し側が選べる図にすると、同じデータから
+    好きな結論の図が作れる。選び方が行から決まる規則であることを測る。
+    """
+    rows = timeline_rows()
+    first, last = _zoom_span(_anomaly_spans(rows), rows)
+    # 異常は index 1020..1029 の 1 区間だけ (``timeline_rows`` の作り)
+    assert first <= 1020 and last >= 1029
+
+
+def test_the_zoom_window_keeps_margin_on_both_sides() -> None:
+    """区間そのものではなく前後に余白を取る (2-13)。
+
+    区間だけを切り出すと「跳ねたのが帯の中か外か」が判定できない。
+    余白は区間長の ``ZOOM_MARGIN`` 倍だが、**系列の端では切り詰められる**
+    (窓が系列の外へ出ると、データの無い帯が図に入る)。
+    """
+    rows = timeline_rows()
+    spans = _anomaly_spans(rows)
+    first, last = _zoom_span(spans, rows)
+    span_first, span_last = spans[0]
+    indices = [row.index for row in rows]
+    assert first < span_first, "左に余白がありません"
+    assert last > span_last, "右に余白がありません"
+    assert first >= min(indices) and last <= max(indices), "系列の外へ出ています"
+    margin = int((span_last - span_first) * ZOOM_MARGIN)
+    low, high = min(indices), max(indices)
+    assert first == max(low, span_first - margin)
+    assert last == min(high, span_last + margin)
+
+
+def test_the_zoom_window_falls_back_to_the_middle_without_anomalies() -> None:
+    """異常が1つも無い系列でも窓が決まること (縮退ケース)。
+
+    ここで例外を投げると、正常だけの系列で図がまるごと落ちる。
+    """
+    rows = tuple(
+        TimelineRow(
+            dataset=row.dataset,
+            series=row.series,
+            method=row.method,
+            replicate=row.replicate,
+            index=row.index,
+            score=row.score,
+            is_anomaly=False,
+            is_ignored=False,
+            threshold=row.threshold,
+        )
+        for row in timeline_rows()
+    )
+    first, last = _zoom_span((), rows)
+    indices = [row.index for row in rows]
+    assert min(indices) <= first < last <= max(indices)
