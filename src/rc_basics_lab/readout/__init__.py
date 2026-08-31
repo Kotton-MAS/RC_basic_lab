@@ -8,10 +8,11 @@
 import しない** (D-50)。
 """
 
-from rc_basics_lab.readout import autoregressive, design, ridge
+from rc_basics_lab.readout import autoregressive, cross_validation, design, ridge
 
 __all__ = [
     "autoregressive",
+    "cross_validation",
     "design",
     "ridge",
 ]

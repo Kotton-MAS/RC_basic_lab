@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "fdd378ef9b3c8178a742468eb9071dd090fd36b0",
+  "commit": "a11d0fe5f5c5a3146552b231f38b289ee8b3f4e1",
   "config": {
     "delay_parity": {
       "delay": 1,
@@ -56,6 +56,11 @@
         10.0,
         100.0
       ],
+      "cv": {
+        "embargo": null,
+        "n_folds": 0,
+        "scheme": "rolling"
+      },
       "n_lags_grid": [
         1,
         2,
@@ -183,6 +188,6 @@
       }
     }
   ],
-  "timestamp_utc": "2026-08-31T03:44:58.328616+00:00",
-  "wall_time_s": 1.2934488330502063
+  "timestamp_utc": "2026-08-31T10:13:10.884759+00:00",
+  "wall_time_s": 1.2023437500465661
 }

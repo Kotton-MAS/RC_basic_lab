@@ -72,6 +72,7 @@ from rc_basics_lab.config.esp02 import (
 from rc_basics_lab.config.experiment01 import (
     DEFAULT_ALPHA_GRID,
     TASK_LENGTH_FIELDS,
+    CrossValidationConfig,
     DelayParityConfig,
     ExperimentConfig,
     MackeyGlassConfig,
@@ -109,6 +110,7 @@ __all__ = [
     "Chaos04Config",
     "ConfigError",
     "ConservationConfig",
+    "CrossValidationConfig",
     "DelayParityConfig",
     "DriveConfig",
     "ESNConfig",

@@ -72,11 +72,35 @@ class DelayParityConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class CrossValidationConfig:
+    """alpha を交差検証で選ぶ設定 (既定は**使わない**)。
+
+    Attributes:
+        n_folds: 折りの数。**0 なら交差検証を使わない** (訓練 + 検証の
+            単一分割で選ぶ、従来の挙動)。有効にするなら 2 以上。
+        scheme: 折り方。``rolling`` は訓練区間が常に検証区間より前で、未来から
+            過去への漏れを構造上作れない。``blocked`` はデータを使い切れるが
+            時間の向きを無視する (``readout/cross_validation.py`` の注を参照)。
+        embargo: 訓練区間と検証区間のあいだに捨てる行数。**設計行列の
+            ``first_valid`` 以上にすること** —— それ未満だと検証行が訓練行と
+            同じ入力を含む。``null`` なら ``first_valid`` を自動で使う。
+
+    **既定を変えない理由**: ``results/`` は単一分割で作られており、選び方を
+    変えると記事の数値が変わる。交差検証は明示的に有効にする。
+    """
+
+    n_folds: int = 0
+    scheme: str = "rolling"
+    embargo: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class RidgeConfig:
     """リッジ回帰の設定。``alpha_grid`` は全手法が共有する単一キー (D-04)。"""
 
     alpha_grid: tuple[float, ...] = DEFAULT_ALPHA_GRID
     n_lags_grid: tuple[int, ...] = (1, 2, 4, 8, 16)
+    cv: CrossValidationConfig = field(default_factory=CrossValidationConfig)
 
 
 @dataclass(frozen=True, slots=True)

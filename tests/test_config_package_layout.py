@@ -145,6 +145,13 @@ D-13 と正面から衝突する。したがって**減る側は差分0**を要�
 向きで再エクスポートしている。
 """
 
+CROSS_VALIDATION_ADDITIONS = ("CrossValidationConfig",)
+"""交差検証が ``config.__all__`` へ足した公開名。
+
+``RidgeConfig.cv`` の型で、``ExperimentConfig`` の葉として YAML から設定できる。
+``CHAOS04_ADDITIONS`` と同じ扱い —— **増える側は列挙したぶんだけ**許す。
+"""
+
 ANOMALY05_ADDITIONS = (
     "Anomaly05Config",
     "AnomalyDatasetConfig",
@@ -317,7 +324,10 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
         f"{sorted(set(PRE_SPLIT_ALL) - actual)}"
     )
     recorded_additions = (
-        set(CHAOS04_ADDITIONS) | set(ANOMALY05_ADDITIONS) | set(SYMMETRY_ADDITIONS)
+        set(CHAOS04_ADDITIONS)
+        | set(CROSS_VALIDATION_ADDITIONS)
+        | set(ANOMALY05_ADDITIONS)
+        | set(SYMMETRY_ADDITIONS)
     )
     assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
         "config.__all__ が記録していない公開名を増やしています "
@@ -370,6 +380,7 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
     assert actual - before == (
         set(EXPECTED_SUBMODULES)
         | set(CHAOS04_ADDITIONS)
+        | set(CROSS_VALIDATION_ADDITIONS)
         | set(ANOMALY05_ADDITIONS)
         | set(SYMMETRY_ADDITIONS)
     )

@@ -7,7 +7,7 @@
       "fig_state_space.png": "sha256:e41fd0661930ebf85bc07155f8764ab6389421dc796ea3891265f84e3b4f816a",
       "fig_state_waveform.png": "sha256:bdadc125213beee03e7cd52db58b8b48dda0ebd9ee8cef0cdb22a59fc7959794",
       "horizon.csv": "sha256:a33cd564f319703bc44e583aa6ebb8e17034f3959ac535f243fc15093d9d8e7d",
-      "meta.json": "sha256:4d6164f415f09657a043ddc71dda04bdc86ebc4d29a4d6634ff0dcb4ae95b1e7"
+      "meta.json": "sha256:737e4e8c1229789fa52b1d18b36e05590c996cba29c84e2c3e77414bad4262a1"
     },
     "02_esp_and_dynamics": {
       "esp_diagnostics.csv": "sha256:ff0358f71b1fb12d325cba456bfdd311cb7c9af133832c3bba349ebba0a91c1b",
@@ -16,7 +16,7 @@
       "fig_esp_map.png": "sha256:93e4efd0764cede50802f569802029c174e86026acee8568ccf11186bd91bc33",
       "fig_leak_timescale.png": "sha256:a3248bd0b68caadd61a6cb6a68349ca2fcbf0888c7a03fd1ea4d788c49404a56",
       "fig_washout_sensitivity.png": "sha256:f8ad86c903f76ad7ee70448d80fc9eccc1993acb1a758eb5caabb9e8bc8bbd27",
-      "meta.json": "sha256:0b7665b3b90705d3089ba61b6a6fcb111b8a086c8ef229b190dbe4567045c8ca",
+      "meta.json": "sha256:b1978aa2b8b247939777631901d9e9649e9002508753423507ddb72d46d30a74",
       "washout_sensitivity.csv": "sha256:4a2c44d4e21eb798b92c89388cabe93d263db5c760c85fe89bef1f5067448a4d"
     },
     "03_capacity": {
@@ -28,7 +28,7 @@
       "fig_mc_sweep.png": "sha256:629fbae4ec638e966728eab9fe53c2997bf9dedb1f6dd654d8622d94a9209bc2",
       "fig_memory_nonlinearity.png": "sha256:a96f8570e1ab106874500cc1f9b6578c61817f7994ddb22ffb71840c3dea7733",
       "fig_narma10.png": "sha256:295fa968e4b33685d7814639dc4c2ed38d471ea023bdf8b4f6916c8e6568427e",
-      "meta.json": "sha256:fc7a2d7b42208bfbce63f8ca168530c6aa6ce1ab172ba568a474465aef7fa78c",
+      "meta.json": "sha256:c37f425df4877408d33c0204ce946c800d19191352b4443783948dde9d874f41",
       "narma10.csv": "sha256:eaf1ccb7adba69785cf50b3ccc9bb85e97dee93e395f691351a797ad1b36124e",
       "narma10_taps.csv": "sha256:92ca3189b69f1f8366bf82c26ea3f3fa5538b9e3d125d80a5971884d050cce41"
     },
@@ -41,7 +41,7 @@
       "fig_valid_time.png": "sha256:33fe42c61a11b0232881d342e4dff1535fa2e414a4ac28bc5dc7477a1c153697",
       "freerun.csv": "sha256:a64527beaee767d8ecf64a732fca2fec38eca3d3dce3ae5c108d8e54638a6cc2",
       "freerun_profile.csv": "sha256:f6d53207fde0eead81e7d57532fe855f48a0d6aef10a588a3ba5ed1257f118e2",
-      "meta.json": "sha256:9236116bd4eda0a53c393b9296768baa01b7b9181123ff78b949c138ebfb6a96",
+      "meta.json": "sha256:9fed5b55a6b5863977a4090bd7a42e6c6152713666272b38404bd10039e19d28",
       "onestep.csv": "sha256:d20b164c1279eeac828c6535883690abf56102c777c5dbb3de78e163e8475737",
       "stability.csv": "sha256:bd25566a356e0c96b320426ff79d15519bfaa3d0c6d6a3e74fafc5cb1b665939"
     }
