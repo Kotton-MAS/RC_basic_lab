@@ -671,7 +671,7 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     measurement = measure_capacity(
         states, u, ctx=ctx, mc_cfg=config.mc, ipc_cfg=config.ipc
     )
-    esn = require_esn(entry.esn, "テスト (03 の容量行)")
+    esn = require_esn(entry.reservoir, "テスト (03 の容量行)")
     row = capacity_row_from(
         measurement,
         experiment="3C_narma10",
@@ -696,7 +696,7 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     )
 
     assert row.experiment == "3C_narma10"
-    assert row.n_units == entry.esn.n_units
+    assert row.n_units == entry.reservoir.n_units
     assert row.n_steps == states.shape[0]
     assert row.n_degrees == len(config.ipc.max_delay_by_degree)
     assert row.mc_total > 0.0

@@ -162,7 +162,7 @@ def test_chaos_esn_section_matches_the_declared_choice() -> None:
     assert CHAOS_ESN_SECTION == "esn_mackey_glass"
     assert chaos_esn_config(config.base) is getattr(config.base, CHAOS_ESN_SECTION)
     for entry in chaos_task_entries(config):
-        assert entry.esn is chaos_esn_config(config.base)
+        assert entry.reservoir is chaos_esn_config(config.base)
 
 
 def test_free_run_spec_matches_the_one_step_esn_candidate() -> None:
@@ -601,7 +601,7 @@ def test_closed_loop_design_matches_the_teacher_forced_row(method: str) -> None:
     switch = plan.split.test.start + config.freerun.warmup_steps - 1
     reservoir = (
         build_reservoir(
-            entry.esn,
+            entry.reservoir,
             make_rng(config.base.seeds, SeedStream.RESERVOIR, 0),
             n_inputs=plan.task.n_inputs,
         )

@@ -170,9 +170,8 @@ def run_onestep(config: Chaos04Config) -> list[ResultRow]:
     )
     rows: list[ResultRow] = []
     for entry in chaos_task_entries(config):
-        # D-34 の規律を 04 の確保軸にも効かせる。plan_replicate が状態行列と
-        # 重み行列を確保する**前に**落とす。
-        validate_state_matrix_bounds(entry.esn.n_units, task_length(config, entry.name))
+        units = entry.reservoir.n_units  # D-34 を 04 にも: 確保の前に落とす
+        validate_state_matrix_bounds(units, task_length(config, entry.name))
         rows.extend(run_task(config.base, entry))
     logger.info(
         "experiment=4A_onestep 行数=%d 課題=%s",
@@ -265,7 +264,7 @@ def fit_teacher_forced(
             候補が1本でない場合 (D-08)、または課題・分割側の値域違反。
     """
     base = config.base
-    validate_n_units_bound(task_entry.esn.n_units)
+    validate_n_units_bound(task_entry.reservoir.n_units)
     if plan is None:
         plan = plan_replicate(base, task_entry, replicate)
     validate_standardization_window(
@@ -450,7 +449,7 @@ def run_free_run(
     Args:
         config: 04 の設定。
         task_entry: ``chaos_task_entries`` が組んだ課題。**ESN 設定は
-            ``task_entry.esn`` が単一の真実**である (4-C は条件ごとに
+            ``task_entry.reservoir`` が単一の真実**である (4-C は条件ごとに
             ``spectral_radius`` / ``leak_rate`` / ``state_noise`` を差し替えた
             entry を渡す)。教師強制の状態を作る ``plan_replicate`` も同じ
             entry を見るので、「温めた ESN」と「自走する ESN」が食い違う経路が
@@ -475,7 +474,7 @@ def run_free_run(
     """
     started = time.perf_counter()
     freerun_cfg = config.freerun
-    esn_cfg = task_entry.esn
+    esn_cfg = task_entry.reservoir
     steps = freerun_cfg.free_run_steps if n_steps is None else n_steps
     validate_free_run_bounds(freerun_cfg.free_run_steps, esn_cfg.n_units)
     validate_free_run_bounds(steps, esn_cfg.n_units)
@@ -946,7 +945,8 @@ def run_freerun_experiment(
     evaluations: list[FreeRunEvaluation] = []
     profile: list[FreeRunProfileRow] = []
     for entry in chaos_task_entries(config):
-        validate_state_matrix_bounds(entry.esn.n_units, task_length(config, entry.name))
+        units = entry.reservoir.n_units
+        validate_state_matrix_bounds(units, task_length(config, entry.name))
         dt = task_sampling_interval(config, entry.name)
         # **lambda_max を推定してあるのは Lorenz だけ** (D-42)。MG の最大
         # Lyapunov 指数は 04 では推定していない —— Benettin 法には遅延系の履歴

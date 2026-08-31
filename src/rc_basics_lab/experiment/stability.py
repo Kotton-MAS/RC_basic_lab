@@ -195,8 +195,7 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         * stability.n_replicates
     )
     validate_condition_count(n_conditions)
-    # 軸5 (条件数) と軸4 (stats_steps) は単独では上限内でも、**積** (逐次
-    # シミュレーションの総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
+    # 軸5 と軸4 は単独では上限内でも、**積** が軸検査をすり抜けて膨らみうる。
     validate_total_step_count(n_conditions * config.freerun.stats_steps)
     return tuple(
         StabilityCondition(
@@ -268,9 +267,8 @@ def condition_task_entry(
             trajectory_cache[replicate] = base_entry.generate(rng)
         return trajectory_cache[replicate]
 
-    return dataclasses.replace(
-        base_entry, esn=condition_esn_config(config, condition), generate=generate
-    )
+    reservoir = condition_esn_config(config, condition)
+    return dataclasses.replace(base_entry, reservoir=reservoir, generate=generate)
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,7 +391,9 @@ def evaluate_stability_condition(
     """
     started = time.perf_counter()
     entry = condition_task_entry(config, condition, trajectory_cache=trajectory_cache)
-    validate_state_matrix_bounds(entry.esn.n_units, task_length(config, entry.name))
+    validate_state_matrix_bounds(
+        entry.reservoir.n_units, task_length(config, entry.name)
+    )
 
     outcome = run_free_run(
         config,
@@ -416,7 +416,7 @@ def evaluate_stability_condition(
     )
     wall_time_state_s = time.perf_counter() - started
 
-    esn = require_esn(entry.esn, "実験4-D (自走と同じ状態行列への容量)")
+    esn = require_esn(entry.reservoir, "実験4-D (自走と同じ状態行列への容量)")
     row = StabilityRow(
         experiment=EXPERIMENT_STABILITY,
         rho=condition.rho,

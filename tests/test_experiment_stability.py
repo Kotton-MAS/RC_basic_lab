@@ -201,7 +201,7 @@ def test_condition_esn_config_moves_only_the_three_axes() -> None:
         if getattr(base, item.name) != getattr(changed, item.name)
     }
     assert moved == {"spectral_radius", "leak_rate", "state_noise"}
-    assert condition_task_entry(config, condition).esn == changed
+    assert condition_task_entry(config, condition).reservoir == changed
 
 
 def test_stability_never_uses_the_esp_condition_path() -> None:

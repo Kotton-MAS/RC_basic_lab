@@ -1327,17 +1327,21 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 
 **分割単位は実験サイクル**。`_common` だけがサイクルに属さない読み込み規律を持つ:
 
-| モジュール | 持つもの | 非空行数 | 総行数 |
-|---|---|---|---|
-| `_common.py` | `ConfigError` / `_coerce*` (別名・判別子つき union を含む) / `_build` / `_read_yaml` / `_deep_merge` / `load_config_as` | 259 | 310 |
-| `experiment01.py` | 01 の設定 dataclass 群 / `CrossValidationConfig` / `TASK_LENGTH_FIELDS` / `load_config` | 150 | 190 |
-| `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 | 190 | 244 |
-| `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` / `SymmetrySweepConfig` | 220 | 274 |
-| `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` | 170 | 207 |
-| `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` | 297 | 363 |
-| `anomaly05_sweep.py` | 05 の掃引の格子 / `AnomalyProtocolSweepConfig` / `AnomalySizeSweepConfig` | 48 | 64 |
-| `__init__.py` | 公開シンボルの再エクスポートと `__all__` | 142 | 149 |
-| **合計** | — | **1476** | **1801** |
+行数は**この表に載せない**。1モジュールの上限（非空 300 行）は
+`tests/test_config_package_layout.py` が持っており、ここに数字を書くと
+二重管理になるうえ、**無関係なリファクタのたびに表が動いてマージ衝突を起こす**
+（実測でそうなった）。この表が答えるのは「どのモジュールが何を持つか」だけである。
+
+| モジュール | 持つもの |
+|---|---|
+| `_common.py` | `ConfigError` / `_coerce*` (別名・判別子つき union を含む) / `_build` / `_read_yaml` / `_deep_merge` / `load_config_as` |
+| `experiment01.py` | 01 の設定 dataclass 群 / `CrossValidationConfig` / `TASK_LENGTH_FIELDS` / `load_config` |
+| `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 |
+| `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` / `SymmetrySweepConfig` |
+| `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` |
+| `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` |
+| `anomaly05_sweep.py` | 05 の掃引の格子 / `AnomalyProtocolSweepConfig` / `AnomalySizeSweepConfig` |
+| `__init__.py` | 公開シンボルの再エクスポートと `__all__` |
 
 上限は**1モジュールあたり非空 300 行**（次に到達した時点で「もう1段割る」判断を
 機械が要求する）。T1 の分割直後の合計は 704 行（分割前 615 行 + 89 行）で、増分は

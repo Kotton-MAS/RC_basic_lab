@@ -189,7 +189,7 @@ def run_horizon(config: ExperimentConfig, entry: TaskEntry) -> tuple[HorizonRow,
                 task=entry.name,
                 method=ESN_METHOD,
                 replicate=replicate,
-                n_units=entry.esn.n_units,
+                n_units=entry.reservoir.n_units,
                 horizon=HORIZON_STEPS,
                 nrmse_horizon=nrmse_h,
                 log10_nrmse_horizon=(
@@ -204,7 +204,7 @@ def run_horizon(config: ExperimentConfig, entry: TaskEntry) -> tuple[HorizonRow,
             "task=%s replicate=%d N=%d nrmse84=%.4g log10=%.2f (%.2fs)",
             entry.name,
             replicate,
-            entry.esn.n_units,
+            entry.reservoir.n_units,
             nrmse_h,
             rows[-1].log10_nrmse_horizon,
             elapsed,
@@ -228,7 +228,7 @@ def _updater(
     # ここで 0 に固定すると『状態を作った ESN』と『自走する ESN』が食い違う。
     # 実測: 固定していた間、replicate 0 以外は NRMSE が 1e85 まで発散した。
     rng = make_rng(config.seeds, SeedStream.RESERVOIR, replicate)
-    esn = build_reservoir(entry.esn, rng, n_inputs=plan.task.n_inputs)
+    esn = build_reservoir(entry.reservoir, rng, n_inputs=plan.task.n_inputs)
     return esn_state_updater(esn)
 
 

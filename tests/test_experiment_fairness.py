@@ -218,7 +218,7 @@ def test_esn_hyperparameters_are_not_validation_selected() -> None:
     )
 
     entry = parity_entry(config)
-    assert entry.esn == config.esn_delay_parity
+    assert entry.reservoir == config.esn_delay_parity
 
     weak = dataclasses.replace(
         config,

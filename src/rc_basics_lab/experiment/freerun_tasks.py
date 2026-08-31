@@ -38,7 +38,7 @@ def lorenz_task_entry(config: Chaos04Config) -> TaskEntry:
     """Lorenz の ``TaskEntry`` を組む (**``build_tasks`` には足さない**、D-31)。"""
     return TaskEntry(
         name=TASK_NAME_LORENZ,
-        esn=chaos_esn_config(config.base),
+        reservoir=chaos_esn_config(config.base),
         generate=lambda rng: generate_lorenz(config.lorenz, rng),
     )
 
@@ -51,7 +51,7 @@ def mackey_glass_task_entry(config: Chaos04Config) -> TaskEntry:
     """
     return TaskEntry(
         name=TASK_NAME_MACKEY_GLASS,
-        esn=chaos_esn_config(config.base),
+        reservoir=chaos_esn_config(config.base),
         generate=lambda rng: generate_standardized_mackey_glass(
             config.base.mackey_glass,
             rng,

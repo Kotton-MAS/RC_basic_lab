@@ -9,6 +9,16 @@
 
 ``uv run python scripts/module_map.py`` で書き出し、
 ``tests/test_module_map.py`` が「生成し直しても同じか」を見る。
+
+**行数の列は持たない。** 以前は各モジュールの行数を載せていたが、これが
+**マージ衝突の唯一の原因**になった (実測: 3 本連続で PR がこのファイルだけで
+衝突した)。行数は無関係なブランチのリファクタでも動くので、並行して作業すると
+必ず同じ行を書き換え合う。しかも行数は ``tests/test_module_line_budget.py``
+が既に守っており、ここに置くのは二重管理である。
+
+この表が変わるのは**モジュールが増減・改名されたときと、1行要約が変わったとき
+だけ**にする。そこは「地図が古くなった」と言うべき変化そのものなので、
+衝突しても手で直す価値がある。
 """
 
 from __future__ import annotations
@@ -58,17 +68,15 @@ def summary_of(path: Path) -> str:
     return doc.splitlines()[0].strip().rstrip("。.")
 
 
-def modules_by_layer() -> dict[str, list[tuple[str, str, int]]]:
-    """層 -> ``(モジュール名, 要約, 行数)`` の並び。"""
-    grouped: dict[str, list[tuple[str, str, int]]] = defaultdict(list)
+def modules_by_layer() -> dict[str, list[tuple[str, str]]]:
+    """層 -> ``(モジュール名, 要約)`` の並び。**行数は持たない** (上の注を参照)。"""
+    grouped: dict[str, list[tuple[str, str]]] = defaultdict(list)
     for path in sorted(SRC.rglob("*.py")):
         if path.name == "__init__.py" or "__pycache__" in path.parts:
             continue
         relative = path.relative_to(SRC)
         layer = relative.parts[0] if len(relative.parts) > 1 else "core"
-        name = relative.as_posix()
-        lines = len(path.read_text(encoding="utf-8").splitlines())
-        grouped[layer].append((name, summary_of(path), lines))
+        grouped[layer].append((relative.as_posix(), summary_of(path)))
     return grouped
 
 
@@ -185,8 +193,8 @@ def render() -> str:
         if not items:
             out += ["(モジュールなし)", ""]
             continue
-        out += ["| モジュール | 何をするか | 行 |", "|---|---|---|"]
-        out += [f"| `{name}` | {summary} | {lines} |" for name, summary, lines in items]
+        out += ["| モジュール | 何をするか |", "|---|---|"]
+        out += [f"| `{name}` | {summary} |" for name, summary in items]
         out += [""]
     unknown = sorted(set(grouped) - {layer for layer, _ in LAYERS})
     if unknown:
@@ -197,10 +205,7 @@ def render() -> str:
             "",
         ]
         for layer in unknown:
-            out += [
-                f"| `{name}` | {summary} | {lines} |"
-                for name, summary, lines in grouped[layer]
-            ]
+            out += [f"| `{name}` | {summary} |" for name, summary in grouped[layer]]
         out += [""]
     return "\n".join(out)
 
