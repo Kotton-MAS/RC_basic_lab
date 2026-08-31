@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "a11d0fe5f5c5a3146552b231f38b289ee8b3f4e1",
+  "commit": "2cbe55603e866242039bda9abc0a20d755d32978",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -113,22 +113,26 @@
         "esn_delay_parity": {
           "activation": "tanh",
           "bias_scale": 0.1,
-          "density": 0.1,
           "input_scale": 1.0,
           "leak_rate": 1.0,
           "n_units": 200,
           "spectral_radius": 0.9,
-          "state_noise": 0.0
+          "state_noise": 0.0,
+          "topology": {
+            "density": 0.1
+          }
         },
         "esn_mackey_glass": {
           "activation": "tanh",
           "bias_scale": 0.1,
-          "density": 0.1,
           "input_scale": 0.5,
           "leak_rate": 0.3,
           "n_units": 50,
           "spectral_radius": 0.9,
-          "state_noise": 0.0
+          "state_noise": 0.0,
+          "topology": {
+            "density": 0.1
+          }
         },
         "mackey_glass": {
           "beta": 0.2,
@@ -392,42 +396,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.827730916906148
+    "wall_time_s": 3.8943145421799272
   },
-  "timestamp_utc": "2026-08-31T10:24:49.571773+00:00",
+  "timestamp_utc": "2026-08-31T14:00:26.125057+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.41994345956482,
-      "wall_time_mc_s": 4.272008581785485,
-      "wall_time_s": 43.201324079651386,
-      "wall_time_state_s": 7.506129789631814
+      "wall_time_ipc_s": 31.706045077182353,
+      "wall_time_mc_s": 4.301412123488262,
+      "wall_time_s": 43.58164250059053,
+      "wall_time_state_s": 7.570745621807873
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 82.39395279437304,
-      "wall_time_mc_s": 9.195962329860777,
-      "wall_time_s": 107.9299525001552,
-      "wall_time_state_s": 16.335646458901465
+      "wall_time_ipc_s": 84.55485850083642,
+      "wall_time_mc_s": 9.530800750944763,
+      "wall_time_s": 110.61841179197654,
+      "wall_time_state_s": 16.528197165811434
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 249.88002158515155,
-      "wall_time_mc_s": 22.39284824952483,
-      "wall_time_s": 300.5990483749192,
-      "wall_time_state_s": 28.32067483337596
+      "wall_time_ipc_s": 270.1153743737377,
+      "wall_time_mc_s": 23.916586125502363,
+      "wall_time_s": 322.41083866590634,
+      "wall_time_state_s": 28.373335001524538
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20663116709329188,
-      "wall_time_mc_s": 0.024616957874968648,
-      "wall_time_s": 0.5053387910593301,
-      "wall_time_state_s": 0.04966658307239413
+      "wall_time_ipc_s": 0.20607020799070597,
+      "wall_time_mc_s": 0.024617666844278574,
+      "wall_time_s": 0.5015479167923331,
+      "wall_time_state_s": 0.049046958796679974
     }
   ],
-  "wall_time_s": 466.8116105000954
+  "wall_time_s": 491.71836366690695
 }
