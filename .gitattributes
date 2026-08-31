@@ -1,0 +1,15 @@
+# 生成物と、その指紋は **行単位でマージしない** (D-119)
+#
+# tests/artifact_manifest.csv と tests/golden/manifest.json は行指向なので、
+# 2本のブランチが別々の実験を再生成すると git が黙って両方の行を採用する。
+# できあがる指紋は**どちらのツリーとも一致しない**。
+#
+# make ci は赤くなるので黙って壊れはしないが、気づくのがマージの後になり、
+# 再生成をやり直す羽目になる (実測: 全5実験で約 15 分)。
+# -merge を付けると衝突として即座に出るので、統合してから一度だけ再生成できる。
+tests/artifact_manifest.csv -merge
+tests/golden/manifest.json  -merge
+results/**                  -merge
+
+# PNG は差分を出しても読めない
+results/**/*.png -diff
