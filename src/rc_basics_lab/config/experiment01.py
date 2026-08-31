@@ -18,6 +18,7 @@ from pathlib import Path
 
 from rc_basics_lab.config._common import load_config_as
 from rc_basics_lab.reservoir.esn import ESNConfig
+from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.seeds import SeedConfig
 
 DEFAULT_ALPHA_GRID: tuple[float, ...] = (
@@ -109,10 +110,14 @@ def _delay_parity_esn() -> ESNConfig:
 class ExperimentConfig:
     """実験1本ぶんの設定。
 
-    ESN の構造ハイパーパラメータは課題ごとに別セクション
+    リザバーの構造ハイパーパラメータは課題ごとに別セクション
     (``esn_mackey_glass`` / ``esn_delay_parity``) に持つ。MG は漏れ積分
-    (leak=0.3) が効き、パリティは leak=1.0 が要るため、1つの ``esn`` セクションに
+    (leak=0.3) が効き、パリティは leak=1.0 が要るため、1つのセクションに
     まとめると片方の課題に不利な値を押し付けることになるため。
+
+    型は ``ReservoirConfig`` である (``ESNConfig`` ではない)。**モデルを足す
+    ときに触るのは ``reservoir/`` だけ**で、ここは変えなくてよい。YAML では
+    ``kind: esn`` で明示でき、省略すると既定 (ESN) になる。
     """
 
     name: str = "01_what_is_rc"
@@ -122,8 +127,8 @@ class ExperimentConfig:
     ridge: RidgeConfig = field(default_factory=RidgeConfig)
     mackey_glass: MackeyGlassConfig = field(default_factory=MackeyGlassConfig)
     delay_parity: DelayParityConfig = field(default_factory=DelayParityConfig)
-    esn_mackey_glass: ESNConfig = field(default_factory=ESNConfig)
-    esn_delay_parity: ESNConfig = field(default_factory=_delay_parity_esn)
+    esn_mackey_glass: ReservoirConfig = field(default_factory=ESNConfig)
+    esn_delay_parity: ReservoirConfig = field(default_factory=_delay_parity_esn)
 
 
 TASK_LENGTH_FIELDS: Mapping[str, str] = {
