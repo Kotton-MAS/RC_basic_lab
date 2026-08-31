@@ -21,6 +21,8 @@ from typing import Protocol, cast, get_args, get_origin, get_type_hints
 
 import yaml
 
+from rc_basics_lab.overrides import apply_overrides
+
 
 class _DataclassFactory[T_co](Protocol):
     """dataclass のコンストラクタ。``Any`` を書かずにキーワード構築を型付けする。"""
@@ -128,27 +130,75 @@ def _build[T](cls: type[T], raw: object, location: str) -> T:
     return factory(**kwargs)
 
 
-def load_config_as[T](path: Path | str, cls: type[T]) -> T:
+def _read_yaml(path: Path) -> dict[str, object]:
+    """YAML を1つ読んでマッピングにする (空ファイルは空マッピング)。"""
+    if not path.is_file():
+        raise ConfigError(f"設定ファイルが見つかりません: {path}")
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path}: YAML の解析に失敗しました: {exc}") from exc
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ConfigError(f"{path}: マッピングが必要です: {raw!r}")
+    return {str(key): value for key, value in raw.items()}
+
+
+def _deep_merge(
+    base: Mapping[str, object], patch: Mapping[str, object]
+) -> dict[str, object]:
+    """``patch`` を ``base`` に深くかぶせる (プリセット用)。
+
+    どちらもマッピングなら再帰し、そうでなければ ``patch`` で置き換える。
+    **リストは置き換える** —— 格子 (``alpha_grid`` など) を部分的に混ぜると、
+    プリセットを読んだだけでは実際に回る格子が分からなくなる。
+    """
+    merged = dict(base)
+    for key, value in patch.items():
+        current = merged.get(key)
+        if isinstance(current, Mapping) and isinstance(value, Mapping):
+            merged[key] = _deep_merge(
+                cast("Mapping[str, object]", current),
+                cast("Mapping[str, object]", value),
+            )
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_config_as[T](
+    path: Path | str,
+    cls: type[T],
+    *,
+    preset: Path | str | None = None,
+    overrides: Sequence[str] = (),
+) -> T:
     """YAML から任意の設定 dataclass ``cls`` を読み込む (D-13)。
 
     実験ごとに設定クラスは分かれるが、読み込み規律 (未知キーで即失敗・暗黙の
     型変換をしない・再帰構築) は1か所に置く。02 以降の実験がローダを写経すると
     D-09 の強度が実験ごとに割れるため。
 
+    適用の順は **本体 YAML -> プリセット -> ``--set``** である。右のものが勝つ。
+    どちらも**生のマッピングに適用してから** ``_build`` へ渡すので、未知キーの
+    検査が上書きにもプリセットにも同じ強さで効く。
+
     Args:
-        path: YAML ファイルのパス。
+        path: 本体の YAML ファイル。
         cls: 構築する設定 dataclass。
+        preset: かぶせる YAML (``experiments/0N_*/presets/quick.yaml`` など)。
+            差分だけを書く。``None`` なら何もかぶせない。
+        overrides: ``--set`` の ``key.path=value`` の並び。
 
     Raises:
         ConfigError: ファイルが無い / 未知キーがある / 型が合わない場合。
+        OverrideError: ``--set`` の書式か経路が不正な場合。
     """
     config_path = Path(path)
-    if not config_path.is_file():
-        raise ConfigError(f"設定ファイルが見つかりません: {config_path}")
-    try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{config_path}: YAML の解析に失敗しました: {exc}") from exc
-    if raw is None:
-        raw = {}
+    raw = _read_yaml(config_path)
+    if preset is not None:
+        raw = _deep_merge(raw, _read_yaml(Path(preset)))
+    if overrides:
+        raw = apply_overrides(raw, overrides)
     return _build(cls, raw, str(config_path))

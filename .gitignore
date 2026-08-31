@@ -185,3 +185,6 @@ settings.local.json
 .claude/worktrees/
 # macOS
 .DS_Store
+
+# 手元の試行の出力先 (--out の既定)。成果物は results/ にだけ置く
+scratch/

@@ -27,12 +27,17 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from rc_basics_lab.cli import (
+    ExperimentArgs,
+    build_parser,
+    default_out_for,
+    parse_experiment_args,
+)
 from rc_basics_lab.config import Esp02Config, load_config_as
 from rc_basics_lab.experiment.esp_pipeline import (
     run_and_report_esp,
@@ -42,32 +47,22 @@ from rc_basics_lab.experiment.esp_pipeline import (
 logger = logging.getLogger("rc_basics_lab.experiments.02_esp_and_dynamics")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.yaml"
-DEFAULT_OUT = Path("results/02_esp_and_dynamics")
+DEFAULT_OUT = default_out_for(DEFAULT_CONFIG)
+"""``--out`` 未指定時の出力先。``main.py`` と同じ関数から導く。"""
 
 
 @dataclass(frozen=True, slots=True)
 class Args:
-    """コマンドライン引数。"""
+    """コマンドライン引数 (共通分は ``ExperimentArgs``)。"""
 
-    config: Path
-    out: Path
+    common: ExperimentArgs
     threshold_sweep: bool
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
-    """引数を解析する。"""
-    parser = argparse.ArgumentParser(
-        description="実験2: ESP 判定・条件付き Lyapunov 指数・実効時定数を測る"
-    )
-    parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help=f"実験設定 YAML (既定: {DEFAULT_CONFIG})",
-    )
-    parser.add_argument(
-        "--out",
-        default=DEFAULT_OUT,
-        help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
+    """引数を解析する。共通フラグは ``rc_basics_lab.cli`` が持つ。"""
+    parser = build_parser(
+        "実験2: ESP 判定・条件付き Lyapunov 指数・実効時定数を測る", DEFAULT_CONFIG
     )
     parser.add_argument(
         "--threshold-sweep",
@@ -77,10 +72,9 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
             "(esp_threshold_sensitivity.csv) だけを再生成する (D-16 / design.md §9)"
         ),
     )
-    namespace = parser.parse_args(argv)
+    common, namespace = parse_experiment_args(parser, argv)
     return Args(
-        config=Path(str(namespace.config)),
-        out=Path(str(namespace.out)),
+        common=common,
         threshold_sweep=bool(namespace.threshold_sweep),
     )
 
@@ -93,18 +87,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     ではなく「既定値が結論を作っていない」ことの根拠だからである。
     """
     args = parse_args(argv)
-    config = load_config_as(args.config, Esp02Config)
+    config = load_config_as(
+        args.common.config,
+        Esp02Config,
+        preset=args.common.preset,
+        overrides=args.common.overrides,
+    )
     logger.info(
         "設定を読み込みました: %s (n_units=%d, n_steps=%d, n_replicates=%d)",
-        args.config,
+        args.common.config,
         config.reservoir.n_units,
         config.drive.n_steps,
         config.reservoir.n_replicates,
     )
     if args.threshold_sweep:
-        run_and_report_threshold_sweep(config, args.out)
+        run_and_report_threshold_sweep(config, args.common.out)
         return 0
-    run_and_report_esp(config, args.out)
+    run_and_report_esp(config, args.common.out)
     return 0
 
 

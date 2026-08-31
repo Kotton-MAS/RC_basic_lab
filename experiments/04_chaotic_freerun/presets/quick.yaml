@@ -1,0 +1,47 @@
+# 高速プリセット: 構造を保ったまま小さくする (--preset quick)
+#
+# **本体 config.yaml との差分だけ**を書く。
+#
+# 04 の重さは (a) レプリケート 10 本 (b) 4-C の 4x4x4 格子 x 5 レプリケート
+# (c) 自走 20000 ステップ の3つ。3つとも削る。
+#
+# **free_run_steps は本番より短くしている。** 本体の config には「速くする
+# ために削らない (仕様 §10-1)」と書いてあるが、それは**成果物**の話である。
+# quick の有効予測時間は本番と比べられない —— 見るのは「自走がアトラクタの
+# 形を保つか / いつ崩れるか」の定性だけ。
+#
+# stability の格子は各軸 2 点を残す。1 点にすると 3 態マップが「マップ」で
+# なくなり、図が成立しない。
+#
+# 実測 (2026-08-31): 既定 330 秒 -> quick 4.9 秒 (67 倍)。
+
+base:
+  n_replicates: 2
+  ridge:
+    alpha_grid: [1.0e-08, 1.0e-04, 1.0]
+    n_lags_grid: [1, 4, 16]
+  esn_mackey_glass:
+    n_units: 50
+  esn_delay_parity:
+    n_units: 50
+
+lorenz:
+  length: 2500
+  standardize_steps: 900
+
+mackey_glass:
+  standardize_steps: 900
+
+freerun:
+  free_run_steps: 300
+  stats_steps: 2000
+
+stability:
+  spectral_radius_grid: [0.9, 1.3]
+  leak_rate_grid: [0.3, 1.0]
+  state_noise_grid: [0.0, 1.0e-2]
+  n_replicates: 2
+
+mc:
+  max_delay: 100
+  n_surrogates: 20

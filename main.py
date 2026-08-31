@@ -23,6 +23,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from rc_basics_lab.cli import default_out_for
 from rc_basics_lab.config import (
     Anomaly05Config,
     Capacity03Config,
@@ -131,27 +132,33 @@ EXPERIMENTS: dict[str, ExperimentSpec] = {
     "01": ExperimentSpec(
         config_path=ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
         run=_run_01,
-        out_dir=Path("results"),
+        out_dir=default_out_for(ROOT / "experiments" / "01_what_is_rc" / "config.yaml"),
     ),
     "02": ExperimentSpec(
         config_path=ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml",
         run=_run_02,
-        out_dir=Path("results/02_esp_and_dynamics"),
+        out_dir=default_out_for(
+            ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml"
+        ),
     ),
     "03": ExperimentSpec(
         config_path=ROOT / "experiments" / "03_capacity" / "config.yaml",
         run=_run_03,
-        out_dir=Path("results/03_capacity"),
+        out_dir=default_out_for(ROOT / "experiments" / "03_capacity" / "config.yaml"),
     ),
     "04": ExperimentSpec(
         config_path=ROOT / "experiments" / "04_chaotic_freerun" / "config.yaml",
         run=_run_04,
-        out_dir=Path("results/04_chaotic_freerun"),
+        out_dir=default_out_for(
+            ROOT / "experiments" / "04_chaotic_freerun" / "config.yaml"
+        ),
     ),
     "05": ExperimentSpec(
         config_path=ROOT / "experiments" / "05_anomaly_detection" / "config.yaml",
         run=_run_05,
-        out_dir=Path("results/05_anomaly_detection"),
+        out_dir=default_out_for(
+            ROOT / "experiments" / "05_anomaly_detection" / "config.yaml"
+        ),
     ),
 }
 """実験番号 -> ``ExperimentSpec``。

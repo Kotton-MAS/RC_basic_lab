@@ -26,63 +26,63 @@ wall time は ``meta.json`` の ``wall_time_s`` と ``wall_time_breakdown`` に
 
 from __future__ import annotations
 
-import argparse
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from rc_basics_lab.cli import (
+    ExperimentArgs,
+    build_parser,
+    default_out_for,
+    parse_experiment_args,
+)
 from rc_basics_lab.config import Anomaly05Config, load_config_as
 from rc_basics_lab.experiment.anomaly_pipeline import run_and_report_anomaly
 
 logger = logging.getLogger("rc_basics_lab.experiments.05_anomaly_detection")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.yaml"
-DEFAULT_OUT = Path("results/05_anomaly_detection")
+DEFAULT_OUT = default_out_for(DEFAULT_CONFIG)
+"""``--out`` 未指定時の出力先。``main.py`` と同じ関数から導く。"""
 
 
 @dataclass(frozen=True, slots=True)
 class Args:
-    """コマンドライン引数。"""
+    """コマンドライン引数 (共通分は ``ExperimentArgs``)。"""
 
-    config: Path
-    out: Path
+    common: ExperimentArgs
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
-    """引数を解析する。"""
-    parser = argparse.ArgumentParser(
-        description="実験05: センサー時系列の異常検知 (5-A / 5-B / 5-C / 5-D)"
+    """引数を解析する。共通フラグは ``rc_basics_lab.cli`` が持つ。"""
+    parser = build_parser(
+        "実験05: センサー時系列の異常検知 (5-A / 5-B / 5-C / 5-D)", DEFAULT_CONFIG
     )
-    parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help=f"実験設定 YAML (既定: {DEFAULT_CONFIG})",
-    )
-    parser.add_argument(
-        "--out",
-        default=DEFAULT_OUT,
-        help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
-    )
-    namespace = parser.parse_args(argv)
-    return Args(config=Path(str(namespace.config)), out=Path(str(namespace.out)))
+    common, _ = parse_experiment_args(parser, argv)
+    return Args(common=common)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """実験を実行し、CSV5枚・図5枚・``meta.json`` を書く。"""
     args = parse_args(argv)
-    config = load_config_as(args.config, Anomaly05Config)
+    config = load_config_as(
+        args.common.config,
+        Anomaly05Config,
+        preset=args.common.preset,
+        overrides=args.common.overrides,
+    )
     logger.info(
         "設定を読み込みました: %s (source=%s / 系列 %d 本 / max_length=%d / "
         "N=%d / n_replicates=%d)",
-        args.config,
+        args.common.config,
         config.dataset.source,
         len(config.dataset.series),
         config.dataset.max_length,
         config.reservoir.n_units,
         config.reservoir.n_replicates,
     )
-    run_and_report_anomaly(config, args.out)
+    run_and_report_anomaly(config, args.common.out)
     return 0
 
 

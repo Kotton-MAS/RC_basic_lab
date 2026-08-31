@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -142,14 +142,20 @@ TASK_LENGTH_FIELDS: Mapping[str, str] = {
 """
 
 
-def load_config(path: Path | str) -> ExperimentConfig:
+def load_config(
+    path: Path | str,
+    *,
+    preset: Path | str | None = None,
+    overrides: Sequence[str] = (),
+) -> ExperimentConfig:
     """YAML から 01 の ``ExperimentConfig`` を読み込む。
 
-    ``load_config_as(path, ExperimentConfig)`` への委譲。既存の呼び出し
-    (``experiments/01_what_is_rc/run.py`` / ``main.py``) を壊さないため署名は
-    そのまま残す。
+    ``load_config_as(path, ExperimentConfig, ...)`` への委譲。既存の呼び出し
+    (``experiments/01_what_is_rc/run.py`` / ``main.py``) を壊さないため、
+    ``preset`` / ``overrides`` は**キーワード専用で既定なし**にしてある。
 
     Raises:
         ConfigError: ファイルが無い / 未知キーがある / 型が合わない場合。
+        OverrideError: ``--set`` の書式か経路が不正な場合。
     """
-    return load_config_as(path, ExperimentConfig)
+    return load_config_as(path, ExperimentConfig, preset=preset, overrides=overrides)
