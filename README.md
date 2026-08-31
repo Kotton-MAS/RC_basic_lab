@@ -12,58 +12,76 @@
 - 意図的な設計判断は `.claude/decisions.yaml` に **guard_test 付き**で記録している
   （散文ではなく、決定ごとに「破れたら落ちるテスト」を1本ずつ持たせている）
 
-## 3コマンドで再現する
+## 使う
+
+### 1. 入れる
 
 ```bash
-# 1. 依存をロックどおりに入れる
 uv sync --locked
-
-# 2. テスト (約 60 秒)
-uv run pytest -q
-
-# 3. 実験を回して results/ を再生成する (約 1 秒)
-uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml
 ```
 
-### Claude Code のフックを使う場合のみ: `settings.local.json`
+### 2. 手元で回す（`scratch/` に出る）
 
-上の3コマンドには不要。**Claude Code のフック (claude-pdca-kit) を動かす場合だけ**必要になる。
+```bash
+# 縮小設定で速く回す
+uv run python experiments/03_capacity/run_03.py --preset quick
 
-キットのフックは `PY=$(command -v python3)` で処理系を解決する。`pyenv` などが
-古い Python を先に解決すると、このリポジトリのコード (PEP 695 の型エイリアスを含む)
-を**構文解析できず、フックが無言で死ぬ**。実際に8サイクルこの状態が続いた (D-73)。
-
-処理系の解決はマシンごとに違うので、gitignore された `.claude/settings.local.json` に置く:
-
-```jsonc
-{
-  "env": {
-    // このリポジトリの .venv/bin を PATH の先頭に置く。
-    // ${PATH} の展開は効かないので、既存の PATH を全部列挙すること。
-    "PATH": "<このリポジトリの絶対パス>/.venv/bin:<既存の PATH をそのまま>"
-  }
-}
+# 値を1つ振る (YAML は触らない)
+uv run python experiments/01_what_is_rc/run.py --set esn_mackey_glass.n_units=50
 ```
 
-`printenv PATH` の出力をそのまま後ろに繋げばよい。設定後、
-`uv run pytest tests/test_hook_interpreter.py` が緑になれば正しく解決できている
-(`.venv` を作り直したときに先頭要素が dangling になっていないかも、このテストが見る)。
+`--preset quick` の実測（2026-08-31）:
 
-3 番目は `make figures-01` でも同じ（`python main.py --experiment 01` も同じ経路）。
-`results/` に次の4点が出る:
+| 実験 | 既定 | `quick` |
+|---|---|---|
+| 02 | 130 秒 | **4.4 秒** |
+| 03 | 480 秒 | **22 秒** |
+| 04 | 330 秒 | **4.9 秒** |
+| 05 | 350 秒 | **36 秒** |
 
-| ファイル | 内容 |
+**`quick` の絶対値は本番と比べない。** 系列長やレプリケート数を削っているので、
+容量や有効予測時間の値は別物になる。見るのは形だけ。
+
+タイプミスは黙って通らない（既知キーの一覧つきで落ちる）。詳しくは
+**[docs/条件を変えて試す.md](docs/条件を変えて試す.md)**。
+
+### 3. 成果物を作り直す（`results/` に出る）
+
+```bash
+# 1. テスト (約 110 秒)
+make ci
+
+# 2. 実験01 の成果物を再生成 (約 2 秒)
+make figures-01
+```
+
+`results/` は指紋を `tests/artifact_manifest.csv` に固定した成果物である。
+**`--preset` や `--set` を付けて再生成しない**（指紋が変わり `make ci` が赤くなる。
+それが正しい挙動である）。
+
+### 4. モデルを足す
+
+`experiment` 層は `Reservoir`（`reservoir/protocol.py`）だけを見ており、
+`ESN` を名指ししている場所は無い。生成は `build_reservoir` の 1 本に寄せてある。
+
+手順は **[docs/リザバーを足す.md](docs/リザバーを足す.md)**（3 ファイル + テスト 1 本）。
+
+## どこに何があるか
+
+`src/rc_basics_lab/` は 102 モジュールある。**層ごとの一覧と 1 行要約、
+依存の向きの図は [docs/モジュール地図.md](docs/モジュール地図.md)**
+（`make module-map` でコードから生成する。手書きしないので古くならない）。
+
+抽象的な名前（`FeatureSpec` / `StateUpdater` など）から実体を引くには
+**[docs/型と名前の対応表.md](docs/型と名前の対応表.md)**。
+
+| やりたいこと | まず開く |
 |---|---|
-| `results/comparison.csv` | 2課題 × 3手法 × 5レプリケート = 30行の長形式の結果 |
-| `results/comparison_summary.csv` | (課題, 手法) ごとの NRMSE 平均±標準偏差・符号正解率平均（集計版） |
-| `results/fig_comparison.png` | 課題別の NRMSE（点+誤差棒、`NRMSE=1` の基準線つき） |
-| `results/fig_state_space.png` | 入力空間とリザバー状態空間の PCA |
-| `results/meta.json` | commit / 時刻 / ライブラリ版 / 設定全体 / 実測 wall time / PCA の要約 |
-
-図は 200 dpi（retina 相当）。日本語フォント（Hiragino Sans / Noto Sans CJK JP /
-IPAexGothic / Yu Gothic）が見つかる環境では日本語ラベル、見つからない環境では
-**ラベル文字列ごと英語**に切り替わる（豆腐文字を出さないため。D-10）。
-新しい依存は追加していない。
+| 実験を1本読む | `experiment/pipeline.py` → `experiment/runner.py` |
+| 手法の違いがどこにあるか | `readout/design.py` の `_layout_of`（分岐はここだけ） |
+| リザバーを足す | `reservoir/protocol.py` と `reservoir/registry.py` |
+| 図を1枚直す | `plotting/style.py` の `new_figure` / `save_png` から辿る |
+| 設定を1つ足す | `config/0N.py` の dataclass → 値を変えたら出力が変わるテスト |
 
 ## 実験01: 何にリザバーが要り、何には要らないか
 
@@ -392,55 +410,32 @@ ZIP は member 名を検査してから必要な8ファイルだけを展開す�
 ## リポジトリ構成
 
 ```
-src/rc_basics_lab/
-├── seeds.py / metrics.py / meta.py / types.py   # 土台
-├── config/          # 設定 dataclass 群 (実験サイクル単位で分割、公開経路は
-│                   #   `rc_basics_lab.config` の1本のまま)
-│                   #   _common: ローダ / experiment01 / esp02 / capacity03
-│                   #   / chaos04 / anomaly05
-├── tasks/           # 課題層 (MG / 遅延パリティ / NARMA10 / Lorenz / 異常検知)
-│                   #   anomaly: 系列の器・共通前処理・合成源 (I/O を持たない)
-├── datasets/        # 外部データセットの取得・SHA256 照合・読み取り
-│                   #   **I/O を持つ唯一のパッケージ** (D-59)。依存は datasets -> tasks
-├── diagnostics/     # 状態系列 X だけを見る診断層 (reservoir に依存しない)
-│                   #   PCA / ESP 判定 / 条件付き Lyapunov / 実効時定数
-│                   #   / MC / IPC / 最大 Lyapunov 指数
-├── reservoir/       # ESN (step / run / x0 / state_noise を公開)
-├── readout/         # 設計行列 (3手法の差はここだけ) とリッジ回帰
-│                   #   autoregressive: 自由走行 (reservoir に依存しない)
-├── experiment/      # 分割・ランナー・PCA 比較・書き出し・1コマンド経路
-│                   #   02: esp / washout / threshold と esp_pipeline
-│                   #   03: capacity (MC/IPC) と capacity_pipeline
-│                   #   04: attractor (自走の評価) / freerun (4-A・4-B)
-│                   #       / stability (4-C・4-D) / freerun_pipeline
-└── plotting/        # スタイル (CJK フォント探索) と図
-experiments/01_what_is_rc/{config.yaml,run.py}         # 実験1の設定と CLI
-experiments/02_esp_and_dynamics/{config.yaml,run_02.py}  # 実験2の設定と CLI
-experiments/03_capacity/{config.yaml,run_03.py}          # 実験3の設定と CLI
-experiments/04_chaotic_freerun/{config.yaml,run_04.py}   # 実験4の設定と CLI
-results/             # 生成物 (コミット対象。再実行で上書きされる)
-results/02_esp_and_dynamics/  # 実験2の生成物
-results/03_capacity/  # 実験3の生成物
-results/04_chaotic_freerun/   # 実験4の生成物
-docs/design.md       # 数値の根拠と実測結果
-docs/plans/          # 仕様書 (タスク分解と受け入れ基準)
+src/rc_basics_lab/   # ライブラリ本体 (層の一覧は docs/モジュール地図.md)
+experiments/0N_*/    # 実験ごとの config.yaml / run スクリプト / presets/
+results/             # **成果物**。指紋を tests/artifact_manifest.csv に固定
+scratch/             # 手元の試行の出力先 (gitignore)
+docs/                # 要件 / 仕様 (plans/) / ADR (adr/) / サーベイ / 図の設計方針
 tests/               # pytest
 ```
 
+**モジュールの一覧はここに書かない。** 以前ここに手書きのツリーがあったが、
+実測すると直下モジュール 8 本のうち 4 本が漏れていた。一覧は
+[docs/モジュール地図.md](docs/モジュール地図.md) がコードから生成する。
+
 ## 開発
 
-検証コマンドの単一の真実は `Makefile`:
+検証コマンドの単一の真実は `Makefile`（`make help` で一覧）:
 
 ```bash
-make ci           # lock-check + lint + fmt-check + type + test (CI と同じ)
-make test         # uv run pytest -q
-make figures-01   # 実験01 の results/ を再生成
-make figures-02   # 実験02 の results/02_esp_and_dynamics/ を再生成
-make threshold-02 # 実験02 の閾値感度 CSV だけを再生成
-make figures-03   # 実験03 の results/03_capacity/ を再生成
-make saturation-03 # 実験03 の系列長掃引 CSV だけを再生成 (予算外・手動)
-make figures-04   # 実験04 の results/04_chaotic_freerun/ を再生成
+make ci            # lock-check + lint + fmt-check + type + test (CI と同じ)
+make figures-0N    # 実験 N の成果物を results/ に再生成
+make data-05       # 実験05 の外部データを data/ に取得 (SHA256 照合)
+make module-map    # docs/モジュール地図.md をコードから再生成
+make panels        # 図のパネル数を実測 (約 20 分。ci には入れない)
 ```
+
+**手元で条件を振るときは `make` を使わない。** run スクリプトを直接呼ぶと
+`scratch/` に出るので、`results/` の指紋を壊さずに試せる（上の「使う」を参照）。
 
 - Python 3.12+ / 依存は **numpy・scipy・matplotlib・pyyaml のみ**
 - `mypy --strict`（`disallow_any_explicit`）と ruff（`print()` 禁止）を緩めない
@@ -449,6 +444,46 @@ make figures-04   # 実験04 の results/04_chaotic_freerun/ を再生成
 - 全設定パラメータについて「値を変えると出力が変わる」ことを
   `tests/test_config_wiring.py` が網羅的に検査する。パラメータを足したら
   同ファイルに1行足すまでテストは赤のまま
+
+### Claude Code のフックを使う場合のみ: `settings.local.json`
+
+上の3コマンドには不要。**Claude Code のフック (claude-pdca-kit) を動かす場合だけ**必要になる。
+
+キットのフックは `PY=$(command -v python3)` で処理系を解決する。`pyenv` などが
+古い Python を先に解決すると、このリポジトリのコード (PEP 695 の型エイリアスを含む)
+を**構文解析できず、フックが無言で死ぬ**。実際に8サイクルこの状態が続いた (D-73)。
+
+処理系の解決はマシンごとに違うので、gitignore された `.claude/settings.local.json` に置く:
+
+```jsonc
+{
+  "env": {
+    // このリポジトリの .venv/bin を PATH の先頭に置く。
+    // ${PATH} の展開は効かないので、既存の PATH を全部列挙すること。
+    "PATH": "<このリポジトリの絶対パス>/.venv/bin:<既存の PATH をそのまま>"
+  }
+}
+```
+
+`printenv PATH` の出力をそのまま後ろに繋げばよい。設定後、
+`uv run pytest tests/test_hook_interpreter.py` が緑になれば正しく解決できている
+(`.venv` を作り直したときに先頭要素が dangling になっていないかも、このテストが見る)。
+
+3 番目は `make figures-01` でも同じ（`python main.py --experiment 01` も同じ経路）。
+`results/` に次の4点が出る:
+
+| ファイル | 内容 |
+|---|---|
+| `results/comparison.csv` | 2課題 × 3手法 × 5レプリケート = 30行の長形式の結果 |
+| `results/comparison_summary.csv` | (課題, 手法) ごとの NRMSE 平均±標準偏差・符号正解率平均（集計版） |
+| `results/fig_comparison.png` | 課題別の NRMSE（点+誤差棒、`NRMSE=1` の基準線つき） |
+| `results/fig_state_space.png` | 入力空間とリザバー状態空間の PCA |
+| `results/meta.json` | commit / 時刻 / ライブラリ版 / 設定全体 / 実測 wall time / PCA の要約 |
+
+図は 200 dpi（retina 相当）。日本語フォント（Hiragino Sans / Noto Sans CJK JP /
+IPAexGothic / Yu Gothic）が見つかる環境では日本語ラベル、見つからない環境では
+**ラベル文字列ごと英語**に切り替わる（豆腐文字を出さないため。D-10）。
+新しい依存は追加していない。
 
 ## ライセンス
 

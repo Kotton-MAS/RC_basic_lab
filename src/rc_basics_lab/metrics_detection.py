@@ -29,10 +29,7 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
-from rc_basics_lab.types import FloatArray
-
-type BoolArray = npt.NDArray[np.bool_]
-"""bool の numpy 配列。ラベル・マスク・予測に使う (形状は各 API に記す)。"""
+from rc_basics_lab.types import BoolArray, FloatArray
 
 
 def _as_labeled_scores(
