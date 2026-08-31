@@ -37,7 +37,9 @@ base:
     leak_rate: 0.3
     input_scale: 0.5
     bias_scale: 0.1
-    density: 0.2
+    topology:
+      kind: erdos_renyi
+      density: 0.2
     activation: tanh
     state_noise: 0.0
   esn_delay_parity:
@@ -46,7 +48,9 @@ base:
     leak_rate: 1.0
     input_scale: 1.0
     bias_scale: 0.1
-    density: 0.2
+    topology:
+      kind: erdos_renyi
+      density: 0.2
     activation: tanh
     state_noise: 0.0
 

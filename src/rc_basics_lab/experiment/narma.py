@@ -51,6 +51,7 @@ from rc_basics_lab.experiment.runner import (
     run_task,
 )
 from rc_basics_lab.reservoir.registry import require_esn
+from rc_basics_lab.reservoir.topology import nominal_density
 from rc_basics_lab.tasks.narma import (
     NARMA10_INPUT_STD,
     TASK_NAME,
@@ -334,7 +335,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
         # U[0, 0.5] の標準偏差の閉形式を書く (実測値は input_drive_std)。
         sigma_u=NARMA10_INPUT_STD,
         n_units=esn.n_units,
-        density=esn.density,
+        density=nominal_density(esn.topology, esn.n_units),
         state_noise=esn.state_noise,
         n_steps=int(plan0.states.shape[0]),
         washout=config.drive.washout,

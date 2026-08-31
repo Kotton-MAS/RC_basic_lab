@@ -81,6 +81,7 @@ from rc_basics_lab.experiment.freerun import (
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.experiment.stability import run_stability_experiment
 from rc_basics_lab.meta import collect_meta_for
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
 
@@ -126,7 +127,10 @@ def base_config() -> Chaos04Config:
             ridge=RidgeConfig(alpha_grid=(1.0e-6, 1.0e-3), n_lags_grid=(2, 4)),
             mackey_glass=MackeyGlassConfig(length=700, integration_burn_in=100),
             esn_mackey_glass=ESNConfig(
-                n_units=15, leak_rate=0.5, input_scale=0.5, density=0.5
+                n_units=15,
+                leak_rate=0.5,
+                input_scale=0.5,
+                topology=ErdosRenyiConfig(density=0.5),
             ),
         ),
         lorenz=LorenzConfig(

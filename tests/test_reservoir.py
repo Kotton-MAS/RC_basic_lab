@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig, spectral_radius
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.types import FloatArray
 
 
@@ -60,8 +61,14 @@ def test_weights_are_read_only() -> None:
 
 def test_density_controls_sparsity() -> None:
     """density を下げると W の非零率が下がる。"""
-    sparse = ESN(ESNConfig(n_units=200, density=0.02), np.random.default_rng(1))
-    dense = ESN(ESNConfig(n_units=200, density=0.5), np.random.default_rng(1))
+    sparse = ESN(
+        ESNConfig(n_units=200, topology=ErdosRenyiConfig(density=0.02)),
+        np.random.default_rng(1),
+    )
+    dense = ESN(
+        ESNConfig(n_units=200, topology=ErdosRenyiConfig(density=0.5)),
+        np.random.default_rng(1),
+    )
     assert float(np.mean(sparse.W != 0.0)) == pytest.approx(0.02, abs=0.01)
     assert float(np.mean(dense.W != 0.0)) == pytest.approx(0.5, abs=0.02)
 
@@ -149,7 +156,7 @@ def test_states_are_bounded_by_tanh() -> None:
     [
         (ESNConfig(n_units=0), "n_units"),
         (ESNConfig(n_units=10, activation="relu"), "活性化関数"),
-        (ESNConfig(n_units=10, density=0.0), "density"),
+        (ESNConfig(n_units=10, topology=ErdosRenyiConfig(density=0.0)), "density"),
         (ESNConfig(n_units=10, leak_rate=1.5), "leak_rate"),
         (ESNConfig(n_units=10, state_noise=-0.1), "state_noise"),
     ],

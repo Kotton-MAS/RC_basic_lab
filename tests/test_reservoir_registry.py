@@ -18,6 +18,7 @@ from rc_basics_lab.reservoir.esn import ESN, ESNConfig
 from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.reservoir.ring import RingConfig
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.types import FloatArray
 
 
@@ -46,7 +47,12 @@ def test_the_registry_draws_the_same_weights_as_a_direct_construction() -> None:
     ("config", "expected"),
     [
         (ESNConfig(n_units=16), "ESN"),
-        (DeepESNConfig(n_units=16, n_layers=2, density=0.3), "DeepESN"),
+        (
+            DeepESNConfig(
+                n_units=16, n_layers=2, topology=ErdosRenyiConfig(density=0.3)
+            ),
+            "DeepESN",
+        ),
         (RingConfig(n_units=16), "RingReservoir"),
     ],
 )

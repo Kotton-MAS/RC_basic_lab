@@ -30,6 +30,7 @@ from rc_basics_lab.config.anomaly05_sweep import (
 )
 from rc_basics_lab.config.experiment01 import DEFAULT_ALPHA_GRID, MackeyGlassConfig
 from rc_basics_lab.reservoir.esn import ESNConfig
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream
 
 _MACKEY_GLASS_DEFAULTS = MackeyGlassConfig()
@@ -212,7 +213,7 @@ class AnomalyReservoirConfig:
             spectral_radius=self.spectral_radius,
             leak_rate=self.leak_rate,
             input_scale=self.input_scale,
-            density=self.density,
+            topology=ErdosRenyiConfig(density=self.density),
         )
 
 

@@ -110,6 +110,7 @@ from rc_basics_lab.experiment.esp import (
 )
 from rc_basics_lab.experiment.washout import WashoutRow, run_washout_sweep
 from rc_basics_lab.meta import collect_meta_for
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
@@ -214,9 +215,12 @@ def washout_base() -> ExperimentConfig:
         ridge=RidgeConfig(alpha_grid=(1.0e-4, 1.0), n_lags_grid=(1, 4)),
         mackey_glass=MackeyGlassConfig(length=400),
         delay_parity=DelayParityConfig(length=400),
-        esn_mackey_glass=ESNConfig(n_units=20, density=0.3),
+        esn_mackey_glass=ESNConfig(n_units=20, topology=ErdosRenyiConfig(density=0.3)),
         esn_delay_parity=ESNConfig(
-            n_units=20, density=0.3, leak_rate=1.0, input_scale=1.0
+            n_units=20,
+            topology=ErdosRenyiConfig(density=0.3),
+            leak_rate=1.0,
+            input_scale=1.0,
         ),
     )
 

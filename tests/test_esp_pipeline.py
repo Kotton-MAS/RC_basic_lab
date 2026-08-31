@@ -92,10 +92,14 @@ washout:
       length: 500
     esn_mackey_glass:
       n_units: 30
-      density: 0.3
+      topology:
+        kind: erdos_renyi
+        density: 0.3
     esn_delay_parity:
       n_units: 30
-      density: 0.3
+      topology:
+        kind: erdos_renyi
+        density: 0.3
       leak_rate: 1.0
       input_scale: 1.0
 esp:

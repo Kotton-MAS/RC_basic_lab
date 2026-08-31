@@ -77,6 +77,7 @@ from rc_basics_lab.experiment.esp import (
 )
 from rc_basics_lab.experiment.runner import build_tasks, plan_replicate
 from rc_basics_lab.reservoir.registry import require_esn
+from rc_basics_lab.reservoir.topology import nominal_density
 from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
@@ -687,7 +688,7 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
         input_scale=esn.input_scale,
         sigma_u=float("nan"),
         n_units=esn.n_units,
-        density=esn.density,
+        density=nominal_density(esn.topology, esn.n_units),
         state_noise=esn.state_noise,
         n_steps=int(states.shape[0]),
         washout=config.drive.washout,

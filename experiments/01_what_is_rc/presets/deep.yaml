@@ -22,7 +22,9 @@ esn_mackey_glass:
   input_scale: 0.5
   inter_layer_scale: 0.5
   bias_scale: 0.1
-  density: 0.1
+  topology:
+    kind: erdos_renyi
+    density: 0.1
 
 esn_delay_parity:
   kind: deep_esn
@@ -33,4 +35,6 @@ esn_delay_parity:
   input_scale: 1.0
   inter_layer_scale: 0.5
   bias_scale: 0.1
-  density: 0.1
+  topology:
+    kind: erdos_renyi
+    density: 0.1

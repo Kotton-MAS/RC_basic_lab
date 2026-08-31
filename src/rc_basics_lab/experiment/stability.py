@@ -63,6 +63,7 @@ from rc_basics_lab.experiment.freerun_tasks import (
 from rc_basics_lab.experiment.report import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
 from rc_basics_lab.reservoir.registry import require_esn
+from rc_basics_lab.reservoir.topology import nominal_density
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.chaotic import sampling_interval
 from rc_basics_lab.types import FloatArray
@@ -451,7 +452,6 @@ def evaluate_stability_condition(
         experiment=EXPERIMENT_FREERUN_CAPACITY,
         replicate=condition.replicate,
         seed_reservoir=config.base.seeds.reservoir,
-        # 4-D の駆動は課題の入力そのものなので、基底シードは task (D-06)。
         seed_drive=config.base.seeds.task,
         seed_surrogate=config.stability.surrogate_seed,
         rho=esn.spectral_radius,
@@ -459,7 +459,7 @@ def evaluate_stability_condition(
         input_scale=esn.input_scale,
         sigma_u=CAPACITY_SIGMA_U,
         n_units=esn.n_units,
-        density=esn.density,
+        density=nominal_density(esn.topology, esn.n_units),
         state_noise=esn.state_noise,
         n_steps=int(plan.states.shape[0]),
         washout=config.base.split.washout,

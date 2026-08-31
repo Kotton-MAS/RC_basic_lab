@@ -1,0 +1,284 @@
+"""結合構造 (トポロジ) をモデル本体から分離する層 (拡張性方針 §2-1).
+
+**「どこが繋がっているか」と「どのモデルか」は別の軸である。** 分離する前は
+``mask = rng.random((n, n)) < density`` が ``esn.py`` と ``deep.py`` の2箇所に
+埋まっており、``density`` は両方の設定フィールドだった。どちらも
+Erdos-Renyi 固定なので、**この形のままスケールフリーを足すと「BA トポロジの
+ESN」という新しいモデルを1つ足すことになる**。Watts-Strogatz を足せばもう1つで、
+組み合わせが掛け算で増える側の設計だった。
+
+軸を分ければ、モデルを1つも足さずに
+
+.. code-block:: yaml
+
+    esn_mackey_glass:
+      kind: esn
+      topology:
+        kind: barabasi_albert
+        m: 2
+
+と書けるようになる。**更新式を固定してトポロジだけを振る実験**が設定で書けて、
+``esn`` と ``deep_esn`` の両方が同時に対応する (両者が同じ関数を呼ぶため)。
+
+## 返すのはマスクであって重みではない
+
+``build_mask`` が返すのは ``bool`` の隣接行列で、重みの値は各モデルが引く。
+この分け方にすると **Erdos-Renyi の既定が乱数の引き方ごと保存できる** ————
+分離前は ``rng.random((n, n)) < density`` -> ``rng.uniform(...)`` の順だったので、
+マスクだけをここへ移せば同じ順のままになる (D-74 の合否判定を通せる)。
+
+## 自己結合と有向性
+
+どのトポロジも**有向グラフとして扱い、自己結合を消さない**。リザバーの ``W`` は
+非対称でよく、``W[i, i]`` も更新式に意味を持つ (自己再帰)。無向グラフの文献
+アルゴリズム (BA / WS) は対称な隣接行列を作るので、**対称のまま返す** ————
+非対称化はモデル側の重みの引き方 (``rng.uniform`` は各要素独立) が行う。
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import ClassVar
+
+import numpy as np
+
+from rc_basics_lab.types import BoolArray
+
+MIN_UNITS = 2
+"""トポロジを作れる最小のユニット数 (辺を1本以上引けること)。"""
+
+
+@dataclass(frozen=True, slots=True)
+class ErdosRenyiConfig:
+    """一様ランダム結合 (**既定**。分離前の ``density`` と同じ挙動)。
+
+    Attributes:
+        density: 各要素が非零になる確率。
+    """
+
+    KIND: ClassVar[str] = "erdos_renyi"
+
+    density: float = 0.1
+
+
+@dataclass(frozen=True, slots=True)
+class RingTopologyConfig:
+    """一方向の単一閉路 (SCR の結合、Rodan & Tino 2011)。
+
+    密度は ``1/N`` で構造から決まるので設定を持たない。
+    """
+
+    KIND: ClassVar[str] = "ring"
+
+
+@dataclass(frozen=True, slots=True)
+class BarabasiAlbertConfig:
+    """優先的選択によるスケールフリー結合 (Barabasi & Albert 1999)。
+
+    次数分布が冪則に従い、**次数の大きいハブが少数できる**。「スケールフリーな
+    リザバーは記憶容量が高いか」を測るための構造。
+
+    Attributes:
+        m: 新しい点が張る辺の本数。``1 <= m < n_units``。
+            密度はおよそ ``2m/N`` になる。
+    """
+
+    KIND: ClassVar[str] = "barabasi_albert"
+
+    m: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class WattsStrogatzConfig:
+    """スモールワールド結合 (Watts & Strogatz 1998)。
+
+    輪状の近傍結合から始めて、各辺を確率 ``beta`` で張り替える。
+    ``beta=0`` は格子、``beta=1`` はランダムに近づく。
+
+    Attributes:
+        k: 各点の近傍の本数 (偶数)。``2 <= k < n_units``。
+        beta: 張り替え確率 ``[0, 1]``。
+    """
+
+    KIND: ClassVar[str] = "watts_strogatz"
+
+    k: int = 4
+    beta: float = 0.1
+
+
+type TopologyConfig = (
+    ErdosRenyiConfig | RingTopologyConfig | BarabasiAlbertConfig | WattsStrogatzConfig
+)
+"""結合構造の設定。**先頭が既定** (``kind`` を省くと Erdos-Renyi)。
+
+足すときは末尾へ。並びを変えると既存の設定の意味が変わる
+(``ReservoirConfig`` と同じ流儀)。
+"""
+
+
+def nominal_density(config: TopologyConfig, n_units: int) -> float:
+    """設定から見込まれる密度 (成果物の ``density`` 列に書く値)。
+
+    **実測ではなく設定から決まる値**である。``capacity.csv`` などの主表は
+    ``density`` 列を持っており (成果物の列は変えられない)、トポロジを分離した
+    後もその列に何を書くかを決める必要がある。
+
+    Erdos-Renyi はその ``density`` そのもの。ほかは辺の本数から見込みを出す。
+    実際に生成された密度が要るなら ``build_mask(...).mean()`` を使うこと ——
+    ここが答えるのは「そう設定した」であって「そうなった」ではない。
+
+    Args:
+        config: トポロジの設定。
+        n_units: ユニット数 N。
+
+    Returns:
+        ``[0, 1]`` の密度。
+    """
+    match config:
+        case ErdosRenyiConfig():
+            return config.density
+        case RingTopologyConfig():
+            return 1.0 / float(n_units)
+        case BarabasiAlbertConfig():
+            # 各点が m 本を張り、無向なので 2 倍。対角は使わない。
+            return min(1.0, 2.0 * config.m / float(n_units))
+        case WattsStrogatzConfig():
+            return min(1.0, float(config.k) / float(n_units))
+
+
+def build_mask(
+    config: TopologyConfig, n_units: int, rng: np.random.Generator
+) -> BoolArray:
+    """結合の有無を表す ``(N, N)`` の bool 行列を返す (**分岐はここだけ**)。
+
+    Args:
+        config: トポロジの設定。
+        n_units: ユニット数 N。
+        rng: 乱数生成器。
+
+    Returns:
+        ``mask[i, j]`` が True なら ``j -> i`` の結合がある。
+
+    Raises:
+        ValueError: ``n_units`` が小さすぎる / 設定値が範囲外の場合。
+    """
+    if n_units < MIN_UNITS:
+        raise ValueError(f"n_units は {MIN_UNITS} 以上である必要があります: {n_units}")
+    match config:
+        case ErdosRenyiConfig():
+            return _erdos_renyi(config, n_units, rng)
+        case RingTopologyConfig():
+            return _ring(n_units)
+        case BarabasiAlbertConfig():
+            return _barabasi_albert(config, n_units, rng)
+        case WattsStrogatzConfig():
+            return _watts_strogatz(config, n_units, rng)
+
+
+def _erdos_renyi(
+    config: ErdosRenyiConfig, n_units: int, rng: np.random.Generator
+) -> BoolArray:
+    """一様ランダム。**分離前と同じ乱数の引き方**を保つ (D-74)。"""
+    if not 0.0 < config.density <= 1.0:
+        raise ValueError(f"density は (0, 1] である必要があります: {config.density}")
+    drawn: BoolArray = rng.random((n_units, n_units)) < config.density
+    return drawn
+
+
+def _ring(n_units: int) -> BoolArray:
+    """一方向の閉路。乱数を1個も引かない (構造が決まりきっているため)。"""
+    mask: BoolArray = np.zeros((n_units, n_units), dtype=np.bool_)
+    rows = np.arange(n_units)
+    mask[rows, rows - 1] = True
+    return mask
+
+
+def _barabasi_albert(
+    config: BarabasiAlbertConfig, n_units: int, rng: np.random.Generator
+) -> BoolArray:
+    """優先的選択。次数に比例した確率で既存の点へ繋ぐ。
+
+    ``m`` 個の完全結合から始め、1点ずつ ``m`` 本の辺を張る。張り先は
+    **その時点の次数に比例**して選ぶ (これが冪則を生む)。同じ点を2回
+    選ばないよう、1点ぶんの選択は非復元で行う。
+    """
+    if not 1 <= config.m < n_units:
+        raise ValueError(
+            f"m は 1 以上 n_units 未満である必要があります: {config.m} (N={n_units})"
+        )
+    mask: BoolArray = np.zeros((n_units, n_units), dtype=np.bool_)
+    # 初期の完全結合 (m+1 ノード)。自己結合は作らない。
+    seed_size = config.m + 1
+    for i in range(seed_size):
+        for j in range(seed_size):
+            if i != j:
+                mask[i, j] = True
+    degree = np.full(n_units, 0.0, dtype=np.float64)
+    degree[:seed_size] = float(seed_size - 1)
+    for new_node in range(seed_size, n_units):
+        weights = degree[:new_node].copy()
+        total = weights.sum()
+        probabilities = (
+            weights / total
+            if total > 0.0
+            else np.full(new_node, 1.0 / new_node, dtype=np.float64)
+        )
+        targets = rng.choice(new_node, size=config.m, replace=False, p=probabilities)
+        for target in targets:
+            mask[new_node, target] = True
+            mask[target, new_node] = True
+            degree[target] += 1.0
+        degree[new_node] = float(config.m)
+    return mask
+
+
+def _watts_strogatz(
+    config: WattsStrogatzConfig, n_units: int, rng: np.random.Generator
+) -> BoolArray:
+    """輪状の近傍結合を確率 ``beta`` で張り替える。
+
+    格子 (高いクラスタ係数・長い最短路) からランダム (低い係数・短い路) へ
+    連続的に動かす軸で、途中に**両方が良い**スモールワールド領域がある。
+    """
+    if config.k < 2 or config.k % 2 != 0:
+        raise ValueError(f"k は 2 以上の偶数である必要があります: {config.k}")
+    if config.k >= n_units:
+        raise ValueError(f"k は n_units 未満である必要があります: {config.k}")
+    if not 0.0 <= config.beta <= 1.0:
+        raise ValueError(f"beta は [0, 1] である必要があります: {config.beta}")
+    mask: BoolArray = np.zeros((n_units, n_units), dtype=np.bool_)
+    half = config.k // 2
+    for node in range(n_units):
+        for offset in range(1, half + 1):
+            neighbour = (node + offset) % n_units
+            mask[node, neighbour] = True
+            mask[neighbour, node] = True
+    # 張り替え: 近傍側の辺を、既存でない相手へ移す。
+    for node in range(n_units):
+        for offset in range(1, half + 1):
+            if rng.random() >= config.beta:
+                continue
+            old = (node + offset) % n_units
+            candidates = [
+                other
+                for other in range(n_units)
+                if other != node and not mask[node, other]
+            ]
+            if not candidates:
+                continue
+            new = int(rng.choice(np.asarray(candidates)))
+            mask[node, old] = mask[old, node] = False
+            mask[node, new] = mask[new, node] = True
+    return mask
+
+
+__all__ = [
+    "MIN_UNITS",
+    "BarabasiAlbertConfig",
+    "ErdosRenyiConfig",
+    "RingTopologyConfig",
+    "TopologyConfig",
+    "WattsStrogatzConfig",
+    "build_mask",
+    "nominal_density",
+]

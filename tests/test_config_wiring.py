@@ -69,6 +69,7 @@ from rc_basics_lab.config import (
 )
 from rc_basics_lab.experiment.runner import ResultRow, run_experiment
 from rc_basics_lab.meta import collect_meta
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedConfig
 
 MACKEY_GLASS = "mackey_glass"
@@ -105,9 +106,12 @@ def base_config() -> ExperimentConfig:
         ridge=RidgeConfig(alpha_grid=(1e-4, 1e-1), n_lags_grid=(1, 4)),
         mackey_glass=MackeyGlassConfig(length=300, integration_burn_in=50),
         delay_parity=DelayParityConfig(n_bits=2, delay=1, length=300),
-        esn_mackey_glass=ESNConfig(n_units=20, density=0.3),
+        esn_mackey_glass=ESNConfig(n_units=20, topology=ErdosRenyiConfig(density=0.3)),
         esn_delay_parity=ESNConfig(
-            n_units=20, density=0.3, leak_rate=1.0, input_scale=1.0
+            n_units=20,
+            topology=ErdosRenyiConfig(density=0.3),
+            leak_rate=1.0,
+            input_scale=1.0,
         ),
     )
 
@@ -120,7 +124,7 @@ def _esn_cases(section: str, scope: str, leak_rate: float) -> tuple[WiringCase, 
         case(f"{section}.leak_rate", leak_rate, scope=scope),
         case(f"{section}.input_scale", 2.0, scope=scope),
         case(f"{section}.bias_scale", 1.0, scope=scope),
-        case(f"{section}.density", 0.9, scope=scope),
+        case(f"{section}.topology.density", 0.9, scope=scope),
         case(f"{section}.state_noise", 0.05, scope=scope),
         # 活性化関数は tanh 以外を受け付けない。黙って tanh として扱わないこと
         # 自体が配線 (未対応の値が静かに通ると「設定したのに効かない」になる)。

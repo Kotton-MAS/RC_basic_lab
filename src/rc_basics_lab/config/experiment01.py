@@ -19,6 +19,7 @@ from pathlib import Path
 from rc_basics_lab.config._common import load_config_as
 from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.reservoir.protocol import ReservoirConfig
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedConfig
 
 DEFAULT_ALPHA_GRID: tuple[float, ...] = (
@@ -126,7 +127,7 @@ def _delay_parity_esn() -> ESNConfig:
         spectral_radius=0.9,
         leak_rate=1.0,
         input_scale=1.0,
-        density=0.1,
+        topology=ErdosRenyiConfig(density=0.1),
     )
 
 

@@ -23,7 +23,7 @@ Gallicchio & Micheli (2017) "Deep Echo State Network (DeepESN)" の構成。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 import numpy as np
@@ -34,6 +34,12 @@ from rc_basics_lab.reservoir._kernel import (
     leaky_tanh_update,
 )
 from rc_basics_lab.reservoir.esn import spectral_radius
+from rc_basics_lab.reservoir.topology import (
+    ErdosRenyiConfig,
+    TopologyConfig,
+    build_mask,
+    nominal_density,
+)
 from rc_basics_lab.types import FloatArray
 
 
@@ -49,7 +55,8 @@ class DeepESNConfig:
         input_scale: 第1層が外部入力に掛ける重みの幅。
         inter_layer_scale: 第 l 層が直前の層の状態に掛ける重みの幅。
         bias_scale: 定数入力に対応する重みの幅 (全層共通)。
-        density: 各層の再帰行列の非零率。
+        topology: 各層の結合構造 (既定は密度 0.1 の Erdos-Renyi)。**層ごとに
+            独立に生成**するので、同じ設定でも層ごとに違う実現になる。
         state_noise: tanh 内部に加えるガウスノイズの標準偏差。
     """
 
@@ -62,7 +69,7 @@ class DeepESNConfig:
     input_scale: float = 0.5
     inter_layer_scale: float = 0.5
     bias_scale: float = 0.1
-    density: float = 0.1
+    topology: TopologyConfig = field(default_factory=ErdosRenyiConfig)
     state_noise: float = 0.0
 
 
@@ -94,19 +101,17 @@ def _validate_deep_config(config: DeepESNConfig, n_inputs: int) -> None:
         state_noise=config.state_noise,
         n_inputs=n_inputs,
     )
-    if not 0.0 < config.density <= 1.0:
-        raise ValueError(f"density は (0, 1] である必要があります: {config.density}")
     layer_units = config.n_units // config.n_layers
     # 層が小さいと density * layer_units が 1 を割り、W が冪零 (再帰の無い
     # リザバー) になる確率が無視できなくなる。**シード次第で通ったり落ちたり
     # する**のは設定として最悪なので、条件そのものを先に落とす。
     # 実測: n_units=12 / n_layers=3 / density=0.1 は layer_units=4 で
     # 期待非零が 1.6、シード 0 で冪零になった。
-    if config.density * layer_units < 1.0:
+    density = nominal_density(config.topology, layer_units)
+    if density * layer_units < 1.0:
         raise ValueError(
             f"density * (n_units / n_layers) は 1 以上が必要です "
-            f"({config.density} * {layer_units} = "
-            f"{config.density * layer_units:.2f})。"
+            f"({density} * {layer_units} = {density * layer_units:.2f})。"
             "層あたりのユニット数が少なすぎるか density が低すぎます —— "
             "この条件では再帰の無い W (冪零) がシード次第で生まれます。"
             "n_layers を減らすか density を上げてください"
@@ -118,16 +123,23 @@ def _validate_deep_config(config: DeepESNConfig, n_inputs: int) -> None:
 
 
 def _random_recurrent(
-    n_units: int, density: float, target_radius: float, rng: np.random.Generator
+    n_units: int,
+    topology: TopologyConfig,
+    target_radius: float,
+    rng: np.random.Generator,
 ) -> FloatArray:
-    """1層ぶんの再帰行列 (``ESN`` と同じ作り方・同じ引き方)。"""
-    mask = rng.random((n_units, n_units)) < density
+    """1層ぶんの再帰行列 (``ESN`` と同じ作り方・同じ引き方)。
+
+    結合の有無は ``topology`` 層が決め、値はここで引く (拡張性方針 §2-1)。
+    **層ごとに独立に引く**ので、同じトポロジ設定でも層ごとに違う実現になる。
+    """
+    mask = build_mask(topology, n_units, rng)
     values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
     recurrent: FloatArray = np.where(mask, values, 0.0)
     measured = spectral_radius(recurrent)
     if measured == 0.0:
         raise ValueError(
-            f"生成した W のスペクトル半径が 0 です (density={density}, N={n_units})"
+            f"生成した W のスペクトル半径が 0 です (topology={topology}, N={n_units})"
         )
     return recurrent * (target_radius / measured)
 
@@ -180,7 +192,10 @@ class DeepESN:
             block.setflags(write=False)
             weights_in.append(block)
             matrix = _random_recurrent(
-                self._layer_units, config.density, config.spectral_radius, rng
+                self._layer_units,
+                config.topology,
+                config.spectral_radius,
+                rng,
             )
             matrix.setflags(write=False)
             recurrent.append(matrix)
