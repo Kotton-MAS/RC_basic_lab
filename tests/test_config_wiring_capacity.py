@@ -94,12 +94,14 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_LENGTH_SWEEP,
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_NARMA10,
-    CapacityOutcome,
-    CapacityRow,
     run_conservation_sweep,
     run_ipc_sweep,
     run_length_sweep,
     run_mc_sweep,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityOutcome,
+    CapacityRow,
 )
 from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.meta import collect_meta_for

@@ -20,7 +20,10 @@ from matplotlib.collections import QuadMesh
 from matplotlib.colors import Normalize, PowerNorm
 from matplotlib.patches import Patch
 
-from rc_basics_lab.experiment.capacity import CapacityProfileRow, CapacityRow
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityProfileRow,
+    CapacityRow,
+)
 from rc_basics_lab.plotting.capacity_grids import (
     even_degree_note,
     ipc_heatmap_means,

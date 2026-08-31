@@ -62,10 +62,12 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_MC_SWEEP,
     CapacityCondition,
-    capacity_row_from,
     evaluate_capacity_condition,
     ipc_config_for,
     measure_capacity,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    capacity_row_from,
 )
 from rc_basics_lab.experiment.esp import (
     ReferenceTrajectory,
@@ -79,6 +81,12 @@ from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
 CAPACITY_MODULE = "rc_basics_lab.experiment.capacity"
+BOUNDS_MODULE = "rc_basics_lab.experiment.capacity_bounds"
+"""確保軸の上限は ``capacity_bounds`` へ移った (D-77 の分割)。
+
+上限そのものは非公開 (``_MAX_*``) なので、``importlib`` でモジュールから
+読む。**定数を写経しない** —— 写経すると本体を変えても検査が古い値のまま
+通る。"""
 """monkeypatch の対象。**呼び出し側のモジュール属性**を差し替える (§10-1)。"""
 
 
@@ -491,7 +499,7 @@ def test_oversized_n_units_is_rejected_before_any_allocation(
     を monkeypatch して**呼ばれないこと**を直接固定する (確保より前に落ちる
     ことの実証。D-34 の規律「確保より前に落とす」と同じ)。
     """
-    module = importlib.import_module(CAPACITY_MODULE)
+    bounds = importlib.import_module(BOUNDS_MODULE)
     called = False
 
     def fail_if_called(*args: object, **kwargs: object) -> object:
@@ -503,7 +511,7 @@ def test_oversized_n_units_is_rejected_before_any_allocation(
         f"{CAPACITY_MODULE}.simulate_reference_trajectory", fail_if_called
     )
     config = base_config()
-    huge = condition(n_units=module._MAX_UNITS + 1)
+    huge = condition(n_units=bounds._MAX_UNITS + 1)
     with pytest.raises(ValueError, match="n_units"):
         evaluate_capacity_condition(config, huge)
     assert not called, "上限検査より前に状態行列の確保が始まっています"
@@ -519,7 +527,7 @@ def test_oversized_state_matrix_is_rejected_before_any_allocation(
     検査しないと、片方の上限だけを見て安全と誤認する (D-34 の rationale が
     ``max_degrees`` 単体では防げない、と言っているのと同じ形)。
     """
-    module = importlib.import_module(CAPACITY_MODULE)
+    bounds = importlib.import_module(BOUNDS_MODULE)
     called = False
 
     def fail_if_called(*args: object, **kwargs: object) -> object:
@@ -533,7 +541,7 @@ def test_oversized_state_matrix_is_rejected_before_any_allocation(
     config = base_config()
     huge_steps = dataclasses.replace(
         condition(n_units=10),
-        n_steps=module._MAX_STATE_ELEMENTS // 10 + 1,
+        n_steps=bounds._MAX_STATE_ELEMENTS // 10 + 1,
     )
     with pytest.raises(ValueError, match="n_units \\* n_steps"):
         evaluate_capacity_condition(config, huge_steps)
@@ -573,9 +581,9 @@ def test_bounds_accept_the_exact_limits(monkeypatch: pytest.MonkeyPatch) -> None
     (5,000 * 40,000 = 200,000,000)。到達を ``_PastTheGuard`` で観測するので
     確保は起きない (このサイズを実際に確保すると 1.6GB になる)。
     """
-    module = importlib.import_module(CAPACITY_MODULE)
-    max_units = module._MAX_UNITS
-    max_elements = module._MAX_STATE_ELEMENTS
+    bounds = importlib.import_module(BOUNDS_MODULE)
+    max_units = bounds._MAX_UNITS
+    max_elements = bounds._MAX_STATE_ELEMENTS
     exact_steps = max_elements // max_units
     assert max_units * exact_steps == max_elements, (
         "上限がちょうどで割り切れる前提が崩れています (テスト側の作り直しが必要)"
@@ -601,11 +609,11 @@ def test_exact_limit_condition_runs_to_completion(
 
     ``>`` を ``>=`` に変えると、ここは行を返さず ``ValueError`` になる。
     """
-    module = importlib.import_module(CAPACITY_MODULE)
+    bounds = importlib.import_module(BOUNDS_MODULE)
     exact = condition(n_units=12)
     assert exact.n_units * exact.n_steps == 12 * 1200
-    monkeypatch.setattr(module, "_MAX_UNITS", exact.n_units)
-    monkeypatch.setattr(module, "_MAX_STATE_ELEMENTS", exact.n_units * exact.n_steps)
+    monkeypatch.setattr(bounds, "_MAX_UNITS", exact.n_units)
+    monkeypatch.setattr(bounds, "_MAX_STATE_ELEMENTS", exact.n_units * exact.n_steps)
 
     row = evaluate_capacity_condition(base_config(), exact).row
     assert row.n_units == exact.n_units
@@ -614,7 +622,7 @@ def test_exact_limit_condition_runs_to_completion(
     # 反対側 (上限 + 1) は両軸とも落ちる —— 境界の両側を1つのテストで押さえる。
     with pytest.raises(ValueError, match="n_units"):
         evaluate_capacity_condition(base_config(), condition(n_units=exact.n_units + 1))
-    monkeypatch.setattr(module, "_MAX_UNITS", exact.n_units + 1)
+    monkeypatch.setattr(bounds, "_MAX_UNITS", exact.n_units + 1)
     with pytest.raises(ValueError, match="n_units \\* n_steps"):
         evaluate_capacity_condition(
             base_config(),

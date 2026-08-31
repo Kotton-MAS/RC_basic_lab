@@ -31,21 +31,25 @@ from pathlib import Path
 
 from rc_basics_lab.config import Chaos04Config
 from rc_basics_lab.diagnostics.base import DiagnosticResult
-from rc_basics_lab.experiment.capacity import CapacityRow
 from rc_basics_lab.experiment.capacity_pipeline import write_capacity_csv
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityRow,
+)
 from rc_basics_lab.experiment.freerun import (
     FREERUN_CSV,
     FREERUN_PROFILE_CSV,
     ONESTEP_CSV,
-    FreeRunEvaluation,
     FreeRunResults,
-    FreeRunRow,
     estimate_lorenz_lyapunov,
     run_freerun_experiment,
     run_onestep,
     write_freerun_csv,
     write_freerun_profile_csv,
     write_onestep_csv,
+)
+from rc_basics_lab.experiment.freerun_rows import (
+    FreeRunEvaluation,
+    FreeRunRow,
 )
 from rc_basics_lab.experiment.report import (
     META_JSON,

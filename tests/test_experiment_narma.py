@@ -44,8 +44,10 @@ from rc_basics_lab.experiment import narma as narma_module
 from rc_basics_lab.experiment import runner
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_NARMA10,
-    CapacityMeasurement,
     measure_capacity,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityMeasurement,
 )
 from rc_basics_lab.experiment.narma import (
     DELAY_LINE_OLS_ALPHAS,
@@ -639,7 +641,7 @@ def test_oversized_narma10_n_units_is_rejected_before_any_allocation(
     ``length`` 側 (``test_oversized_narma10_length_is_rejected_before_any_allocation``)
     と対にして、3-C の確保軸2本の両方が塞がれていることを固定する。
     """
-    from rc_basics_lab.experiment.capacity import _MAX_UNITS
+    from rc_basics_lab.experiment.capacity_bounds import _MAX_UNITS
 
     config = tiny_config()
     base = config.narma.base
@@ -675,7 +677,10 @@ def test_narma10_n_units_boundary_is_accepted() -> None:
     ``>`` が ``>=`` に書き換えられても検出できるようにする (3b-1 の
     F-3b1-2-005 と同じ規律)。実際に確保が走ると重いので、検査関数を直接呼ぶ。
     """
-    from rc_basics_lab.experiment.capacity import _MAX_UNITS, validate_n_units_bound
+    from rc_basics_lab.experiment.capacity_bounds import (
+        _MAX_UNITS,
+        validate_n_units_bound,
+    )
 
     validate_n_units_bound(_MAX_UNITS)
     with pytest.raises(ValueError, match="n_units"):

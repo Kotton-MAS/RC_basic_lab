@@ -308,7 +308,6 @@ def test_oversized_ipc_sweep_n_units_is_rejected_before_any_allocation(
     呼ばずに素通りしていた。``simulate_condition_trajectory`` に一本化した
     後は掃引3経路とまったく同じ検査を通る。
     """
-    capacity_module = importlib.import_module("rc_basics_lab.experiment.capacity")
     called = False
 
     def fail_if_called(*args: object, **kwargs: object) -> object:
@@ -320,11 +319,13 @@ def test_oversized_ipc_sweep_n_units_is_rejected_before_any_allocation(
         "rc_basics_lab.experiment.capacity.simulate_reference_trajectory",
         fail_if_called,
     )
+    # 上限は capacity_bounds へ移った (D-77 の分割)。定数を写経しない。
+    bounds_module = importlib.import_module("rc_basics_lab.experiment.capacity_bounds")
     config = tiny_config()
     huge = dataclasses.replace(
         config,
         ipc_sweep=dataclasses.replace(
-            config.ipc_sweep, n_units=capacity_module._MAX_UNITS + 1
+            config.ipc_sweep, n_units=bounds_module._MAX_UNITS + 1
         ),
     )
     with pytest.raises(ValueError, match="n_units"):

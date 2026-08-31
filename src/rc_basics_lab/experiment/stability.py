@@ -44,18 +44,20 @@ from rc_basics_lab.experiment.attractor import (
     valid_time_from_errors,
     validate_stats_bounds,
 )
-from rc_basics_lab.experiment.capacity import (
-    CapacityMeasurement,
-    CapacityRow,
-    capacity_row_from,
-    measure_capacity,
+from rc_basics_lab.experiment.capacity import measure_capacity
+from rc_basics_lab.experiment.capacity_bounds import (
     validate_state_matrix_bounds,
     validate_total_step_count,
 )
-from rc_basics_lab.experiment.freerun import (
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityMeasurement,
+    CapacityRow,
+    capacity_row_from,
+)
+from rc_basics_lab.experiment.freerun import run_free_run
+from rc_basics_lab.experiment.freerun_tasks import (
     chaos_esn_config,
     lorenz_task_entry,
-    run_free_run,
     task_length,
 )
 from rc_basics_lab.experiment.report import write_rows_csv
@@ -193,8 +195,8 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         * stability.n_replicates
     )
     validate_condition_count(n_conditions)
-    # 軸5 (条件数) と軸4 (stats_steps) はどちらも単独では上限内でも、**積**
-    # (逐次シミュレーションの総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
+    # 軸5 (条件数) と軸4 (stats_steps) は単独では上限内でも、**積** (逐次
+    # シミュレーションの総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
     validate_total_step_count(n_conditions * config.freerun.stats_steps)
     return tuple(
         StabilityCondition(
@@ -449,8 +451,7 @@ def evaluate_stability_condition(
         experiment=EXPERIMENT_FREERUN_CAPACITY,
         replicate=condition.replicate,
         seed_reservoir=config.base.seeds.reservoir,
-        # 4-D のリザバーを駆動するのは課題の入力そのものなので、駆動側の
-        # 基底シードは task ストリーム (D-06) である (3-C と同じ)。
+        # 4-D の駆動は課題の入力そのものなので、基底シードは task (D-06)。
         seed_drive=config.base.seeds.task,
         seed_surrogate=config.stability.surrogate_seed,
         rho=esn.spectral_radius,
@@ -515,8 +516,7 @@ def run_stability_experiment(
     ctx = capacity_context(config)
     dt = sampling_interval(config.lorenz)
     lyapunov_time = lyapunov.scalars["lyapunov_time"]
-    # 真の軌道は replicate だけで決まるので、全条件で1個の replicate ->
-    # TaskData キャッシュを共有する (仕様 §5 禁止する構造3)。
+    # 真の軌道は replicate だけで決まるので全条件でキャッシュを共有する (仕様 §5)。
     trajectory_cache: dict[int, TaskData] = {}
 
     outcomes = tuple(

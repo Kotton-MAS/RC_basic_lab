@@ -275,7 +275,7 @@ def test_capacity_rows_go_through_the_03_seam() -> None:
     行の組み立てを 04 側で複製すると、``CapacityRow`` に列を1本足したときに
     04 だけ置き去りになる (型検査では落ちない)。
     """
-    from rc_basics_lab.experiment.capacity import capacity_row_from
+    from rc_basics_lab.experiment.capacity_rows import capacity_row_from
 
     config = small_config()
     calls: list[str] = []

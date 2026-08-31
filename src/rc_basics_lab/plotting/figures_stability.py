@@ -16,7 +16,9 @@ import numpy as np
 from matplotlib.axes import Axes
 
 from rc_basics_lab.experiment.attractor import REGIMES
-from rc_basics_lab.experiment.capacity import CapacityRow
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityRow,
+)
 from rc_basics_lab.experiment.stability import StabilityRow, regime_map
 from rc_basics_lab.plotting.figures_freerun import (
     REGIME_COLORS,

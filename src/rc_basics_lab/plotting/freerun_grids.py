@@ -12,7 +12,9 @@ from typing import Protocol
 
 import numpy as np
 
-from rc_basics_lab.experiment.freerun import FreeRunProfileRow
+from rc_basics_lab.experiment.freerun_rows import (
+    FreeRunProfileRow,
+)
 from rc_basics_lab.plotting.capacity_grids import mean_std
 from rc_basics_lab.plotting.style import StyleContext
 from rc_basics_lab.types import FloatArray
