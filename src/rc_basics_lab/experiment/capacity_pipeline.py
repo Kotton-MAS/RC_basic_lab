@@ -289,10 +289,10 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     from rc_basics_lab.meta import git_commit
     from rc_basics_lab.plotting.figures_capacity import (
         plot_ipc_conservation,
-        plot_mc_sweep,
         plot_memory_nonlinearity,
     )
     from rc_basics_lab.plotting.figures_ipc_profile import plot_ipc_profile
+    from rc_basics_lab.plotting.figures_mc_sweep import plot_mc_sweep
     from rc_basics_lab.plotting.figures_narma10 import plot_narma10
     from rc_basics_lab.plotting.style import setup_style
 

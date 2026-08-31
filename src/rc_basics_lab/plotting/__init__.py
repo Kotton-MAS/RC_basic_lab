@@ -25,6 +25,7 @@ pyplot は使わない (``Figure`` + ``FigureCanvasAgg`` を直接組む)。CI �
 """
 
 from rc_basics_lab.plotting import (
+    broken_axis,
     capacity_grids,
     esp_references,
     figures,
@@ -36,6 +37,8 @@ from rc_basics_lab.plotting import (
     figures_freerun_time,
     figures_horizon,
     figures_ipc_profile,
+    figures_leak,
+    figures_mc_sweep,
     figures_narma10,
     figures_narma_taps,
     figures_stability,
@@ -52,6 +55,7 @@ from rc_basics_lab.plotting import (
 )
 
 __all__ = [
+    "broken_axis",
     "capacity_grids",
     "esp_references",
     "figures",
@@ -63,6 +67,8 @@ __all__ = [
     "figures_freerun_time",
     "figures_horizon",
     "figures_ipc_profile",
+    "figures_leak",
+    "figures_mc_sweep",
     "figures_narma10",
     "figures_narma_taps",
     "figures_stability",

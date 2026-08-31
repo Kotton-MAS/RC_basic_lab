@@ -27,17 +27,14 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
-import numpy.typing as npt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from rc_basics_lab.experiment.capacity import (
-    CapacityProfileRow,
     CapacityRow,
 )
 from rc_basics_lab.experiment.narma import (
@@ -56,7 +53,6 @@ from rc_basics_lab.plotting.capacity_grids import (
 from rc_basics_lab.plotting.labels import (
     DAMBRE_2012,
     IPC_BOUND_SOURCE,
-    MC_BOUND_SOURCE,
     cited_bound,
     cited_measurement,
 )
@@ -82,7 +78,6 @@ from rc_basics_lab.plotting.style import (
 )
 from rc_basics_lab.plotting.style import new_figure as _new_figure
 from rc_basics_lab.plotting.style import unique_sorted as _unique_sorted
-from rc_basics_lab.types import FloatArray
 
 _MIN_COLOR_MAX = 1.0e-12
 """ヒートマップの配色上限の下駄。
@@ -124,191 +119,7 @@ def _save(figure: Figure, path: Path) -> Path:
     return save_png(figure, path)
 
 
-# --- 3-A: 線形メモリ容量の掃引 ---------------------------------------------
-
-
-def _add_normalized_axis(axis: Axes, n_units: float) -> None:
-    """``MC / N`` の第2軸を右側に足す (FIG-4)。
-
-    上限 200 と実測 10〜36 は対数軸でも離れすぎていて、「上限からどれだけ
-    遠いか」が読めない。同じ目盛を N で割った軸を並べると、実測 36 が上限の
-    0.18 であることが図の中で読める。
-
-    **軸ラベルは付けない**。第2軸は constrained layout の管理外なので、
-    ラベルを付けると右隣のパネルの軸ラベルに重なる (実測)。「右軸が何か」は
-    パネルのタイトルに書く。
-    """
-    if n_units <= 0.0:
-        raise ValueError(f"n_units は正である必要があります: {n_units}")
-
-    def forward(values: npt.ArrayLike) -> FloatArray:
-        scaled: FloatArray = np.asarray(values, dtype=np.float64) / n_units
-        return scaled
-
-    def inverse(values: npt.ArrayLike) -> FloatArray:
-        scaled: FloatArray = np.asarray(values, dtype=np.float64) * n_units
-        return scaled
-
-    axis.secondary_yaxis("right", functions=(forward, inverse))
-
-
-def _plot_mc_total_panel(
-    axis: Axes, rows: Sequence[CapacityRow], style: StyleContext
-) -> None:
-    """左パネル: rho x リーク率 の ``mc_total`` と上限線 y=N。
-
-    縦軸を対数にするのは、上限線 (本番 N=200) と実測 (10〜36) を1枚に載せる
-    ためである。線形軸だと上限線を入れた瞬間に実測の差が潰れて、受け入れ条件1
-    の「rho とともに伸びる」が読めなくなる。
-
-    対数軸にしても「上限からどれだけ遠いか」は目分量になるので、右側に
-    ``MC / N`` の第2軸を置く (FIG-4)。N が1つに定まるときだけ引く ——
-    格子に複数の N が混ざっていたら ``MC / N`` は一意に決まらない。
-    """
-    rhos = _unique_sorted([row.rho for row in rows])
-    leaks = _unique_sorted([row.leak_rate for row in rows])
-    colors = sequential_colors(len(leaks))
-    for index, leak in enumerate(leaks):
-        stats = [
-            mean_std(
-                [
-                    row.mc_total
-                    for row in rows
-                    if row.rho == rho and row.leak_rate == leak
-                ]
-            )
-            for rho in rhos
-        ]
-        axis.errorbar(
-            list(rhos),
-            [mean for mean, _ in stats],
-            yerr=[std for _, std in stats],
-            fmt="o-",
-            capsize=4,
-            color=colors[index],
-            label=style.label(f"a = {leak:g}", f"a = {leak:g}"),
-        )
-    units = sorted({row.n_units for row in rows})
-    for index, n_units in enumerate(units):
-        axis.axhline(
-            float(n_units),
-            **reference_line_kwargs(index),
-            label=cited_bound(
-                style.label(f"上限 MC <= N = {n_units}", f"bound MC <= N = {n_units}"),
-                MC_BOUND_SOURCE,
-            ),
-        )
-    if len(units) == 1:
-        _add_normalized_axis(axis, float(units[0]))
-    axis.set_yscale("log")
-    axis.set_xlabel(style.label("スペクトル半径 rho", "spectral radius rho"))
-    axis.set_ylabel(
-        style.label(
-            "MC_total (レプリケート平均±s.d.)", "MC_total (mean +- s.d. over reps)"
-        )
-    )
-    axis.set_title(
-        style.label(
-            "線形メモリ容量と上限 N (右軸は MC / N)",
-            "Linear memory capacity and the bound N (right axis: MC / N)",
-        ),
-        fontsize=10,
-    )
-    axis.legend(loc="lower right", fontsize=7, ncols=2)
-
-
-def _plot_mc_profile_panel(
-    axis: Axes,
-    rows: Sequence[CapacityRow],
-    profile: Sequence[CapacityProfileRow],
-    leak_rate: float,
-    style: StyleContext,
-) -> None:
-    """右パネル: 代表リーク率での遅延プロファイルを rho 別に重ねる。
-
-    横軸を対数にすると「rho を上げるとプロファイルが右へ伸びる」が形として
-    読める。各 rho の容量重心 (``mc_effective_delay``、受け入れ条件1 が測る量
-    そのもの) を同色の縦点線で入れ、図と受け入れ条件の対応を明示する。
-    """
-    means = mc_profile_means(rows, profile, leak_rate)
-    rhos = tuple(means)
-    colors = sequential_colors(len(rhos))
-    for index, rho in enumerate(rhos):
-        cells = means[rho]
-        delays = np.arange(1, cells.shape[0] + 1, dtype=np.float64)
-        axis.plot(
-            delays,
-            cells,
-            color=colors[index],
-            linewidth=1.4,
-            label=style.label(f"rho = {rho:g}", f"rho = {rho:g}"),
-        )
-        effective, _ = mean_std(
-            [
-                row.mc_effective_delay
-                for row in rows
-                if row.rho == rho and row.leak_rate == leak_rate
-            ]
-        )
-        if math.isfinite(effective) and effective > 0.0:
-            axis.axvline(effective, color=colors[index], linestyle=":", linewidth=1.0)
-    axis.set_xscale("log")
-    axis.set_xlabel(style.label("遅延 k [ステップ]", "delay k [steps]"))
-    axis.set_ylabel(
-        style.label(
-            "遅延ごとの容量 (しきい値後)", "capacity per delay (after thresholding)"
-        )
-    )
-    axis.set_title(
-        style.label(
-            f"遅延プロファイル (a = {leak_rate:g}、縦点線は容量重心)",
-            f"Delay profile (a = {leak_rate:g}; dotted: centre of mass)",
-        ),
-        fontsize=10,
-    )
-    axis.legend(loc="upper right", fontsize=8, ncols=2)
-
-
-def plot_mc_sweep(
-    rows: Sequence[CapacityRow],
-    profile: Sequence[CapacityProfileRow],
-    path: Path,
-    *,
-    style: StyleContext,
-) -> Path:
-    """実験 3-A の図を書く (受け入れ条件1)。
-
-    Args:
-        rows: 3-A の行 (``capacity.csv`` と同じ)。
-        profile: 3-A の長形式の行 (``capacity_profile.csv`` と同じ、D-38)。
-        path: 出力先 PNG。
-        style: ``setup_style()`` の戻り値 (ラベル言語の決定に使う)。
-
-    Raises:
-        ValueError: ``rows`` が空の場合。
-    """
-    require_rows(rows)
-    leak_rate = representative_leak_rate(rows, lambda row: row.mc_total)
-    with rc_context_for(style):
-        figure = _new_figure(
-            12.0, 6.2
-        )  # 1-6: Zenn の本文幅 700px で潰れないよう比を 2.0 前後に抑える
-        axes = figure.subplots(1, 2, squeeze=False)
-        label_panels(list(axes[0]), style=style)
-        _plot_mc_total_panel(axes[0][0], rows, style)
-        _plot_mc_profile_panel(axes[0][1], rows, profile, leak_rate, style)
-        first = rows[0]
-        figure.suptitle(
-            style.label(
-                "実験 3-A: 線形メモリ容量は rho = 1 付近で最大になるが、"
-                "上限 N の2割にも届かない",
-                "Experiment 3-A: linear memory capacity peaks near rho = 1"
-                " yet stays below 20% of the bound N",
-            )
-        )
-        conditions = sweep_conditions(first)
-        add_provenance(figure, conditions, rows, style=style)
-        return _save(figure, path)
+# --- 3-A (``plot_mc_sweep``) は figures_mc_sweep.py にある (D-77) ----------
 
 
 # --- 3-B: 次数 x 遅延 のヒートマップ ---------------------------------------
@@ -637,7 +448,6 @@ __all__ = [
     "mc_profile_means",
     "narma10_method_labels",
     "plot_ipc_conservation",
-    "plot_mc_sweep",
     "plot_memory_nonlinearity",
     "representative_leak_rate",
 ]

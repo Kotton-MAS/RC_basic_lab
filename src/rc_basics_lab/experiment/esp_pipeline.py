@@ -215,8 +215,8 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
     from rc_basics_lab.plotting.figures_esp import (
         plot_esp_decay,
         plot_esp_map,
-        plot_leak_timescale,
     )
+    from rc_basics_lab.plotting.figures_leak import plot_leak_timescale
     from rc_basics_lab.plotting.figures_washout import plot_washout_sensitivity
     from rc_basics_lab.plotting.style import setup_style
 

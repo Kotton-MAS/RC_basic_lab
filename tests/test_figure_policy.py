@@ -61,6 +61,7 @@ from rc_basics_lab.plotting import (
     figures_esp,
     figures_freerun,
     figures_ipc_profile,
+    figures_mc_sweep,
     heatmap,
     style,
     waveforms,
@@ -76,7 +77,6 @@ from rc_basics_lab.plotting.figures_anomaly import (
 )
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
-    plot_mc_sweep,
 )
 from rc_basics_lab.plotting.figures_esp import plot_esp_map
 from rc_basics_lab.plotting.figures_freerun import plot_valid_time
@@ -87,6 +87,7 @@ from rc_basics_lab.plotting.figures_horizon import (
     draw_horizon_panel,
 )
 from rc_basics_lab.plotting.figures_ipc_profile import plot_ipc_profile
+from rc_basics_lab.plotting.figures_mc_sweep import plot_mc_sweep
 from rc_basics_lab.plotting.freerun_headlines import (
     LITERATURE_VALID_TIME,
     LITERATURE_VALID_TIME_CONDITIONS,
@@ -148,6 +149,8 @@ def capture_figures(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
     # 保存関数の名前も ``save_png`` になった。**両方を差し替える** ——
     # 片方だけだと、その図の検査が「図が保存されませんでした」で空振りする。
     monkeypatch.setattr(figures_ipc_profile, "save_png", spy)
+    # ``plot_mc_sweep`` も figures_mc_sweep へ移った (D-77)。同じ理由で足す。
+    monkeypatch.setattr(figures_mc_sweep, "_save", spy)
     return figures
 
 
@@ -439,23 +442,55 @@ def test_the_footnote_is_omitted_when_the_commit_is_unknown(
 def test_the_mc_sweep_shows_the_capacity_normalised_by_the_bound(
     tmp_path: Path, capture_figures: list[Figure]
 ) -> None:
-    """3-A に ``MC / N`` の第2軸が在る (FIG-4)。
+    """3-A に ``MC / N`` の第2軸が在り、上限が遠いときは縦軸が破断する (FIG-4 / 2-7)。
 
-    上限 200 と実測 10〜36 は対数軸でも離れすぎていて、「上限からどれだけ
-    遠いか」が読めない。第2軸が消えたらここが落ちる。
+    上限 200 と実測 10〜36 は 5.5 倍離れていて、対数軸にしても実測の帯より
+    広い空白が上に残る。上段に上限線、下段に実測を置いて破断し、隔たりは
+    ``MC / N`` の第2軸で数値として読む。第2軸か破断のどちらかが消えたら
+    ここが落ちる。
     """
     rows = mc_sweep_rows(leaks=(0.3,))
     n_units = float(rows[0].n_units)
     plot_mc_sweep(rows, mc_sweep_profile(rows), tmp_path / "mc.png", style=CONTEXT)
-    panel = capture_figures[0].axes[0]
-    children = list(panel.child_axes)
+    figure = capture_figures[0]
+    data_axis = next(axis for axis in figure.axes if "MC_total" in axis.get_ylabel())
+    children = list(data_axis.child_axes)
     assert len(children) == 1, f"第2軸が {len(children)} 本です"
     # 目盛の範囲が主軸を N で割ったものになっている (ラベルではなく変換を見る)
-    low, high = panel.get_ylim()
+    low, high = data_axis.get_ylim()
     assert children[0].get_ylim() == pytest.approx((low / n_units, high / n_units))
-    # 「右軸が何か」はパネルのタイトルに書く (第2軸は constrained layout の
-    # 管理外で、軸ラベルを付けると隣のパネルに重なるため)
-    assert "MC / N" in panel.get_title()
+    # 上限線は実測パネルではなく上段に在る (= 破断している)
+    assert not _reference_line_values(data_axis), "上限線が実測パネルに残っています"
+    bound_axis = next(
+        axis
+        for axis in figure.axes
+        if axis is not data_axis and _reference_line_values(axis)
+    )
+    assert _reference_line_values(bound_axis) == pytest.approx([n_units])
+    # 実測パネルの上端は上限に届かない (破断の意味が消えていない)
+    assert high < n_units
+    # 「右軸が何か」はタイトルに書く (第2軸は constrained layout の管理外で、
+    # 軸ラベルを付けると隣のパネルに重なるため)。破断時は上段が見出しになる。
+    assert "MC / N" in bound_axis.get_title()
+
+
+def _reference_line_values(axis: Axes) -> list[float]:
+    """``axis`` に引かれた水平参照線の y 値。
+
+    ``axhline`` は端から端までの ``Line2D`` になるので、y が定数の破線を拾う。
+    データ系列 (誤差棒) は実線なので混ざらない。破断記号も線を描かない
+    (``linestyle="none"``) ので除く —— 記号は軸座標の y=1 に置かれており、
+    これを数えると「上限線が残っている」と誤判定する。
+    """
+    drawn = {"-", "none", "None"}
+    values: list[float] = []
+    for line in axis.get_lines():
+        ydata = np.asarray(line.get_ydata(), dtype=np.float64)
+        if ydata.size != 2 or ydata[0] != ydata[1]:
+            continue
+        if line.get_linestyle() not in drawn:
+            values.append(float(ydata[0]))
+    return values
 
 
 # --- FIG-7 / D-88: 未計算と 0 を区別する ------------------------------------
