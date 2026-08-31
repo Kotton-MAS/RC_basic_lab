@@ -13,11 +13,13 @@ from __future__ import annotations
 import numpy as np
 
 from rc_basics_lab.readout.autoregressive import StateUpdater
-from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.protocol import Reservoir
 from rc_basics_lab.types import FloatArray
 
 
-def esn_state_updater(esn: ESN, rng: np.random.Generator | None = None) -> StateUpdater:
+def esn_state_updater(
+    esn: Reservoir, rng: np.random.Generator | None = None
+) -> StateUpdater:
     """ESN を ``StateUpdater`` (D-50) に適合させるアダプタ。
 
     **``ESN.run`` ではなく ``ESN.step`` を使う** (仕様 §5 禁止する構造8)。自走は

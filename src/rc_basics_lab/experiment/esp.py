@@ -45,7 +45,9 @@ from rc_basics_lab.config import (
 from rc_basics_lab.diagnostics.base import DiagnosticContext, StatePropagator
 from rc_basics_lab.diagnostics.esp import conditional_lyapunov, esp_convergence
 from rc_basics_lab.diagnostics.timescale import autocorrelation_time
-from rc_basics_lab.reservoir.esn import ESN, ESNConfig
+from rc_basics_lab.reservoir.esn import ESNConfig
+from rc_basics_lab.reservoir.protocol import Reservoir
+from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
@@ -204,7 +206,7 @@ def require_deterministic_esn(
         )
 
 
-def esn_propagator(esn: ESN, u: FloatArray) -> StatePropagator:
+def esn_propagator(esn: Reservoir, u: FloatArray) -> StatePropagator:
     """``X[t]`` から ``X[t+1]`` を返す伝播器を作る (D-18 / D-48)。
 
     ``ESN.run`` の規約により ``X[t]`` は ``u[t]`` を**処理した後**の状態なので、
@@ -345,7 +347,7 @@ class ReferenceTrajectory:
     成立しないリーキーな抽象化になる。
     """
 
-    esn: ESN
+    esn: Reservoir
     drive: FloatArray
     states: FloatArray
     rng: np.random.Generator
@@ -399,15 +401,12 @@ def simulate_reference_trajectory(
         offset=drive_offset,
     )
     reservoir_rng = make_rng_for(reservoir_seed, SeedStream.RESERVOIR, replicate)
-    esn = ESN(
+    esn = build_reservoir(
         build_esn_config(reservoir, rho, leak_rate, state_noise=state_noise),
         reservoir_rng,
         n_inputs=_N_INPUTS,
     )
-    # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir
-    # ストリームの続き。01 の ``runner.plan_replicate`` と同じ形)。**常に**
-    # 渡すのは、rng を省く分岐が残っていると state_noise > 0 を設定した瞬間に
-    # ``ESN.run`` が ValueError になる配線漏れが復活するため (D-36)。
+    # 状態ノイズ用の rng は**常に**渡す (D-36)。
     # state_noise=0 では1個も引かれないので既存の結果は変わらない。``rng`` を
     # ``ReferenceTrajectory`` にも載せて返すのは、``simulate_condition`` の
     # 比較軌道ループが同じ規律に従えるようにするため (F-3b1-1-001)。
@@ -426,7 +425,7 @@ class Trajectories:
     シミュレーション部分だけを切り出したのがこの型である。
     """
 
-    esn: ESN
+    esn: Reservoir
     drive: FloatArray
     states: FloatArray
     companions: tuple[FloatArray, ...]

@@ -89,7 +89,8 @@ from rc_basics_lab.readout.design import (
     ReservoirSpec,
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
-from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.protocol import Reservoir
+from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.chaotic import (
     TASK_NAME_LORENZ,
@@ -454,7 +455,7 @@ def closed_loop_setup(
     readout: TeacherForcedReadout,
     switch_index: int,
     *,
-    esn: ESN | None = None,
+    esn: Reservoir | None = None,
     noise_rng: np.random.Generator | None = None,
 ) -> ClosedLoop:
     """手法名から自走の初期条件を組む (**手法ごとの分岐はここだけ**)。
@@ -618,7 +619,7 @@ def run_free_run(
 
     reservoir_rng = make_rng(config.base.seeds, SeedStream.RESERVOIR, replicate)
     reservoir = (
-        ESN(
+        build_reservoir(
             esn_cfg,
             reservoir_rng,
             n_inputs=replicate_plan.task.n_inputs,
@@ -626,10 +627,7 @@ def run_free_run(
         if method == ESN_METHOD
         else None
     )
-    # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir
-    # ストリームの続き、runner.py:169-174 / esp.py:413-427 と同じ形。D-14 に
-    # 4本目を足さない)。state_noise=0 のときは1個も引かれないため、
-    # ノイズを使わない条件の結果は不変。
+    # 状態ノイズ用の rng は**常に**渡す (D-36)。D-14 に4本目を足さない。
     noise_rng = reservoir_rng if esn_cfg.state_noise > 0.0 else None
     loop = closed_loop_setup(readout, switch_index, esn=reservoir, noise_rng=noise_rng)
     result = free_run(

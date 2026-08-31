@@ -7,8 +7,21 @@
 サイクル 02〜05 でこのパッケージに手を入れるときも、``ESN.step`` / ``ESN.run`` の
 公開署名は変更しない (02 の2初期状態は ``x0``、04 の閉ループは ``step``、
 04 のノイズ注入は ``ESNConfig.state_noise`` で既に配線済み)。
+
+``experiment`` 層が見るのは ``Reservoir`` (接合面) と ``build_reservoir``
+(唯一の生成口) だけである。``ESN`` を名指しするのは ESN 固有の検査だけで、
+モデルを足す手順は ``docs/リザバーを足す.md`` にある。
 """
 
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig, spectral_radius
+from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
+from rc_basics_lab.reservoir.registry import build_reservoir
 
-__all__ = ["ESN", "ESNConfig", "spectral_radius"]
+__all__ = [
+    "ESN",
+    "ESNConfig",
+    "Reservoir",
+    "ReservoirConfig",
+    "build_reservoir",
+    "spectral_radius",
+]

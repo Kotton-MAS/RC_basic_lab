@@ -49,7 +49,7 @@ from rc_basics_lab.experiment.runner import (
 )
 from rc_basics_lab.readout.autoregressive import StateUpdater, free_run
 from rc_basics_lab.readout.ridge import fit_ridge, select_alpha
-from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.types import FloatArray
 
@@ -228,7 +228,7 @@ def _updater(
     # ここで 0 に固定すると『状態を作った ESN』と『自走する ESN』が食い違う。
     # 実測: 固定していた間、replicate 0 以外は NRMSE が 1e85 まで発散した。
     rng = make_rng(config.seeds, SeedStream.RESERVOIR, replicate)
-    esn = ESN(entry.esn, rng, n_inputs=plan.task.n_inputs)
+    esn = build_reservoir(entry.esn, rng, n_inputs=plan.task.n_inputs)
     return esn_state_updater(esn)
 
 

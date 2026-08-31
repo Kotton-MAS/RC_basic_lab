@@ -33,7 +33,7 @@ from rc_basics_lab.readout.design import (
     build_design_matrix,
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
-from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.delay_parity import generate_delay_parity
@@ -183,10 +183,12 @@ def plan_replicate(
     """
     data = task_entry.generate(make_rng(config.seeds, SeedStream.TASK, replicate))
     reservoir_rng = make_rng(config.seeds, SeedStream.RESERVOIR, replicate)
-    reservoir = ESN(task_entry.esn, reservoir_rng, n_inputs=data.n_inputs)
-    # 重み生成に使った Generator をそのまま状態ノイズにも渡す (reservoir ストリームの
-    # 続き)。state_noise=0 のときは1個も引かれないため既存の結果は不変で、
-    # state_noise>0 を YAML で設定したときに ValueError で落ちる配線漏れが消える。
+    reservoir = build_reservoir(task_entry.esn, reservoir_rng, n_inputs=data.n_inputs)
+    # **状態ノイズ用の rng は常に渡す** (D-36)。重み生成に使った Generator を
+    # そのまま渡す (reservoir ストリームの続き)。state_noise=0 では1個も引かれ
+    # ないので既存の結果は不変で、rng を省く分岐を残すと state_noise>0 を
+    # 設定した瞬間に ValueError で落ちる配線漏れが復活する。
+    # **02 (esp.py) と 04 (freerun.py) も同じ形にしてある。ここが正本。**
     states = reservoir.run(data.u, rng=reservoir_rng)
     designs = {
         method.name: tuple(
