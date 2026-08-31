@@ -51,6 +51,22 @@ ridge:
   # 上端 64 が選ばれ続けるのは効きの飽和であって、格子不足ではない
   # (docs/design.md §8.2)。
   n_lags_grid: [1, 2, 4, 8, 16, 32, 64]
+  # alpha を交差検証で選ぶ設定。**既定は使わない** (n_folds: 0)。
+  #
+  # results/ の成果物は単一の検証区間で作られており、選び方を変えると記事の
+  # 数値が変わる。手元で試すには --set ridge.cv.n_folds=4 を付ける。
+  #
+  # scheme: rolling は訓練区間が常に検証区間より前で、未来から過去への漏れを
+  # 構造上作れない。blocked はデータを使い切れるが時間の向きを無視する
+  # (readout/cross_validation.py の注を参照)。
+  #
+  # embargo: 訓練と検証のあいだに捨てる行数。null なら設計行列の first_valid
+  # を使う —— 1行が過去 first_valid 行の入力を含むので、それ未満だと検証行が
+  # 訓練行と同じ入力を持つ (遅延線で顕著)。
+  cv:
+    n_folds: 0
+    scheme: rolling
+    embargo: null
 
 mackey_glass:
   tau: 17.0

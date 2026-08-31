@@ -38,7 +38,7 @@ LAYERS: tuple[tuple[str, str], ...] = (
     ("tasks", "課題 (データ生成)。**純関数層** —— I/O もリザバーも知らない"),
     ("datasets", "外部データの取得・キャッシュ・SHA256。**I/O を持つ唯一の場所**"),
     ("reservoir", "リザバー本体と、モデルを足すための接合面"),
-    ("readout", "特徴設計 (FeatureSpec) とリッジ回帰"),
+    ("readout", "特徴設計 (FeatureSpec)・リッジ回帰・交差検証"),
     ("diagnostics", "ESP / 容量 / IPC / リアプノフ。``X`` だけを見る"),
     ("experiment", "合成層。実験の骨格と成果物の書き出し"),
     ("plotting", "作図層"),

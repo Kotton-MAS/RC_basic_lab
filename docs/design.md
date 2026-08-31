@@ -1335,7 +1335,7 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | モジュール | 持つもの |
 |---|---|
 | `_common.py` | `ConfigError` / `_coerce*` (別名・判別子つき union を含む) / `_build` / `_read_yaml` / `_deep_merge` / `load_config_as` |
-| `experiment01.py` | 01 の設定 dataclass 群 / `TASK_LENGTH_FIELDS` / `load_config` |
+| `experiment01.py` | 01 の設定 dataclass 群 / `CrossValidationConfig` / `TASK_LENGTH_FIELDS` / `load_config` |
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` / `SymmetrySweepConfig` |
 | `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` |

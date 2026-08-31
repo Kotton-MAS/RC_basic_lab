@@ -21,9 +21,14 @@ from dataclasses import dataclass, fields
 
 import numpy as np
 
-from rc_basics_lab.config import ExperimentConfig
+from rc_basics_lab.config import CrossValidationConfig, ExperimentConfig
 from rc_basics_lab.experiment.split import Split, compute_t0, make_split
 from rc_basics_lab.metrics import nmse, nrmse, rmse, sign_accuracy
+from rc_basics_lab.readout.cross_validation import (
+    FoldScheme,
+    make_folds,
+    select_alpha_cv,
+)
 from rc_basics_lab.readout.design import (
     DelayLineSpec,
     DesignMatrix,
@@ -32,7 +37,12 @@ from rc_basics_lab.readout.design import (
     ReservoirSpec,
     build_design_matrix,
 )
-from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
+from rc_basics_lab.readout.ridge import (
+    AlphaSelection,
+    fit_ridge,
+    predict,
+    select_alpha,
+)
 from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
@@ -229,8 +239,55 @@ class _Selection:
     val_nrmse: float
 
 
+def _score_candidate(
+    plan: ReplicatePlan,
+    design: DesignMatrix,
+    alphas: Sequence[float],
+    cv: CrossValidationConfig,
+) -> AlphaSelection:
+    """1候補の alpha を選ぶ。交差検証が有効ならそちらを通す。
+
+    ``cv.n_folds == 0`` なら従来どおり単一の検証区間で採点する。**既定は
+    そちら**で、成果物 (``results/``) は単一分割で作られている。
+
+    交差検証の折りは**訓練 + 検証**の区間から切る。テスト区間は触らない ——
+    折りに混ぜると、選択に使った行で最終評価することになる。
+
+    禁足区間 (embargo) の既定は ``design.first_valid`` である。設計行列の1行は
+    過去 ``first_valid`` 行の入力を含むので、それ未満だと検証行が訓練行と同じ
+    入力を持つ (遅延線で顕著)。
+    """
+    split = plan.split
+    if cv.n_folds <= 0:
+        return select_alpha(
+            _rows(design.phi, split.train),
+            _rows(plan.task.y, split.train),
+            _rows(design.phi, split.val),
+            _rows(plan.task.y, split.val),
+            alphas,
+            bias_column=design.bias_column,
+        )
+    embargo = design.first_valid if cv.embargo is None else cv.embargo
+    folds = make_folds(
+        range(split.train.start, split.val.stop),
+        cv.n_folds,
+        scheme=FoldScheme(cv.scheme),
+        embargo=embargo,
+    )
+    return select_alpha_cv(
+        design.phi,
+        plan.task.y,
+        folds,
+        alphas,
+        bias_column=design.bias_column,
+    )
+
+
 def _select(
-    plan: ReplicatePlan, candidates: Sequence[DesignMatrix], alphas: Sequence[float]
+    plan: ReplicatePlan,
+    candidates: Sequence[DesignMatrix],
+    alphas: Sequence[float],
+    cv: CrossValidationConfig,
 ) -> _Selection:
     """検証 NRMSE が最小の (候補, alpha) を選ぶ。
 
@@ -239,19 +296,9 @@ def _select(
     """
     if not candidates:
         raise ValueError("候補が空です")
-    split = plan.split
-    y_train = _rows(plan.task.y, split.train)
-    y_val = _rows(plan.task.y, split.val)
     best: _Selection | None = None
     for design in candidates:
-        selection = select_alpha(
-            _rows(design.phi, split.train),
-            y_train,
-            _rows(design.phi, split.val),
-            y_val,
-            alphas,
-            bias_column=design.bias_column,
-        )
+        selection = _score_candidate(plan, design, alphas, cv)
         if best is None or selection.val_nrmse < best.val_nrmse:
             best = _Selection(
                 design=design,
@@ -274,7 +321,7 @@ def _evaluate(
     started = time.perf_counter()
     split = plan.split
     alphas = config.ridge.alpha_grid if method.alphas is None else method.alphas
-    best = _select(plan, plan.designs[method.designs_key], alphas)
+    best = _select(plan, plan.designs[method.designs_key], alphas, config.ridge.cv)
     bias_column = best.design.bias_column
     coefficients = fit_ridge(
         _rows(best.design.phi, split.train),
