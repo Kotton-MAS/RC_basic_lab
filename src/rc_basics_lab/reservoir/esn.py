@@ -20,6 +20,11 @@ from typing import ClassVar
 
 import numpy as np
 
+from rc_basics_lab.reservoir._kernel import (
+    check_common_config,
+    check_state,
+    leaky_tanh_update,
+)
 from rc_basics_lab.types import FloatArray
 
 TANH = "tanh"
@@ -72,30 +77,24 @@ def spectral_radius(matrix: FloatArray) -> float:
     return float(np.max(np.abs(np.linalg.eigvals(matrix))))
 
 
-def _validate_config(config: ESNConfig) -> None:
-    if config.n_units < 1:
-        raise ValueError(f"n_units は 1 以上である必要があります: {config.n_units}")
+def _validate_config(config: ESNConfig, n_inputs: int = 1) -> None:
+    """設定値の範囲を検査する。共通部は ``_kernel`` にある。
+
+    ``activation`` と ``density`` は ESN 固有なのでここで見る。
+    """
+    check_common_config(
+        n_units=config.n_units,
+        min_units=1,
+        leak_rate=config.leak_rate,
+        spectral_radius=config.spectral_radius,
+        scales={"input_scale": config.input_scale, "bias_scale": config.bias_scale},
+        state_noise=config.state_noise,
+        n_inputs=n_inputs,
+    )
     if config.activation != TANH:
         raise ValueError(f"未対応の活性化関数です: {config.activation!r}")
     if not 0.0 < config.density <= 1.0:
         raise ValueError(f"density は (0, 1] である必要があります: {config.density}")
-    if not 0.0 < config.leak_rate <= 1.0:
-        raise ValueError(
-            f"leak_rate は (0, 1] である必要があります: {config.leak_rate}"
-        )
-    if config.spectral_radius <= 0.0:
-        raise ValueError(
-            f"spectral_radius は正である必要があります: {config.spectral_radius}"
-        )
-    if config.input_scale < 0.0 or config.bias_scale < 0.0:
-        raise ValueError(
-            "input_scale / bias_scale は 0 以上である必要があります: "
-            f"{config.input_scale}, {config.bias_scale}"
-        )
-    if config.state_noise < 0.0:
-        raise ValueError(
-            f"state_noise は 0 以上である必要があります: {config.state_noise}"
-        )
 
 
 class ESN:
@@ -122,9 +121,7 @@ class ESN:
         Raises:
             ValueError: 設定値が範囲外、または生成した W が零行列だった場合。
         """
-        _validate_config(config)
-        if n_inputs < 1:
-            raise ValueError(f"n_inputs は 1 以上である必要があります: {n_inputs}")
+        _validate_config(config, n_inputs)
         self._config = config
         self._n_inputs = n_inputs
 
@@ -190,29 +187,18 @@ class ESN:
     def _update(
         self, x: FloatArray, drive: FloatArray, rng: np.random.Generator | None
     ) -> FloatArray:
-        """更新式の唯一の実装。``step`` と ``run`` がともにここを通る。"""
-        pre_activation = drive + self._recurrent @ x
-        noise = self._config.state_noise
-        if noise > 0.0:
-            if rng is None:
-                raise ValueError(
-                    "state_noise > 0 のときは rng が必要です "
-                    "(黙ってノイズ無しにすると設定が効かない実験になる)"
-                )
-            pre_activation = pre_activation + noise * rng.standard_normal(
-                self._config.n_units
-            )
-        leak = self._config.leak_rate
-        activated: FloatArray = np.tanh(pre_activation)
-        return (1.0 - leak) * x + leak * activated
+        """1 ステップ進める。**更新式は ``_kernel`` にある** (3 モデル共通)。"""
+        return leaky_tanh_update(
+            x,
+            drive,
+            self._recurrent,
+            leak_rate=self._config.leak_rate,
+            state_noise=self._config.state_noise,
+            rng=rng,
+        )
 
     def _check_state(self, x: FloatArray) -> FloatArray:
-        state = np.asarray(x, dtype=np.float64)
-        if state.shape != (self._config.n_units,):
-            raise ValueError(
-                f"状態は ({self._config.n_units},) である必要があります: {state.shape}"
-            )
-        return state
+        return check_state(x, self._config.n_units)
 
     def step(
         self,
