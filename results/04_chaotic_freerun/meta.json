@@ -69,7 +69,7 @@
   ],
   "capacity_note": "注: 4-D の MC / IPC は自走と同じ状態行列 (Lorenz で駆動した ESN) に対して測っている。駆動が i.i.d. ではなく決定的な時系列なので遅延目標が互いに予測可能であり、mc_total / ipc_total は保存則 (<= N) を超える。絶対値は 03 の掃引と比較できず、読めるのは同じ駆動の下での条件間の相対比較だけである。",
   "cjk_font": "Hiragino Sans",
-  "commit": "26a818d78606e01d432b4dde819da6faee4ecb87",
+  "commit": "6c081099e2799134f47ee3916414f8b179e61bd0",
   "config": {
     "base": {
       "delay_parity": {
@@ -288,7 +288,7 @@
     "split": 2,
     "task": 1
   },
-  "timestamp_utc": "2026-08-30T23:38:40.095053+00:00",
+  "timestamp_utc": "2026-08-31T00:51:04.422102+00:00",
   "valid_time_by_regime": {
     "attractor": 2.830630638649615,
     "diverged": 0.8427767597273936,
@@ -543,12 +543,12 @@
     0.5
   ],
   "wall_time_breakdown": {
-    "capacity_s": 83.13438118435442,
-    "figures_s": 1.5429397500120103,
-    "freerun_s": 24.230055292136967,
-    "lyapunov_s": 0.050682791974395514,
-    "onestep_s": 2.24955837498419,
-    "stability_s": 212.52426731563173
+    "capacity_s": 82.69712494686246,
+    "figures_s": 1.5647847501095384,
+    "freerun_s": 24.38951850007288,
+    "lyapunov_s": 0.050705166067928076,
+    "onestep_s": 2.2606275000143796,
+    "stability_s": 213.03077347017825
   },
-  "wall_time_s": 323.7328851658385
+  "wall_time_s": 323.99475191696547
 }
