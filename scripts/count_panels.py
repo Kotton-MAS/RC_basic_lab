@@ -21,7 +21,7 @@ import matplotlib.figure
 
 logger = logging.getLogger("count_panels")
 
-_RECORDS: list[tuple[str, int]] = []
+_RECORDS: list[tuple[str, int, int]] = []
 _ORIGINAL_SAVEFIG = matplotlib.figure.Figure.savefig
 
 
@@ -35,8 +35,29 @@ def _spy(
     経路が生えたら ``TypeError`` で落ちる —— 黙って素通しして「数えたつもり」に
     なるより、そこで気づくほうがよい。
     """
-    _RECORDS.append((Path(fname).name, len(self.axes)))
+    _RECORDS.append((Path(fname).name, len(self.axes), _labelled(self)))
     _ORIGINAL_SAVEFIG(self, fname, format=format)
+
+
+def _labelled(figure: matplotlib.figure.Figure) -> int:
+    """パネル記号 ``(a)`` が振られた軸の数 (FIG-15)。
+
+    ``len(figure.axes)`` は matplotlib の軸の本数で、**読者が数えるパネルの数
+    ではない**。破断した軸の上下 (3-A) や「全区間 + 拡大」の対 (5-A) は 1 枚と
+    して読まれる。記号を振る対象は「読者が独立に読む単位」なので、数える側で
+    解釈を足さずに済む。1 軸しか無い図には記号を振らないので 0 になる ——
+    そのときは軸の本数 (=1) をパネル数とする。
+    """
+    count = 0
+    for axis in figure.axes:
+        if any(_is_panel_label(text.get_text()) for text in axis.texts):
+            count += 1
+    return count
+
+
+def _is_panel_label(text: str) -> bool:
+    """``(a)`` 〜 ``(z)`` の形か。"""
+    return len(text) == 3 and text[0] == "(" and text[2] == ")" and text[1].isalpha()
 
 
 matplotlib.figure.Figure.savefig = _spy  # type: ignore[method-assign,assignment]
@@ -110,9 +131,21 @@ JOBS: tuple[tuple[str, Callable[[Path], object]], ...] = (
 """記事ごとの本番パイプライン。記事を1本足したらここへ1行足す。"""
 
 
+def _panels(record: tuple[str, int, int]) -> int:
+    """1枚の図のパネル数 (FIG-15)。
+
+    パネル記号の数を採る。**記号が無いときは軸の本数へ落とす** —— 記号を
+    振り忘れた多パネル図をここで 1 と数えると、パネル予算が黙って小さくなり、
+    ラチェットとして機能しなくなる (実測: ``fig_narma10`` は 4 軸で記号が無く、
+    最初のフォールバックはこれを 1 パネルと報告した)。
+    """
+    _, axes, labelled = record
+    return labelled if labelled > 0 else axes
+
+
 def main() -> int:
     """全記事の図を一時ディレクトリへ描き、パネル数の表をログに出す。"""
-    measured: dict[str, list[tuple[str, int]]] = {}
+    measured: dict[str, list[tuple[str, int, int]]] = {}
     with tempfile.TemporaryDirectory(prefix="rc-panels-") as tmp:
         for name, job in JOBS:
             _RECORDS.clear()
@@ -122,17 +155,29 @@ def main() -> int:
                 "[%s] %d 枚 / 合計 %d パネル",
                 name,
                 len(measured[name]),
-                sum(count for _, count in measured[name]),
+                sum(_panels(item) for item in measured[name]),
             )
-            for figure_name, count in measured[name]:
-                logger.info("    %-34s %d パネル", figure_name, count)
+            for figure_name, axes, labelled in measured[name]:
+                logger.info(
+                    "    %-34s %d パネル (軸 %d)",
+                    figure_name,
+                    _panels((figure_name, axes, labelled)),
+                    axes,
+                )
 
     logger.info("")
-    logger.info("| 記事 | 枚数 | 総パネル | 1枚の最大 |")
-    logger.info("|---|---|---|---|")
+    logger.info("| 記事 | 枚数 | 総パネル | 1枚の最大 | 軸の本数 |")
+    logger.info("|---|---|---|---|---|")
     for name, items in measured.items():
-        counts = [count for _, count in items]
-        logger.info("| %s | %d | %d | %d |", name, len(items), sum(counts), max(counts))
+        counts = [_panels(item) for item in items]
+        logger.info(
+            "| %s | %d | %d | %d | %d |",
+            name,
+            len(items),
+            sum(counts),
+            max(counts),
+            sum(axes for _, axes, _ in items),
+        )
     return 0
 
 

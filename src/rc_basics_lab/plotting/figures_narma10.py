@@ -21,9 +21,10 @@ from rc_basics_lab.experiment.narma_taps import TapSweepRow
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting.figures_capacity import draw_narma10_control_panel
 from rc_basics_lab.plotting.figures_narma_taps import draw_narma10_taps_panel
-from rc_basics_lab.plotting.layout import wrapped_note
+from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 from rc_basics_lab.plotting.narma10_panel import narma10_subtitle
 from rc_basics_lab.plotting.style import (
+    PANEL_TITLE_SIZE,
     StyleContext,
     add_provenance,
     new_figure,
@@ -68,14 +69,21 @@ def plot_narma10(
         # 100 ステップあり、半幅では線が重なって読めなくなるためである。
         figure = new_figure(13.0, 9.0)
         grid = figure.add_gridspec(2, 2, height_ratios=(1.0, 1.15))
-        draw_narma10_control_panel(figure.add_subplot(grid[0, 0]), rows, style)
-        draw_narma10_taps_panel(figure.add_subplot(grid[0, 1]), tap_rows, style)
+        control = figure.add_subplot(grid[0, 0])
+        taps = figure.add_subplot(grid[0, 1])
+        draw_narma10_control_panel(control, rows, style)
+        draw_narma10_taps_panel(taps, tap_rows, style)
         drawn = draw_prediction_waveform(
             figure, figure.add_subplot(grid[1, :]), truth, predictions, style
         )
         drawn.top.set_title(
-            f"NARMA10: {waveform_headline(truth, predictions, style)}", fontsize=9
+            f"NARMA10: {waveform_headline(truth, predictions, style)}",
+            fontsize=PANEL_TITLE_SIZE,
         )
+        # 記号は**波形を2段に割った後**に振る (FIG-16)。
+        # ``draw_prediction_waveform`` は渡された軸を ``remove()`` するので、
+        # 先に振ると下段の記号が消える (``fig_comparison`` で実際に消えていた)。
+        label_panels([control, taps, drawn.top], style=style)
         figure.suptitle(
             style.label(
                 "実験 3-C / 3-C': NARMA10 では遅延線が ESN を上回る",

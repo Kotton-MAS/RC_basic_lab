@@ -27,11 +27,11 @@ from rc_basics_lab.plotting.style import require_rows, unique_sorted
 from rc_basics_lab.types import FloatArray
 
 BOUND_MARGIN = 0.1
-"""上限線 y=N (対角線) を格子の外へ伸ばす割合。
+"""上限線を格子の外へ伸ばす割合 (**縮退ケース専用**)。
 
-``n_units`` が1点しかない縮退ケース (縮小設定) でも**線**として描けるように
-両端へ余白を取る。1点だけを結ぶと長さ 0 の線分になり、図の主張である
-「傾き1の対角線」が消える。
+``n_units`` が1点しかないとき (縮小設定) だけ両端へ余白を取る。1点だけを結ぶと
+長さ 0 の線分になり、図の主張である上限線が消えるため。**実測点が2つ以上ある
+ときは伸ばさない** —— 測っていない範囲まで線を引くことになる (2-7)。
 """
 
 
@@ -158,10 +158,15 @@ def ipc_heatmap_means(
 
 
 def conservation_bound(units: Sequence[int]) -> tuple[FloatArray, FloatArray]:
-    """上限線 ``y = N`` (傾き1の対角線) の端点を返す (受け入れ条件2)。
+    """上限線 (**比 = 1 の水平線**) の端点を返す (受け入れ条件2、2-7)。
+
+    図の縦軸は ``ipc_total / N`` なので、保存則 ``IPC_total <= N`` は
+    「水平線 1 を超えない」になる。**対角線をやめたのは読み取りのため** ——
+    絶対値 vs N で斜めの上限線を引くと、「上限からどれだけ離れたか」を斜めの
+    隙間の目分量で測ることになる。水平線からの距離なら縦に読める。
 
     描画とテストが**同じ1か所**からこの座標を取る。図の主張は
-    「``ipc_total`` はこの対角線を超えない」なので、線が消えたことを
+    「``ipc_total / N`` はこの線を超えない」なので、線が消えたことを
     ``test_conservation_figure_draws_the_bound_line`` が検出できる必要がある。
 
     Raises:
@@ -169,10 +174,17 @@ def conservation_bound(units: Sequence[int]) -> tuple[FloatArray, FloatArray]:
     """
     if not units:
         raise ValueError("units が空です")
-    low = min(units) * (1.0 - BOUND_MARGIN)
-    high = max(units) * (1.0 + BOUND_MARGIN)
-    edge: FloatArray = np.array([low, high], dtype=np.float64)
-    return edge, edge
+    low, high = float(min(units)), float(max(units))
+    if low == high:
+        # ``n_units`` が1点しかない縮退ケース (縮小設定) では、そのままだと
+        # 長さ 0 の線分になって図の主張である上限線が消える。ここだけ余白を取る。
+        low, high = low * (1.0 - BOUND_MARGIN), high * (1.0 + BOUND_MARGIN)
+    # **実測点が2つ以上あるときは範囲の外へ伸ばさない** (2-7)。以前は常に
+    # BOUND_MARGIN ぶん延長しており、N=25〜100 しか測っていないのに線が
+    # 22〜110 まで引かれていた。
+    x: FloatArray = np.array([low, high], dtype=np.float64)
+    y: FloatArray = np.ones_like(x)
+    return x, y
 
 
 __all__ = [

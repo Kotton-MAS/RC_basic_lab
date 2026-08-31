@@ -67,6 +67,11 @@ def plot_state_waveform(
         axes[0].plot(steps, signal[: steps.size], color=TRUTH_COLOR, linewidth=1.6)
         axes[0].set_ylabel(style.label("入力 u[t]", "input u[t]"))
         colors = _unit_colors(states.shape[1])
+        # **各波形の右端に標準偏差を注記する** (2-16)。記事の主張は「ユニット
+        # ごとの分散に開きがある」だが、8 本を連番色で重ねただけでは緑系・青紫系
+        # が判別できず、主張と図が直結していなかった。値を置けば、色を追わずに
+        # 「どの線がどれだけ動いているか」が読める。
+        deviations = np.std(states, axis=0)
         for column in range(states.shape[1]):
             axes[1].plot(
                 steps,
@@ -74,6 +79,16 @@ def plot_state_waveform(
                 color=colors[column],
                 linewidth=1.0,
                 alpha=0.9,
+            )
+            axes[1].annotate(
+                f"{float(deviations[column]):.3f}",
+                (steps[-1], states[-1, column]),
+                textcoords="offset points",
+                xytext=(4, 0),
+                fontsize=6,
+                color=colors[column],
+                va="center",
+                annotation_clip=False,
             )
         axes[1].set_ylabel(style.label("状態 x_i[t]", "state x_i[t]"))
         axes[1].set_xlabel(
@@ -92,9 +107,17 @@ def plot_state_waveform(
             wrapped_note(
                 style.label(
                     f"注: 先頭の {states.shape[1]} ユニットを番号順に描いている "
-                    "(D-107)。「よく散っているユニット」を選べる図にしない。",
+                    "(D-107)。「よく散っているユニット」を選べる図にしない。"
+                    "右端の数値は各ユニットの標準偏差 "
+                    f"(最小 {float(deviations.min()):.3f} 〜 "
+                    f"最大 {float(deviations.max()):.3f}、"
+                    f"比 {float(deviations.max() / deviations.min()):.0f} 倍)。",
                     f"Note: the first {states.shape[1]} units in index order"
-                    " (D-107). The figure must not let anyone pick lively units.",
+                    " (D-107). The figure must not let anyone pick lively units."
+                    " The numbers on the right are per-unit standard deviations"
+                    f" ({float(deviations.min()):.3f} to"
+                    f" {float(deviations.max()):.3f};"
+                    f" a factor of {float(deviations.max() / deviations.min()):.0f}).",
                 )
             ),
             fontsize=8,

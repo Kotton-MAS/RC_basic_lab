@@ -47,7 +47,12 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
-from rc_basics_lab.plotting import figures_capacity, figures_ipc_profile, style
+from rc_basics_lab.plotting import (
+    figures_capacity,
+    figures_ipc_profile,
+    figures_mc_sweep,
+    style,
+)
 from rc_basics_lab.plotting.figures_capacity import (
     conservation_bound,
     draw_narma10_control_panel,
@@ -55,10 +60,10 @@ from rc_basics_lab.plotting.figures_capacity import (
     mc_profile_means,
     narma10_method_labels,
     plot_ipc_conservation,
-    plot_mc_sweep,
     plot_memory_nonlinearity,
 )
 from rc_basics_lab.plotting.figures_ipc_profile import plot_ipc_profile
+from rc_basics_lab.plotting.figures_mc_sweep import plot_mc_sweep
 from rc_basics_lab.plotting.style import StyleContext, setup_style
 
 RETINA_DPI = 200
@@ -320,6 +325,8 @@ def captured(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
     monkeypatch.setattr(figures_capacity, "_save", spy)
     # plot_ipc_profile は figures_ipc_profile へ移った (D-77)。両方を差し替える。
     monkeypatch.setattr(figures_ipc_profile, "save_png", spy)
+    # plot_mc_sweep は figures_mc_sweep へ移った (D-77)。同じ理由で足す。
+    monkeypatch.setattr(figures_mc_sweep, "_save", spy)
     return figures
 
 
@@ -394,22 +401,35 @@ def test_conservation_figure_draws_the_bound_line(
         and np.array_equal(np.asarray(line.get_ydata(), dtype=np.float64), expected_y)
     ]
     assert len(matched) == 1, (
-        "y=N の参照線が見つかりません: "
+        "上限線が見つかりません: "
         f"{[np.asarray(line.get_xdata()).tolist() for line in axis.get_lines()]}"
     )
-    # 傾き1 (対角線) であること。水平線に退化していたら受け入れ条件2 を示せない。
-    assert expected_y[1] - expected_y[0] == pytest.approx(expected_x[1] - expected_x[0])
+    # **比 = 1 の水平線**であること (2-7)。縦軸を ipc_total / N にしたので、
+    # 保存則は「1 を超えない」になる。対角線に戻ると比の軸と食い違う。
+    assert expected_y[0] == pytest.approx(1.0)
+    assert expected_y[1] == pytest.approx(1.0)
     assert expected_x[1] > expected_x[0] > 0.0
+    # **測っていない範囲まで線を引かない** (2-7)。実測点が2つ以上あるときは
+    # 両端が実測の最小・最大と一致する。
+    assert expected_x[0] == pytest.approx(float(min(units)))
+    assert expected_x[1] == pytest.approx(float(max(units)))
 
 
 def test_conservation_bound_spans_a_single_size_grid() -> None:
-    """``n_units`` が1点しかなくても対角線が長さを持つ (縮小設定の縮退ケース)。
+    """``n_units`` が1点しかなくても上限線が長さを持つ (縮小設定の縮退ケース)。
 
-    1点だけを結ぶと長さ 0 の線分になり、上限線が図から消える。
+    1点だけを結ぶと長さ 0 の線分になり、上限線が図から消える。**この余白は
+    縮退ケース専用**で、実測点が2つ以上あるときは伸ばさない (2-7)。
     """
     x, y = conservation_bound([9])
     assert x[0] < 9.0 < x[1]
-    assert np.array_equal(x, y)
+    assert np.array_equal(y, np.ones_like(y)), "上限は比 = 1 の水平線"
+
+    # 実測点が2つ以上あれば、両端は実測の範囲そのもの (外へ伸ばさない)
+    wide_x, _ = conservation_bound([25, 50, 100])
+    assert wide_x[0] == pytest.approx(25.0)
+    assert wide_x[1] == pytest.approx(100.0)
+
     with pytest.raises(ValueError, match="units"):
         conservation_bound([])
 
