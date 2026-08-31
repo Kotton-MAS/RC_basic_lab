@@ -29,7 +29,8 @@ numpy / scipy による数値実験を行い、記事に載せる図と CSV を�
 ├── tests/                  # pytest
 ├── docs/                   # 要件 / 仕様 (plans/) / ADR (adr/) / サーベイ / 振り返り
 └── .claude/
-    ├── decisions.yaml      # 意図的な設計判断 (guard_test 必須)。**散文の正本はここ**
+    ├── decisions.yaml      # D-120 までの保管庫。**追記しない** (D-121)
+    ├── decisions/          # これから足す決定。D-NNN.decisions.yaml で1件1ファイル
     ├── agents/             # プロジェクト固有の reviewer (reviewer-deletion)
     └── settings.json       # プロジェクト固有の設定のみ。ガード類はキット側
 ```
@@ -174,7 +175,11 @@ make artifacts-manifest     # 成果物の指紋を書き直す (**意図して�
 - reviewer の findings は `.claude/schemas/findings.schema.json` に準拠させる。
   **`evidence` は必須。実測でないものを `measured` と書かない**
 - **「普通はこうするが、今回は理由があって別の選択をする」判断は
-  `.claude/decisions.yaml` に guard_test 付きで記録する。**
+  `.claude/decisions/D-NNN.decisions.yaml` に guard_test 付きで記録する。**
+  **`decisions.yaml` の末尾に追記しない** (D-121)。並行するブランチが必ず衝突し、
+  `merge=union` は GitHub のマージでは効かないと実測済み。
+  ファイル名を `D-NNN.decisions.yaml` にするのは、キットの `check-decisions.sh` が
+  `*decisions.yaml` で対象を選ぶため (`D-NNN.yaml` だと検証が静かに外れる)。
   **1決定 = 1約束 = 1 guard_test** (`check_decisions.py` は単一 node id しか解決しない)
 - **subagent の報告の数値を検証せずに転記しない。** 1コマンドで裏が取れるものは取る
 - 運用でうまくいかなかったことは、その場で1行記録する:
@@ -188,7 +193,7 @@ make artifacts-manifest     # 成果物の指紋を書き直す (**意図して�
 - **`results/01..04/` の既存成果物を、理由の説明なしに変えない**
 - **`.claude/settings.json` の `env` で処理系を固定しない** (D-73)。
   マシン固有の解決は gitignore された `settings.local.json` の `PATH` で行う
-- **`decisions.yaml` の `guard_test` に載っているテストを消さない。**
+- **決定の `guard_test` に載っているテストを消さない。**
   決定を守っている唯一の機械であり、消すと決定が散文に戻る
 
 ## 学習メモ
