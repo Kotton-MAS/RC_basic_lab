@@ -26,7 +26,9 @@ from rc_basics_lab.experiment.attractor import (
     REGIME_DIVERGED,
     REGIMES,
 )
-from rc_basics_lab.experiment.capacity import CapacityRow
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityRow,
+)
 from rc_basics_lab.experiment.freerun import (
     EXPERIMENT_FREERUN,
     KIND_PHASE,

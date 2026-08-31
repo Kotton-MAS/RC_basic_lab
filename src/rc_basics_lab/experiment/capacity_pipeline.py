@@ -33,13 +33,15 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_NARMA10,
     FIGURE_EXPERIMENTS,
-    CapacityOutcome,
-    CapacityProfileRow,
     CapacityResults,
-    CapacityRow,
-    profile_rows,
     run_capacity_experiment,
     run_length_sweep,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityOutcome,
+    CapacityProfileRow,
+    CapacityRow,
+    profile_rows,
 )
 from rc_basics_lab.experiment.capacity_threshold import (
     ThresholdComparison,

@@ -27,13 +27,17 @@ from dataclasses import dataclass
 from rc_basics_lab.config import Capacity03Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_NARMA10,
-    CapacityOutcome,
     capacity_context,
-    capacity_outcome_from,
-    capacity_row_from,
     ipc_config_for,
     measure_capacity,
+)
+from rc_basics_lab.experiment.capacity_bounds import (
     validate_n_units_bound,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityOutcome,
+    capacity_outcome_from,
+    capacity_row_from,
 )
 from rc_basics_lab.experiment.runner import (
     DELAY_LINE,

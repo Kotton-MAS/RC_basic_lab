@@ -46,7 +46,7 @@ from rc_basics_lab.experiment.attractor import (
     valid_time_from_errors,
     validate_stats_bounds,
 )
-from rc_basics_lab.experiment.capacity import (
+from rc_basics_lab.experiment.capacity_bounds import (
     validate_n_units_bound,
     validate_sequential_run_count,
     validate_state_matrix_bounds,

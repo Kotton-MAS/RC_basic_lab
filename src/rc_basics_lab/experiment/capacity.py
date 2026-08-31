@@ -48,9 +48,26 @@ from rc_basics_lab.config import (
     MemoryCapacityConfig,
     ReservoirSweepConfig,
 )
-from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
+from rc_basics_lab.diagnostics.base import DiagnosticContext
 from rc_basics_lab.diagnostics.ipc import ipc
 from rc_basics_lab.diagnostics.memory_capacity import memory_capacity
+from rc_basics_lab.experiment.capacity_bounds import (
+    validate_n_units_bound,
+    validate_sequential_run_count,
+    validate_state_matrix_bounds,
+    validate_total_step_count,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    DIAGNOSTIC_IPC,
+    DIAGNOSTIC_MC,
+    CapacityMeasurement,
+    CapacityOutcome,
+    CapacityProfileRow,
+    CapacityRow,
+    capacity_outcome_from,
+    capacity_row_from,
+    profile_rows,
+)
 from rc_basics_lab.experiment.esp import (
     ReferenceTrajectory,
     simulate_reference_trajectory,
@@ -122,36 +139,6 @@ FIGURE_EXPERIMENTS: tuple[str, ...] = (
 (``meta.json`` の ``wall_time_breakdown`` の並びもこの定数が単一の真実)。
 """
 
-DIAGNOSTIC_MC = "mc"
-"""``CapacityProfileRow.diagnostic``: 線形メモリ容量 (次数は常に1)。"""
-
-DIAGNOSTIC_IPC = "ipc"
-"""``CapacityProfileRow.diagnostic``: 情報処理容量 (次数 x 遅延)。"""
-
-_MAX_UNITS = 5_000
-"""``CapacityCondition.n_units`` の上書き不能な絶対上限 (F-3b1-1-017, CWE-789)。
-
-``ESN`` の重み生成は ``rng.random((N, N))`` (再帰行列) を確保するため、確保量は
-``N**2`` に比例する。3a の D-34 (IPC の確保・組合せ計算量の4段の上限) と同じ
-threat model —— 設定 YAML の1行変更 (``conservation.n_units_grid: [100000]``)
-だけで防御が無い状態だと数十GB の確保に到達しうる (実測: N=100000 で重み行列
-だけで約80GB)。本番設定の最大 ``n_units`` は 200 (3-A) で、``_MAX_UNITS=5000``
-は25倍の余裕を残しつつ、重み行列を ``8 * 5000**2`` ≈ 200MB に抑える。
-"""
-
-_MAX_STATE_ELEMENTS = 200_000_000
-"""``n_units * n_steps`` の上書き不能な絶対上限 (F-3b1-1-017, CWE-400/789)。
-
-状態行列 ``X`` は ``(n_steps, n_units)`` の ``float64`` を確保するため、
-確保量は ``n_units * n_steps`` に比例する (D-35 の rationale が言う 4GB 予算と
-同じ軸)。本番設定の最大は length_sweep (``n_units=50, n_steps=1_000_000`` =
-5e7) で、``_MAX_STATE_ELEMENTS=2e8`` は4倍の余裕を残しつつ状態行列を
-``8 * 2e8`` = 1.6GB に抑える。``n_steps`` 単体ではなく積で縛るのは、
-``n_units`` が小さければ ``n_steps`` を大きく取れる (length_sweep の実際の
-使い方) 一方で、両方を同時に大きくする設定変更は個別の軸の検査をすり抜ける
-ため (CWE-789 の threat model は D-34 の rationale と同型)。
-"""
-
 
 def _validate_condition_bounds(condition: CapacityCondition) -> None:
     """状態行列・ESN の確保より前に、確保量に上書き不能な絶対上限をかける。
@@ -172,113 +159,6 @@ def _validate_condition_bounds(condition: CapacityCondition) -> None:
     (3b-2 reviewer-security の実測)。
     """
     validate_state_matrix_bounds(condition.n_units, condition.n_steps)
-
-
-def validate_n_units_bound(n_units: int) -> None:
-    """``n_units`` 軸だけに絶対上限をかける (D-34)。
-
-    ESN の重み行列は ``n_units**2`` で伸びるので、系列長と無関係にこの軸だけで
-    確保が膨らむ。状態行列の軸 (``n_units * n_steps``) と**別の軸**なので、
-    片方だけを縛る呼び出し側 (3-C は ``tasks/narma.py`` の ``_validate`` が
-    ``length`` と ``length * n_units`` を既に縛っており、欠けていたのは
-    ``n_units`` 単体だった) から独立に呼べる形にしてある。
-
-    Args:
-        n_units: リザバーのユニット数。
-
-    Raises:
-        ValueError: 上限を超える場合 (**確保より前に**落とす)。
-    """
-    if n_units > _MAX_UNITS:
-        raise ValueError(
-            f"n_units が上限を超えています: {n_units} > {_MAX_UNITS} "
-            "(ESN の重み行列の確保量は n_units**2 に比例するため、"
-            "確保する前に検査で落とす)"
-        )
-
-
-def validate_state_matrix_bounds(n_units: int, n_steps: int) -> None:
-    """確保軸 ``(n_units, n_steps)`` そのものに絶対上限をかける (D-34)。
-
-    ``CapacityCondition`` を持たない経路 (3-C の ``run_narma10``。状態は 01 の
-    ``run_task`` が作る) からも同じ上限を呼べるように、条件オブジェクトではなく
-    **軸の値そのもの**を引数に取る。以前は 3-C の ``n_units``
-    (``narma.base.esn_mackey_glass.n_units``) を縛るものが1つも無く、
-    ``tasks/narma.py`` の ``_validate`` が塞いでいたのは ``length`` 軸だけだった
-    (オーケストレータの実測: ``n_units=6000`` で ESN が実際に構築されてから
-    無関係な形状エラーで停止していた)。
-
-    Args:
-        n_units: リザバーのユニット数。重み行列は ``n_units**2`` で伸びる。
-        n_steps: 系列長。状態行列は ``n_units * n_steps`` で伸びる。
-
-    Raises:
-        ValueError: いずれかの上限を超える場合 (**確保より前に**落とす)。
-    """
-    validate_n_units_bound(n_units)
-    n_state_elements = n_units * n_steps
-    if n_state_elements > _MAX_STATE_ELEMENTS:
-        raise ValueError(
-            f"n_units * n_steps が上限を超えています: {n_state_elements} > "
-            f"{_MAX_STATE_ELEMENTS} (状態行列の確保量は n_units * n_steps に"
-            "比例するため、確保する前に検査で落とす)"
-        )
-
-
-_MAX_SEQUENTIAL_RUNS = 2_000
-"""逐次で回す ESN シミュレーション本数 (CWE-834) の上書き不能な絶対上限。
-
-ESN の状態更新 (``ESN.run`` / 自走の ``free_run``) は逐次計算でベクトル化
-できない (仕様 §10-1) ので、実行時間は「回す本数」に正比例する。04 の
-4-A / 4-B は ``base.n_replicates`` を縛る検査がどこにも無く、この値を
-YAML の1行変更で任意倍にできた (reviewer-security 実測)。``experiment/
-stability.py`` の ``_MAX_CONDITIONS`` (4-C の条件数上限) と**同じ値・同じ
-threat model**。``config/chaos04.py`` / ``experiment/freerun.py`` は
-新しい ``_MAX_*`` を宣言しない
-(``tests/test_config_wiring_chaos.py::test_chaos_config_introduces_no_new_capacity_bound``)
-ので、``validate_state_matrix_bounds`` と同じくここに置き、両方の呼び出し元
-(``freerun.py`` は4-A/4-B、``stability.py`` は独自の条件数の積を別に持つ) が
-再利用する。
-"""
-
-
-def validate_total_step_count(n_total_steps: int) -> None:
-    """逐次シミュレーションの総ステップ数 (積の軸) に絶対上限をかける (CWE-834)。
-
-    ``_MAX_STATE_ELEMENTS`` と**同じ値・同じ threat model**を再利用する
-    (状態行列の要素数も、逐次シミュレーションの総ステップ数 (例: 4-C の
-    「条件数 x stats_steps」) も、どちらも「単位コストが一定の量が多重に
-    積み重なる」という同型の脅威モデルである)。個別の軸 (条件数の上限・
-    ステップ数の上限) がそれぞれ上限内でも、**積**は両方の軸検査をすり抜けて
-    膨らみうる (reviewer-security 実測: 4-C は条件数 <= 2000・stats_steps
-    <= 1e6 をどちらも通したまま、積が 1,984,000,000 ステップ = 約13時間
-    (予算300秒) に達した)。
-
-    Raises:
-        ValueError: 総ステップ数が上限を超える場合。
-    """
-    if n_total_steps > _MAX_STATE_ELEMENTS:
-        raise ValueError(
-            "逐次シミュレーションの総ステップ数が上限を超えています: "
-            f"{n_total_steps} > {_MAX_STATE_ELEMENTS} "
-            "(例: 条件数 x stats_steps。個別の軸がそれぞれ上限内でも、積が"
-            "膨らむ経路をここで塞ぐ)"
-        )
-
-
-def validate_sequential_run_count(n_runs: int) -> None:
-    """ESN シミュレーションを1本も回す前に、逐次実行の本数を検査する (CWE-834)。
-
-    Raises:
-        ValueError: 本数が 1 未満、または ``_MAX_SEQUENTIAL_RUNS`` 超過。
-    """
-    if n_runs < 1:
-        raise ValueError(f"逐次実行の本数が1本もありません: {n_runs}")
-    if n_runs > _MAX_SEQUENTIAL_RUNS:
-        raise ValueError(
-            f"逐次実行の本数が上限を超えています: {n_runs} > {_MAX_SEQUENTIAL_RUNS} "
-            "(ESN のシミュレーションは逐次計算なので実行時間はこの本数に比例する)"
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,148 +193,8 @@ class CapacityCondition:
     replicate: int
 
 
-@dataclass(frozen=True, slots=True)
-class CapacityRow:
-    """``capacity.csv`` の1行。**宣言順が CSV の列順の単一の真実**。
-
-    1行 = 1条件で、**全列が常に埋まる** (cfg 依存で本数が変わる
-    ``ipc_threshold_degree{d}`` は列にせず、T2 が長形式の
-    ``capacity_profile.csv`` に落とす、D-38)。
-
-    ``input_scale`` / ``density`` は ``Capacity03Config.reservoir`` 由来の
-    横断共有値、``n_units`` はセクション由来 (D-32)。``washout`` は
-    ``DiagnosticContext.washout`` として MC / IPC の ``t0`` に効く値であり、
-    実際に使われた基準点は ``t0_mc`` / ``t0_ipc`` に別途出す (D-24)。
-    """
-
-    experiment: str
-    replicate: int
-    seed_reservoir: int
-    seed_drive: int
-    seed_surrogate: int
-    rho: float
-    leak_rate: float
-    input_scale: float
-    sigma_u: float
-    input_drive_std: float
-    n_units: int
-    density: float
-    state_noise: float
-    n_steps: int
-    washout: int
-    t0_mc: int
-    n_samples_mc: int
-    mc_total: float
-    mc_total_raw: float
-    mc_threshold: float
-    mc_effective_delay: float
-    mc_ratio: float
-    n_delays: int
-    t0_ipc: int
-    n_samples_ipc: int
-    ipc_total: float
-    ipc_total_raw: float
-    ipc_linear: float
-    ipc_nonlinear: float
-    ipc_saturation_ratio: float
-    n_targets: int
-    n_targets_kept: int
-    n_degrees: int
-    chunk_size_mc_effective: int
-    chunk_size_ipc_effective: int
-    wall_time_state_s: float
-    wall_time_mc_s: float
-    wall_time_ipc_s: float
-    wall_time_s: float
-
-
 CAPACITY_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(CapacityRow))
 """``capacity.csv`` の列順 (``CapacityRow`` の宣言順が単一の真実)。"""
-
-
-@dataclass(frozen=True, slots=True)
-class CapacityOutcome:
-    """1条件ぶんの結果。行に加えて図が必要とする配列を持つ。
-
-    02 の ``ConditionOutcome`` と同型である。行だけ返すと、図 (3枚が配列を
-    直接使う) のために全条件をもう一度回すことになる。``row`` が
-    ``CapacityRow`` である以上、CSV 列順の単一の真実は変わらない。
-
-    Attributes:
-        row: ``capacity.csv`` の1行。
-        mc_profile: しきい値後の遅延プロファイル ``(mc.max_delay,)``
-            (``fig_mc_sweep.png`` の右パネル)。
-        ipc_heatmap: (次数, 遅延) のしきい値後の容量 (``fig_ipc_profile.png``)。
-        ipc_thresholds: 次数ごとのしきい値 (``ipc_threshold_degree{d}`` を
-            次数の昇順に並べたもの)。**cfg 依存で本数が変わる**ため
-            ``CapacityRow`` の列にはできず (D-38)、長形式の
-            ``CapacityProfileRow.threshold`` に落とす。ここに持たせるのは、
-            同じ条件で ``ipc`` をもう一度走らせて取り直すことを禁じるため
-            (1条件あたり数秒〜7秒の再計算になる)。
-
-    ``ipc_result.arrays["ipc_by_degree"]`` (次数ごとのしきい値後の容量) は
-    フィールドとして運ばない (F-3b1-1-002)。T3 で図を長形式へ切り替えた際
-    (D-38) に取り残された前設計の残骸で、``plot_memory_nonlinearity`` は
-    ``CapacityRow.ipc_linear`` / ``ipc_nonlinear`` しか読まず、
-    ``profile_rows`` も ``mc_profile`` / ``ipc_heatmap`` しか使わない
-    (全 outcome を ``-999`` で埋めて成果物を再生成しても capacity.csv /
-    capacity_profile.csv / 図4枚は wall_time_* を除きバイト一致することを
-    実測済み)。``n_degrees`` の算出には配列そのものではなく形状だけが要るので、
-    ``evaluate_capacity_condition`` 内のローカル変数として使い、outcome へは
-    運ばない。
-    """
-
-    row: CapacityRow
-    mc_profile: FloatArray
-    ipc_heatmap: FloatArray
-    ipc_thresholds: tuple[float, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class CapacityProfileRow:
-    """``capacity_profile.csv`` の1行 (**長形式**、D-38)。宣言順が CSV の列順。
-
-    次数と遅延を**行の値**に落とすことで、CSV の列を ``cfg`` に依らず静的に
-    保つ (F-03-1-005: IPC の ``scalars`` は次数の本数だけキーを持つため、
-    列にすると打ち切りを1本増やした瞬間に列が変わる)。
-
-    MC は次数の概念を持たないので ``degree=1`` に固定する (次数1の線形容量で
-    あることは IPC の次数1と同じ意味であり、``diagnostic`` 列で区別する)。
-
-    **書くのはしきい値後の容量が厳密に正のセルだけ**である (全セルだと本番で
-    約6万行になり ``results/`` はコミット対象)。行数は ``n_targets_kept`` と
-    一致しない —— 行は (次数, 遅延) のセル単位、``n_targets_kept`` は目標単位で、
-    1セルに複数目標が畳み込まれる (F-3b1-1-003)。成果物単体で検算できるのは
-    ``capacity`` 列の**総和**が ``ipc_total`` / ``mc_total`` と一致すること
-    であり、これは本番成果物117行すべてで成立する
-    (``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
-    が両方 (行数の上限・総和の一致) を実測で固定する)。
-
-    Attributes:
-        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。
-        replicate: レプリケート番号 (0 始まり)。
-        rho: スペクトル半径。
-        leak_rate: リーク率。
-        n_units: リザバーのユニット数 N。
-        state_noise: 状態ノイズの標準偏差。
-        diagnostic: ``"mc"`` か ``"ipc"`` (``DIAGNOSTIC_MC`` / ``DIAGNOSTIC_IPC``)。
-        degree: 次数 (MC は常に1)。
-        delay: 遅延 [ステップ] (1 始まり)。
-        capacity: しきい値後の容量 (**厳密に正**)。
-        threshold: その次数のしきい値 (MC は ``mc_threshold``)。
-    """
-
-    experiment: str
-    replicate: int
-    rho: float
-    leak_rate: float
-    n_units: int
-    state_noise: float
-    diagnostic: str
-    degree: int
-    delay: int
-    capacity: float
-    threshold: float
 
 
 CAPACITY_PROFILE_CSV_COLUMNS: tuple[str, ...] = tuple(
@@ -587,41 +327,6 @@ def capacity_context(config: Capacity03Config) -> DiagnosticContext:
     return DiagnosticContext(washout=config.drive.washout, seed=config.seeds.surrogate)
 
 
-@dataclass(frozen=True, slots=True)
-class CapacityMeasurement:
-    """**外部で作られた** ``X`` に対する MC / IPC の測定結果 (行にする前の素材)。
-
-    ``measure_capacity`` の返り値であり、``capacity_row_from`` の入力である。
-    ``CapacityOutcome`` (行 + 図の配列) との違いは、**まだ行になっていない**
-    ことで、条件の識別子 (実験ラベル・rho・リーク率・…) を1つも持たない。
-    行にするために要る値のうち「診断の結果から決まるもの」だけをここに集め、
-    「どういう条件で測ったか」は ``capacity_row_from`` のキーワード引数として
-    外から与える —— この分け方があるので、``CapacityCondition`` で表現できない
-    実験 (3-C は 01 の ``run_task`` が作った状態を測る) でも
-    ``CapacityRow`` の約35フィールドを複製せずに行が作れる (F-3b1-1-004)。
-
-    Attributes:
-        mc: ``memory_capacity`` の結果。
-        ipc: ``ipc`` の結果。
-        ipc_thresholds: 次数ごとのしきい値 (次数の昇順)。``ipc.scalars`` の
-            ``ipc_threshold_degree{d}`` は**本数が cfg 依存**なので (D-38)、
-            ここで一度だけ昇順のタプルに畳んでおく。``n_degrees`` はこの
-            タプルの長さであり、``ipc_by_degree`` 配列そのものは運ばない
-            (F-3b1-1-002)。
-        input_drive_std: 駆動入力の実測標準偏差 (``CapacityRow.input_drive_std``)。
-            設定値 ``sigma_u`` と区別するため、実際に診断が見た ``u`` から測る。
-        wall_time_mc_s: MC の実行時間 [秒]。
-        wall_time_ipc_s: IPC の実行時間 [秒]。
-    """
-
-    mc: DiagnosticResult
-    ipc: DiagnosticResult
-    ipc_thresholds: tuple[float, ...]
-    input_drive_std: float
-    wall_time_mc_s: float
-    wall_time_ipc_s: float
-
-
 def measure_capacity(
     states: FloatArray,
     u: FloatArray,
@@ -682,129 +387,6 @@ def measure_capacity(
         input_drive_std=float(np.std(u)),
         wall_time_mc_s=wall_time_mc_s,
         wall_time_ipc_s=wall_time_ipc_s,
-    )
-
-
-def capacity_row_from(
-    measurement: CapacityMeasurement,
-    *,
-    experiment: str,
-    replicate: int,
-    seed_reservoir: int,
-    seed_drive: int,
-    seed_surrogate: int,
-    rho: float,
-    leak_rate: float,
-    input_scale: float,
-    sigma_u: float,
-    n_units: int,
-    density: float,
-    state_noise: float,
-    n_steps: int,
-    washout: int,
-    wall_time_state_s: float,
-    wall_time_s: float,
-) -> CapacityRow:
-    """測定結果と条件の識別子から ``capacity.csv`` の1行を組む (**唯一の経路**)。
-
-    ``mc`` / ``ipc`` の ``scalars`` のどのキーがどの列になるかの対応はここに
-    しかない。実験ごとに複製すると「CSV の列順の単一の真実 = 行 dataclass の
-    宣言順」が破れる (F-3b1-1-004)。``experiment`` 以降がキーワード専用なのは、
-    隣接する同型の値の取り違えを防ぐため。
-
-    Args:
-        measurement: ``measure_capacity`` の返り値。
-        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか (CSV の ``experiment``)。
-        replicate: レプリケート番号 (0 始まり)。
-        seed_reservoir: リザバー重みの基底シード。
-        seed_drive: 駆動入力の基底シード。
-        seed_surrogate: しきい値サロゲートのシード (``ctx.seed`` と同じ値、D-37)。
-        rho: スペクトル半径。
-        leak_rate: リーク率。
-        input_scale: 入力結合の強さ (横断共有値)。
-        sigma_u: 駆動信号の標準偏差の**設定値** (実測は
-            ``measurement.input_drive_std``)。
-        n_units: リザバーのユニット数 N。
-        density: 再帰結合の密度 (横断共有値)。
-        state_noise: 状態ノイズの標準偏差。
-        n_steps: 系列長 [ステップ]。
-        washout: ``ctx.washout`` として渡した値 (実効基準点は ``t0_mc`` /
-            ``t0_ipc`` に別途出る、D-24)。
-        wall_time_state_s: 状態行列の生成にかかった時間 [秒]。
-        wall_time_s: **容量測定 (状態生成 + MC + IPC) の合計時間** [秒]。3-C
-            (``run_narma10``) を含む全経路で同じ意味であり、``run_task``
-            (3手法 x 全レプリケート) は含まない (F-3b2-1-004/M4)。区間単位の
-            ``capacity_pipeline.SectionTiming.wall_time_s`` は3-C だけこれとは
-            別の値 (``run_task`` を含む3-C全体) に差し替わる —— 同じ列名
-            ``wall_time_s`` が行単位 (ここ) と区間単位 (``SectionTiming``) で
-            指す量が3-Cだけ食い違うので、``meta.json`` を読む側は
-            ``capacity.csv`` の行の ``wall_time_s`` と
-            ``wall_time_breakdown`` の ``wall_time_s`` を同一視しないこと。
-
-    Returns:
-        ``capacity.csv`` の1行。
-    """
-    mc = measurement.mc
-    ipc_result = measurement.ipc
-    return CapacityRow(
-        experiment=experiment,
-        replicate=replicate,
-        seed_reservoir=seed_reservoir,
-        seed_drive=seed_drive,
-        seed_surrogate=seed_surrogate,
-        rho=rho,
-        leak_rate=leak_rate,
-        input_scale=input_scale,
-        sigma_u=sigma_u,
-        input_drive_std=measurement.input_drive_std,
-        n_units=n_units,
-        density=density,
-        state_noise=state_noise,
-        n_steps=n_steps,
-        washout=washout,
-        t0_mc=int(mc.params["t0"]),
-        n_samples_mc=int(mc.params["n_samples"]),
-        mc_total=mc.scalars["mc_total"],
-        mc_total_raw=mc.scalars["mc_total_raw"],
-        mc_threshold=mc.scalars["mc_threshold"],
-        mc_effective_delay=mc.scalars["mc_effective_delay"],
-        mc_ratio=mc.scalars["mc_ratio"],
-        n_delays=int(mc.scalars["n_delays"]),
-        t0_ipc=int(ipc_result.params["t0"]),
-        n_samples_ipc=int(ipc_result.params["n_samples"]),
-        ipc_total=ipc_result.scalars["ipc_total"],
-        ipc_total_raw=ipc_result.scalars["ipc_total_raw"],
-        ipc_linear=ipc_result.scalars["ipc_linear"],
-        ipc_nonlinear=ipc_result.scalars["ipc_nonlinear"],
-        ipc_saturation_ratio=ipc_result.scalars["saturation_ratio"],
-        n_targets=int(ipc_result.scalars["n_targets"]),
-        n_targets_kept=int(ipc_result.scalars["n_targets_kept"]),
-        n_degrees=len(measurement.ipc_thresholds),
-        chunk_size_mc_effective=int(mc.params["chunk_size_effective"]),
-        chunk_size_ipc_effective=int(ipc_result.params["chunk_size_effective"]),
-        wall_time_state_s=wall_time_state_s,
-        wall_time_mc_s=measurement.wall_time_mc_s,
-        wall_time_ipc_s=measurement.wall_time_ipc_s,
-        wall_time_s=wall_time_s,
-    )
-
-
-def capacity_outcome_from(
-    measurement: CapacityMeasurement, row: CapacityRow
-) -> CapacityOutcome:
-    """行と測定結果から ``CapacityOutcome`` を組む (図が使う配列を積み替える)。
-
-    ``CapacityOutcome`` は図が必要とする配列を運ぶ役割 (02 の
-    ``ConditionOutcome`` と同型) を持ち、``profile_rows`` と
-    ``capacity_pipeline`` の入口はこの型である。3-C も同じ型で
-    ``capacity.csv`` / ``capacity_profile.csv`` に合流できるよう、
-    積み替えをここ1か所に置く。
-    """
-    return CapacityOutcome(
-        row=row,
-        mc_profile=measurement.mc.arrays["mc_profile"],
-        ipc_heatmap=measurement.ipc.arrays["ipc_heatmap"],
-        ipc_thresholds=measurement.ipc_thresholds,
     )
 
 
@@ -890,61 +472,6 @@ def evaluate_capacity_condition(
         row.wall_time_ipc_s,
     )
     return capacity_outcome_from(measurement, row)
-
-
-def profile_rows(outcome: CapacityOutcome) -> tuple[CapacityProfileRow, ...]:
-    """1条件の配列を ``capacity_profile.csv`` の長形式の行に落とす (D-38)。
-
-    **しきい値後の容量が厳密に正のセルだけ**を返す。全セルを書くと本番設定で
-    約6万行になり、``results/`` はコミット対象なのでリポジトリがその分だけ
-    重くなる。正値だけに絞る条件は IPC の ``n_targets_kept``
-    (``np.count_nonzero(kept)``) と同じ ``> 0`` だが、行数と ``n_targets_kept``
-    は単位が違う (セル単位 vs 目標単位) ため一致しない (F-3b1-1-003、詳しくは
-    ``CapacityProfileRow`` の docstring)。成果物単体で検算できる不変条件は
-    ``capacity`` 列の総和が ``ipc_total`` / ``mc_total`` と一致することである。
-
-    MC は ``degree=1`` 固定・遅延は ``mc_profile`` の index+1、IPC は
-    ``ipc_heatmap`` の (次数, 遅延) セルをそのまま行にする。しきい値は MC が
-    ``row.mc_threshold``、IPC が ``outcome.ipc_thresholds[degree-1]``
-    (**再計算しない**。診断を2回走らせることになるため)。
-    """
-    row = outcome.row
-    rows: list[CapacityProfileRow] = []
-
-    def add(
-        diagnostic: str, degree: int, delay: int, capacity: float, threshold: float
-    ) -> None:
-        rows.append(
-            CapacityProfileRow(
-                experiment=row.experiment,
-                replicate=row.replicate,
-                rho=row.rho,
-                leak_rate=row.leak_rate,
-                n_units=row.n_units,
-                state_noise=row.state_noise,
-                diagnostic=diagnostic,
-                degree=degree,
-                delay=delay,
-                capacity=capacity,
-                threshold=threshold,
-            )
-        )
-
-    for index, capacity in enumerate(outcome.mc_profile):
-        if capacity > 0.0:
-            add(DIAGNOSTIC_MC, 1, index + 1, float(capacity), row.mc_threshold)
-    for degree_index, cells in enumerate(outcome.ipc_heatmap):
-        threshold = outcome.ipc_thresholds[degree_index]
-        for delay_index, capacity in enumerate(cells):
-            if capacity > 0.0:
-                add(
-                    DIAGNOSTIC_IPC,
-                    degree_index + 1,
-                    delay_index + 1,
-                    float(capacity),
-                    threshold,
-                )
-    return tuple(rows)
 
 
 def n_replicates_for(config: Capacity03Config, experiment: str) -> int:

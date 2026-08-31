@@ -34,7 +34,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from rc_basics_lab.experiment.capacity import (
+from rc_basics_lab.experiment.capacity_rows import (
     CapacityRow,
 )
 from rc_basics_lab.experiment.narma import (

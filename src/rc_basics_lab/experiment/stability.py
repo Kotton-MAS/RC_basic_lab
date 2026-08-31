@@ -44,13 +44,15 @@ from rc_basics_lab.experiment.attractor import (
     valid_time_from_errors,
     validate_stats_bounds,
 )
-from rc_basics_lab.experiment.capacity import (
+from rc_basics_lab.experiment.capacity import measure_capacity
+from rc_basics_lab.experiment.capacity_bounds import (
+    validate_state_matrix_bounds,
+    validate_total_step_count,
+)
+from rc_basics_lab.experiment.capacity_rows import (
     CapacityMeasurement,
     CapacityRow,
     capacity_row_from,
-    measure_capacity,
-    validate_state_matrix_bounds,
-    validate_total_step_count,
 )
 from rc_basics_lab.experiment.freerun import (
     chaos_esn_config,
@@ -192,9 +194,8 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         * stability.n_replicates
     )
     validate_condition_count(n_conditions)
-    # 軸5 (条件数) と軸4 (``stats_steps``、``attractor.validate_stats_bounds``
-    # が別途検査する) はどちらも単独では上限内でも、**積**(逐次シミュレーションの
-    # 総ステップ数) が両方の軸検査をすり抜けて膨らみうる (reviewer-security 実測)。
+    # 軸5 (条件数) と軸4 (stats_steps) はどちらも単独では上限内でも、**積**
+    # (総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
     validate_total_step_count(n_conditions * config.freerun.stats_steps)
     return tuple(
         StabilityCondition(
@@ -515,8 +516,7 @@ def run_stability_experiment(
     ctx = capacity_context(config)
     dt = sampling_interval(config.lorenz)
     lyapunov_time = lyapunov.scalars["lyapunov_time"]
-    # 真の軌道は replicate だけで決まるので、全条件で1個の replicate ->
-    # TaskData キャッシュを共有する (仕様 §5 禁止する構造3)。
+    # 真の軌道は replicate だけで決まるので全条件でキャッシュを共有する (仕様 §5)。
     trajectory_cache: dict[int, TaskData] = {}
 
     outcomes = tuple(

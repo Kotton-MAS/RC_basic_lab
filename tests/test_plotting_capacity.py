@@ -33,11 +33,13 @@ from matplotlib.figure import Figure
 from matplotlib.text import Text
 
 from rc_basics_lab.experiment.capacity import (
-    DIAGNOSTIC_IPC,
-    DIAGNOSTIC_MC,
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_MC_SWEEP,
+)
+from rc_basics_lab.experiment.capacity_rows import (
+    DIAGNOSTIC_IPC,
+    DIAGNOSTIC_MC,
     CapacityProfileRow,
     CapacityRow,
 )

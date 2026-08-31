@@ -31,8 +31,10 @@ from pathlib import Path
 
 from rc_basics_lab.config import Chaos04Config
 from rc_basics_lab.diagnostics.base import DiagnosticResult
-from rc_basics_lab.experiment.capacity import CapacityRow
 from rc_basics_lab.experiment.capacity_pipeline import write_capacity_csv
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityRow,
+)
 from rc_basics_lab.experiment.freerun import (
     FREERUN_CSV,
     FREERUN_PROFILE_CSV,

@@ -19,7 +19,10 @@ import numpy.typing as npt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from rc_basics_lab.experiment.capacity import CapacityProfileRow, CapacityRow
+from rc_basics_lab.experiment.capacity_rows import (
+    CapacityProfileRow,
+    CapacityRow,
+)
 from rc_basics_lab.plotting.broken_axis import draw_break_marks, needs_break
 from rc_basics_lab.plotting.capacity_grids import (
     mc_profile_means,
