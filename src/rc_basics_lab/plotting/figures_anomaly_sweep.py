@@ -107,15 +107,9 @@ def _protocol_rank_panel(
     axis.set_ylim(len(ANOMALY_METHODS) + 0.6, -0.9)
     axis.set_yticks(range(1, len(ANOMALY_METHODS) + 1))
     axis.set_xticks(positions)
-    axis.set_xticklabels(
-        [_condition_tick(key) for key in keys], rotation=90, fontsize=6
-    )
-    axis.set_xlabel(
-        style.label(
-            "プロトコル (正規化 / 入力窓 / 平滑化)",
-            "protocol (normalize / input window / smoothing)",
-        )
-    )
+    # 目盛りラベルと軸ラベルは下段だけに出す (1-7)。同じ 27 個の格子点を
+    # 2 回書かない。
+    axis.tick_params(labelbottom=False)
     axis.set_ylabel(style.label("順位 (1 が最良)", "rank (1 = best)"))
     axis.legend(loc="upper center", fontsize=6, ncols=2)
 
@@ -154,7 +148,10 @@ def _protocol_reversal_panel(
         [_condition_tick(key) for key in keys], rotation=90, fontsize=6
     )
     axis.set_xlabel(
-        style.label("プロトコル (左と同じ並び)", "protocol (same order as the left)")
+        style.label(
+            "プロトコル (正規化 / 入力窓 / 平滑化。上段と同じ並び)",
+            "protocol (normalize / input window / smoothing; same order above)",
+        )
     )
     axis.set_ylabel(style.label("逆転した系統対の数", "number of reversed pairs"))
     # y は**個数**なので 0.5 刻みの目盛りを出さない (2-14)。
@@ -175,8 +172,12 @@ def build_protocol_sensitivity_figure(
         ValueError: 行が空の場合。
     """
     require_rows(rows)
-    figure = new_figure(12.0, 6.4)
-    axes = np.atleast_1d(figure.subplots(1, 2))
+    # **横並びをやめて縦に積む** (1-7)。2 パネルは同じ 27 個の格子点を横軸に
+    # 持つので、横に並べると同じ目盛りラベルを 2 回書くことになり、しかも
+    # 「この格子点で順位が動き、逆転が何組あったか」を目で 27 箇所ぶん
+    # 突き合わせることになる。積めば同じ x 位置で縦に読める。
+    figure = new_figure(11.0, 9.0)
+    axes = np.atleast_1d(figure.subplots(2, 1, sharex=True, height_ratios=(2.0, 1.0)))
     label_panels(list(axes), style=style)
     _protocol_rank_panel(axes[0], rows, style)
     _protocol_reversal_panel(axes[1], rows, style)

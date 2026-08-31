@@ -62,6 +62,7 @@ def _plot_heatmap_panel(
     norm: Normalize,
     style: StyleContext,
     *,
+    show_xlabel: bool,
     show_ylabel: bool,
     truncation: Mapping[int, int] | None,
 ) -> QuadMesh:
@@ -83,7 +84,8 @@ def _plot_heatmap_panel(
     draw_truncation_edges(axis, truncation, n_delays)
     axis.set_xscale("log")
     axis.set_yticks(np.arange(1, n_degrees + 1, dtype=np.float64))
-    axis.set_xlabel(style.label("遅延 k [ステップ・対数]", "delay k [steps, log]"))
+    if show_xlabel:
+        axis.set_xlabel(style.label("遅延 k [ステップ・対数]", "delay k [steps, log]"))
     if show_ylabel:
         axis.set_ylabel(style.label("次数 d", "degree d"))
     axis.set_title(
@@ -135,7 +137,10 @@ def plot_ipc_profile(
         # 段あたりの高さはヒートマップの縦横比に合わせる。4.4 にすると
         # 全体が 0.86:1 の縦長になり、今度は下限 (FIG-13) を割る。
         figure = new_figure(3.4 * columns + 1.2, 3.0 * grid_rows)
-        axes = figure.subplots(grid_rows, columns, squeeze=False)
+        # 同じ量の軸が並ぶので目盛りは共有し、ラベルは外周だけに出す (1-7)。
+        axes = figure.subplots(
+            grid_rows, columns, squeeze=False, sharex=True, sharey=True
+        )
         flat = list(axes.ravel())
         for extra in flat[len(rhos) :]:
             extra.set_axis_off()
@@ -147,8 +152,9 @@ def plot_ipc_profile(
                 rho,
                 norm,
                 style,
-                # y ラベルは各段の左端だけに出す (1-7: 同じ量の軸ラベルを
-                # 段の数だけ繰り返さない)。
+                # x ラベルは最下段だけ、y ラベルは各段の左端だけに出す
+                # (1-7: 同じ量の軸ラベルをパネルの数だけ繰り返さない)。
+                show_xlabel=index >= len(rhos) - columns,
                 show_ylabel=index % columns == 0,
                 truncation=max_delay_by_degree,
             )

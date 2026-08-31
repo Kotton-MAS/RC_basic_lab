@@ -193,7 +193,6 @@ def _plot_stack_panel(
         )
     axis.set_xticks(positions)
     axis.set_xticklabels([f"{rho:g}" for rho in rhos])
-    axis.set_xlabel(style.label("スペクトル半径 rho", "spectral radius rho"))
     if show_ylabel:
         axis.set_ylabel(
             style.label(
@@ -240,6 +239,9 @@ def plot_memory_nonlinearity(
         )
         # 凡例と注記のぶんの余白 (縦軸は sharey なので1枚に設定すれば足りる)
         axes[0][0].set_ylim(0.0, ceiling * 1.35 if ceiling > 0.0 else 1.0)
+        # 1 行なので全パネルが最下段にあたる。軸ラベルを各パネルに置くと
+        # 同じ文字列が 3 回並ぶので、figure に1つだけ出す (1-7)。
+        figure.supxlabel(style.label("スペクトル半径 rho", "spectral radius rho"))
         first = rows[0]
         figure.suptitle(
             style.label(
