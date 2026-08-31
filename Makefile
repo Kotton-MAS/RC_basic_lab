@@ -1,4 +1,4 @@
-.PHONY: sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 symmetry-03 panels washout-02-unpadded pre-commit clean help
+.PHONY: module-map sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 symmetry-03 panels washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -27,6 +27,7 @@ help:
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
 	@echo "  symmetry-03  - Regenerate the drive-symmetry sweep CSV (manual, D-116)"
+	@echo "  module-map   - Regenerate docs/モジュール地図.md from the code"
 	@echo "  panels       - Measure panels per figure (manual, ~20 min; FIG-15)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"
 	@echo "  pre-commit   - Run pre-commit on all files"
@@ -159,6 +160,11 @@ symmetry-03:
 # **ci には入れない** —— 本番設定の全実験を回すので約20分かかり、「CI は実験を
 # 回さない」という分担が壊れる。docs/series/図の設計方針_RC基礎編.md FIG-15 の
 # 表を更新するときに手で回す。
+# 地図はコードから起こす。手書きの表は写経を忘れた時点で嘘になる
+# (tests/test_module_map.py が生成し直した結果と照合する)。
+module-map:
+	uv run python scripts/module_map.py
+
 panels:
 	uv run python scripts/count_panels.py
 

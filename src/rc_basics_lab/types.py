@@ -16,11 +16,10 @@ type BoolArray = npt.NDArray[np.bool_]
 """bool の numpy 配列。ラベル・マスク・予測に使う (形状は各 API に記す)。
 
 05 の課題層 (``tasks/anomaly.py`` の ``AnomalySeries``) と指標層
-(``metrics_detection.py``) の両方が要るので、``FloatArray`` と同じくここを
-定義の場所にする。``metrics_detection`` は T1 の時点で同名の別名を自前で
-持っており (公開名 ``metrics_detection.BoolArray``)、**T2 ではそちらに触れて
-いない** —— 構造的別名なので型検査上は等価で、統合は次サイクルで行う
-(``docs/plans/rc-basics-05.md`` §4 T2 の「T2 実装時に決めたこと」)。
+(``metrics_detection.py``) の両方が要るので、``FloatArray`` と同じくここが
+**定義の唯一の場所**である。``metrics_detection`` は同名の別名を自前で持って
+いたが (構造的別名なので型検査上は等価)、名前を追う側から見ると「どちらの
+BoolArray か」を確かめる手間が残っていた。統合済み。
 """
 
 __all__ = ["BoolArray", "FloatArray"]
