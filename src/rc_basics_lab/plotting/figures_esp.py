@@ -38,7 +38,7 @@ from rc_basics_lab.plotting.esp_references import (
 )
 from rc_basics_lab.plotting.heatmap import cell_edges, grid_from_means
 from rc_basics_lab.plotting.labels import METHOD_LABELS
-from rc_basics_lab.plotting.layout import label_panels, legend_below
+from rc_basics_lab.plotting.layout import label_panels, legend_below, wrapped_note
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -323,7 +323,7 @@ def plot_leak_timescale(
     colors = sequential_colors(len(leak_rates))
 
     with rc_context_for(style):
-        figure = _new_figure(11.0, 4.6)
+        figure = _new_figure(11.0, 5.8)  # 高さは 1-6 (Zenn 幅で潰れない比)
         axes = figure.subplots(1, 2, squeeze=False)
         label_panels(list(axes[0]), style=style)
         _plot_acf_panel(axes[0][0], outcomes, leak_rates, colors, style)
@@ -437,7 +437,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
                 norm,
                 style,
             )
-            figure.supxlabel(zero_input_boundary_note(style), fontsize=7)
+            figure.supxlabel(wrapped_note(zero_input_boundary_note(style)), fontsize=7)
             driven_axis = axes[0][1]
         else:
             axes = figure.subplots(1, 1, squeeze=False)
@@ -680,7 +680,7 @@ def plot_washout_sensitivity(
     )
 
     with rc_context_for(style):
-        figure = _new_figure(11.0, 4.8)
+        figure = _new_figure(11.0, 5.8)  # 高さは 1-6 (Zenn 幅で潰れない比)
         axes = figure.subplots(1, 2, squeeze=False)
         _plot_absolute_panel(axes[0][0], rows, pairs, sensitivity, style)
         _plot_relative_panel(axes[0][1], rows, pairs, sensitivity, style)

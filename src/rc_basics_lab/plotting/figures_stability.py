@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import matplotlib
 import numpy as np
@@ -24,6 +25,10 @@ from rc_basics_lab.plotting.figures_freerun import (
 )
 from rc_basics_lab.plotting.freerun_grids import label_of
 from rc_basics_lab.plotting.layout import label_panels
+
+if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
+    from matplotlib.typing import HashableList
+
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -32,6 +37,12 @@ from rc_basics_lab.plotting.style import (
     require_rows,
     save_png,
 )
+
+_REGIME_GRID_ROWS = 2
+"""3態マップを並べる段数。横一列にすると各パネルが潰れる (FIG-13)。"""
+
+_CAPACITY_KEY = "capacity"
+"""4-D パネルの mosaic キー。"""
 
 
 def plot_stability_map(
@@ -54,21 +65,34 @@ def plot_stability_map(
     require_rows(rows)
     noises = sorted({row.state_noise for row in rows})
     # **1段に並べない** (FIG-13)。パネル4枚を横一列にすると 4.03:1 になり、
-    # 記事の1段組では各パネルが親指ほどの幅に潰れる。2段に折ると 1.2:1 に収まる。
-    panels = len(noises) + 1
-    columns = 2 if panels <= 4 else 3
-    grid_rows = -(-panels // columns)
+    # 記事の1段組では各パネルが親指ほどの幅に潰れる。
+    #
+    # 3態マップ (4-C) は2段の格子に置き、4-D は**右列に縦スパン**させる。
+    # 2x3 の格子へ素直に並べると6枠目が空き、しかも 4-D だけ軸の意味も図の
+    # 種類も違う (4-C はカテゴリ格子、4-D は連続の散布) のに横並びになる。
+    # スパンにすると空き枠が消え、種類の違いが配置からも読める。
+    regime_columns = -(-len(noises) // _REGIME_GRID_ROWS)
+    mosaic = [
+        [
+            f"noise{row * regime_columns + column}"
+            if row * regime_columns + column < len(noises)
+            else "."
+            for column in range(regime_columns)
+        ]
+        + [_CAPACITY_KEY]
+        for row in range(_REGIME_GRID_ROWS)
+    ]
     with rc_context_for(style):
-        figure = new_figure(5.0 * columns + 1.0, 4.6 * grid_rows)
-        axes = np.atleast_1d(figure.subplots(grid_rows, columns)).reshape(-1)
-        for axis, noise in zip(axes[: len(noises)], noises, strict=True):
+        figure = new_figure(5.0 * (regime_columns + 1) + 1.0, 4.6 * _REGIME_GRID_ROWS)
+        # subplot_mosaic の型は HashableList[str] を要求するが、実体は
+        # 「入れ子のリスト」で list[list[str]] と互換である。
+        panes = figure.subplot_mosaic(cast("list[HashableList[str]]", mosaic))
+        ordered = [panes[f"noise{index}"] for index in range(len(noises))]
+        for axis, noise in zip(ordered, noises, strict=True):
             _regime_panel(axis, rows, noise, style)
-        _capacity_panel(axes[len(noises)], rows, capacity_rows, style)
-        # 余った枠は消す。空の軸を残すと「測ったが何も無かった」に見える。
-        for axis in axes[panels:]:
-            axis.set_axis_off()
-        # 記号は**描いたパネルにだけ**振る (消した枠に (f) が付かないように)。
-        label_panels(list(axes[:panels]), style=style)
+        _capacity_panel(panes[_CAPACITY_KEY], rows, capacity_rows, style)
+        axes = np.asarray([*ordered, panes[_CAPACITY_KEY]])
+        label_panels(list(axes), style=style)
         handles = [
             matplotlib.lines.Line2D(
                 [],

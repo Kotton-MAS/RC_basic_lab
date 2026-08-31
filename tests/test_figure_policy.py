@@ -60,6 +60,7 @@ from rc_basics_lab.plotting import (
     figures_capacity,
     figures_esp,
     figures_freerun,
+    figures_ipc_profile,
     heatmap,
     style,
     waveforms,
@@ -75,7 +76,6 @@ from rc_basics_lab.plotting.figures_anomaly import (
 )
 from rc_basics_lab.plotting.figures_capacity import (
     plot_ipc_conservation,
-    plot_ipc_profile,
     plot_mc_sweep,
 )
 from rc_basics_lab.plotting.figures_esp import plot_esp_map
@@ -86,6 +86,7 @@ from rc_basics_lab.plotting.figures_horizon import (
     JAEGER_PREVIOUS_LOG10,
     draw_horizon_panel,
 )
+from rc_basics_lab.plotting.figures_ipc_profile import plot_ipc_profile
 from rc_basics_lab.plotting.freerun_headlines import (
     LITERATURE_VALID_TIME,
     LITERATURE_VALID_TIME_CONDITIONS,
@@ -143,6 +144,10 @@ def capture_figures(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
         return original(figure, path)
 
     monkeypatch.setattr(figures_capacity, "_save", spy)
+    # ``plot_ipc_profile`` は行数上限 (D-77) で figures_ipc_profile へ移り、
+    # 保存関数の名前も ``save_png`` になった。**両方を差し替える** ——
+    # 片方だけだと、その図の検査が「図が保存されませんでした」で空振りする。
+    monkeypatch.setattr(figures_ipc_profile, "save_png", spy)
     return figures
 
 
@@ -532,10 +537,14 @@ def test_the_ipc_profile_explains_why_the_even_degrees_are_empty(
     figure = capture_figures[0]
     # 言語に依存させない (CONTEXT は英語ラベル)。日英どちらでも同じ注が出る。
     expected = CONTEXT.label(*even_degree_note(profile))
+    # **改行を無視して比べる**。長い注記は layout.wrapped_note が折り返して
+    # 図に載せる (折り返さないと tight bbox が横に伸びて図そのものが歪む)。
+    # 比べたいのは注記の**内容**であって行の切り方ではない。
     notes = [
         text.get_text()
         for text in figure.findobj(Text)
-        if isinstance(text, Text) and text.get_text() == expected
+        if isinstance(text, Text)
+        and text.get_text().replace("\n", "") == expected.replace("\n", "")
     ]
     assert notes, "偶数次が空である理由の注がありません。期待した文字列:\n" + expected
     note = notes[0]

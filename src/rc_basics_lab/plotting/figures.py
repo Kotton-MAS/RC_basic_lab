@@ -32,7 +32,7 @@ from rc_basics_lab.experiment.state_space import (
 from rc_basics_lab.experiment.summary import Aggregate, aggregate_nrmse
 from rc_basics_lab.experiment.waveform_data import WaveformPanel
 from rc_basics_lab.plotting.labels import METHOD_LABELS
-from rc_basics_lab.plotting.layout import label_panels
+from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
     ESN_METHOD,
@@ -396,15 +396,17 @@ def plot_comparison(
         # 結論文と出典は**注記に集約する**。パネル見出しに入れると、
         # 幅が軸を超えて隣のパネルへかぶった (実測: FIG-14 と同じ症状)。
         figure.supxlabel(
-            style.label(
-                f"自走のパネル: {horizon_headline(logs, style)}。"
-                f"{horizon_reference_note(style)}\n"
-                "注: 波形の区間もレプリケートも固定である (D-107)。"
-                "「よく当たっている区間」を選べる図にしない。",
-                f"Free-run panel: {horizon_headline(logs, style)}."
-                f" {horizon_reference_note(style)}\n"
-                "Note: the waveform window and replicate are fixed (D-107)."
-                " The figure must not let anyone pick a favourable window.",
+            wrapped_note(
+                style.label(
+                    f"自走のパネル: {horizon_headline(logs, style)}。"
+                    f"{horizon_reference_note(style)}\n"
+                    "注: 波形の区間もレプリケートも固定である (D-107)。"
+                    "「よく当たっている区間」を選べる図にしない。",
+                    f"Free-run panel: {horizon_headline(logs, style)}."
+                    f" {horizon_reference_note(style)}\n"
+                    "Note: the waveform window and replicate are fixed (D-107)."
+                    " The figure must not let anyone pick a favourable window.",
+                )
             ),
             fontsize=8,
         )

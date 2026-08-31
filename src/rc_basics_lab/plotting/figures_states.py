@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from rc_basics_lab.experiment.state_waveform import StateWaveform
-from rc_basics_lab.plotting.layout import label_panels
+from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 from rc_basics_lab.plotting.style import (
     FIGURE_SIZES,
     StyleContext,
@@ -89,11 +89,13 @@ def plot_state_waveform(
             )
         )
         figure.supxlabel(
-            style.label(
-                f"注: 先頭の {states.shape[1]} ユニットを番号順に描いている "
-                "(D-107)。「よく散っているユニット」を選べる図にしない。",
-                f"Note: the first {states.shape[1]} units in index order"
-                " (D-107). The figure must not let anyone pick lively units.",
+            wrapped_note(
+                style.label(
+                    f"注: 先頭の {states.shape[1]} ユニットを番号順に描いている "
+                    "(D-107)。「よく散っているユニット」を選べる図にしない。",
+                    f"Note: the first {states.shape[1]} units in index order"
+                    " (D-107). The figure must not let anyone pick lively units.",
+                )
             ),
             fontsize=8,
         )
