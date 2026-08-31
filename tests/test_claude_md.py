@@ -27,6 +27,13 @@ DECISION_REF = re.compile(r"\bD-\d+\b")
 DECISION_DEF = re.compile(r"^- id:\s*(D-\d+)\s*$", re.MULTILINE)
 
 
+def _decision_sources() -> list[Path]:
+    """決定が書かれているファイル。保管庫と、1件1ファイルの両方 (D-121)。"""
+    directory = DECISIONS.parent / "decisions"
+    files = sorted(directory.glob("*.decisions.yaml")) if directory.is_dir() else []
+    return [DECISIONS, *files]
+
+
 def test_every_decision_referenced_by_claude_md_exists() -> None:
     """``CLAUDE.md`` の ``D-xx`` がすべて実在すること。
 
@@ -34,7 +41,11 @@ def test_every_decision_referenced_by_claude_md_exists() -> None:
     根拠に辿り着けない。空虚な参照は無い参照より悪い。
     """
     referenced = set(DECISION_REF.findall(CLAUDE_MD.read_text(encoding="utf-8")))
-    defined = set(DECISION_DEF.findall(DECISIONS.read_text(encoding="utf-8")))
+    defined = {
+        name
+        for source in _decision_sources()
+        for name in DECISION_DEF.findall(source.read_text(encoding="utf-8"))
+    }
     missing = sorted(referenced - defined, key=lambda name: int(name[2:]))
     assert not missing, (
         f"CLAUDE.md が実在しない決定を参照しています: {missing}\n"
@@ -42,7 +53,7 @@ def test_every_decision_referenced_by_claude_md_exists() -> None:
     )
     assert referenced, (
         "CLAUDE.md が決定を1つも参照していません。"
-        "規約が decisions.yaml と切り離されている可能性があります。"
+        "規約が決定と切り離されている可能性があります。"
     )
 
 

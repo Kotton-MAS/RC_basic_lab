@@ -50,10 +50,18 @@ DECISIONS = REPO_ROOT / ".claude" / "decisions.yaml"
 ID_LINE = re.compile(r"^- id:\s*(\S+)\s*$")
 
 
+def _sources() -> list[Path]:
+    """決定が書かれているファイルを全部返す (保管庫 + 1件1ファイル。D-121)。"""
+    directory = DECISIONS.parent / "decisions"
+    files = sorted(directory.glob("*.decisions.yaml")) if directory.is_dir() else []
+    return [DECISIONS, *files]
+
+
 def _ids() -> list[str]:
     return [
         m.group(1)
-        for line in DECISIONS.read_text(encoding="utf-8").splitlines()
+        for path in _sources()
+        for line in path.read_text(encoding="utf-8").splitlines()
         if (m := ID_LINE.match(line))
     ]
 
@@ -104,12 +112,16 @@ _RejectDuplicateKeys.add_constructor(
 
 
 def test_no_decision_has_the_same_key_twice() -> None:
-    text = DECISIONS.read_text(encoding="utf-8")
+    for path in _sources():
+        _reject_duplicate_keys(path)
+
+
+def _reject_duplicate_keys(path: Path) -> None:
     try:
-        yaml.load(text, Loader=_RejectDuplicateKeys)
+        yaml.load(path.read_text(encoding="utf-8"), Loader=_RejectDuplicateKeys)
     except ValueError as error:
         pytest.fail(
-            f"{error}\n"
+            f"{path.name}: {error}\n"
             "merge=union が同じ ID の追記を1件に畳んだ形です。"
             "PyYAML は後勝ちで読むので、片方の決定が黙って消えています。"
         )
