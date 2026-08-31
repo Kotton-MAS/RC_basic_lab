@@ -2,11 +2,16 @@
 
 使い方::
 
-    uv run python experiments/01_what_is_rc/run.py \
-        --config experiments/01_what_is_rc/config.yaml
+    # 成果物を再生成する (results/ へ書くのはこの経路だけ)
+    make figures-01
 
-``--out`` (既定 ``results``) に ``comparison.csv`` / ``comparison_summary.csv`` /
-``fig_comparison.png`` / ``fig_state_space.png`` / ``meta.json`` の5点を書く
+    # 手元で試す (既定の出力先は scratch/01_what_is_rc)
+    uv run python experiments/01_what_is_rc/run.py --preset quick
+    uv run python experiments/01_what_is_rc/run.py --set esn_mackey_glass.n_units=50
+
+``--out`` (既定 ``scratch/01_what_is_rc``) に ``comparison.csv`` /
+``comparison_summary.csv`` / ``fig_comparison.png`` / ``fig_state_space.png`` /
+``meta.json`` の5点を書く
 (受け入れ条件5)。
 実測 wall time は ``meta.json`` の ``wall_time_s`` に記録する (性能受け入れ基準)。
 進捗は ``print`` ではなく ``logging`` で出す (ruff T20)。
@@ -17,54 +22,34 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
+from rc_basics_lab.cli import build_parser, default_out_for, parse_experiment_args
 from rc_basics_lab.config import load_config
 from rc_basics_lab.experiment.pipeline import run_and_report
 
 logger = logging.getLogger("rc_basics_lab.experiments.01_what_is_rc")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.yaml"
-DEFAULT_OUT = Path("results")
-
-
-@dataclass(frozen=True, slots=True)
-class Args:
-    """コマンドライン引数。"""
-
-    config: Path
-    out: Path
-
-
-def parse_args(argv: Sequence[str] | None = None) -> Args:
-    """引数を解析する。"""
-    parser = argparse.ArgumentParser(
-        description="実験1: 線形 / 遅延線 / ESN の比較と PCA 図を1コマンドで作る"
-    )
-    parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help=f"実験設定 YAML (既定: {DEFAULT_CONFIG})",
-    )
-    parser.add_argument(
-        "--out",
-        default=DEFAULT_OUT,
-        help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
-    )
-    namespace = parser.parse_args(argv)
-    return Args(config=Path(str(namespace.config)), out=Path(str(namespace.out)))
+DEFAULT_OUT = default_out_for(DEFAULT_CONFIG)
+"""``--out`` 未指定時の出力先。``main.py`` と同じ関数から導く。"""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """実験を実行し、CSV2枚・図2枚・meta.json を書く。"""
-    args = parse_args(argv)
-    config = load_config(args.config)
+    parser = build_parser(
+        "実験1: 線形 / 遅延線 / ESN の比較と PCA 図を1コマンドで作る", DEFAULT_CONFIG
+    )
+    args, _ = parse_experiment_args(parser, argv)
+    config = load_config(args.config, preset=args.preset, overrides=args.overrides)
     logger.info(
-        "設定を読み込みました: %s (n_replicates=%d)", args.config, config.n_replicates
+        "設定を読み込みました: %s (n_replicates=%d)%s%s",
+        args.config,
+        config.n_replicates,
+        f" preset={args.preset.name}" if args.preset else "",
+        f" set={list(args.overrides)}" if args.overrides else "",
     )
     run_and_report(config, args.out)
     return 0

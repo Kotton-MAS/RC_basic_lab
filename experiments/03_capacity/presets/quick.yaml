@@ -1,0 +1,32 @@
+# 高速プリセット: 構造を保ったまま小さくする (--preset quick)
+#
+# **本体 config.yaml との差分だけ**を書く。
+#
+# 03 は n_steps が 20000〜200000 と大きく、ここが所要時間のほぼ全部である。
+# 容量の推定量は系列長に強く依存するので、**quick の絶対値は本番と比べない**。
+# 見るのは形 (rho とともに伸びる / 次数が偶数で空く / N に比例する) だけ。
+#
+# conservation の n_units_grid は 3 点を残す —— 2 点以下にすると
+# 「N に比例する」を主張する図の点が足りなくなる。
+#
+# 実測 (2026-08-31): 既定 480 秒 -> quick 22 秒 (22 倍)。
+
+reservoir:
+  n_replicates: 2
+
+mc_sweep:
+  rho_grid: [0.5, 0.9, 1.1]
+  leak_rate_grid: [0.3, 1.0]
+  n_units: 50
+  n_steps: 3000
+
+ipc_sweep:
+  rho_grid: [0.5, 0.95]
+  leak_rate_grid: [0.3, 1.0]
+  n_units: 20
+  n_steps: 8000
+
+conservation:
+  n_units_grid: [25, 50, 100]
+  state_noise_grid: [0.0, 0.1]
+  n_steps: 8000

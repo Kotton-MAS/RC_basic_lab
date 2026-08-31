@@ -20,62 +20,60 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from rc_basics_lab.cli import (
+    ExperimentArgs,
+    build_parser,
+    default_out_for,
+    parse_experiment_args,
+)
 from rc_basics_lab.config import Chaos04Config, load_config_as
 from rc_basics_lab.experiment.freerun_pipeline import run_and_report_freerun
 
 logger = logging.getLogger("rc_basics_lab.experiments.04_chaotic_freerun")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.yaml"
-DEFAULT_OUT = Path("results/04_chaotic_freerun")
+DEFAULT_OUT = default_out_for(DEFAULT_CONFIG)
+"""``--out`` 未指定時の出力先。``main.py`` と同じ関数から導く。"""
 
 
 @dataclass(frozen=True, slots=True)
 class Args:
-    """コマンドライン引数。"""
+    """コマンドライン引数 (共通分は ``ExperimentArgs``)。"""
 
-    config: Path
-    out: Path
+    common: ExperimentArgs
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
-    """引数を解析する。"""
-    parser = argparse.ArgumentParser(
-        description="実験04: カオス時系列の自由走行予測 (4-A / 4-B / 4-C / 4-D)"
-    )
-    parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help=f"実験設定 YAML (既定: {DEFAULT_CONFIG})",
-    )
-    parser.add_argument(
-        "--out",
-        default=DEFAULT_OUT,
-        help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
-    )
-    namespace = parser.parse_args(argv)
-    return Args(config=Path(str(namespace.config)), out=Path(str(namespace.out)))
+    """引数を解析する。共通フラグは ``rc_basics_lab.cli`` が持つ。"""
+    parser = build_parser("実験4: カオス時系列の自由走行予測", DEFAULT_CONFIG)
+    common, _ = parse_experiment_args(parser, argv)
+    return Args(common=common)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """実験を実行し、CSV5枚・図5枚・``meta.json`` を書く。"""
     args = parse_args(argv)
-    config = load_config_as(args.config, Chaos04Config)
+    config = load_config_as(
+        args.common.config,
+        Chaos04Config,
+        preset=args.common.preset,
+        overrides=args.common.overrides,
+    )
     logger.info(
         "設定を読み込みました: %s (Lorenz T=%d sample_interval=%d / "
         "MG T=%d / n_replicates=%d)",
-        args.config,
+        args.common.config,
         config.lorenz.length,
         config.lorenz.sample_interval,
         config.base.mackey_glass.length,
         config.base.n_replicates,
     )
-    run_and_report_freerun(config, args.out)
+    run_and_report_freerun(config, args.common.out)
     return 0
 
 

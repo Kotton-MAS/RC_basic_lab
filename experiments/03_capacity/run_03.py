@@ -23,12 +23,17 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from rc_basics_lab.cli import (
+    ExperimentArgs,
+    build_parser,
+    default_out_for,
+    parse_experiment_args,
+)
 from rc_basics_lab.config import Capacity03Config, load_config_as
 from rc_basics_lab.experiment.capacity_pipeline import (
     run_and_report_capacity,
@@ -39,33 +44,23 @@ from rc_basics_lab.experiment.capacity_pipeline import (
 logger = logging.getLogger("rc_basics_lab.experiments.03_capacity")
 
 DEFAULT_CONFIG = Path(__file__).resolve().parent / "config.yaml"
-DEFAULT_OUT = Path("results/03_capacity")
+DEFAULT_OUT = default_out_for(DEFAULT_CONFIG)
+"""``--out`` 未指定時の出力先。``main.py`` と同じ関数から導く。"""
 
 
 @dataclass(frozen=True, slots=True)
 class Args:
-    """コマンドライン引数。"""
+    """コマンドライン引数 (共通分は ``ExperimentArgs``)。"""
 
-    config: Path
-    out: Path
+    common: ExperimentArgs
     length_sweep: bool
     symmetry_sweep: bool
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
-    """引数を解析する。"""
-    parser = argparse.ArgumentParser(
-        description="実験3: 線形メモリ容量 (MC) と情報処理容量 (IPC) を測る"
-    )
-    parser.add_argument(
-        "--config",
-        default=DEFAULT_CONFIG,
-        help=f"実験設定 YAML (既定: {DEFAULT_CONFIG})",
-    )
-    parser.add_argument(
-        "--out",
-        default=DEFAULT_OUT,
-        help=f"出力ディレクトリ (既定: {DEFAULT_OUT})",
+    """引数を解析する。共通フラグは ``rc_basics_lab.cli`` が持つ。"""
+    parser = build_parser(
+        "実験3: 線形メモリ容量 (MC) と情報処理容量 (IPC) を測る", DEFAULT_CONFIG
     )
     parser.add_argument(
         "--length-sweep",
@@ -78,12 +73,11 @@ def parse_args(argv: Sequence[str] | None = None) -> Args:
     parser.add_argument(
         "--symmetry-sweep",
         action="store_true",
-        help="駆動入力の対称性の掃引 (capacity_symmetry.csv) だけを再生成する",
+        help=("駆動入力の対称性の掃引 (capacity_symmetry.csv) だけを再生成する"),
     )
-    namespace = parser.parse_args(argv)
+    common, namespace = parse_experiment_args(parser, argv)
     return Args(
-        config=Path(str(namespace.config)),
-        out=Path(str(namespace.out)),
+        common=common,
         length_sweep=bool(namespace.length_sweep),
         symmetry_sweep=bool(namespace.symmetry_sweep),
     )
@@ -100,10 +94,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     切り分ける補助実験だからである。
     """
     args = parse_args(argv)
-    config = load_config_as(args.config, Capacity03Config)
+    config = load_config_as(
+        args.common.config,
+        Capacity03Config,
+        preset=args.common.preset,
+        overrides=args.common.overrides,
+    )
     logger.info(
         "設定を読み込みました: %s (3-A N=%d T=%d / 3-B N=%d T=%d / n_replicates=%d)",
-        args.config,
+        args.common.config,
         config.mc_sweep.n_units,
         config.mc_sweep.n_steps,
         config.ipc_sweep.n_units,
@@ -111,12 +110,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         config.reservoir.n_replicates,
     )
     if args.symmetry_sweep:
-        run_and_report_symmetry_sweep(config, args.out)
+        run_and_report_symmetry_sweep(config, args.common.out)
         return 0
     if args.length_sweep:
-        run_and_report_length_sweep(config, args.out)
+        run_and_report_length_sweep(config, args.common.out)
         return 0
-    run_and_report_capacity(config, args.out)
+    run_and_report_capacity(config, args.common.out)
     return 0
 
 

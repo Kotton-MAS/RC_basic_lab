@@ -1,0 +1,33 @@
+# 高速プリセット: 構造を保ったまま小さくする (--preset quick)
+#
+# **本体 config.yaml との差分だけ**を書く。全部書き写すと、本体を直したときに
+# プリセットだけ古いままになる。
+#
+# 図の主張 (rho<1 で減衰 / rho>1 で残る、入力を強くすると rho>1 でも ESP)
+# が読める範囲で削る。**格子の両端は残す** —— 端を削ると「rho>1 側」が消えて
+# 図が別の主張になる。
+#
+# 実測 (2026-08-31): 既定 130 秒 -> quick 4.4 秒 (30 倍)。
+
+drive:
+  n_steps: 600
+  n_pairs: 4
+
+reservoir:
+  n_units: 50
+  n_replicates: 2
+
+decay:
+  rho_grid: [0.5, 0.95, 1.5]
+
+timescale_sweep:
+  leak_rate_grid: [0.1, 0.3, 1.0]
+
+esp_map:
+  rho_grid: [0.4, 0.8, 1.0, 1.2, 1.6, 1.9]
+  sigma_grid: [0.0, 0.1, 0.5, 2.0]
+
+washout:
+  grid: [0, 100, 400]
+  base:
+    n_replicates: 2

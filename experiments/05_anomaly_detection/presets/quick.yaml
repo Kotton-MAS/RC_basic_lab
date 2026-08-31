@@ -1,0 +1,47 @@
+# 高速プリセット: 構造を保ったまま小さくする (--preset quick)
+#
+# **本体 config.yaml との差分だけ**を書く。
+#
+# 05 の重さは (a) 系列 60000 点 (b) 5-C の 3x3x3=27 格子 (c) レプリケート 5 本。
+#
+# **size_sweep.n_units_grid には reservoir.n_units を必ず含める** (D-79)。
+# 含めないと 5-D の基準点が格子の外になり、劣化点が定義できない。ここでは
+# reservoir.n_units を 50 に落とすので、格子側も 50 を含むものへ差し替える。
+#
+# **max_length は 45000 より下げられない。** MGAB の系列 1 は train_end=32518 の
+# 直後 (32518) が最初の異常で、それ以前には異常が 1 点も無い。実測:
+#
+#   max_length | 異常区間
+#   -----------|---------
+#      34000   |  1 個
+#      45000   |  2 個   <- quick
+#      60000   |  4 個   (本番)
+#
+# 34000 まで削ると異常区間が 1 個になり、PR 曲線が 1 個の当たり外れで決まる。
+# 時間の削減はレプリケートと格子の側で取る。
+#
+# 実測 (2026-08-31): 既定 350 秒 -> quick 36 秒 (10 倍)。
+
+dataset:
+  max_length: 45000
+
+synthetic:
+  length: 4000
+
+reservoir:
+  n_units: 50
+  n_replicates: 2
+
+ridge:
+  alpha_grid: [1.0e-08, 1.0e-04, 1.0]
+
+# **格子は preprocess の既定条件を必ず含むこと** (D-79)。含めないと 5-A と
+# 同じ条件の行が 5-C に出ず、両者が同じ前処理を通っていることを成果物で
+# 照合できない。既定は normalize=zscore / input_window=16 / smoothing=8。
+protocol_sweep:
+  normalize_grid: [zscore, robust]
+  input_window_grid: [16, 32]
+  score_smoothing_grid: [8, 16]
+
+size_sweep:
+  n_units_grid: [25, 50, 100]
