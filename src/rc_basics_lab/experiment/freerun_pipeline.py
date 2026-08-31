@@ -39,15 +39,17 @@ from rc_basics_lab.experiment.freerun import (
     FREERUN_CSV,
     FREERUN_PROFILE_CSV,
     ONESTEP_CSV,
-    FreeRunEvaluation,
     FreeRunResults,
-    FreeRunRow,
     estimate_lorenz_lyapunov,
     run_freerun_experiment,
     run_onestep,
     write_freerun_csv,
     write_freerun_profile_csv,
     write_onestep_csv,
+)
+from rc_basics_lab.experiment.freerun_rows import (
+    FreeRunEvaluation,
+    FreeRunRow,
 )
 from rc_basics_lab.experiment.report import (
     META_JSON,

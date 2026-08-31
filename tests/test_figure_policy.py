@@ -47,7 +47,9 @@ from test_plotting_freerun import freerun_rows
 from rc_basics_lab.config import Esp02Config, load_config_as
 from rc_basics_lab.experiment.esp import EXPERIMENT_ESP_MAP
 from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
-from rc_basics_lab.experiment.freerun import FreeRunProfileRow
+from rc_basics_lab.experiment.freerun_rows import (
+    FreeRunProfileRow,
+)
 from rc_basics_lab.experiment.horizon import HORIZON_STEPS, HorizonRow
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,

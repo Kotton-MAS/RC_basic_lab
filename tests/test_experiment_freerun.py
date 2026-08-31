@@ -38,6 +38,8 @@ from rc_basics_lab.config import (
     SplitConfig,
 )
 from rc_basics_lab.experiment import freerun as freerun_module
+from rc_basics_lab.experiment import freerun_rows as freerun_rows_module
+from rc_basics_lab.experiment import freerun_tasks as freerun_tasks_module
 from rc_basics_lab.experiment.attractor import shuffled_surrogate
 from rc_basics_lab.experiment.freerun import (
     CHAOS_ESN_SECTION,
@@ -49,20 +51,22 @@ from rc_basics_lab.experiment.freerun import (
     ONESTEP_CSV,
     PROFILE_MAX_POINTS,
     PROFILE_REPLICATE,
-    chaos_esn_config,
-    chaos_task_entries,
     closed_loop_setup,
     delay_line_state_updater,
     esn_state_updater,
     estimate_lorenz_lyapunov,
     fit_teacher_forced,
-    lorenz_task_entry,
     passthrough_state_updater,
     run_and_report_onestep,
     run_free_run,
     run_freerun_experiment,
     run_onestep,
     sign_test_p_value,
+)
+from rc_basics_lab.experiment.freerun_tasks import (
+    chaos_esn_config,
+    chaos_task_entries,
+    lorenz_task_entry,
     validate_free_run_bounds,
     validate_standardization_window,
 )
@@ -343,7 +347,7 @@ def test_free_run_bound_reuses_the_existing_capacity_guard() -> None:
         calls.append((n_units, n_steps))
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(freerun_module, "validate_state_matrix_bounds", spy)
+        patch.setattr(freerun_tasks_module, "validate_state_matrix_bounds", spy)
         validate_free_run_bounds(40, 20)
     assert calls == [(20, 40)]
 
@@ -892,7 +896,13 @@ def test_censored_valid_time_propagates_to_the_sensitivity_summary() -> None:
         ),
     )
     with pytest.MonkeyPatch.context() as patch:
+        # 格子は「評価する側」(freerun) と「畳む側」(freerun_rows) の両方が
+        # 読む。**両方を差し替える** —— 片方だけだと、評価が 1 点で要約が
+        # 4 点になり IndexError で落ちる (分割したときに実際そうなった)。
         patch.setattr(freerun_module, "VALID_TIME_THRESHOLD_GRID", (huge_threshold,))
+        patch.setattr(
+            freerun_rows_module, "VALID_TIME_THRESHOLD_GRID", (huge_threshold,)
+        )
         results = run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
 
     assert results.rows, "行が空です"

@@ -54,10 +54,10 @@ from rc_basics_lab.experiment.capacity_rows import (
     CapacityRow,
     capacity_row_from,
 )
-from rc_basics_lab.experiment.freerun import (
+from rc_basics_lab.experiment.freerun import run_free_run
+from rc_basics_lab.experiment.freerun_tasks import (
     chaos_esn_config,
     lorenz_task_entry,
-    run_free_run,
     task_length,
 )
 from rc_basics_lab.experiment.report import write_rows_csv

@@ -36,6 +36,8 @@ from rc_basics_lab.experiment.freerun import (
     KIND_SPECTRUM,
     SOURCE_FREERUN,
     SOURCE_TRUTH,
+)
+from rc_basics_lab.experiment.freerun_rows import (
     FreeRunProfileRow,
     FreeRunRow,
 )
