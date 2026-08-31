@@ -25,6 +25,7 @@ from rc_basics_lab.experiment.washout import (
     mean_nrmse_by_washout,
 )
 from rc_basics_lab.plotting.labels import METHOD_LABELS
+from rc_basics_lab.plotting.layout import label_panels
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -292,6 +293,7 @@ def plot_washout_sensitivity(
     with rc_context_for(style):
         figure = new_figure(11.0, 5.8)  # 高さは 1-6 (Zenn 幅で潰れない比)
         axes = figure.subplots(1, 2, squeeze=False)
+        label_panels(list(axes[0]), style=style)
         _plot_absolute_panel(axes[0][0], rows, pairs, sensitivity, style)
         _plot_relative_panel(axes[0][1], rows, pairs, sensitivity, style)
         design_ja, design_en = (

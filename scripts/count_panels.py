@@ -134,10 +134,13 @@ JOBS: tuple[tuple[str, Callable[[Path], object]], ...] = (
 def _panels(record: tuple[str, int, int]) -> int:
     """1枚の図のパネル数 (FIG-15)。
 
-    パネル記号の数を採る。記号が0なら1軸の図なので 1 とする。
+    パネル記号の数を採る。**記号が無いときは軸の本数へ落とす** —— 記号を
+    振り忘れた多パネル図をここで 1 と数えると、パネル予算が黙って小さくなり、
+    ラチェットとして機能しなくなる (実測: ``fig_narma10`` は 4 軸で記号が無く、
+    最初のフォールバックはこれを 1 パネルと報告した)。
     """
     _, axes, labelled = record
-    return labelled if labelled > 0 else min(axes, 1)
+    return labelled if labelled > 0 else axes
 
 
 def main() -> int:
