@@ -17,7 +17,7 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 
-from rc_basics_lab.experiment.capacity import (
+from rc_basics_lab.experiment.capacity_rows import (
     DIAGNOSTIC_IPC,
     DIAGNOSTIC_MC,
     CapacityProfileRow,

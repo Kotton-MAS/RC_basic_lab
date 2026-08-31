@@ -13,7 +13,9 @@ from __future__ import annotations
 import statistics
 from collections.abc import Sequence
 
-from rc_basics_lab.experiment.freerun import FreeRunRow
+from rc_basics_lab.experiment.freerun_rows import (
+    FreeRunRow,
+)
 from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.style import StyleContext
 
