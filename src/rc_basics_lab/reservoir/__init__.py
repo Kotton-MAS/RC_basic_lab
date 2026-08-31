@@ -13,15 +13,21 @@
 モデルを足す手順は ``docs/リザバーを足す.md`` にある。
 """
 
+from rc_basics_lab.reservoir.deep import DeepESN, DeepESNConfig
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig, spectral_radius
 from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
+from rc_basics_lab.reservoir.ring import RingConfig, RingReservoir
 
 __all__ = [
     "ESN",
+    "DeepESN",
+    "DeepESNConfig",
     "ESNConfig",
     "Reservoir",
     "ReservoirConfig",
+    "RingConfig",
+    "RingReservoir",
     "build_reservoir",
     "spectral_radius",
 ]

@@ -90,7 +90,7 @@ from rc_basics_lab.readout.design import (
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
 from rc_basics_lab.reservoir.protocol import Reservoir
-from rc_basics_lab.reservoir.registry import build_reservoir
+from rc_basics_lab.reservoir.registry import build_reservoir, require_esn
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.chaotic import (
     TASK_NAME_LORENZ,
@@ -141,7 +141,7 @@ def chaos_esn_config(base: ExperimentConfig) -> ESNConfig:
     「どのセクションを読むか」をここ1か所に閉じる。呼び出し側が属性を直接
     書くと、宣言したセクションと実際に読むセクションが食い違っても何も落ちない。
     """
-    return base.esn_mackey_glass
+    return require_esn(base.esn_mackey_glass, "実験04 (カオス時系列の自由走行)")
 
 
 def lorenz_task_entry(config: Chaos04Config) -> TaskEntry:
