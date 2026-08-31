@@ -824,18 +824,25 @@ FIG-12 に条項を足す: **1 記事あたりの図は最大 4 枚**。超え�
 6 パネル、`fig_state_space` が 6 パネルあり、読者が向き合うのは 14 パネルである。
 「枚数を減らす」と言いながらパネルへ畳んだだけなら、読者の負荷は下がっていない。
 
-### 実測（2026-08-30、`make panels`）
+### 実測（2026-08-31、`make panels`）
 
-`Figure.savefig` を捕まえて `len(figure.axes)` を数えた。**本番設定で実際に
-生成される図そのもの**を数えている（コードの読み取りではない）。
+`Figure.savefig` を捕まえて数えた。**本番設定で実際に生成される図そのもの**を
+数えている（コードの読み取りではない）。数えるのは**パネル記号 `(a)` が振られた
+軸**で、`len(figure.axes)` ではない（下の節を参照）。参考のため軸の本数も出す。
 
-| 記事 | 枚数 | 総パネル | 1枚の最大 | 内訳 |
-|---|---|---|---|---|
-| 01 | 3 | **14** | 6 | comparison 6 / state_space 6 / state_waveform 2 |
-| 02 | 4 | 8 | 3 | esp_decay 1 / leak_timescale 2 / esp_map 3 / washout 2 |
-| 03 | 5 | **15** | 5 | mc_sweep 2 / ipc_profile 5 / memory_nonlinearity 3 / ipc_conservation 1 / narma10 4 |
-| 04 | 5 | **15** | 6 | freerun_attractor 3 / valid_time 1 / freerun_timeline 1 / stability_map 6 / freerun_stats 4 |
-| 05 | 5 | 12 | 6 | pr_curves 1 / score_timeline 6 / threshold_tradeoff 2 / protocol_sensitivity 2 / size_vs_performance 1 |
+| 記事 | 枚数 | 総パネル | 1枚の最大 | 軸の本数 | 内訳（パネル） |
+|---|---|---|---|---|---|
+| 01 | 3 | 12 | 6 | 14 | comparison 4 / state_space 6 / state_waveform 2 |
+| 02 | 4 | 8 | 3 | 9 | esp_decay 1 / leak_timescale 3 / esp_map 2 / washout 2 |
+| 03 | 5 | **13** | 4 | 16 | mc_sweep 2 / ipc_profile 4 / memory_nonlinearity 3 / ipc_conservation 1 / narma10 3 |
+| 04 | 5 | **14** | 5 | 14 | freerun_attractor 3 / valid_time 1 / freerun_timeline 1 / stability_map 5 / freerun_stats 4 |
+| 05 | 5 | 12 | 6 | 18 | pr_curves 1 / score_timeline 6 / threshold_tradeoff 2 / protocol_sensitivity 2 / size_vs_performance 1 |
+
+**2026-08-30 の実測から減った**のは、数え方を軸の本数からパネル記号へ変えたため
+である（01: 14 → 12、04: 15 → 14）。03 は `fig_narma10` に記号を振ったので
+逆に増えた（記号が無い図はそれまで軸の本数で数えられていた）。02 は
+`fig_leak_timescale` に比のパネルを足し、`fig_washout_sensitivity` に記号を
+振ったぶん増えている。
 
 ### 決めたこと
 
@@ -849,8 +856,9 @@ FIG-12 に条項を足す: **1 記事あたりの図は最大 4 枚**。超え�
 無効になる（`FIGURE_COUNT_FROZEN` を置いたときと同じ判断）。ここでは
 **「今より増やさない」**を確実にし、削減は記事構成の判断として別途行う。
 
-超過中の 01（14）・03（15）・04（15）は現在値で凍結する。**減らすのは自由で、
-減らしたらこの表を更新する。**
+超過中の 03（13）・04（14）は現在値で凍結する。**減らすのは自由で、減らしたら
+この表を更新する。** 01 は 14 → 12 になり上限内に戻った（数え方を直した結果で、
+図を減らしたわけではない）。
 
 ### 数えるのは「読者が数えるパネル」（2026-08-31 追記）
 
@@ -864,10 +872,13 @@ FIG-12 に条項を足す: **1 記事あたりの図は最大 4 枚**。超え�
 
 判定はパネル記号で行う。**記号 (a)(b)(c)… が付いている軸だけを数える。**
 記号を付ける対象は「読者が独立に読む単位」なので、この基準は図の側で既に
-決まっており、数える側で解釈を足す必要がない。`make panels` の数字は
-`len(figure.axes)` のままなので、**この表の値とは一致しない**（一致させるには
-記号の有無を数える必要があり、それは `label_panels` の内部に踏み込む）。
-表の値は記号の数で手当てする。
+決まっており、数える側で解釈を足す必要がない。`make panels` が記号を数えるので、
+上の表は機械の出力そのものである。
+
+**記号が1つも無い図は軸の本数へ落とす。** 最初これを「1」にしたところ、記号を
+振り忘れた `fig_narma10`（4 軸）が 1 パネルと報告された。パネル予算が黙って
+小さくなるのはラチェットとして最悪の壊れ方である。この実測が記号の振り忘れ
+2 枚（`fig_washout_sensitivity` / `fig_narma10`）を炙り出した。
 
 ### 機械化していない理由
 

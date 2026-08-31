@@ -15,7 +15,7 @@
       "fig_esp_decay.png": "sha256:f531e46827a773cb50055f180ddcf078cc5872c9c2e3e057f0f0d38a9a91b01c",
       "fig_esp_map.png": "sha256:93e4efd0764cede50802f569802029c174e86026acee8568ccf11186bd91bc33",
       "fig_leak_timescale.png": "sha256:a3248bd0b68caadd61a6cb6a68349ca2fcbf0888c7a03fd1ea4d788c49404a56",
-      "fig_washout_sensitivity.png": "sha256:e3aa6138e3e64398a3893db2238723b041f2465a8fd4dd4ac7d1676967ec8a7e",
+      "fig_washout_sensitivity.png": "sha256:f8ad86c903f76ad7ee70448d80fc9eccc1993acb1a758eb5caabb9e8bc8bbd27",
       "meta.json": "sha256:0b7665b3b90705d3089ba61b6a6fcb111b8a086c8ef229b190dbe4567045c8ca",
       "washout_sensitivity.csv": "sha256:4a2c44d4e21eb798b92c89388cabe93d263db5c760c85fe89bef1f5067448a4d"
     },
@@ -27,7 +27,7 @@
       "fig_ipc_profile.png": "sha256:281d32fd163b8f4597f44235592099c82435cf1ccad94c754c30e35f875541a2",
       "fig_mc_sweep.png": "sha256:629fbae4ec638e966728eab9fe53c2997bf9dedb1f6dd654d8622d94a9209bc2",
       "fig_memory_nonlinearity.png": "sha256:a96f8570e1ab106874500cc1f9b6578c61817f7994ddb22ffb71840c3dea7733",
-      "fig_narma10.png": "sha256:d1df18e5906763197d4e5e928c400368a001903ae77d4356c5d8578b3e41ff00",
+      "fig_narma10.png": "sha256:295fa968e4b33685d7814639dc4c2ed38d471ea023bdf8b4f6916c8e6568427e",
       "meta.json": "sha256:fc7a2d7b42208bfbce63f8ca168530c6aa6ce1ab172ba568a474465aef7fa78c",
       "narma10.csv": "sha256:eaf1ccb7adba69785cf50b3ccc9bb85e97dee93e395f691351a797ad1b36124e",
       "narma10_taps.csv": "sha256:92ca3189b69f1f8366bf82c26ea3f3fa5538b9e3d125d80a5971884d050cce41"
