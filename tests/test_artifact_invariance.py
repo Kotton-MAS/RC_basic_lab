@@ -32,22 +32,47 @@ def test_every_artifact_matches_its_committed_fingerprint() -> None:
     変わってもコミットされて ``git status`` は綺麗なままになる。
     基準 ref からの差分を見るには基準 ref を覚えている必要があり、
     **気づかないまま通る経路**が残っていた。ここで落とす。
+
+    **時間だけの差と、実質的な差を分けて報告する。** 23 枚の CSV のうち
+    15 枚と JSON 5 枚が実行時間を含むので、再生成すると数値が同じでも
+    バイト指紋は必ず動く。両方を同じ一覧に並べると、本物の変化が時間の
+    ノイズに埋もれる (実測: 03 の capacity.csv は 118 行すべてが毎回変わる)。
     """
     expected = read_manifest()
-    mismatched: list[str] = []
+    changed: list[str] = []
+    timing_only: list[str] = []
     for path in artifact_paths():
-        relative, digest, size = fingerprint(path)
+        relative, digest, size, content = fingerprint(path)
         if relative not in expected:
             continue  # 追加は別のテストが見る
-        want_digest, want_size = expected[relative]
-        if (digest, size) != (want_digest, want_size):
-            mismatched.append(
-                f"{relative}: {want_digest[:12]}…/{want_size}B → {digest[:12]}…/{size}B"
-            )
-    assert not mismatched, (
-        "成果物が変わっています (振る舞いを変えないはずの変更なら、これは退行です):\n"
-        + "\n".join(mismatched)
-        + "\n\n意図した変更なら `make artifacts-manifest` で指紋を書き直し、"
+        want_digest, want_size, want_content = expected[relative]
+        if (digest, size) == (want_digest, want_size):
+            continue
+        line = f"{relative}: {want_digest[:12]}…/{want_size}B → {digest[:12]}…/{size}B"
+        if content == want_content:
+            timing_only.append(line)
+        else:
+            changed.append(line)
+
+    report = ""
+    if changed:
+        report += "**実行時の値以外が変わった成果物**:\n" + "\n".join(changed) + "\n\n"
+    if timing_only:
+        report += (
+            f"実行時の値だけが変わった成果物 ({len(timing_only)} 件。"
+            "実行時間・時刻・commit を除くと同じなので、退行ではありません):\n"
+            + "\n".join(timing_only)
+            + "\n\n"
+        )
+    if changed:
+        report += (
+            "**PNG は footnote に commit を焼き込む** (FIG-6 / D-87) ので、"
+            "HEAD が動いていれば必ず上の側に出る。画素から commit だけを抜く"
+            "ことはできないため、再生成して一致するかは "
+            "tests/test_golden.py が commit を固定して確かめている。\n\n"
+        )
+    assert not report, (
+        report + "意図した変更なら `make artifacts-manifest` で指紋を書き直し、"
         "なぜ変わったかをコミットメッセージに書いてください。"
     )
 
