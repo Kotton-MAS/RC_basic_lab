@@ -7,12 +7,17 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
 import numpy as np
 import pytest
 
+from rc_basics_lab.config._common import _kind_of
+from rc_basics_lab.reservoir.deep import DeepESNConfig
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig
-from rc_basics_lab.reservoir.protocol import Reservoir
+from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
+from rc_basics_lab.reservoir.ring import RingConfig
 from rc_basics_lab.types import FloatArray
 
 
@@ -35,6 +40,40 @@ def test_the_registry_draws_the_same_weights_as_a_direct_construction() -> None:
     assert isinstance(built, ESN)
     assert built.W.tobytes() == direct.W.tobytes()
     assert built.W_in.tobytes() == direct.W_in.tobytes()
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        (ESNConfig(n_units=16), "ESN"),
+        (DeepESNConfig(n_units=16, n_layers=2, density=0.3), "DeepESN"),
+        (RingConfig(n_units=16), "RingReservoir"),
+    ],
+)
+def test_every_registered_kind_builds_its_model(
+    config: ReservoirConfig, expected: str
+) -> None:
+    """登録した全モデルが生成口から出る。
+
+    ``ReservoirConfig`` に足して ``registry`` の ``case`` を書き忘れたら
+    mypy が落とすが、**逆 (case はあるが union に無い)** は型では捕まらない。
+    ここが全モデルを回す。
+    """
+    built = build_reservoir(config, np.random.default_rng(0))
+    assert type(built).__name__ == expected
+    assert built.n_units == 16
+
+
+def test_every_union_member_is_reachable_from_the_registry() -> None:
+    """``ReservoirConfig`` の全要素が生成口で作れる (取りこぼしが無い)。
+
+    union に足したのに ``case`` を書き忘れる方向は mypy が見るが、
+    **既定値だけでは作れない設定**があると実行時に初めて分かる。
+    """
+    members = get_args(ReservoirConfig.__value__)
+    assert len(members) >= 3, f"union の要素が減っています: {members}"
+    for member in members:
+        assert _kind_of(member) is not None, f"{member} が KIND を名乗っていません"
 
 
 def test_the_esn_satisfies_the_reservoir_protocol() -> None:

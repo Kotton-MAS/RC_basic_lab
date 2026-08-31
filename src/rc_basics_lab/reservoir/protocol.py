@@ -23,15 +23,19 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
+from rc_basics_lab.reservoir.deep import DeepESNConfig
 from rc_basics_lab.reservoir.esn import ESNConfig
+from rc_basics_lab.reservoir.ring import RingConfig
 from rc_basics_lab.types import FloatArray
 
-type ReservoirConfig = ESNConfig
+type ReservoirConfig = ESNConfig | DeepESNConfig | RingConfig
 """リザバーの構造設定。モデルを足したら union に足す (``FeatureSpec`` と同じ流儀)。
 
-いまは1種類しかないので union ではないが、**``registry.build_reservoir`` の
-``match`` が唯一の分岐点**であることは変わらない。2つ目を足すときに
-``ESNConfig | DeepESNConfig`` と書き換えれば、mypy が網羅性を見てくれる。
+**先頭が既定である。** YAML で ``kind`` を省いたら先頭 (``ESNConfig``) になるので、
+並び順を変えると既存の設定の意味が変わる。足すときは末尾へ。
+
+``registry.build_reservoir`` の ``match`` が唯一の分岐点で、ここに足して
+``case`` を書き忘れたら mypy の網羅性検査が落とす。
 """
 
 

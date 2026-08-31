@@ -1,0 +1,36 @@
+# 深層 ESN で 01 を回す (--preset deep)
+#
+# Gallicchio & Micheli (2017) "Deep Echo State Network (DeepESN)"。
+# 層を積むと**層ごとに違う時間スケールが自然に現れる** (深い層ほど遅い)。
+#
+# **セクションを丸ごと書く。** kind が変わると設定の型が変わる (上の ring と同じ)。
+#
+# n_units は**連結後の総次元**である。層ごとの数ではない —— 読み出し層も
+# 診断層も n_units を状態の次元として読み、容量の上限 MC <= N もその N を指す。
+# n_layers で割り切れる必要がある。
+#
+# 実測 (n_units=180 / n_layers=3 / leak_rate=0.3、ラグ1自己相関):
+#   第1層 0.822 / 第2層 0.979 / 第3層 0.992   (単層 ESN は 0.802)
+# リーク率は全層で同じなので、この差は積んだこと自体から出ている。
+
+esn_mackey_glass:
+  kind: deep_esn
+  n_units: 200
+  n_layers: 2
+  spectral_radius: 0.9
+  leak_rate: 0.3
+  input_scale: 0.5
+  inter_layer_scale: 0.5
+  bias_scale: 0.1
+  density: 0.1
+
+esn_delay_parity:
+  kind: deep_esn
+  n_units: 200
+  n_layers: 2
+  spectral_radius: 0.9
+  leak_rate: 1.0
+  input_scale: 1.0
+  inter_layer_scale: 0.5
+  bias_scale: 0.1
+  density: 0.1

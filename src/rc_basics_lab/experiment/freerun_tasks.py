@@ -15,6 +15,7 @@ from rc_basics_lab.config import Chaos04Config, ESNConfig, ExperimentConfig
 from rc_basics_lab.experiment.capacity_bounds import validate_state_matrix_bounds
 from rc_basics_lab.experiment.runner import TaskEntry
 from rc_basics_lab.experiment.split import Split
+from rc_basics_lab.reservoir.registry import require_esn
 from rc_basics_lab.tasks.chaotic import (
     TASK_NAME_LORENZ,
     generate_lorenz,
@@ -30,7 +31,7 @@ def chaos_esn_config(base: ExperimentConfig) -> ESNConfig:
     「どのセクションを読むか」をここ1か所に閉じる。呼び出し側が属性を直接
     書くと、宣言したセクションと実際に読むセクションが食い違っても何も落ちない。
     """
-    return base.esn_mackey_glass
+    return require_esn(base.esn_mackey_glass, "実験04 (カオス時系列の自由走行)")
 
 
 def lorenz_task_entry(config: Chaos04Config) -> TaskEntry:

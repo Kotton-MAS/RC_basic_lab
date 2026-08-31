@@ -3,7 +3,8 @@
 ``build_reservoir`` が唯一の生成口である。実験層はここだけを呼ぶので、
 モデルを1つ足しても生成箇所 (実測で5箇所あった) を触らずに済む。
 
-**既定は ESN のまま**なので、既存の YAML も既存の成果物も変わらない。
+**既定は ESN のまま**なので、既存の YAML も既存の成果物も変わらない
+(``ReservoirConfig`` の先頭が ``ESNConfig`` である限り)。
 乱数の引き方も変えていない —— 合否判定は成果物のバイト不変である (D-74)。
 """
 
@@ -11,8 +12,10 @@ from __future__ import annotations
 
 import numpy as np
 
+from rc_basics_lab.reservoir.deep import DeepESN, DeepESNConfig
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig
 from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
+from rc_basics_lab.reservoir.ring import RingConfig, RingReservoir
 
 
 def build_reservoir(
@@ -42,6 +45,38 @@ def build_reservoir(
     match config:
         case ESNConfig():
             return ESN(config, rng, n_inputs=n_inputs)
+        case DeepESNConfig():
+            return DeepESN(config, rng, n_inputs=n_inputs)
+        case RingConfig():
+            return RingReservoir(config, rng, n_inputs=n_inputs)
 
 
-__all__ = ["build_reservoir"]
+def require_esn(config: ReservoirConfig, used_by: str) -> ESNConfig:
+    """``ESNConfig`` に絞る。他のモデルなら**どこが対応していないか**を言って落とす。
+
+    03-C と 04 は ``spectral_radius`` / ``leak_rate`` / ``state_noise`` を
+    格子にして振る。これは ESN 固有の軸で、「そのモデルで何を掃引するのか」は
+    配線ではなく実験設計の問題である。**黙って ESN として扱わない** ——
+    設定した ``kind`` が効かない実験になる。
+
+    Args:
+        config: 設定から来たリザバー設定。
+        used_by: 呼び出し元の説明 (エラーに出す)。
+
+    Returns:
+        ``ESNConfig``。
+
+    Raises:
+        TypeError: ``ESNConfig`` でない場合。
+    """
+    if isinstance(config, ESNConfig):
+        return config
+    raise TypeError(
+        f"{used_by} は現在 kind: esn だけに対応しています "
+        f"(渡されたのは {type(config).__name__})。"
+        "掃引軸が ESN 固有 (spectral_radius / leak_rate / state_noise) なので、"
+        "他のモデルで何を振るかを決めてから対応させてください"
+    )
+
+
+__all__ = ["build_reservoir", "require_esn"]

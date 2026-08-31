@@ -50,6 +50,7 @@ from rc_basics_lab.experiment.runner import (
     plan_replicate,
     run_task,
 )
+from rc_basics_lab.reservoir.registry import require_esn
 from rc_basics_lab.tasks.narma import (
     NARMA10_INPUT_STD,
     TASK_NAME,
@@ -113,7 +114,7 @@ def narma_esn_config(base: ExperimentConfig) -> ESNConfig:
     書くと、D-39 (N=50) を適用したセクションと実際に読むセクションが
     食い違っても何も落ちない。
     """
-    return base.esn_mackey_glass
+    return require_esn(base.esn_mackey_glass, "実験3-C (NARMA10)")
 
 
 def narma_task_entry(config: Capacity03Config) -> TaskEntry:
@@ -316,7 +317,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
         run_task(base, entry, plan0=plan0, extra_methods=narma10_extra_methods(base))
     )
 
-    esn = entry.esn
+    esn = require_esn(entry.esn, "実験3-C (NARMA10)")
     row = capacity_row_from(
         measurement,
         experiment=EXPERIMENT_NARMA10,

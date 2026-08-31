@@ -196,10 +196,17 @@ def _build[T](cls: type[T], raw: object, location: str) -> T:
     provided = {str(key) for key in raw}
     unknown = sorted(provided - known)
     if unknown:
+        advice = ""
+        if declared is not None:
+            advice = (
+                f"。kind: {declared} に無いキーです —— モデルを替えるときは"
+                "セクションを丸ごと書き替えてください "
+                "(プリセットなら kind を書けば自動で置き換わります)"
+            )
         raise _fail(
             location,
             f"未知のキーです: {', '.join(unknown)}"
-            f" (既知のキー: {', '.join(sorted(known))})",
+            f" (既知のキー: {', '.join(sorted(known))}){advice}",
         )
     hints = get_type_hints(cls)
     kwargs = {
@@ -225,6 +232,18 @@ def _read_yaml(path: Path) -> dict[str, object]:
     return {str(key): value for key, value in raw.items()}
 
 
+def _changes_kind(base: object, patch: Mapping[str, object]) -> bool:
+    """``patch`` が ``base`` と違う ``kind`` を名乗っているか。
+
+    名乗っていれば**別の型の設定**なので、混ぜずに置き換える (下記)。
+    """
+    if KIND_KEY not in patch:
+        return False
+    if not isinstance(base, Mapping):
+        return True
+    return base.get(KIND_KEY) != patch[KIND_KEY]
+
+
 def _deep_merge(
     base: Mapping[str, object], patch: Mapping[str, object]
 ) -> dict[str, object]:
@@ -233,11 +252,18 @@ def _deep_merge(
     どちらもマッピングなら再帰し、そうでなければ ``patch`` で置き換える。
     **リストは置き換える** —— 格子 (``alpha_grid`` など) を部分的に混ぜると、
     プリセットを読んだだけでは実際に回る格子が分からなくなる。
+
+    **``kind`` が変わるセクションは丸ごと置き換える。** モデルを差し替えると
+    設定の**型そのもの**が変わり、前のモデル固有のキー (ESN の ``density`` /
+    ``activation`` など) は新しい型に存在しない。混ぜると必ず未知キーになり、
+    「``kind`` を書いたのにモデルを替えられない」状態になる (実測でそうなった)。
     """
     merged = dict(base)
     for key, value in patch.items():
         current = merged.get(key)
-        if isinstance(current, Mapping) and isinstance(value, Mapping):
+        if isinstance(value, Mapping) and _changes_kind(current, value):
+            merged[key] = dict(value)
+        elif isinstance(current, Mapping) and isinstance(value, Mapping):
             merged[key] = _deep_merge(
                 cast("Mapping[str, object]", current),
                 cast("Mapping[str, object]", value),

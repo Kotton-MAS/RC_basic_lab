@@ -76,6 +76,7 @@ from rc_basics_lab.experiment.esp import (
     simulate_reference_trajectory,
 )
 from rc_basics_lab.experiment.runner import build_tasks, plan_replicate
+from rc_basics_lab.reservoir.registry import require_esn
 from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
@@ -670,6 +671,7 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     measurement = measure_capacity(
         states, u, ctx=ctx, mc_cfg=config.mc, ipc_cfg=config.ipc
     )
+    esn = require_esn(entry.esn, "テスト (03 の容量行)")
     row = capacity_row_from(
         measurement,
         experiment="3C_narma10",
@@ -680,13 +682,13 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
         # rho は ESN 設定から取れるが、sigma_u (駆動信号の標準偏差の設定値) は
         # 3-C に存在しない。何を書くか (NaN / 0.0 / 実測値) は T4 が決めること
         # で、このテストが固定するのは**接ぎ目が在ること**だけである。
-        rho=entry.esn.spectral_radius,
-        leak_rate=entry.esn.leak_rate,
-        input_scale=entry.esn.input_scale,
+        rho=esn.spectral_radius,
+        leak_rate=esn.leak_rate,
+        input_scale=esn.input_scale,
         sigma_u=float("nan"),
-        n_units=entry.esn.n_units,
-        density=entry.esn.density,
-        state_noise=entry.esn.state_noise,
+        n_units=esn.n_units,
+        density=esn.density,
+        state_noise=esn.state_noise,
         n_steps=int(states.shape[0]),
         washout=config.drive.washout,
         wall_time_state_s=0.0,

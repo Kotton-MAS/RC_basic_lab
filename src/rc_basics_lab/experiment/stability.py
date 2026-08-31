@@ -62,6 +62,7 @@ from rc_basics_lab.experiment.freerun_tasks import (
 )
 from rc_basics_lab.experiment.report import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
+from rc_basics_lab.reservoir.registry import require_esn
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.chaotic import sampling_interval
 from rc_basics_lab.types import FloatArray
@@ -194,8 +195,8 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         * stability.n_replicates
     )
     validate_condition_count(n_conditions)
-    # 軸5 (条件数) と軸4 (stats_steps) はどちらも単独では上限内でも、**積**
-    # (総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
+    # 軸5 (条件数) と軸4 (stats_steps) は単独では上限内でも、**積** (逐次
+    # シミュレーションの総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
     validate_total_step_count(n_conditions * config.freerun.stats_steps)
     return tuple(
         StabilityCondition(
@@ -415,7 +416,7 @@ def evaluate_stability_condition(
     )
     wall_time_state_s = time.perf_counter() - started
 
-    esn = entry.esn
+    esn = require_esn(entry.esn, "実験4-D (自走と同じ状態行列への容量)")
     row = StabilityRow(
         experiment=EXPERIMENT_STABILITY,
         rho=condition.rho,
@@ -450,8 +451,7 @@ def evaluate_stability_condition(
         experiment=EXPERIMENT_FREERUN_CAPACITY,
         replicate=condition.replicate,
         seed_reservoir=config.base.seeds.reservoir,
-        # 4-D のリザバーを駆動するのは課題の入力そのものなので、駆動側の
-        # 基底シードは task ストリーム (D-06) である (3-C と同じ)。
+        # 4-D の駆動は課題の入力そのものなので、基底シードは task (D-06)。
         seed_drive=config.base.seeds.task,
         seed_surrogate=config.stability.surrogate_seed,
         rho=esn.spectral_radius,

@@ -88,6 +88,7 @@ from rc_basics_lab.experiment.valid_time import (
 from rc_basics_lab.readout.design import ReservoirSpec, build_design_matrix
 from rc_basics_lab.readout.ridge import fit_ridge
 from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ, integrate_lorenz
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
@@ -599,7 +600,7 @@ def test_closed_loop_design_matches_the_teacher_forced_row(method: str) -> None:
     plan = readout.plan
     switch = plan.split.test.start + config.freerun.warmup_steps - 1
     reservoir = (
-        ESN(
+        build_reservoir(
             entry.esn,
             make_rng(config.base.seeds, SeedStream.RESERVOIR, 0),
             n_inputs=plan.task.n_inputs,
