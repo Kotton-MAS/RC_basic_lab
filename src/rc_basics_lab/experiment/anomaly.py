@@ -70,7 +70,7 @@ from rc_basics_lab.metrics_detection import (
     average_precision,
     point_adjust_report,
 )
-from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 from rc_basics_lab.tasks.anomaly import (
     AnomalyPreprocessor,
@@ -444,7 +444,7 @@ def plan_anomaly_replicate(
         SeedStream.RESERVOIR,
         condition.draw,
     )
-    states = ESN(config.reservoir.to_esn(), reservoir_rng, n_inputs=1).run(
+    states = build_reservoir(config.reservoir.to_esn(), reservoir_rng, n_inputs=1).run(
         scaled, rng=reservoir_rng
     )
     control_rng = make_rng_for(

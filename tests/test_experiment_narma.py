@@ -590,10 +590,15 @@ def test_oversized_narma10_length_is_rejected_before_any_allocation(
     を持たないため ``experiment/capacity.py`` の ``_validate_condition_bounds``
     を通らず (0回)、``tasks/narma.py`` の ``_validate`` だけが3-C を守る。
     ``Narma10Config(length=10**12)`` がかつて確保前検査なしで受理されていた
-    (実測: ``u`` / ``y`` の確保だけで数TB) ことの再発防止。``ESN`` の
-    ``__init__`` を差し替え、``plan_replicate`` が ``task_entry.generate``
-    (= ``generate_narma10`` -> ``_validate``) より先に ``ESN`` を作らない
+    (実測: ``u`` / ``y`` の確保だけで数TB) ことの再発防止。リザバーの生成口を
+    差し替え、``plan_replicate`` が ``task_entry.generate``
+    (= ``generate_narma10`` -> ``_validate``) より先にリザバーを作らない
     (= 確保より前に落ちる) ことを実測する。
+
+    差し替える先は ``runner.build_reservoir`` である。``ESN`` を直接名指しして
+    いたが、生成口が1本に寄ったので (``reservoir/registry.py``) そちらを見る。
+    **生成口が増えたらこの検査は空振りする**ので、``ESN`` を直接呼ぶ経路を
+    足さないこと自体が前提になっている。
     """
     from rc_basics_lab.tasks import narma as narma_task_module
 
@@ -602,16 +607,17 @@ def test_oversized_narma10_length_is_rejected_before_any_allocation(
 
     called = False
 
-    class _FailIfConstructed:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            nonlocal called
-            called = True
-            raise AssertionError("ESN が確保より前に作られました")
+    def _fail_if_built(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("リザバーが確保より前に作られました")
 
-    monkeypatch.setattr("rc_basics_lab.experiment.runner.ESN", _FailIfConstructed)
+    monkeypatch.setattr(
+        "rc_basics_lab.experiment.runner.build_reservoir", _fail_if_built
+    )
     with pytest.raises(ValueError, match="length"):
         run_narma10(huge)
-    assert not called, "上限検査より前に ESN の重み行列の確保が始まっています"
+    assert not called, "上限検査より前にリザバーの重み行列の確保が始まっています"
     # 確認: narma.length 単体で見ても同じ上限で落ちる (課題層単体の経路、F-3b2-1-001)。
     assert huge.narma.length > narma_task_module._MAX_LENGTH
 
@@ -650,16 +656,17 @@ def test_oversized_narma10_n_units_is_rejected_before_any_allocation(
 
     called = False
 
-    class _FailIfConstructed:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            nonlocal called
-            called = True
-            raise AssertionError("ESN が確保より前に作られました")
+    def _fail_if_built(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("リザバーが確保より前に作られました")
 
-    monkeypatch.setattr("rc_basics_lab.experiment.runner.ESN", _FailIfConstructed)
+    monkeypatch.setattr(
+        "rc_basics_lab.experiment.runner.build_reservoir", _fail_if_built
+    )
     with pytest.raises(ValueError, match="n_units"):
         run_narma10(huge)
-    assert not called, "上限検査より前に ESN の重み行列の確保が始まっています"
+    assert not called, "上限検査より前にリザバーの重み行列の確保が始まっています"
 
 
 def test_narma10_n_units_boundary_is_accepted() -> None:
