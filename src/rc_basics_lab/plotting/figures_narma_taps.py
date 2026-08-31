@@ -24,6 +24,7 @@ from rc_basics_lab.plotting.labels import (
     METHOD_LABELS,
     cited_measurement,
 )
+from rc_basics_lab.plotting.layout import hide_minor_tick_labels
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
@@ -129,6 +130,9 @@ def draw_narma10_taps_panel(
     )
     axis.set_xscale("log")
     axis.set_yscale("log")
+    # k は測った点 (10/30/100/300/800/1500/2200/2500) だけを見せる。
+    # 副目盛りのラベル (3x10^1 など) は測っていない点である (FIG-19)。
+    hide_minor_tick_labels(axis, which="both")
     # 対数軸の自動範囲は誤差棒の上端を切ることがある (実測: k/n=0.94 の
     # OLS が枠外に出た)。壊れ方そのものが主題なので余白を明示する。
     axis.margins(y=0.15)

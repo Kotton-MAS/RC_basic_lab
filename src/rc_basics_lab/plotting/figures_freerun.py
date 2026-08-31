@@ -64,7 +64,9 @@ from rc_basics_lab.plotting.labels import (
     METHOD_LABELS,
     cited_measurement,
 )
+from rc_basics_lab.plotting.layout import label_panels, legend_below, wrapped_note
 from rc_basics_lab.plotting.style import (
+    METHOD_COLORS,
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
@@ -99,15 +101,44 @@ REGIME_COLORS: dict[str, str] = {
 }
 """3態の色 (発散=赤 / 周期=青 / 再現=緑)。"""
 
+REGIME_MARKERS: dict[str, str] = {
+    REGIME_DIVERGED: "X",
+    REGIME_PERIODIC: "^",
+    REGIME_ATTRACTOR: "s",
+}
+"""3態のマーカー形状 (発散=x印 / 周期=三角 / 再現=四角)。
+
+**色だけで符号化しない** (FIG-18)。赤・青・緑は色覚多様性で最も区別が難しい
+組み合わせで、3態マップはこの3色だけで塗られていた。形を併用すれば、色が
+区別できなくても読める。凡例も同じ形で出す。
+"""
+
 SOURCE_STYLE: dict[str, tuple[str, str]] = {
     SOURCE_TRUTH: ("#444444", "真の軌道"),
-    SOURCE_FREERUN: ("#d95f02", "自走"),
+    SOURCE_FREERUN: (METHOD_COLORS[ESN_METHOD], "自走 (ESN)"),
 }
+"""軌道の源の色とラベル。
+
+**自走は ESN 色 (緑) にする。** かつては橙 (#d95f02) で、同じ図の 4-A パネル
+では橙が Mackey-Glass を指しており、**1枚の図の中で橙の意味が2つあった**。
+自走は ESN の自走なので、連載共通の手法色 (D-85) をそのまま使えば衝突が消え、
+「どの手法の自走か」もラベルを読まずに分かる。
+"""
 """重ね描きの色と日本語ラベル (英語は ``_source_label``)。"""
+
+TASK_COLORS: dict[str, str] = {"lorenz": "#d95f02", "mackey_glass": "#7570b3"}
+"""4-A パネルで**課題**を区別する色 (``METHOD_COLORS`` とは別の次元)。
+
+色を指定していなかったため既定循環色 (青・橙) が当たり、同じ図の位相図で橙が
+「自走」を指していたのと衝突していた。形も変える (FIG-18)。
+"""
+
+TASK_MARKERS: dict[str, str] = {"lorenz": "o", "mackey_glass": "s"}
+"""4-A パネルで課題を区別するマーカー形状。"""
 
 _SOURCE_LABELS_EN: dict[str, str] = {
     SOURCE_TRUTH: "true trajectory",
-    SOURCE_FREERUN: "free run",
+    SOURCE_FREERUN: "free run (ESN)",
 }
 
 
@@ -155,7 +186,8 @@ def _draw_onestep_panel(
             positions + 0.12 * (offset - 0.5 * (len(tasks) - 1)),
             means,
             yerr=np.vstack([np.minimum(stds, means * 0.999), stds]),
-            fmt="o",
+            fmt=TASK_MARKERS.get(task, "o"),
+            color=TASK_COLORS.get(task, REFERENCE_COLOR),
             capsize=5,
             label=label_of(TASK_LABELS, task, style),
         )
@@ -219,16 +251,15 @@ def plot_freerun_attractor(
         # 位相図が潰れ、蝶形が読めなくなる (FIG-13 の上限 3.2:1 には収まる)。
         figure = _new_figure(5.0 * (len(tasks) + 1), 5.4)
         axes = np.atleast_1d(figure.subplots(1, len(tasks) + 1))
+        label_panels(list(axes), style=style)
         drawn = 0
         for axis, task in zip(axes[: len(tasks)], tasks, strict=True):
             for source in (SOURCE_TRUTH, SOURCE_FREERUN):
                 points = profile_points(rows, task, KIND_PHASE, source)
                 if points.shape[0] == 0:
                     continue
-                # 線でつなぐ。位相図の点列は確保軸6 で間引いてあるが、
-                # 間引き後も隣接点の間隔は Delta t x stride = 0.05 時間単位
-                # (Lorenz) しかないので、折れ線は軌道をなぞる。**点だけで描くと
-                # 蝶形の2枚翅が雲に潰れて読めなくなる** (実測)。
+                # 線でつなぐ。**点だけで描くと蝶形の2枚翅が雲に潰れる** (実測)。
+                # 間引き後も隣接点の間隔は 0.05 時間単位しかなく折れ線は軌道をなぞる。
                 axis.plot(
                     points[:, 0],
                     points[:, 1],
@@ -245,10 +276,14 @@ def plot_freerun_attractor(
             axis.set_ylabel(
                 style.label("第2成分 / 遅延座標", "component 2 / delay coordinate")
             )
-            axis.legend(loc="best", fontsize=8)
+            # アトラクタの**形**を見せる図なので縦横を等尺にする。歪めると
+            # 蝶形かどうかを目で判定できない。
+            axis.set_aspect("equal", adjustable="datalim")
         if drawn == 0:
             raise ValueError("位相図に描く点がありません")
         _draw_onestep_panel(axes[len(tasks)], onestep_rows, style)
+        # 同じ凡例が位相図の枚数ぶん繰り返されていたので図の外へ1つに統合する。
+        legend_below(figure, list(axes), style=style, ncol=4)
         figure.suptitle(
             style.label(
                 "実験 4-A / 4-B: 教師強制では遅延線と ESN に差が出ないが、"
@@ -295,6 +330,7 @@ def plot_valid_time(
     with rc_context_for(style):
         figure = _new_figure(6.4 * len(tasks), 5.0)
         axes = np.atleast_1d(figure.subplots(1, len(tasks), sharey=True))
+        label_panels(list(axes), style=style)
         for axis, task in zip(axes, tasks, strict=True):
             _valid_time_panel(axis, rows, task, methods, style)
         axes[0].set_ylabel(
@@ -315,25 +351,32 @@ def plot_valid_time(
                 style.label(*LITERATURE_VALID_TIME_CONDITIONS),
             ),
         )
-        axis.legend(loc="upper left", fontsize=7)
+        # 1 行の凡例が軸幅いっぱいに広がっていたので図の外へ出す。
+        legend_below(figure, list(axes), style=style, ncol=2)
         figure.suptitle(
             style.label(
                 f"実験 4-B: {valid_time_headline(rows, style)}",
                 f"Experiment 4-B: {valid_time_headline(rows, style)}",
             )
         )
+        # **折り返してから渡す**。保存は bbox_inches="tight" なので、軸より横に
+        # 長い supxlabel があると tight bbox がその幅まで広がり、軸が中央に
+        # 取り残される (実測: 軸 1000px に対し canvas 2883px だった)。
+        # matplotlib は Markdown を解釈しないので ** は書かない (そのまま出る)。
         figure.supxlabel(
-            style.label(
-                "注: lambda_max の数値推定は Lorenz だけ (D-42)。"
-                "参照線の原典は Lyapunov 時間を 1.1 としており、"
-                "こちらの数値推定 (1.09) と実質一致するため単位はそろっている。"
-                "ただし原典は「forecasts well」と定性的に述べており、"
-                "**こちらの閾値 0.4 と同じ基準ではない** (D-102)。",
-                "Note: lambda_max is estimated only for Lorenz (D-42)."
-                " The cited work uses a Lyapunov time of 1.1, matching our"
-                " numerical estimate (1.09), so the units agree. But it states"
-                " the horizon qualitatively, which is not the same criterion as"
-                " our threshold of 0.4 (D-102).",
+            wrapped_note(
+                style.label(
+                    "注: lambda_max の数値推定は Lorenz だけ (D-42)。"
+                    "参照線の原典は Lyapunov 時間を 1.1 としており、"
+                    "こちらの数値推定 (1.09) と実質一致するため単位はそろっている。"
+                    "ただし原典は「forecasts well」と定性的に述べており、"
+                    "こちらの閾値 0.4 と同じ基準ではない (D-102)。",
+                    "Note: lambda_max is estimated only for Lorenz (D-42)."
+                    " The cited work uses a Lyapunov time of 1.1, matching our"
+                    " numerical estimate (1.09), so the units agree. But it states"
+                    " the horizon qualitatively, which is not the same criterion as"
+                    " our threshold of 0.4 (D-102).",
+                )
             ),
             fontsize=8,
         )
@@ -382,11 +425,13 @@ def _valid_time_panel(
             )
         median = float(np.median(values))
         axis.plot([position - 0.25, position + 0.25], [median, median], color="black")
+        # 中央値ラベルは**右へ**逃がす。真上に置くと文献の参照線 (5.0) や
+        # 点群そのものと重なる (実測: 4.83 が参照線に、0.18 が点群に被った)。
         axis.annotate(
             f"{median:.2f}",
             (position, median),
             textcoords="offset points",
-            xytext=(0, 8),
+            xytext=(16, 0),
             ha="center",
             fontsize=8,
         )
@@ -399,15 +444,66 @@ def _valid_time_panel(
         axis.legend(handles[:1], labels[:1], loc="best", fontsize=8)
 
 
+def _annotate_distance(
+    axis: Axes,
+    rows: Sequence[FreeRunRow],
+    task: str,
+    column: str,
+    style: StyleContext,
+) -> None:
+    """自走とシャッフル代替の距離をパネルの隅に注記する (D-46)。
+
+    レプリケートの中央値を使う。1本だけ選ぶと、たまたま良い/悪い走りが
+    そのまま結論に見える。
+
+    Args:
+        axis: 注記を置く軸。
+        rows: ``freerun.csv`` と同じ行。
+        task: 対象の課題名。
+        column: ``"return_map_distance"`` か ``"spectrum_distance"``。
+        style: 描画コンテキスト。
+    """
+    selected = [row for row in rows if row.task == task and row.method == ESN_METHOD]
+    values = [float(getattr(row, column)) for row in selected]
+    surrogate = [float(getattr(row, f"{column}_surrogate")) for row in selected]
+    finite = [value for value in values if math.isfinite(value)]
+    finite_surrogate = [value for value in surrogate if math.isfinite(value)]
+    if not finite or not finite_surrogate:
+        return
+    axis.text(
+        0.03,
+        0.97,
+        style.label(
+            f"自走 {float(np.median(finite)):.3f}"
+            f" / 代替 {float(np.median(finite_surrogate)):.3f}",
+            f"free run {float(np.median(finite)):.3f}"
+            f" / surrogate {float(np.median(finite_surrogate)):.3f}",
+        ),
+        transform=axis.transAxes,
+        ha="left",
+        va="top",
+        fontsize=7,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.8, "lw": 0.0},
+    )
+
+
 def plot_freerun_stats(
-    rows: Sequence[FreeRunProfileRow], path: Path, *, style: StyleContext
+    rows: Sequence[FreeRunProfileRow],
+    distance_rows: Sequence[FreeRunRow],
+    path: Path,
+    *,
+    style: StyleContext,
 ) -> Path:
     """実験 4-B: 長時間統計の比較 (リターンマップ + パワースペクトル)。
 
     上段がリターンマップ ``(z_n, z_(n+1))``、下段が正規化パワースペクトル
-    (対数)。どちらも真の軌道と自走を重ねる。**図は距離の値を作らない** ——
-    定量的な結論は ``freerun.csv`` の ``return_map_distance`` /
-    ``spectrum_distance`` とそのシャッフル代替の列が持つ (D-46)。
+    (対数)。どちらも真の軌道と自走を重ねる。
+
+    **シャッフル代替との距離を各パネルに注記する** (D-46)。見出しは「代替より
+    はるかに真の軌道へ近い」と主張しているのに、以前は代替がどのパネルにも
+    描かれておらず**図が主張を裏づけていなかった**。代替の軌道そのものを第3の
+    系統として重ねると点が三重になって読めなくなるので、比較の結論だけを
+    数値で置く。値は ``freerun.csv`` の ``*_distance`` 列 (図は距離を作らない)。
 
     Raises:
         ValueError: 描く点が1つも無い場合。
@@ -447,13 +543,27 @@ def plot_freerun_stats(
             axes[0][column].set_ylabel(
                 style.label("次の極大値 z_(n+1)", "next maximum z_(n+1)")
             )
-            axes[0][column].legend(loc="best", fontsize=8)
+            # リターンマップは形を見せる図なので縦横を等尺にする。歪めると
+            # 「同じ曲線に乗っているか」が目で判定できない。
+            axes[0][column].set_aspect("equal", adjustable="datalim")
+            _annotate_distance(
+                axes[0][column],
+                distance_rows,
+                task,
+                "return_map_distance",
+                style,
+            )
             axes[1][column].set_yscale("log")
             axes[1][column].set_xlabel(style.label("周波数 [1/時間]", "frequency"))
             axes[1][column].set_ylabel(style.label("正規化パワー", "normalized power"))
-            axes[1][column].legend(loc="best", fontsize=8)
+            _annotate_distance(
+                axes[1][column], distance_rows, task, "spectrum_distance", style
+            )
         if drawn == 0:
             raise ValueError("長時間統計に描く点がありません")
+        # 4 パネルすべてに同じ凡例が出ていたので1つに統合する。
+        label_panels(list(axes.ravel()), style=style)
+        legend_below(figure, list(axes.ravel()), style=style, ncol=2)
         figure.suptitle(
             style.label(
                 "実験 4-B: 長時間自走後もリターンマップとスペクトルは"
@@ -472,7 +582,10 @@ __all__ = [
     "METHOD_LABELS",
     "REGIME_COLORS",
     "REGIME_LABELS",
+    "REGIME_MARKERS",
+    "TASK_COLORS",
     "TASK_LABELS",
+    "TASK_MARKERS",
     "plot_freerun_attractor",
     "plot_freerun_stats",
     "plot_valid_time",

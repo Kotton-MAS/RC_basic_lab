@@ -317,7 +317,10 @@ def run_and_report_freerun(config: Chaos04Config, out_dir: Path) -> FreeRunOutpu
             style=style,
         ),
         plot_freerun_stats(
-            freerun.profile_rows, out_dir / FIG_FREERUN_STATS, style=style
+            freerun.profile_rows,
+            freerun.rows,
+            out_dir / FIG_FREERUN_STATS,
+            style=style,
         ),
     )
     figures_s = time.perf_counter() - figures_started

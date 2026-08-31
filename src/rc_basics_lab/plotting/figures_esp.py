@@ -1,8 +1,7 @@
 """記事02の図4枚 (実験 2-A / 2-B / 2-C / 2-D).
 
 - ``plot_esp_decay``: rho 別の状態距離の減衰曲線 (受け入れ条件1)。
-- ``plot_leak_timescale``: リーク率と 1/e 時定数 (受け入れ条件4)。理論線
-  ``-1/log(1-a)`` を重ねる。
+- ``plot_leak_timescale``: リーク率と 1/e 時定数 (受け入れ条件4)。
 - ``plot_esp_map``: rho x 入力強度 の ESP 成立領域 (**記事の目玉**、受け入れ条件2)。
   無入力 (sigma_u=0) は別枠のパネルに出し、駆動下の領域と混ぜない。
 - ``plot_washout_sensitivity``: washout 長への性能感度 (受け入れ条件5、D-19)。
@@ -39,6 +38,7 @@ from rc_basics_lab.plotting.esp_references import (
 )
 from rc_basics_lab.plotting.heatmap import cell_edges, grid_from_means
 from rc_basics_lab.plotting.labels import METHOD_LABELS
+from rc_basics_lab.plotting.layout import label_panels, legend_below
 from rc_basics_lab.plotting.style import (
     StyleContext,
     add_provenance,
@@ -182,7 +182,7 @@ def plot_esp_decay(
                 f" (sigma_u = {first.sigma_u:g})",
             )
         )
-        axis.legend(loc="upper right", fontsize=8, ncols=2)
+        legend_below(figure, [axis], style=style, ncol=4)  # 飽和域への被りを解消
         figure.suptitle(
             style.label(
                 "実験 2-A: 無入力では rho が 1 に近いほど減衰が遅く rho > 1 で消えない",
@@ -325,6 +325,7 @@ def plot_leak_timescale(
     with rc_context_for(style):
         figure = _new_figure(11.0, 4.6)
         axes = figure.subplots(1, 2, squeeze=False)
+        label_panels(list(axes[0]), style=style)
         _plot_acf_panel(axes[0][0], outcomes, leak_rates, colors, style)
         _plot_timescale_panel(axes[0][1], rows, leak_rates, style)
         first = rows[0]
@@ -454,6 +455,7 @@ def plot_esp_map(rows: Sequence[EspRow], path: Path, *, style: StyleContext) -> 
             norm,
             style,
         )
+        label_panels(list(axes.ravel()), style=style)
         figure.suptitle(
             style.label(
                 "実験 2-C: 入力を強くすると rho > 1 でも ESP は成立する\n"
@@ -663,12 +665,10 @@ def plot_washout_sensitivity(
 ) -> Path:
     """washout 長への性能感度を描く (受け入れ条件5、D-19)。
 
-    主役は Mackey-Glass、遅延パリティは「washout に反応しない対照」として
-    薄く重ねる。01 の本番値 (``sensitivity.reference_washout``) に垂直線を引き、
-    変動幅を数値で注記する。
-
-    副題に ``pad_series`` を書くのは、この図が「washout の効果」を示すのか
-    「washout + 訓練データ量の効果」を示すのかが、その1点で変わるため (D-19)。
+    主役は Mackey-Glass、遅延パリティは「washout に反応しない対照」。01 の本番値
+    に垂直線を引き、変動幅を注記する。副題に ``pad_series`` を書くのは、この図が
+    「washout の効果」を示すのか「washout + 訓練量の効果」を示すのかが、その1点
+    で変わるため (D-19)。
 
     Raises:
         ValueError: ``rows`` が空の場合。

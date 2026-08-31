@@ -64,6 +64,7 @@ from rc_basics_lab.experiment.anomaly_score import (
     RANDOM_CONTROL,
 )
 from rc_basics_lab.plotting.labels import KIM_2022, cited_measurement
+from rc_basics_lab.plotting.layout import label_panels, legend_below
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
@@ -269,7 +270,8 @@ def plot_pr_curves(
         axis.set_ylabel(style.label("適合率", "precision"))
         axis.set_xlim(0.0, 1.0)
         axis.set_ylim(0.0, None)
-        axis.legend(loc="best", fontsize=8)
+        # 7 系統の凡例が右上 1/4 を占め、ESN 曲線の立ち上がりに被っていた。
+        legend_below(figure, [axis], style=style, ncol=3)
         figure.suptitle(
             style.label(
                 "実験 5-A: 一様乱数対照をはっきり超えるのは ESN 残差だけ"
@@ -339,6 +341,7 @@ def plot_score_timeline(
         # 上限内 (1.0〜3.2 : 1) に収める。0.87 : 1 では画面に入らなかった。
         figure = new_figure(11.0, 1.3 * len(methods) + 1.2)
         axes = np.atleast_1d(figure.subplots(len(methods), 1, sharex=True))
+        label_panels(list(axes), style=style)
         for axis, method in zip(axes, methods, strict=True):
             indices, scores = _timeline_series(rows, method)
             axis.plot(
@@ -357,9 +360,10 @@ def plot_score_timeline(
             for first, last in spans:
                 axis.axvspan(first, last, color="#b2182b", alpha=0.18, linewidth=0)
             axis.set_ylabel(method_label(method, style), fontsize=8)
-            axis.legend(loc="upper right", fontsize=7, ncols=2)
         axes[-1].set_xlabel(style.label("系列上の位置 [点]", "index in the series"))
         example = rows[0]
+        # 6 パネルすべてに同じ凡例が出ていたので図の外へ1つに統合する。
+        legend_below(figure, list(axes), style=style, ncol=3)
         figure.suptitle(
             style.label(
                 "実験 5-A: 正解の帯 (異常区間) でスコアが跳ねる系統は限られる",
@@ -481,7 +485,14 @@ def plot_threshold_tradeoff(
                 style.label("警報予算 (較正区間の誤報率)", "alarm budget (target FAR)")
             )
             axis.set_ylabel(style.label(ylabel_ja, ylabel_en))
-            axis.legend(loc="best", fontsize=7)
+        # **参照線を画面内に入れる**。y 上限が 0.16 のままだと 0.23 の線は
+        # 描かれず、凡例だけが残る (実測: 描かれていない線の凡例が2本あった)。
+        low_f1, high_f1 = axes[1].get_ylim()
+        axes[1].set_ylim(low_f1, max(high_f1, RANDOM_SCORE_PLAIN_F1[1] * 1.05))
+        # 凡例は**図の外・下に1つ**。左右の軸それぞれに loc="best" で置くと、
+        # 8 行 + 長い引用が軸を押し潰して左右のパネルの高さが揃わなくなる。
+        label_panels(list(axes), style=style)
+        legend_below(figure, list(axes), style=style, ncol=3)
         figure.suptitle(
             style.label(
                 "実験 5-B: 警報予算を緩めた分だけ再現率が上がる"

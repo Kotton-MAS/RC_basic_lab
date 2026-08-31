@@ -108,6 +108,7 @@ FOOTNOTE_COLOR = "#555555"
 FOOTNOTE_OFFSET = -0.01
 """footnote を置く縦位置 (figure 座標。負 = 枠の外)。"""
 
+
 COMMIT_LENGTH = 7
 """footnote に載せるコミットハッシュの桁数。"""
 

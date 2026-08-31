@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from rc_basics_lab.experiment.state_waveform import StateWaveform
+from rc_basics_lab.plotting.layout import label_panels
 from rc_basics_lab.plotting.style import (
     FIGURE_SIZES,
     StyleContext,
@@ -62,6 +63,7 @@ def plot_state_waveform(
         figure = new_figure(width, height)
         # 上段を薄くするのは、主役が下段の状態だからである。
         axes = figure.subplots(2, 1, sharex=True, height_ratios=(1.0, 2.4))
+        label_panels(list(axes), style=style)
         axes[0].plot(steps, signal[: steps.size], color=TRUTH_COLOR, linewidth=1.6)
         axes[0].set_ylabel(style.label("入力 u[t]", "input u[t]"))
         colors = _unit_colors(states.shape[1])
