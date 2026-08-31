@@ -69,7 +69,7 @@
   ],
   "capacity_note": "注: 4-D の MC / IPC は自走と同じ状態行列 (Lorenz で駆動した ESN) に対して測っている。駆動が i.i.d. ではなく決定的な時系列なので遅延目標が互いに予測可能であり、mc_total / ipc_total は保存則 (<= N) を超える。絶対値は 03 の掃引と比較できず、読めるのは同じ駆動の下での条件間の相対比較だけである。",
   "cjk_font": "Hiragino Sans",
-  "commit": "2cbe55603e866242039bda9abc0a20d755d32978",
+  "commit": "a0a745ff1d395b6ef00d24ad8439aa3eaa23d7fa",
   "config": {
     "base": {
       "delay_parity": {
@@ -80,26 +80,22 @@
       "esn_delay_parity": {
         "activation": "tanh",
         "bias_scale": 0.1,
+        "density": 0.1,
         "input_scale": 1.0,
         "leak_rate": 1.0,
         "n_units": 200,
         "spectral_radius": 0.9,
-        "state_noise": 0.0,
-        "topology": {
-          "density": 0.1
-        }
+        "state_noise": 0.0
       },
       "esn_mackey_glass": {
         "activation": "tanh",
         "bias_scale": 0.1,
+        "density": 0.1,
         "input_scale": 0.5,
         "leak_rate": 0.3,
         "n_units": 200,
         "spectral_radius": 0.9,
-        "state_noise": 0.0,
-        "topology": {
-          "density": 0.1
-        }
+        "state_noise": 0.0
       },
       "mackey_glass": {
         "beta": 0.2,
@@ -297,7 +293,7 @@
     "split": 2,
     "task": 1
   },
-  "timestamp_utc": "2026-08-31T14:09:59.906783+00:00",
+  "timestamp_utc": "2026-08-31T13:13:22.234914+00:00",
   "valid_time_by_regime": {
     "attractor": 2.830630638649615,
     "diverged": 0.8427767597273936,
@@ -552,12 +548,12 @@
     0.5
   ],
   "wall_time_breakdown": {
-    "capacity_s": 82.17553787468933,
-    "figures_s": 1.549649209016934,
-    "freerun_s": 24.27280733291991,
-    "lyapunov_s": 0.05082129198126495,
-    "onestep_s": 2.2577222499530762,
-    "stability_s": 213.89700491749682
+    "capacity_s": 83.20752874598838,
+    "figures_s": 1.5598086670506746,
+    "freerun_s": 24.54091270896606,
+    "lyapunov_s": 0.05108445812948048,
+    "onestep_s": 2.28502875007689,
+    "stability_s": 215.78272267011926
   },
-  "wall_time_s": 324.20460612513125
+  "wall_time_s": 327.428245624993
 }

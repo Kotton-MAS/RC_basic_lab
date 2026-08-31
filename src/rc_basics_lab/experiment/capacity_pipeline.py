@@ -47,6 +47,11 @@ from rc_basics_lab.experiment.capacity_threshold import (
     ThresholdComparison,
     run_threshold_comparison,
 )
+from rc_basics_lab.experiment.diagnostics_rows import (
+    DIAGNOSTICS_CSV,
+    rows_of,
+    write_diagnostics_csv,
+)
 from rc_basics_lab.experiment.narma import Narma10Results, run_narma10
 from rc_basics_lab.experiment.narma_taps import (
     CSV_COLUMNS as NARMA10_TAPS_CSV_COLUMNS,
@@ -88,6 +93,7 @@ FIG_NARMA10 = "fig_narma10.png"
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
     CAPACITY_PROFILE_CSV,
+    DIAGNOSTICS_CSV,
     NARMA10_CSV,
     NARMA10_TAPS_CSV,
     FIG_MC_SWEEP,
@@ -317,6 +323,11 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     wall_time_s = time.perf_counter() - started
     rows = (*results.rows, narma.capacity.row)
     profile = (*results.profile_rows, *profile_rows(narma.capacity))
+    # 診断のスカラは長形式へ (D-118)。主表の 39 列は 1 つも動かさない。
+    diagnostics = (
+        *rows_of(results.outcomes),
+        *narma.capacity.diagnostics,
+    )
     timings = (
         summarize_timing(EXPERIMENT_MC_SWEEP, results.mc_sweep),
         summarize_timing(EXPERIMENT_IPC_SWEEP, results.ipc_sweep),
@@ -337,6 +348,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
     paths = (
         write_capacity_csv(rows, out_dir / CAPACITY_CSV),
         write_capacity_profile_csv(profile, out_dir / CAPACITY_PROFILE_CSV),
+        write_diagnostics_csv(diagnostics, out_dir),
         # 列順は 01 の CSV_COLUMNS (= ResultRow の宣言順) をそのまま使う。
         # 3-C 専用の書き出しを作ると列順の単一の真実が2つになる (D-31)。
         write_comparison_csv(narma.rows, out_dir / NARMA10_CSV),
