@@ -11,5 +11,13 @@ tests/artifact_manifest.csv -merge
 tests/golden/manifest.json  -merge
 results/**                  -merge
 
+# 追記しかしないファイルは、両側の追記をそのまま採る (D-120)
+#
+# decisions.yaml は末尾に決定を1件足すだけなので、2本のブランチが同時に
+# 追記すると「同じ末尾を触った」という理由だけで衝突する。union なら両方が残る。
+# **ただし両者が同じ ID を選ぶと黙って重複する**ので、ID の一意性を測る検査を
+# 対で置いてある (D-120 の guard_test)。
+.claude/decisions.yaml merge=union
+
 # PNG は差分を出しても読めない
 results/**/*.png -diff
