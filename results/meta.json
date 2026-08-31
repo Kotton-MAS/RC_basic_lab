@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "a0a745ff1d395b6ef00d24ad8439aa3eaa23d7fa",
+  "commit": "5fab39eeb0aca88b2ef9b34dbb99e8ded570b48a",
   "config": {
     "delay_parity": {
       "delay": 1,
@@ -10,22 +10,26 @@
     "esn_delay_parity": {
       "activation": "tanh",
       "bias_scale": 0.1,
-      "density": 0.1,
       "input_scale": 1.0,
       "leak_rate": 1.0,
       "n_units": 200,
       "spectral_radius": 0.9,
-      "state_noise": 0.0
+      "state_noise": 0.0,
+      "topology": {
+        "density": 0.1
+      }
     },
     "esn_mackey_glass": {
       "activation": "tanh",
       "bias_scale": 0.1,
-      "density": 0.1,
       "input_scale": 0.5,
       "leak_rate": 0.3,
       "n_units": 200,
       "spectral_radius": 0.9,
-      "state_noise": 0.0
+      "state_noise": 0.0,
+      "topology": {
+        "density": 0.1
+      }
     },
     "mackey_glass": {
       "beta": 0.2,
@@ -188,6 +192,6 @@
       }
     }
   ],
-  "timestamp_utc": "2026-08-31T12:51:49.716729+00:00",
-  "wall_time_s": 1.223808208014816
+  "timestamp_utc": "2026-08-31T14:26:13.423487+00:00",
+  "wall_time_s": 1.2257605830673128
 }
