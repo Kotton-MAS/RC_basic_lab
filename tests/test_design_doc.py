@@ -310,10 +310,11 @@ CAPACITY_PROFILE_CSV = CAPACITY_RESULTS / "capacity_profile.csv"
 NARMA10_CSV = CAPACITY_RESULTS / "narma10.csv"
 CAPACITY_CONFIG = ROOT / "experiments" / "03_capacity" / "config.yaml"
 CONFIG_DIR = ROOT / "src" / _PACKAGE / "config"
-_CONFIG_TABLE_HEADER = re.compile(
-    r"^\|\s*モジュール\s*\|\s*持つもの\s*\|\s*非空行数\s*\|\s*総行数\s*\|"
-)
-"""§11.5 の ``config/`` 行数表のヘッダ (04 T1 で package 化、D-49)。"""
+_CONFIG_TABLE_HEADER = re.compile(r"^\|\s*モジュール\s*\|\s*持つもの\s*\|$")
+"""§11.5 の ``config/`` 構成表のヘッダ (04 T1 で package 化、D-49)。
+
+行数の列は外した (マージ衝突の原因になっていた。上の検査の docstring を参照)。
+"""
 
 _MODE_CELL = re.compile(r"`(?P<mode>[a-z0-9_]+)`")
 _LPAREN = "\uff08"
@@ -874,50 +875,38 @@ def test_artifact_size_table_matches_the_files() -> None:
     )
 
 
-def test_config_package_line_counts_in_the_design_doc_are_current() -> None:
+def test_config_package_modules_in_the_design_doc_are_current() -> None:
     """§11.5 の ``config/`` 行数表が実ファイルと一致する (04 T1 / D-49)。
 
     04 T1 で ``config.py`` (非空 615 行) を package 化するまでは、この検査は
     「単一ファイルの行数が着手条件 600 行を超えているか」を見ていた。分割後に
     見るのは表と実ファイルの一致である:
 
-    **モジュールごとの行数**が表のとおりであること (分割方針の記録がドリフト
-    すると、次に割るときの判断材料が嘘になる)。
-    表の行が実在するモジュール集合と過不足なく一致することも同時に見るので、
+    **表の行が実在するモジュール集合と過不足なく一致すること**を見る。
     ``chaos04.py`` (04 T4) を足して表に書き忘れれば赤くなる。
 
-    上限 (非空 300 行) そのものは ``tests/test_config_package_layout.py`` が
-    持つ —— 同じ数字を2か所に書くと片方だけ更新されて食い違うため、ここは
-    表と実ファイルの一致だけを見る。
+    **行数は見ない。** 上限 (非空 300 行) は
+    ``tests/test_config_package_layout.py`` が持っており、表に数字を書くと
+    二重管理になる。さらに、行数は無関係なリファクタのたびに動くので、
+    **並行するブランチが必ず同じ行を書き換え合ってマージ衝突する**
+    (``docs/モジュール地図.md`` で実際に3本連続で起きた)。
     """
     actual = {
         path.name: path.read_text(encoding="utf-8").splitlines()
         for path in sorted(CONFIG_DIR.glob("*.py"))
     }
-    documented: dict[str, tuple[int, int]] = {}
+    documented: dict[str, str] = {}
     _, table = _table_after(_CONFIG_TABLE_HEADER)
     for cells in table:
         if "合計" in cells[0]:
             continue
         name = cells[0].strip("`")
-        documented[name] = (int(cells[2]), int(cells[3]))
+        documented[name] = name
     assert set(documented) == set(actual), (
         f"§11.5 の表と config/ の実ファイルが一致しません "
         f"(不足={sorted(set(actual) - set(documented))}, "
         f"余剰={sorted(set(documented) - set(actual))})"
     )
-
-    for name, (doc_nonempty, doc_total) in documented.items():
-        lines = actual[name]
-        nonempty = sum(1 for line in lines if line.strip())
-        assert doc_nonempty == nonempty, f"{name}: 非空行数が表と違います ({nonempty})"
-        assert doc_total == len(lines), f"{name}: 総行数が表と違います ({len(lines)})"
-
-    totals = next(cells for cells in table if "合計" in cells[0])
-    assert int(totals[2].strip("*")) == sum(
-        sum(1 for line in lines if line.strip()) for lines in actual.values()
-    )
-    assert int(totals[3].strip("*")) == sum(len(lines) for lines in actual.values())
 
 
 def test_design_doc_points_at_the_capacity_regeneration_command() -> None:
