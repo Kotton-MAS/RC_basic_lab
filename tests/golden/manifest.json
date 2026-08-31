@@ -23,6 +23,7 @@
       "capacity.csv": "sha256:2fb5a5902244f5857ff734e3c440f43e4444bbf788587fe7f1a7a0dfb81499a6",
       "capacity_length.csv": "sha256:bc74333a05241b03987e5f67955b0806a61c95e31f13041caf099443637a27ca",
       "capacity_profile.csv": "sha256:b196cc0466746c6738592ac9141f20bbe35c82851a8596a5160029a887cbff4a",
+      "diagnostics.csv": "sha256:e9446fc18cb8fa37758328fe9efd044b8627174587a660e82bfb9ddc2c9ef854",
       "fig_ipc_conservation.png": "sha256:ec7388f248ee630aa98a0f87eb94d65be8bed7b7d829d1da8e2489a8c008ff27",
       "fig_ipc_profile.png": "sha256:281d32fd163b8f4597f44235592099c82435cf1ccad94c754c30e35f875541a2",
       "fig_mc_sweep.png": "sha256:629fbae4ec638e966728eab9fe53c2997bf9dedb1f6dd654d8622d94a9209bc2",
