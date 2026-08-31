@@ -12,6 +12,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from rc_basics_lab.diagnostics.base import DiagnosticResult
+from rc_basics_lab.experiment.diagnostics_rows import (
+    DiagnosticScalarRow,
+    condition_key,
+    scalar_rows,
+)
 from rc_basics_lab.types import FloatArray
 
 DIAGNOSTIC_MC = "mc"
@@ -90,6 +95,9 @@ class CapacityOutcome:
         mc_profile: しきい値後の遅延プロファイル ``(mc.max_delay,)``
             (``fig_mc_sweep.png`` の右パネル)。
         ipc_heatmap: (次数, 遅延) のしきい値後の容量 (``fig_ipc_profile.png``)。
+        diagnostics: 診断が返したスカラの長形式の行 (D-118)。**主表の列を
+            増やさずに新しい診断の値を出すための経路**で、``diagnostics.csv``
+            へそのまま書ける。
         ipc_thresholds: 次数ごとのしきい値 (``ipc_threshold_degree{d}`` を
             次数の昇順に並べたもの)。**cfg 依存で本数が変わる**ため
             ``CapacityRow`` の列にはできず (D-38)、長形式の
@@ -110,6 +118,7 @@ class CapacityOutcome:
     """
 
     row: CapacityRow
+    diagnostics: tuple[DiagnosticScalarRow, ...]
     mc_profile: FloatArray
     ipc_heatmap: FloatArray
     ipc_thresholds: tuple[float, ...]
@@ -314,6 +323,21 @@ def capacity_outcome_from(
     """
     return CapacityOutcome(
         row=row,
+        # 診断のスカラは長形式へ逃がす (D-118)。主表 (capacity.csv) の 39 列は
+        # 1つも動かさないので、診断を足しても指紋も golden も動かない。
+        diagnostics=scalar_rows(
+            (measurement.mc, measurement.ipc),
+            experiment=row.experiment,
+            condition_id=condition_key(
+                {
+                    "rho": row.rho,
+                    "leak_rate": row.leak_rate,
+                    "n_units": row.n_units,
+                    "state_noise": row.state_noise,
+                }
+            ),
+            replicate=row.replicate,
+        ),
         mc_profile=measurement.mc.arrays["mc_profile"],
         ipc_heatmap=measurement.ipc.arrays["ipc_heatmap"],
         ipc_thresholds=measurement.ipc_thresholds,
