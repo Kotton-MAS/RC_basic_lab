@@ -89,7 +89,8 @@ def _construct_mapping(
     for key_node, _ in node.value:
         key = loader.construct_object(key_node, deep=deep)
         if key in seen:
-            raise ValueError(f"キー {key!r} が同じ決定の中に2度あります (行 {key_node.start_mark.line + 1})")
+            line = key_node.start_mark.line + 1
+            raise ValueError(f"キー {key!r} が同じ決定の中に2度あります (行 {line})")
         seen.add(key)
     return cast(
         "dict[object, object]",
