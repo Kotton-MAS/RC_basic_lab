@@ -83,14 +83,16 @@ class Method:
 class TaskEntry:
     """1課題の定義 (生成関数と、その課題で使うリザバー設定)。
 
-    ``esn`` の型は ``ReservoirConfig`` である。01 の本経路はどのモデルでも
-    通る (``build_reservoir`` が生成する)。**ESN 固有の軸を振る経路**
-    (03-C / 04) だけが ``require_esn`` で絞る —— 属性名が ``esn`` のままなのは
-    既存の呼び出しを壊さないためで、意味は「この課題で使うリザバー」である。
+    ``reservoir`` の型は ``ReservoirConfig`` で、01 の本経路は**どのモデルでも
+    通る** (``build_reservoir`` が生成する)。ESN 固有の軸を振る経路 (03-C / 04)
+    だけが ``require_esn`` で絞る。
+
+    フィールド名は当初 ``esn`` だった。型を広げたときに名前を据え置いたが、
+    **名前が型と食い違うと読み手が毎回確かめることになる**ので改名した。
     """
 
     name: str
-    esn: ReservoirConfig
+    reservoir: ReservoirConfig
     generate: Callable[[np.random.Generator], TaskData]
 
 
@@ -164,12 +166,12 @@ def build_tasks(config: ExperimentConfig) -> tuple[TaskEntry, ...]:
     return (
         TaskEntry(
             name="mackey_glass",
-            esn=config.esn_mackey_glass,
+            reservoir=config.esn_mackey_glass,
             generate=lambda rng: generate_mackey_glass(config.mackey_glass, rng),
         ),
         TaskEntry(
             name="delay_parity",
-            esn=config.esn_delay_parity,
+            reservoir=config.esn_delay_parity,
             generate=lambda rng: generate_delay_parity(config.delay_parity, rng),
         ),
     )
@@ -190,7 +192,9 @@ def plan_replicate(
     """
     data = task_entry.generate(make_rng(config.seeds, SeedStream.TASK, replicate))
     reservoir_rng = make_rng(config.seeds, SeedStream.RESERVOIR, replicate)
-    reservoir = build_reservoir(task_entry.esn, reservoir_rng, n_inputs=data.n_inputs)
+    reservoir = build_reservoir(
+        task_entry.reservoir, reservoir_rng, n_inputs=data.n_inputs
+    )
     # **状態ノイズ用の rng は常に渡す** (D-36)。重み生成に使った Generator を
     # そのまま渡す (reservoir ストリームの続き)。state_noise=0 では1個も引かれ
     # ないので既存の結果は不変で、rng を省く分岐を残すと state_noise>0 を

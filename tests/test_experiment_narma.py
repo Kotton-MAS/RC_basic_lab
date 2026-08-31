@@ -345,10 +345,10 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
     base = config.narma.base
     entry = narma_task_entry(config)
 
-    assert entry.esn is narma_esn_config(base)
-    assert entry.esn is getattr(base, NARMA10_ESN_SECTION)
-    assert entry.esn.n_units == 50
-    assert entry.esn.n_units == config.ipc_sweep.n_units, (
+    assert entry.reservoir is narma_esn_config(base)
+    assert entry.reservoir is getattr(base, NARMA10_ESN_SECTION)
+    assert entry.reservoir.n_units == 50
+    assert entry.reservoir.n_units == config.ipc_sweep.n_units, (
         "D-39: 3-C の ESN は 3-B (IPC 掃引) と同じ規模にする"
     )
     # 参照値の原典 (Vinckier et al. 2015) が N = 50 で測っていることと対応する。

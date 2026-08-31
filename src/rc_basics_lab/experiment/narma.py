@@ -126,7 +126,7 @@ def narma_task_entry(config: Capacity03Config) -> TaskEntry:
     narma = config.narma
     return TaskEntry(
         name=TASK_NAME,
-        esn=narma_esn_config(narma.base),
+        reservoir=narma_esn_config(narma.base),
         generate=lambda rng: generate_narma10(narma, rng),
     )
 
@@ -298,7 +298,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
     # (n_units**2) を決める n_units 単体には上限が無かった (オーケストレータの実測:
     # n_units=6000 で ESN が実際に構築されてから 14.58 秒後に無関係な形状エラーで
     # 停止していた)。plan_replicate が重み行列を確保する前にここで落とす。
-    validate_n_units_bound(entry.esn.n_units)
+    validate_n_units_bound(entry.reservoir.n_units)
 
     plan0 = plan_replicate(base, entry, 0)
     wall_time_state_s = time.perf_counter() - started
@@ -317,7 +317,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
         run_task(base, entry, plan0=plan0, extra_methods=narma10_extra_methods(base))
     )
 
-    esn = require_esn(entry.esn, "実験3-C (NARMA10)")
+    esn = require_esn(entry.reservoir, "実験3-C (NARMA10)")
     row = capacity_row_from(
         measurement,
         experiment=EXPERIMENT_NARMA10,
