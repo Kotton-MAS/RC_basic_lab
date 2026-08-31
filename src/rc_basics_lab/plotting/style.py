@@ -388,6 +388,16 @@ FIGURE_SIZES: dict[str, tuple[float, float]] = {
     "banner": (15.0, 5.0),
 }
 
+PANEL_TITLE_SIZE = 10
+"""多パネル図のパネル見出しの大きさ [pt] (2-8)。
+
+figure の ``suptitle`` より小さく、軸ラベルより大きい。**同じ図の中で
+揃っていないと、大きい見出しのパネルが主役に見える** —— 実測で
+``fig_comparison`` は 4 枚のうち 2 枚だけが既定サイズ (12pt) で、残り 2 枚が
+9pt だった。
+"""
+
+
 MAX_ASPECT_RATIO = 2.3
 """図の横縦比の上限 (FIG-13)。
 
@@ -449,6 +459,7 @@ __all__ = [
     "MAX_ASPECT_RATIO",
     "METHOD_COLORS",
     "MIN_ASPECT_RATIO",
+    "PANEL_TITLE_SIZE",
     "REFERENCE_COLOR",
     "REFERENCE_DASHES",
     "REFERENCE_LINEWIDTH",

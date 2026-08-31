@@ -37,6 +37,7 @@ from rc_basics_lab.plotting.style import (
     DELAY_LINE_METHOD,
     ESN_METHOD,
     METHOD_COLORS,
+    PANEL_TITLE_SIZE,
     StyleContext,
     add_provenance,
     method_color,
@@ -300,7 +301,6 @@ def _draw_scalar_panel(
             f"NRMSE (test split, mean ± s.d. of {n_replicates} replicates)",
         )
     )
-    axis.set_title(style.label("課題別の誤差", "error by task"))
     axis.legend(loc="best", fontsize=8)
 
 
@@ -358,16 +358,27 @@ def plot_comparison(
         # 上限を超える。2段に折ると 1.44 : 1 に収まる。
         figure = _new_figure(13.0, 9.0)
         axes = np.atleast_1d(figure.subplots(2, 2)).reshape(-1)
-        label_panels(list(axes), style=style)
+        # **行を役割で揃える** (2-8)。上段が誤差サマリ2枚 (1段構成)、下段が
+        # 波形2枚 (波形 + 残差の2段構成)。以前は 1段と2段のパネルが同じ行に
+        # 並んでいて、行の高さも軸の意味も対応していなかった。
         _draw_scalar_panel(axes[0], tasks, methods, stats, style)
+        axes[0].set_title(
+            style.label("課題別の誤差", "error by task"), fontsize=PANEL_TITLE_SIZE
+        )
+        logs = draw_horizon_panel(axes[1], horizon_rows, style)
+        axes[1].set_title(
+            style.label("自走 84 ステップ先の誤差", "error 84 steps into the free run"),
+            fontsize=PANEL_TITLE_SIZE,
+        )
         # **課題ごとに長さが違う** (D-107)。最後のパネルの長さだけを脚注に
         # 書くと、もう一方のパネルの条件を偽って書くことになる。
         windows: list[str] = []
+        waveform_tops: list[Axes] = []
         for index, panel in enumerate(waveforms):
-            axis = axes[1 + index]
             drawn = draw_prediction_waveform(
-                figure, axis, panel.truth, panel.predictions, style
+                figure, axes[2 + index], panel.truth, panel.predictions, style
             )
+            waveform_tops.append(drawn.top)
             windows.append(
                 f"{panel.task} {WAVEFORM_OFFSET}..{WAVEFORM_OFFSET + drawn.length}"
             )
@@ -376,15 +387,15 @@ def plot_comparison(
             # 疑問形で、図が何を示したかを言っていない。
             drawn.top.set_title(
                 f"{label}: {waveform_headline(panel.truth, panel.predictions, style)}",
-                fontsize=9,
+                fontsize=PANEL_TITLE_SIZE,
             )
-        logs = draw_horizon_panel(axes[1 + len(waveforms)], horizon_rows, style)
-        axes[1 + len(waveforms)].set_title(
-            style.label("自走 84 ステップ先の誤差", "error 84 steps into the free run")
-        )
         # 余った枠は消す。空の軸を残すと「測ったが何も無かった」に見える。
         for axis in axes[2 + len(waveforms) :]:
             axis.set_axis_off()
+        # パネル記号は**波形を2段に割った後**に付ける。``draw_prediction_waveform``
+        # は渡された軸を ``remove()`` して差し替えるので、先に付けると波形2枚の
+        # 記号が消える (実測: (b) と (c) が図から抜けていた)。
+        label_panels([axes[0], axes[1], *waveform_tops], style=style)
         figure.suptitle(
             style.label(
                 "実験 1: 非線形な遅延パリティを解けるのは ESN だけ"

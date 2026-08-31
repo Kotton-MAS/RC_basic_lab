@@ -322,6 +322,41 @@ def _anomaly_spans(rows: Sequence[TimelineRow]) -> list[tuple[int, int]]:
     return spans
 
 
+ZOOM_MARGIN = 3.0
+"""拡大窓を異常区間の何倍の幅にするか (2-13)。
+
+区間そのものだけを切り出すと「跳ねたのが区間の中か外か」が判定できない。
+前後に同じだけ余白を取り、帯に入った瞬間に上がっているかを見せる。
+"""
+
+
+def _zoom_span(
+    spans: Sequence[tuple[int, int]], rows: Sequence[TimelineRow]
+) -> tuple[int, int]:
+    """拡大する窓 ``(開始, 終了)`` を返す (2-13)。
+
+    **いちばん長い異常区間**を選ぶ。「よく当たっている区間」を選べる図に
+    しないため (D-107)、選び方は行から決まる規則にする。異常区間が1つも
+    無ければ系列の中央を切り出す。
+
+    Args:
+        spans: ``_anomaly_spans`` の出力。
+        rows: 系列の範囲を決めるための行。
+
+    Returns:
+        ``(開始 index, 終了 index)``。
+    """
+    indices = [row.index for row in rows]
+    low, high = min(indices), max(indices)
+    if not spans:
+        middle = (low + high) // 2
+        width = max((high - low) // 20, 1)
+        return middle - width, middle + width
+    first, last = max(spans, key=lambda span: (span[1] - span[0], -span[0]))
+    margin = int(max((last - first) * ZOOM_MARGIN, 1.0))
+    return max(low, first - margin), min(high, last + margin)
+
+
 def plot_score_timeline(
     rows: Sequence[TimelineRow], path: Path, *, style: StyleContext
 ) -> Path:
@@ -345,31 +380,64 @@ def plot_score_timeline(
         # **縦長にしない** (FIG-13)。手法を縦に積むのは時間軸を共有する
         # ためで、そこは変えない。1枚あたりの高さを詰め、幅を広げて
         # 上限内 (1.0〜3.2 : 1) に収める。0.87 : 1 では画面に入らなかった。
-        figure = new_figure(11.0, 1.3 * len(methods) + 1.2)
-        axes = np.atleast_1d(figure.subplots(len(methods), 1, sharex=True))
-        label_panels(list(axes), style=style)
-        for axis, method in zip(axes, methods, strict=True):
+        figure = new_figure(13.0, 1.3 * len(methods) + 1.4)
+        # **右に拡大列を足す** (2-13)。全区間は 1px あたり約 18 サンプルなので、
+        # ESN 以外の 5 系統はベタ塗りの帯にしか見えず、閾値との上下関係しか
+        # 読めなかった。全区間は残したまま、異常 1 個ぶんを右で拡大する。
+        grid = figure.add_gridspec(len(methods), 2, width_ratios=(4.0, 1.0))
+        axes = [figure.add_subplot(grid[row, 0]) for row in range(len(methods))]
+        zoom_span = _zoom_span(spans, rows)
+        zooms = [
+            figure.add_subplot(grid[row, 1], sharey=axes[row])
+            for row in range(len(methods))
+        ]
+        for row in range(len(methods) - 1):
+            axes[row].sharex(axes[-1])
+            axes[row].tick_params(labelbottom=False)
+            zooms[row].sharex(zooms[-1])
+            zooms[row].tick_params(labelbottom=False)
+        label_panels(axes, style=style)
+        for axis, zoom, method in zip(axes, zooms, methods, strict=True):
             indices, scores = _timeline_series(rows, method)
-            axis.plot(
-                indices,
-                scores,
-                color=METHOD_COLORS[method],
-                linewidth=0.8,
-                label=method_label(method, style),
-            )
             threshold = next(row.threshold for row in rows if row.method == method)
-            axis.axhline(
-                threshold,
-                **reference_line_kwargs(),
-                label=style.label("運用閾値 (較正区間)", "operating threshold"),
-            )
-            for first, last in spans:
-                axis.axvspan(first, last, color="#b2182b", alpha=0.18, linewidth=0)
+            for target in (axis, zoom):
+                target.plot(
+                    indices,
+                    scores,
+                    color=METHOD_COLORS[method],
+                    linewidth=0.8 if target is axis else 1.2,
+                    label=method_label(method, style),
+                )
+                target.axhline(
+                    threshold,
+                    **reference_line_kwargs(),
+                    label=style.label("運用閾値 (較正区間)", "operating threshold"),
+                )
+                for first, last in spans:
+                    target.axvspan(
+                        first, last, color="#b2182b", alpha=0.18, linewidth=0
+                    )
             axis.set_ylabel(method_label(method, style), fontsize=8)
+            # 拡大側は y を共有しているので目盛りを2回書かない (1-7)。
+            zoom.tick_params(labelleft=False)
+        zooms[-1].set_xlim(*zoom_span)
         axes[-1].set_xlabel(style.label("系列上の位置 [点]", "index in the series"))
+        zooms[-1].set_xlabel(
+            style.label(
+                f"拡大 ({zoom_span[0]}..{zoom_span[1]})",
+                f"zoom ({zoom_span[0]}..{zoom_span[1]})",
+            ),
+            fontsize=8,
+        )
+        zooms[0].set_title(
+            style.label("異常1個ぶんの拡大", "one anomaly, magnified"), fontsize=9
+        )
+        # 拡大した区間を全区間側にも示す (どこを切り出したかが図から読める)
+        for axis in axes:
+            axis.axvspan(*zoom_span, facecolor="none", edgecolor="0.35", linewidth=0.8)
         example = rows[0]
         # 6 パネルすべてに同じ凡例が出ていたので図の外へ1つに統合する。
-        legend_below(figure, list(axes), style=style, ncol=3)
+        legend_below(figure, axes, style=style, ncol=3)
         figure.suptitle(
             style.label(
                 "実験 5-A: 正解の帯 (異常区間) でスコアが跳ねる系統は限られる",
