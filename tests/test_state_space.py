@@ -31,6 +31,7 @@ from rc_basics_lab.experiment.state_space import (
     collect_state_space,
     summarize,
 )
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedConfig
 
 N_LAGS_GRID = (1, 4)
@@ -51,9 +52,12 @@ def tiny_config() -> ExperimentConfig:
         ridge=RidgeConfig(alpha_grid=(1e-4, 1e-1), n_lags_grid=N_LAGS_GRID),
         mackey_glass=MackeyGlassConfig(length=400, integration_burn_in=50),
         delay_parity=DelayParityConfig(length=400),
-        esn_mackey_glass=ESNConfig(n_units=30, density=0.3),
+        esn_mackey_glass=ESNConfig(n_units=30, topology=ErdosRenyiConfig(density=0.3)),
         esn_delay_parity=ESNConfig(
-            n_units=30, density=0.3, leak_rate=1.0, input_scale=1.0
+            n_units=30,
+            topology=ErdosRenyiConfig(density=0.3),
+            leak_rate=1.0,
+            input_scale=1.0,
         ),
     )
 

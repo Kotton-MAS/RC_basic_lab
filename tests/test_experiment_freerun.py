@@ -89,6 +89,7 @@ from rc_basics_lab.readout.design import ReservoirSpec, build_design_matrix
 from rc_basics_lab.readout.ridge import fit_ridge
 from rc_basics_lab.reservoir.esn import ESN
 from rc_basics_lab.reservoir.registry import build_reservoir
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ, integrate_lorenz
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
@@ -109,7 +110,10 @@ def small_config() -> Chaos04Config:
             ridge=RidgeConfig(alpha_grid=(1.0e-6, 1.0e-3), n_lags_grid=(2, 4)),
             mackey_glass=MackeyGlassConfig(length=600, integration_burn_in=100),
             esn_mackey_glass=ESNConfig(
-                n_units=20, leak_rate=0.5, input_scale=0.5, density=0.5
+                n_units=20,
+                leak_rate=0.5,
+                input_scale=0.5,
+                topology=ErdosRenyiConfig(density=0.5),
             ),
         ),
         lorenz=LorenzConfig(length=600, integration_burn_in=100, standardize_steps=150),
@@ -278,7 +282,9 @@ def test_free_run_uses_step_not_run() -> None:
     ``y_hat[t]`` に依存するので使えない。自走中に ``run`` が呼ばれたら落ちる。
     """
     reservoir = ESN(
-        ESNConfig(n_units=5, density=1.0), np.random.default_rng(0), n_inputs=1
+        ESNConfig(n_units=5, topology=ErdosRenyiConfig(density=1.0)),
+        np.random.default_rng(0),
+        n_inputs=1,
     )
     calls = {"step": 0, "run": 0}
     original_step = ESN.step
@@ -444,7 +450,9 @@ def test_esn_state_updater_passes_the_rng_when_state_noise_is_positive() -> None
     であって、「ESN は常に決定的に回す」という規則ではない。自走は軌道を
     **作る**呼び出しなので、学習時に入れたノイズと同じ分布が乗る必要がある。
     """
-    noisy = ESNConfig(n_units=5, density=1.0, state_noise=1.0e-2)
+    noisy = ESNConfig(
+        n_units=5, topology=ErdosRenyiConfig(density=1.0), state_noise=1.0e-2
+    )
     reservoir = ESN(noisy, np.random.default_rng(0), n_inputs=1)
     seen: list[object] = []
     original_step = ESN.step
@@ -472,7 +480,9 @@ def test_esn_state_updater_passes_the_rng_when_state_noise_is_positive() -> None
 def test_noise_free_updater_does_not_need_an_rng() -> None:
     """``state_noise == 0`` なら rng なしで構築でき、決定的に回る。"""
     reservoir = ESN(
-        ESNConfig(n_units=5, density=1.0), np.random.default_rng(0), n_inputs=1
+        ESNConfig(n_units=5, topology=ErdosRenyiConfig(density=1.0)),
+        np.random.default_rng(0),
+        n_inputs=1,
     )
     updater = esn_state_updater(reservoir)
     first = updater(reservoir.initial_state(), np.array([0.3]))

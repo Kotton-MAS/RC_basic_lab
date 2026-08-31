@@ -67,6 +67,7 @@ from rc_basics_lab.experiment.washout import (
 )
 from rc_basics_lab.plotting.figures_washout import plot_washout_sensitivity
 from rc_basics_lab.plotting.style import setup_style
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.tasks.delay_parity import TASK_NAME as DELAY_PARITY
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -87,9 +88,12 @@ def tiny_base(*, washout: int = 40) -> ExperimentConfig:
         ridge=RidgeConfig(alpha_grid=(1.0e-4, 1.0), n_lags_grid=(1, 4)),
         mackey_glass=MackeyGlassConfig(length=500),
         delay_parity=DelayParityConfig(length=500),
-        esn_mackey_glass=ESNConfig(n_units=30, density=0.3),
+        esn_mackey_glass=ESNConfig(n_units=30, topology=ErdosRenyiConfig(density=0.3)),
         esn_delay_parity=ESNConfig(
-            n_units=30, density=0.3, leak_rate=1.0, input_scale=1.0
+            n_units=30,
+            topology=ErdosRenyiConfig(density=0.3),
+            leak_rate=1.0,
+            input_scale=1.0,
         ),
     )
 

@@ -75,6 +75,7 @@ from rc_basics_lab.experiment.runner import (
 )
 from rc_basics_lab.readout.ridge import AlphaSelection
 from rc_basics_lab.readout.ridge import select_alpha as real_select_alpha
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedConfig
 from rc_basics_lab.tasks.narma import NARMA10_INPUT_STD, TASK_NAME
 from rc_basics_lab.types import FloatArray
@@ -108,7 +109,10 @@ def tiny_config() -> Capacity03Config:
                     alpha_grid=TINY_ALPHA_GRID, n_lags_grid=TINY_N_LAGS_GRID
                 ),
                 esn_mackey_glass=ESNConfig(
-                    n_units=12, leak_rate=1.0, input_scale=1.0, density=0.5
+                    n_units=12,
+                    leak_rate=1.0,
+                    input_scale=1.0,
+                    topology=ErdosRenyiConfig(density=0.5),
                 ),
             ),
         ),

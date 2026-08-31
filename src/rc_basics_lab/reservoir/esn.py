@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 import numpy as np
@@ -24,6 +24,11 @@ from rc_basics_lab.reservoir._kernel import (
     check_common_config,
     check_state,
     leaky_tanh_update,
+)
+from rc_basics_lab.reservoir.topology import (
+    ErdosRenyiConfig,
+    TopologyConfig,
+    build_mask,
 )
 from rc_basics_lab.types import FloatArray
 
@@ -41,7 +46,8 @@ class ESNConfig:
         leak_rate: 漏れ率 a。1.0 で漏れなし (通常の tanh 更新)。
         input_scale: 入力重みの一様分布の幅 ``U[-input_scale, input_scale]``。
         bias_scale: 定数入力 (``[1; u]`` の先頭) に対応する重みの幅。
-        density: W の非零率。
+        topology: 結合構造 (既定は密度 0.1 の Erdos-Renyi)。**モデルと独立の軸**で、
+            スケールフリー (BA) やスモールワールド (WS) に差し替えられる。
         activation: 活性化関数名。現在は ``"tanh"`` のみ。
         state_noise: tanh 内部に加えるガウスノイズの標準偏差 (04 用。既定 0)。
 
@@ -61,7 +67,7 @@ class ESNConfig:
     leak_rate: float = 0.3
     input_scale: float = 0.5
     bias_scale: float = 0.1
-    density: float = 0.1
+    topology: TopologyConfig = field(default_factory=ErdosRenyiConfig)
     activation: str = TANH
     state_noise: float = 0.0
 
@@ -93,8 +99,7 @@ def _validate_config(config: ESNConfig, n_inputs: int = 1) -> None:
     )
     if config.activation != TANH:
         raise ValueError(f"未対応の活性化関数です: {config.activation!r}")
-    if not 0.0 < config.density <= 1.0:
-        raise ValueError(f"density は (0, 1] である必要があります: {config.density}")
+    # トポロジ固有の値の検査は build_mask が行う (作る側と検査する側を分けない)。
 
 
 class ESN:
@@ -133,16 +138,18 @@ class ESN:
             -config.input_scale, config.input_scale, (n_units, n_inputs)
         )
 
-        # W: 密度 density のスパース構造を密行列として保持する (N <= 1000 なので
-        # scipy.sparse を持ち込むより単純で、eigvals もそのまま使える)。
-        mask = rng.random((n_units, n_units)) < config.density
+        # W: 結合の有無は topology 層が決め、値はここで引く (拡張性方針 §2-1)。
+        # **既定の Erdos-Renyi は分離前と同じ乱数の引き方**なので、
+        # results/ の成果物はバイト不変のまま (D-74)。密行列で持つのは
+        # N <= 1000 なら scipy.sparse より単純で eigvals もそのまま使えるため。
+        mask = build_mask(config.topology, n_units, rng)
         values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
         recurrent: FloatArray = np.where(mask, values, 0.0)
         measured = spectral_radius(recurrent)
         if measured == 0.0:
             raise ValueError(
                 "生成した W のスペクトル半径が 0 です "
-                f"(density={config.density}, n_units={n_units})"
+                f"(topology={config.topology}, n_units={n_units})"
             )
         recurrent *= config.spectral_radius / measured
 

@@ -104,7 +104,11 @@ washout:
       leak_rate: 0.3
       input_scale: 0.5
       bias_scale: 0.1
-      density: 0.1
+      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
+      # barabasi_albert / watts_strogatz / ring に差し替えられる。
+      topology:
+        kind: erdos_renyi
+        density: 0.1
       activation: tanh
       state_noise: 0.0
     esn_delay_parity:
@@ -113,7 +117,11 @@ washout:
       leak_rate: 1.0
       input_scale: 1.0
       bias_scale: 0.1
-      density: 0.1
+      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
+      # barabasi_albert / watts_strogatz / ring に差し替えられる。
+      topology:
+        kind: erdos_renyi
+        density: 0.1
       activation: tanh
       state_noise: 0.0
 

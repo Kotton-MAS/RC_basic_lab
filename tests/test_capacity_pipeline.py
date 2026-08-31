@@ -80,6 +80,7 @@ from rc_basics_lab.experiment.capacity_rows import (
 )
 from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.experiment.report import META_JSON
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results" / "03_capacity"
@@ -194,7 +195,9 @@ narma:
       n_units: 7
       leak_rate: 1.0
       input_scale: 1.0
-      density: 0.5
+      topology:
+        kind: erdos_renyi
+        density: 0.5
 """
 """縮小設定 (構造は本番と同じ)。本番は 330 秒かかるため CLI テストでは使わない。"""
 
@@ -258,7 +261,10 @@ def tiny_config() -> Capacity03Config:
                 split=SplitConfig(washout=50, max_start_offset=20),
                 ridge=RidgeConfig(alpha_grid=(1e-2,), n_lags_grid=(2, 4)),
                 esn_mackey_glass=ESNConfig(
-                    n_units=7, leak_rate=1.0, input_scale=1.0, density=0.5
+                    n_units=7,
+                    leak_rate=1.0,
+                    input_scale=1.0,
+                    topology=ErdosRenyiConfig(density=0.5),
                 ),
             ),
         ),

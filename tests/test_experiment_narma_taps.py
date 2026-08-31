@@ -39,6 +39,7 @@ from rc_basics_lab.experiment.narma_taps import (
     summarize_tap_sweep,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, DELAY_LINE_OLS
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedConfig
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +68,10 @@ def tiny_config(sweep: tuple[int, ...] = TINY_SWEEP) -> Capacity03Config:
                 split=SplitConfig(washout=50, max_start_offset=20),
                 ridge=RidgeConfig(alpha_grid=(1e-4, 1.0), n_lags_grid=(2, 6)),
                 esn_mackey_glass=ESNConfig(
-                    n_units=12, leak_rate=1.0, input_scale=1.0, density=0.5
+                    n_units=12,
+                    leak_rate=1.0,
+                    input_scale=1.0,
+                    topology=ErdosRenyiConfig(density=0.5),
                 ),
             ),
         ),

@@ -51,6 +51,7 @@ from rc_basics_lab.experiment.stability import (
     validate_condition_count,
     write_stability_csv,
 )
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from collections.abc import Mapping
@@ -75,7 +76,10 @@ def small_config() -> Chaos04Config:
             ridge=RidgeConfig(alpha_grid=(1.0e-6, 1.0e-3), n_lags_grid=(2,)),
             mackey_glass=MackeyGlassConfig(length=700, integration_burn_in=100),
             esn_mackey_glass=ESNConfig(
-                n_units=15, leak_rate=0.5, input_scale=0.5, density=0.5
+                n_units=15,
+                leak_rate=0.5,
+                input_scale=0.5,
+                topology=ErdosRenyiConfig(density=0.5),
             ),
         ),
         lorenz=LorenzConfig(integration_burn_in=100, length=600, standardize_steps=150),

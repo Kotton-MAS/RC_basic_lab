@@ -48,6 +48,7 @@ from rc_basics_lab.diagnostics.timescale import autocorrelation_time
 from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.reservoir.protocol import Reservoir
 from rc_basics_lab.reservoir.registry import build_reservoir
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
@@ -307,10 +308,9 @@ def build_esn_config(
 ) -> ESNConfig:
     """1条件ぶんの ``ESNConfig`` を組む。掃引軸だけが条件ごとに変わる。
 
-    引数は ``Esp02Config`` 全体ではなく ``ReservoirSweepConfig`` に narrow して
-    ある (F-1-005)。本体が読むのは ``reservoir`` の4フィールドと ``BIAS_SCALE``
-    だけなので、``Esp02Config`` に型で結合すると 03 (MC/IPC) が ESN 構成を
-    再利用するために ``Esp02Config`` を丸ごと写経する羽目になる。
+    引数は ``ReservoirSweepConfig`` に narrow してある (F-1-005)。本体が読むのは
+    ``reservoir`` の4フィールドと ``BIAS_SCALE`` だけで、``Esp02Config`` に型で
+    結合すると 03 が ESN 構成の再利用のために丸ごと写経する羽目になる。
 
     ``state_noise`` は **既定値つきキーワード**である (D-36)。03 の 3-B' は
     「ノイズ下では IPC_total が厳密に N 未満」(受け入れ条件2) を測るために
@@ -325,7 +325,7 @@ def build_esn_config(
         leak_rate=leak_rate,
         input_scale=reservoir.input_scale,
         bias_scale=BIAS_SCALE,
-        density=reservoir.density,
+        topology=ErdosRenyiConfig(density=reservoir.density),
         state_noise=state_noise,
     )
 

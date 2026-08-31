@@ -105,6 +105,7 @@ from rc_basics_lab.experiment.capacity_rows import (
 )
 from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.meta import collect_meta_for
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
@@ -271,7 +272,10 @@ def base_config() -> Capacity03Config:
                 split=SplitConfig(washout=50, max_start_offset=20),
                 ridge=RidgeConfig(alpha_grid=(1e-2,), n_lags_grid=(2,)),
                 esn_mackey_glass=ESNConfig(
-                    n_units=7, leak_rate=1.0, input_scale=1.0, density=0.5
+                    n_units=7,
+                    leak_rate=1.0,
+                    input_scale=1.0,
+                    topology=ErdosRenyiConfig(density=0.5),
                 ),
             ),
         ),

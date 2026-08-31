@@ -28,6 +28,7 @@ from rc_basics_lab.config import (
     SplitConfig,
 )
 from rc_basics_lab.experiment.runner import ResultRow, build_tasks, run_task
+from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.tasks.base import TaskGenerator
 from rc_basics_lab.tasks.delay_parity import generate_delay_parity, lead_in
 from rc_basics_lab.types import FloatArray
@@ -130,7 +131,7 @@ def reduced_config() -> ExperimentConfig:
             spectral_radius=0.9,
             leak_rate=1.0,
             input_scale=1.0,
-            density=0.1,
+            topology=ErdosRenyiConfig(density=0.1),
         ),
     )
 
