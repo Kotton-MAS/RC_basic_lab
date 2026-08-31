@@ -1,0 +1,28 @@
+# リング結合リザバー (SCR) で 01 を回す (--preset ring)
+#
+# Rodan & Tino (2011) "Minimum Complexity Echo State Network"。
+# **ランダム性をほとんど使わない**リザバーで、「性能はランダムな結合そのものから
+# 来るのか」という問いに対する対照になる。
+#
+# **セクションを丸ごと書く。** kind が変わると設定の型が変わり、ESN 固有の
+# キー (density / activation) は存在しない。ローダは kind の変化を見て
+# セクションを置き換えるので、差分ではなく全体を書く。
+#
+# spectral_radius は閉路の重み r そのものである (閉路行列のスペクトル半径は
+# 厳密に |r| なので、ESN のように測って割り直す操作が無い)。
+
+esn_mackey_glass:
+  kind: ring
+  n_units: 200
+  spectral_radius: 0.9
+  leak_rate: 0.3
+  input_scale: 0.5
+  bias_scale: 0.1
+
+esn_delay_parity:
+  kind: ring
+  n_units: 200
+  spectral_radius: 0.9
+  leak_rate: 1.0
+  input_scale: 1.0
+  bias_scale: 0.1

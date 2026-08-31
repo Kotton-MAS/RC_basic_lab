@@ -140,8 +140,16 @@ def leaf_paths(cls: type, prefix: str = "") -> set[str]:
     ``get_type_hints`` が解決せず ``TypeAliasType`` のまま返すので、開かないと
     そのフィールドが葉に見えてしまう —— つまり ``A`` の中身が D-13 の検査から
     黙って外れる (``esn_mackey_glass`` を ``ReservoirConfig`` にしたときに実際
-    そうなった)。union は**全要素の葉を合わせる**。どのモデルを選んでも、
-    その設定値には「変えたら出力が変わる」検査が要る。
+    そうなった)。
+
+    union は**先頭の要素だけ**を歩く。この関数が答えるのは「既定の設定
+    インスタンスにどんな葉があるか」で、``kind`` を省いた YAML が作るのは
+    先頭の要素だからである。当初は全要素を合わせたが、2つ目・3つ目のモデルを
+    足した時点で ``ESNConfig`` のインスタンスに ``inter_layer_scale`` を
+    設定しようとして 100 件以上落ちた —— **存在しないフィールドの検査**に
+    なっていた。他のモデルの設定値は、そのモデル自身のテスト
+    (``test_reservoir_deep`` / ``test_reservoir_ring``) が「変えたら出力が
+    変わる」ことを見ている。
     """
     hints = get_type_hints(cls)
     paths: set[str] = set()
@@ -161,9 +169,7 @@ def _leaf_paths_of(annotation: object, path: str) -> set[str]:
             if dataclasses.is_dataclass(arg) and isinstance(arg, type)
         ]
         if members and len(members) == len(get_args(annotation)):
-            return {
-                leaf for member in members for leaf in leaf_paths(member, f"{path}.")
-            }
+            return leaf_paths(members[0], f"{path}.")
         return {path}
     if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
         return leaf_paths(annotation, f"{path}.")

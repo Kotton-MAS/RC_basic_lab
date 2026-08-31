@@ -21,7 +21,7 @@ from dataclasses import dataclass, fields
 
 import numpy as np
 
-from rc_basics_lab.config import ESNConfig, ExperimentConfig
+from rc_basics_lab.config import ExperimentConfig
 from rc_basics_lab.experiment.split import Split, compute_t0, make_split
 from rc_basics_lab.metrics import nmse, nrmse, rmse, sign_accuracy
 from rc_basics_lab.readout.design import (
@@ -33,6 +33,7 @@ from rc_basics_lab.readout.design import (
     build_design_matrix,
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
+from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.base import TaskData
@@ -80,10 +81,16 @@ class Method:
 
 @dataclass(frozen=True, slots=True)
 class TaskEntry:
-    """1課題の定義 (生成関数と、その課題で使う ESN 設定)。"""
+    """1課題の定義 (生成関数と、その課題で使うリザバー設定)。
+
+    ``esn`` の型は ``ReservoirConfig`` である。01 の本経路はどのモデルでも
+    通る (``build_reservoir`` が生成する)。**ESN 固有の軸を振る経路**
+    (03-C / 04) だけが ``require_esn`` で絞る —— 属性名が ``esn`` のままなのは
+    既存の呼び出しを壊さないためで、意味は「この課題で使うリザバー」である。
+    """
 
     name: str
-    esn: ESNConfig
+    esn: ReservoirConfig
     generate: Callable[[np.random.Generator], TaskData]
 
 

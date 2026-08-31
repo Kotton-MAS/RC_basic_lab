@@ -60,6 +60,7 @@ from rc_basics_lab.experiment.freerun import (
 )
 from rc_basics_lab.experiment.report import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
+from rc_basics_lab.reservoir.registry import require_esn
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.chaotic import sampling_interval
 from rc_basics_lab.types import FloatArray
@@ -192,9 +193,8 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         * stability.n_replicates
     )
     validate_condition_count(n_conditions)
-    # 軸5 (条件数) と軸4 (``stats_steps``、``attractor.validate_stats_bounds``
-    # が別途検査する) はどちらも単独では上限内でも、**積**(逐次シミュレーションの
-    # 総ステップ数) が両方の軸検査をすり抜けて膨らみうる (reviewer-security 実測)。
+    # 軸5 (条件数) と軸4 (stats_steps) はどちらも単独では上限内でも、**積**
+    # (逐次シミュレーションの総ステップ数) が両方の軸検査をすり抜けて膨らみうる。
     validate_total_step_count(n_conditions * config.freerun.stats_steps)
     return tuple(
         StabilityCondition(
@@ -414,7 +414,7 @@ def evaluate_stability_condition(
     )
     wall_time_state_s = time.perf_counter() - started
 
-    esn = entry.esn
+    esn = require_esn(entry.esn, "実験4-D (自走と同じ状態行列への容量)")
     row = StabilityRow(
         experiment=EXPERIMENT_STABILITY,
         rho=condition.rho,
