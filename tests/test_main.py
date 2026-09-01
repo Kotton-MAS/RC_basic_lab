@@ -47,25 +47,28 @@ split:
 ridge:
   alpha_grid: [1.0e-4, 1.0e-1]
   n_lags_grid: [1, 4]
-mackey_glass:
-  length: 500
-  integration_burn_in: 50
-delay_parity:
-  n_bits: 2
-  delay: 1
-  length: 500
-esn_mackey_glass:
-  n_units: 20
-  topology:
-    kind: erdos_renyi
-    density: 0.3
-esn_delay_parity:
-  n_units: 20
-  topology:
-    kind: erdos_renyi
-    density: 0.3
-  leak_rate: 1.0
-  input_scale: 1.0
+tasks:
+  - kind: mackey_glass
+    params:
+      length: 500
+      integration_burn_in: 50
+    reservoir:
+      n_units: 20
+      topology:
+        kind: erdos_renyi
+        density: 0.3
+  - kind: delay_parity
+    params:
+      n_bits: 2
+      delay: 1
+      length: 500
+    reservoir:
+      n_units: 20
+      topology:
+        kind: erdos_renyi
+        density: 0.3
+      leak_rate: 1.0
+      input_scale: 1.0
 """
 
 

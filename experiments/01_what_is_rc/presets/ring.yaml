@@ -11,18 +11,20 @@
 # spectral_radius は閉路の重み r そのものである (閉路行列のスペクトル半径は
 # 厳密に |r| なので、ESN のように測って割り直す操作が無い)。
 
-esn_mackey_glass:
-  kind: ring
-  n_units: 200
-  spectral_radius: 0.9
-  leak_rate: 0.3
-  input_scale: 0.5
-  bias_scale: 0.1
-
-esn_delay_parity:
-  kind: ring
-  n_units: 200
-  spectral_radius: 0.9
-  leak_rate: 1.0
-  input_scale: 1.0
-  bias_scale: 0.1
+tasks:
+  - kind: mackey_glass
+    reservoir:
+      kind: ring
+      n_units: 200
+      spectral_radius: 0.9
+      leak_rate: 0.3
+      input_scale: 0.5
+      bias_scale: 0.1
+  - kind: delay_parity
+    reservoir:
+      kind: ring
+      n_units: 200
+      spectral_radius: 0.9
+      leak_rate: 1.0
+      input_scale: 1.0
+      bias_scale: 0.1

@@ -49,7 +49,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import math
 from collections.abc import Mapping, Sequence
@@ -71,6 +70,7 @@ from wiring import (
     case,
     changed_leaves,
     current_experiment_modules,
+    experiment_config,
     leaf_paths,
     plain,
     round_trip,
@@ -101,6 +101,7 @@ from rc_basics_lab.config import (
     load_config,
     load_config_as,
 )
+from rc_basics_lab.config._dump import as_plain_mapping
 from rc_basics_lab.experiment.esp import (
     EXPERIMENT_DECAY,
     EXPERIMENT_ESP_MAP,
@@ -208,7 +209,7 @@ def washout_base() -> ExperimentConfig:
     レプリケート) なので、そのまま格子ぶん回すと配線テスト1件で数十秒かかる。
     構造は同じまま系列長・ユニット数・格子だけを削る。
     """
-    return ExperimentConfig(
+    return experiment_config(
         name="washout-wiring",
         n_replicates=1,
         split=SplitConfig(washout=20, max_start_offset=20),
@@ -624,7 +625,7 @@ def test_every_esp_field_round_trips_yaml(tmp_path: Path) -> None:
     """
     config = Esp02Config()
     path = tmp_path / "roundtrip.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
+    dumped = cast("Mapping[str, object]", plain(as_plain_mapping(config)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     assert load_config_as(path, Esp02Config) == config
     assert_yaml_has_all_leaves(
@@ -703,10 +704,7 @@ def test_esp_config_does_not_leak_into_experiment_config() -> None:
         "seeds",
         "split",
         "ridge",
-        "mackey_glass",
-        "delay_parity",
-        "esn_mackey_glass",
-        "esn_delay_parity",
+        "tasks",
     }
 
 

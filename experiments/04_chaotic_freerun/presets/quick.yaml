@@ -20,10 +20,13 @@ base:
   ridge:
     alpha_grid: [1.0e-08, 1.0e-04, 1.0]
     n_lags_grid: [1, 4, 16]
-  esn_mackey_glass:
-    n_units: 50
-  esn_delay_parity:
-    n_units: 50
+  tasks:
+    - kind: mackey_glass
+      reservoir:
+        n_units: 50
+    - kind: delay_parity
+      reservoir:
+        n_units: 50
 
 lorenz:
   length: 2500

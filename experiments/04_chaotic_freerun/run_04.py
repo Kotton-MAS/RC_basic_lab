@@ -31,7 +31,12 @@ from rc_basics_lab.cli import (
     default_out_for,
     parse_experiment_args,
 )
-from rc_basics_lab.config import Chaos04Config, load_config_as
+from rc_basics_lab.config import (
+    Chaos04Config,
+    MackeyGlassTask,
+    load_config_as,
+    require_task,
+)
 from rc_basics_lab.experiment.freerun_pipeline import run_and_report_freerun
 
 logger = logging.getLogger("rc_basics_lab.experiments.04_chaotic_freerun")
@@ -70,7 +75,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.common.config,
         config.lorenz.length,
         config.lorenz.sample_interval,
-        config.base.mackey_glass.length,
+        require_task(config.base, MackeyGlassTask, "04 の実行ログ").params.length,
         config.base.n_replicates,
     )
     run_and_report_freerun(config, args.common.out)

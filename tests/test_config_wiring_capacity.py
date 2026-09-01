@@ -59,6 +59,7 @@ from wiring import (
     case,
     changed_leaves,
     current_experiment_modules,
+    experiment_config,
     leaf_paths,
     plain,
     round_trip,
@@ -87,6 +88,7 @@ from rc_basics_lab.config import (
     SymmetrySweepConfig,
     load_config_as,
 )
+from rc_basics_lab.config._dump import as_plain_mapping
 from rc_basics_lab.experiment.capacity import (
     CAPACITY_EXPERIMENTS,
     EXPERIMENT_CONSERVATION,
@@ -266,7 +268,7 @@ def base_config() -> Capacity03Config:
             n_lags_sweep=(4, 40),
             n_replicates_sweep=2,
             length=900,
-            base=ExperimentConfig(
+            base=experiment_config(
                 name="capacity-wiring-narma",
                 n_replicates=1,
                 split=SplitConfig(washout=50, max_start_offset=20),
@@ -725,7 +727,7 @@ def test_every_capacity_field_round_trips_yaml(tmp_path: Path) -> None:
     """
     config = Capacity03Config()
     path = tmp_path / "roundtrip.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
+    dumped = cast("Mapping[str, object]", plain(as_plain_mapping(config)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     assert load_config_as(path, Capacity03Config) == config
     assert_yaml_has_all_leaves(
@@ -821,8 +823,5 @@ def test_capacity_config_does_not_leak_into_experiment_config() -> None:
         "seeds",
         "split",
         "ridge",
-        "mackey_glass",
-        "delay_parity",
-        "esn_mackey_glass",
-        "esn_delay_parity",
+        "tasks",
     }

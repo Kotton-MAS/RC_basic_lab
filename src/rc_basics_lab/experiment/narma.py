@@ -24,7 +24,13 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from rc_basics_lab.config import Capacity03Config, ESNConfig, ExperimentConfig
+from rc_basics_lab.config import (
+    Capacity03Config,
+    ESNConfig,
+    ExperimentConfig,
+    MackeyGlassTask,
+    require_task,
+)
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_NARMA10,
     capacity_context,
@@ -60,15 +66,15 @@ from rc_basics_lab.tasks.narma import (
 
 logger = logging.getLogger(__name__)
 
-NARMA10_ESN_SECTION = "esn_mackey_glass"
+NARMA10_ESN_SECTION = "mackey_glass"
 """3-C が読む ESN セクション名 (D-39 の N=50 を適用するのはこの1本)。
 
 ``narma.base`` は 01 の ``ExperimentConfig`` をまるごと内包しているので ESN
-セクションが2本 (``esn_mackey_glass`` / ``esn_delay_parity``) 在るが、3-C の
+課題が2本 (``mackey_glass`` / ``delay_parity``) 在るが、3-C の
 課題は NARMA10 の1本だけなので読むのはどちらか一方である。**Mackey-Glass 側**
 を選ぶ理由は、NARMA10 が連続値の入力 (``u ~ U[0, 0.5]``) を受けて連続値を
 出す回帰課題であり、漏れ積分 (``leak_rate=0.3``) が効く点で MG と同型だから
-である (``esn_delay_parity`` は ±1 の2値入力・``leak_rate=1.0`` を前提とした
+である (``delay_parity`` のリザバーは ±1 の2値入力・``leak_rate=1.0`` を前提とした
 設定で、10 ステップの記憶を要する NARMA10 とは動作点が違う)。
 
 D-08 により ESN の構造ハイパーパラメータは検証分割で選ばれないので、
@@ -115,7 +121,8 @@ def narma_esn_config(base: ExperimentConfig) -> ESNConfig:
     書くと、D-39 (N=50) を適用したセクションと実際に読むセクションが
     食い違っても何も落ちない。
     """
-    return require_esn(base.esn_mackey_glass, "実験3-C (NARMA10)")
+    task = require_task(base, MackeyGlassTask, "実験3-C (NARMA10)")
+    return require_esn(task.reservoir, "実験3-C (NARMA10)")
 
 
 def narma_task_entry(config: Capacity03Config) -> TaskEntry:

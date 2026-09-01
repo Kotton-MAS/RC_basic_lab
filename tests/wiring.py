@@ -42,7 +42,16 @@ from typing import (
 import yaml
 
 import rc_basics_lab.experiment as _experiment_pkg
-from rc_basics_lab.config import load_config_as
+from rc_basics_lab.config import (
+    DelayParityConfig,
+    DelayParityTask,
+    ExperimentConfig,
+    MackeyGlassConfig,
+    MackeyGlassTask,
+    load_config_as,
+)
+from rc_basics_lab.config._dump import as_plain_mapping
+from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.seeds import SeedStream
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
@@ -119,10 +128,35 @@ def section_case(field: str, value: object, scope: str) -> WiringCase:
 
 
 def _replace_path(instance: object, path: str, value: object) -> object:
-    """ドット区切りのパスで frozen dataclass を差し替えた複製を返す。"""
+    """ドット区切りのパスで frozen dataclass を差し替えた複製を返す。
+
+    ``tasks[0].params.length`` のような**添字**も歩く (D-123)。課題がリストに
+    なったので、添字を扱えないと ``tasks`` 配下の葉が D-13 の検査から丸ごと
+    外れる —— 「設定したのに効いていない」を捕まえる唯一の機構が、課題の設定
+    についてだけ黙って無効になる。
+    """
     head, _, rest = path.partition(".")
-    new_value = _replace_path(getattr(instance, head), rest, value) if rest else value
-    return dataclasses.replace(cast("DataclassInstance", instance), **{head: new_value})
+    name, index = _split_index(head)
+    if index is None:
+        new_value = (
+            _replace_path(getattr(instance, name), rest, value) if rest else value
+        )
+        return dataclasses.replace(
+            cast("DataclassInstance", instance), **{name: new_value}
+        )
+    items = list(cast("Sequence[object]", getattr(instance, name)))
+    items[index] = _replace_path(items[index], rest, value) if rest else value
+    return dataclasses.replace(
+        cast("DataclassInstance", instance), **{name: tuple(items)}
+    )
+
+
+def _split_index(head: str) -> tuple[str, int | None]:
+    """``tasks[0]`` を ``("tasks", 0)`` に、``split`` を ``("split", None)`` に。"""
+    if head.endswith("]") and "[" in head:
+        name, _, raw = head.partition("[")
+        return name, int(raw[:-1])
+    return head, None
 
 
 def apply_case[T](config: T, wiring_case: WiringCase) -> T:
@@ -173,7 +207,43 @@ def _leaf_paths_of(annotation: object, path: str) -> set[str]:
         return {path}
     if dataclasses.is_dataclass(annotation) and isinstance(annotation, type):
         return leaf_paths(annotation, f"{path}.")
+    if get_origin(annotation) is tuple:
+        args = get_args(annotation)
+        if len(args) == 2 and args[1] is Ellipsis:
+            return _leaf_paths_of_sequence(args[0], path)
     return {path}
+
+
+def _leaf_paths_of_sequence(element: object, path: str) -> set[str]:
+    """``tuple[X, ...]`` の葉パス (D-123)。
+
+    要素が dataclass の union なら**全要素を1つずつ添字で**歩く。既定の課題列
+    は union の先頭だけではなく複数の種類を並べるので、先頭だけを見ると
+    2番目以降の課題の設定が D-13 の検査から外れる (単一フィールドのときに
+    先頭だけを歩くのとは事情が違う —— あちらは1つのフィールドに入るのが
+    1つの型だが、こちらは並びのそれぞれが別の型を取りうる)。
+
+    要素が dataclass でも union でもない (格子のような値の並び) なら、
+    リストそのものを1つの葉として扱う。
+    """
+    resolved = element.__value__ if isinstance(element, TypeAliasType) else element
+    members: list[object] = []
+    if get_origin(resolved) is UnionType:
+        members = [
+            arg
+            for arg in get_args(resolved)
+            if dataclasses.is_dataclass(arg) and isinstance(arg, type)
+        ]
+        if len(members) != len(get_args(resolved)):
+            return {path}
+    elif dataclasses.is_dataclass(resolved) and isinstance(resolved, type):
+        members = [resolved]
+    else:
+        return {path}
+    paths: set[str] = set()
+    for index, member in enumerate(members):
+        paths |= leaf_paths(cast("type", member), f"{path}[{index}].")
+    return paths
 
 
 def plain(value: object) -> object:
@@ -195,15 +265,21 @@ def assert_yaml_has_all_leaves(written: object, cls: type) -> None:
         node: object = written
         for part in leaf.split("."):
             assert isinstance(node, Mapping), leaf
-            assert part in node, f"YAML に現れないフィールドです: {leaf}"
-            node = node[part]
+            name, index = _split_index(part)
+            assert name in node, f"YAML に現れないフィールドです: {leaf}"
+            node = node[name]
+            if index is not None:
+                node = cast("Sequence[object]", node)[index]
 
 
 def leaf_value(config: object, leaf: str) -> object:
-    """ドット区切りのパスでフィールド値を取り出す。"""
+    """ドット区切りのパスでフィールド値を取り出す (``tasks[0].params.length`` 可)。"""
     node: object = config
     for part in leaf.split("."):
-        node = getattr(node, part)
+        name, index = _split_index(part)
+        node = getattr(node, name)
+        if index is not None:
+            node = cast("Sequence[object]", node)[index]
     return node
 
 
@@ -223,8 +299,9 @@ def changed_leaves(base: object, changed: object) -> set[str]:
 def round_trip[T](config: T, tmp_path: Path, name: str, cls: type[T]) -> T:
     """設定を YAML へ書き出して読み直す (``load_config_as`` の経路そのもの)。"""
     path = tmp_path / f"{name}.yaml"
-    as_dataclass = cast("DataclassInstance", config)
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(as_dataclass)))
+    # kind を書ける経路で落とす (D-123)。asdict は ClassVar を落とすので、
+    # 課題リストの2番目が先頭の型として読み直される。
+    dumped = cast("Mapping[str, object]", plain(as_plain_mapping(config)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     return load_config_as(path, cls)
 
@@ -284,3 +361,40 @@ __all__ = [
     "section_case",
     "seeds_case",
 ]
+
+
+def experiment_config(
+    *,
+    mackey_glass: MackeyGlassConfig | None = None,
+    delay_parity: DelayParityConfig | None = None,
+    esn_mackey_glass: ReservoirConfig | None = None,
+    esn_delay_parity: ReservoirConfig | None = None,
+    **rest: object,
+) -> ExperimentConfig:
+    """テスト用に 01 の設定を組む (課題2本の並びは本番と同じ。D-123)。
+
+    課題がリストになった (D-123) ので、テストが毎回 ``MackeyGlassTask(...)`` を
+    2つ書き下すと、**課題の並び順という本番と同じ前提**が 20 ファイルに写経
+    される。ここに1つ置けば、3本目の課題を既定に入れるときに触るのは1か所で済む。
+
+    省略した引数は各 ``TaskSpec`` の既定値になる (本番の既定と同じ)。
+
+    Args:
+        mackey_glass: MG の生成パラメータ。
+        delay_parity: 遅延パリティの生成パラメータ。
+        esn_mackey_glass: MG 課題で使うリザバー。
+        esn_delay_parity: 遅延パリティ課題で使うリザバー。
+        **rest: ``ExperimentConfig`` のそれ以外のフィールド。
+
+    Returns:
+        ``ExperimentConfig``。
+    """
+    mg = MackeyGlassTask(
+        params=mackey_glass if mackey_glass is not None else MackeyGlassConfig(),
+        **({"reservoir": esn_mackey_glass} if esn_mackey_glass is not None else {}),
+    )
+    dp = DelayParityTask(
+        params=delay_parity if delay_parity is not None else DelayParityConfig(),
+        **({"reservoir": esn_delay_parity} if esn_delay_parity is not None else {}),
+    )
+    return ExperimentConfig(tasks=(mg, dp), **rest)  # type: ignore[arg-type]

@@ -47,8 +47,8 @@ from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.base import TaskData
-from rc_basics_lab.tasks.delay_parity import generate_delay_parity
-from rc_basics_lab.tasks.mackey_glass import generate_mackey_glass
+from rc_basics_lab.tasks.protocol import TaskConfig
+from rc_basics_lab.tasks.registry import build_task
 from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
@@ -172,19 +172,30 @@ def build_methods(config: ExperimentConfig) -> tuple[Method, ...]:
 
 
 def build_tasks(config: ExperimentConfig) -> tuple[TaskEntry, ...]:
-    """比較する課題を返す。ESN 設定は config からそのまま渡る (D-08)。"""
-    return (
+    """比較する課題を返す。**設定の ``tasks`` の並び順がそのまま出る** (D-123)。
+
+    課題を1つ足すのに**ここは触らない**。``TaskSpec`` の union に足して
+    ``tasks.registry.build_task`` に ``case`` を書けば、YAML に3行足すだけで
+    この列に入る。
+    """
+    return tuple(
         TaskEntry(
-            name="mackey_glass",
-            reservoir=config.esn_mackey_glass,
-            generate=lambda rng: generate_mackey_glass(config.mackey_glass, rng),
-        ),
-        TaskEntry(
-            name="delay_parity",
-            reservoir=config.esn_delay_parity,
-            generate=lambda rng: generate_delay_parity(config.delay_parity, rng),
-        ),
+            name=type(spec).KIND,
+            reservoir=spec.reservoir,
+            generate=_generator_for(spec.params),
+        )
+        for spec in config.tasks
     )
+
+
+def _generator_for(params: TaskConfig) -> Callable[[np.random.Generator], TaskData]:
+    """1課題ぶんの生成関数を束縛して返す。
+
+    内包表記の中で ``lambda`` に閉包させると、全課題が**最後の** ``spec`` を
+    生成する (生成は遅延評価で、呼ばれるのはループの後になる)。束縛を関数の
+    引数で行えば、この取り違えを構造上書けない。
+    """
+    return lambda rng: build_task(params, rng)
 
 
 def _rows(array: FloatArray, selection: range) -> FloatArray:

@@ -1,6 +1,5 @@
-# ゴールデンテスト用の縮小設定 (実験04)。用途は 01 の縮小設定と同じ。
+# 縮小設定 (make golden)。本番と同じ形で、規模だけ小さくする。
 name: golden_04
-
 base:
   name: golden_04_base
   n_replicates: 2
@@ -15,45 +14,53 @@ base:
     washout: 20
     max_start_offset: 20
   ridge:
-    alpha_grid: [1.0e-6, 1.0e-3, 1.0]
-    n_lags_grid: [1, 4, 8]
-  mackey_glass:
-    tau: 17.0
-    beta: 0.2
-    gamma: 0.1
-    exponent: 10
-    rk4_step: 0.1
-    sample_interval: 10
-    integration_burn_in: 100
-    length: 1200
-    horizon: 1
-  delay_parity:
-    n_bits: 2
-    delay: 1
-    length: 1200
-  esn_mackey_glass:
-    n_units: 30
-    spectral_radius: 0.9
-    leak_rate: 0.3
-    input_scale: 0.5
-    bias_scale: 0.1
-    topology:
-      kind: erdos_renyi
-      density: 0.2
-    activation: tanh
-    state_noise: 0.0
-  esn_delay_parity:
-    n_units: 30
-    spectral_radius: 0.9
-    leak_rate: 1.0
-    input_scale: 1.0
-    bias_scale: 0.1
-    topology:
-      kind: erdos_renyi
-      density: 0.2
-    activation: tanh
-    state_noise: 0.0
-
+    alpha_grid:
+    - 1.0e-06
+    - 0.001
+    - 1.0
+    n_lags_grid:
+    - 1
+    - 4
+    - 8
+  tasks:
+  - kind: mackey_glass
+    params:
+      tau: 17.0
+      beta: 0.2
+      gamma: 0.1
+      exponent: 10
+      rk4_step: 0.1
+      sample_interval: 10
+      integration_burn_in: 100
+      length: 1200
+      horizon: 1
+    reservoir:
+      n_units: 30
+      spectral_radius: 0.9
+      leak_rate: 0.3
+      input_scale: 0.5
+      bias_scale: 0.1
+      topology:
+        kind: erdos_renyi
+        density: 0.2
+      activation: tanh
+      state_noise: 0.0
+  - kind: delay_parity
+    params:
+      n_bits: 2
+      delay: 1
+      length: 1200
+    reservoir:
+      n_units: 30
+      spectral_radius: 0.9
+      leak_rate: 1.0
+      input_scale: 1.0
+      bias_scale: 0.1
+      topology:
+        kind: erdos_renyi
+        density: 0.2
+      activation: tanh
+      state_noise: 0.0
 lorenz:
   rk4_step: 0.002
   sample_interval: 5
@@ -61,23 +68,25 @@ lorenz:
   length: 1200
   horizon: 1
   standardize_steps: 300
-
 mackey_glass:
   standardize_steps: 300
-
 freerun:
   warmup_steps: 20
   free_run_steps: 100
   stats_steps: 300
   valid_time_threshold: 0.4
-
 stability:
-  spectral_radius_grid: [0.9, 1.3]
-  leak_rate_grid: [0.3, 1.0]
-  state_noise_grid: [0.0, 1.0e-3]
+  spectral_radius_grid:
+  - 0.9
+  - 1.3
+  leak_rate_grid:
+  - 0.3
+  - 1.0
+  state_noise_grid:
+  - 0.0
+  - 0.001
   n_replicates: 2
   surrogate_seed: 4
-
 lyapunov:
   estimator:
     method: perturbation
@@ -88,7 +97,6 @@ lyapunov:
     propagator_tol: 1.0e-10
   reference_value: 0.9056
   reference_rel_tol: 0.05
-
 mc:
   max_delay: 20
   alpha: 1.0e-09
@@ -96,9 +104,11 @@ mc:
   n_surrogates: 8
   surrogate_quantile: 0.99
   chunk_size: 64
-
 ipc:
-  max_delay_by_degree: [8, 4, 2]
+  max_delay_by_degree:
+  - 8
+  - 4
+  - 2
   max_variables: 2
   basis: legendre
   input_distribution: uniform

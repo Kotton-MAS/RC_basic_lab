@@ -17,12 +17,12 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from wiring import experiment_config
 
 from rc_basics_lab.config import (
     Capacity03Config,
     CapacityDriveConfig,
     ESNConfig,
-    ExperimentConfig,
     IpcConfig,
     MemoryCapacityConfig,
     Narma10Config,
@@ -61,7 +61,7 @@ def tiny_config(sweep: tuple[int, ...] = TINY_SWEEP) -> Capacity03Config:
             length=700,
             n_lags_sweep=sweep,
             n_replicates_sweep=2,
-            base=ExperimentConfig(
+            base=experiment_config(
                 name="narma-taps-base",
                 n_replicates=3,
                 seeds=SeedConfig(reservoir=0, task=1, split=2),

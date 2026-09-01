@@ -11,7 +11,9 @@ from rc_basics_lab.config import (
     DEFAULT_ALPHA_GRID,
     ConfigError,
     ExperimentConfig,
+    MackeyGlassTask,
     load_config,
+    require_task,
 )
 
 
@@ -30,7 +32,9 @@ def test_unknown_key_raises(tmp_path: Path) -> None:
 
 def test_unknown_nested_key_raises(tmp_path: Path) -> None:
     """ネストしたセクション内のタイプミスも検出する。"""
-    path = _write(tmp_path, "mackey_glass:\n  taus: 17.0\n")
+    path = _write(
+        tmp_path, "tasks:\n  - kind: mackey_glass\n    params:\n      taus: 17.0\n"
+    )
     with pytest.raises(ConfigError, match="mackey_glass"):
         load_config(path)
 
@@ -50,12 +54,14 @@ def test_empty_yaml_gives_defaults(tmp_path: Path) -> None:
 def test_values_override_defaults(tmp_path: Path) -> None:
     path = _write(
         tmp_path,
-        "n_replicates: 3\nseeds:\n  reservoir: 11\nmackey_glass:\n  tau: 30.0\n",
+        "n_replicates: 3\nseeds:\n  reservoir: 11\n"
+        "tasks:\n  - kind: mackey_glass\n    params:\n      tau: 30.0\n",
     )
     config = load_config(path)
     assert config.n_replicates == 3
     assert config.seeds.reservoir == 11
-    assert config.mackey_glass.tau == pytest.approx(30.0)
+    task = require_task(config, MackeyGlassTask, "テスト")
+    assert task.params.tau == pytest.approx(30.0)
     # 未指定のフィールドは既定値のまま
     assert config.seeds.task == ExperimentConfig().seeds.task
 
@@ -148,13 +154,15 @@ def test_broken_yaml_raises(tmp_path: Path) -> None:
         # 明示的に弾く分岐)。YAML の true/false は Python では int のサブクラス。
         pytest.param("n_replicates: true\n", "整数が必要です", id="bool_to_int_top"),
         pytest.param(
-            "mackey_glass:\n  exponent: false\n",
+            "tasks:\n  - kind: mackey_glass\n    params:\n      exponent: false\n",
             "整数が必要です",
             id="bool_to_int_nested",
         ),
         # bool -> float
         pytest.param(
-            "mackey_glass:\n  tau: true\n", "数値が必要です", id="bool_to_float"
+            "tasks:\n  - kind: mackey_glass\n    params:\n      tau: true\n",
+            "数値が必要です",
+            id="bool_to_float",
         ),
         pytest.param(
             "split:\n  train_ratio: false\n",
@@ -164,7 +172,9 @@ def test_broken_yaml_raises(tmp_path: Path) -> None:
         # str -> int / str -> float (数値らしい文字列でも変換しない)
         pytest.param('n_replicates: "3"\n', "整数が必要です", id="str_to_int"),
         pytest.param(
-            'mackey_glass:\n  tau: "17.0"\n', "数値が必要です", id="str_to_float"
+            'tasks:\n  - kind: mackey_glass\n    params:\n      tau: "17.0"\n',
+            "数値が必要です",
+            id="str_to_float",
         ),
         # 非文字列 -> str
         pytest.param("name: 5\n", "文字列が必要です", id="int_to_str"),

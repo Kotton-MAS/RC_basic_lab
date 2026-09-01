@@ -16,7 +16,8 @@ from typing import ClassVar
 import pytest
 
 from rc_basics_lab.config import load_config
-from rc_basics_lab.config._common import KIND_KEY, ConfigError, _build, _coerce
+from rc_basics_lab.config._common import ConfigError, _build, _coerce
+from rc_basics_lab.overrides import KIND_KEY
 from rc_basics_lab.reservoir.esn import ESNConfig
 
 CONFIG = Path("experiments/01_what_is_rc/config.yaml")
@@ -41,7 +42,7 @@ type _TestReservoirConfig = ESNConfig | _RingConfig
 def test_the_kind_may_be_omitted() -> None:
     """``kind`` を書かなければ既定 (ESN) になる。既存の YAML はそのまま通る。"""
     config = load_config(CONFIG)
-    assert isinstance(config.esn_mackey_glass, ESNConfig)
+    assert isinstance(config.tasks[0].reservoir, ESNConfig)
 
 
 def test_the_default_kind_can_be_written_explicitly() -> None:
@@ -50,15 +51,17 @@ def test_the_default_kind_can_be_written_explicitly() -> None:
     **2つ目を足した日に YAML を書き換えずに済む**ようにするための経路で、
     union が1要素のうちから通しておく。
     """
-    config = load_config(CONFIG, overrides=["esn_mackey_glass.kind=esn"])
-    assert isinstance(config.esn_mackey_glass, ESNConfig)
-    assert config.esn_mackey_glass.n_units == 200
+    config = load_config(CONFIG, overrides=["tasks.mackey_glass.reservoir.kind=esn"])
+    assert isinstance(config.tasks[0].reservoir, ESNConfig)
+    assert config.tasks[0].reservoir.n_units == 200
 
 
 def test_an_unknown_kind_is_rejected_with_the_known_names() -> None:
     """未知の ``kind`` は既知の名前を添えて落とす (黙って既定に落ちない)。"""
     with pytest.raises(ConfigError, match="未知の kind です"):
-        load_config(CONFIG, overrides=["esn_mackey_glass.kind=no_such_model"])
+        load_config(
+            CONFIG, overrides=["tasks.mackey_glass.reservoir.kind=no_such_model"]
+        )
 
 
 @pytest.mark.parametrize(("preset", "kind"), [("ring", "ring"), ("deep", "deep_esn")])
@@ -70,8 +73,8 @@ def test_every_registered_kind_is_selectable_from_a_preset(
     ここが落ちたら「registry には在るが設定から選べない」状態である。
     """
     config = load_config(CONFIG, preset=CONFIG.parent / "presets" / f"{preset}.yaml")
-    assert kind == type(config.esn_mackey_glass).KIND
-    assert kind == type(config.esn_delay_parity).KIND
+    assert kind == type(config.tasks[0].reservoir).KIND
+    assert kind == type(config.tasks[1].reservoir).KIND
 
 
 def test_changing_the_kind_replaces_the_whole_section() -> None:
@@ -82,7 +85,7 @@ def test_changing_the_kind_replaces_the_whole_section() -> None:
     状態になる (実測でそうなった)。
     """
     config = load_config(CONFIG, preset=CONFIG.parent / "presets" / "ring.yaml")
-    assert not hasattr(config.esn_mackey_glass, "density"), (
+    assert not hasattr(config.tasks[0].reservoir, "density"), (
         "ESN 固有のキーが残っています (セクションが混ざりました)"
     )
 
@@ -94,7 +97,7 @@ def test_changing_the_kind_with_set_alone_explains_why_it_fails() -> None:
     だけ言うと、利用者は自分の綴りを疑うことになる。
     """
     with pytest.raises(ConfigError, match="セクションを丸ごと"):
-        load_config(CONFIG, overrides=["esn_mackey_glass.kind=ring"])
+        load_config(CONFIG, overrides=["tasks.mackey_glass.reservoir.kind=ring"])
 
 
 def test_the_kind_never_reaches_the_artifacts() -> None:

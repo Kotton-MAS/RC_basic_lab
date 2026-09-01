@@ -1,40 +1,44 @@
-# ゴールデンテスト用の縮小設定 (実験02)。用途は 01 の縮小設定と同じ。
+# 縮小設定 (make golden)。本番と同じ形で、規模だけ小さくする。
 name: golden_02
-
 seeds:
   reservoir: 0
   drive: 1
   probe: 3
-
 drive:
   distribution: uniform
   n_steps: 400
   washout: 20
   n_pairs: 3
-
 reservoir:
   input_scale: 1.0
   n_units: 30
   density: 0.2
   n_replicates: 2
-
 decay:
-  rho_grid: [0.5, 1.2]
+  rho_grid:
+  - 0.5
+  - 1.2
   sigma_u: 0.0
   leak_rate: 1.0
-
 timescale_sweep:
-  leak_rate_grid: [0.3, 1.0]
+  leak_rate_grid:
+  - 0.3
+  - 1.0
   rho: 0.9
   sigma_u: 0.5
-
 esp_map:
-  rho_grid: [0.5, 1.0, 1.5]
-  sigma_grid: [0.0, 0.5]
+  rho_grid:
+  - 0.5
+  - 1.0
+  - 1.5
+  sigma_grid:
+  - 0.0
+  - 0.5
   leak_rate: 1.0
-
 washout:
-  grid: [0, 50]
+  grid:
+  - 0
+  - 50
   pad_series: true
   base:
     name: golden_02_washout
@@ -50,59 +54,65 @@ washout:
       washout: 20
       max_start_offset: 20
     ridge:
-      alpha_grid: [1.0e-6, 1.0e-3, 1.0]
-      n_lags_grid: [1, 4, 8]
-    mackey_glass:
-      tau: 17.0
-      beta: 0.2
-      gamma: 0.1
-      exponent: 10
-      rk4_step: 0.1
-      sample_interval: 10
-      integration_burn_in: 100
-      length: 600
-      horizon: 1
-    delay_parity:
-      n_bits: 2
-      delay: 1
-      length: 600
-    esn_mackey_glass:
-      n_units: 30
-      spectral_radius: 0.9
-      leak_rate: 0.3
-      input_scale: 0.5
-      bias_scale: 0.1
-      topology:
-        kind: erdos_renyi
-        density: 0.2
-      activation: tanh
-      state_noise: 0.0
-    esn_delay_parity:
-      n_units: 30
-      spectral_radius: 0.9
-      leak_rate: 1.0
-      input_scale: 1.0
-      bias_scale: 0.1
-      topology:
-        kind: erdos_renyi
-        density: 0.2
-      activation: tanh
-      state_noise: 0.0
-
+      alpha_grid:
+      - 1.0e-06
+      - 0.001
+      - 1.0
+      n_lags_grid:
+      - 1
+      - 4
+      - 8
+    tasks:
+    - kind: mackey_glass
+      params:
+        tau: 17.0
+        beta: 0.2
+        gamma: 0.1
+        exponent: 10
+        rk4_step: 0.1
+        sample_interval: 10
+        integration_burn_in: 100
+        length: 600
+        horizon: 1
+      reservoir:
+        n_units: 30
+        spectral_radius: 0.9
+        leak_rate: 0.3
+        input_scale: 0.5
+        bias_scale: 0.1
+        topology:
+          kind: erdos_renyi
+          density: 0.2
+        activation: tanh
+        state_noise: 0.0
+    - kind: delay_parity
+      params:
+        n_bits: 2
+        delay: 1
+        length: 600
+      reservoir:
+        n_units: 30
+        spectral_radius: 0.9
+        leak_rate: 1.0
+        input_scale: 1.0
+        bias_scale: 0.1
+        topology:
+          kind: erdos_renyi
+          density: 0.2
+        activation: tanh
+        state_noise: 0.0
 esp:
-  abs_tol: 1.0e-6
-  rel_tol: 1.0e-3
+  abs_tol: 1.0e-06
+  rel_tol: 0.001
   window: 200
   fit_skip: 10
   floor: 1.0e-14
-
 lyapunov:
   method: perturbation
-  delta: 1.0e-8
+  delta: 1.0e-08
   renorm_interval: 1
   max_growth: 1000.0
   check_propagator: true
   propagator_tol: 1.0e-10
-
 timescale:
   max_lag: 50

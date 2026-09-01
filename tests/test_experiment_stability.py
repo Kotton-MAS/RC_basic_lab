@@ -18,12 +18,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from wiring import experiment_config
 
 import rc_basics_lab.experiment.stability as stability_module
 from rc_basics_lab.config import (
     Chaos04Config,
     ESNConfig,
-    ExperimentConfig,
     FreeRunConfig,
     IpcConfig,
     LorenzConfig,
@@ -70,7 +70,7 @@ def small_config() -> Chaos04Config:
     """4-C / 4-D を秒未満で回せる縮小設定 (**構造は本番と同じ**)。"""
     return Chaos04Config(
         name="stability-test",
-        base=ExperimentConfig(
+        base=experiment_config(
             n_replicates=1,
             split=SplitConfig(washout=30, max_start_offset=10),
             ridge=RidgeConfig(alpha_grid=(1.0e-6, 1.0e-3), n_lags_grid=(2,)),
@@ -198,7 +198,7 @@ def test_condition_esn_config_moves_only_the_three_axes() -> None:
         rho=1.2, leak_rate=0.8, state_noise=1.0e-3, replicate=0
     )
     changed = condition_esn_config(config, condition)
-    base = config.base.esn_mackey_glass
+    base = config.base.tasks[0].reservoir
     moved = {
         item.name
         for item in dataclasses.fields(ESNConfig)

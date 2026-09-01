@@ -21,7 +21,7 @@ from typing import Protocol, TypeAliasType, cast, get_args, get_origin, get_type
 
 import yaml
 
-from rc_basics_lab.overrides import apply_overrides
+from rc_basics_lab.overrides import KIND_KEY, apply_overrides, is_kinded_list
 
 
 class _DataclassFactory[T_co](Protocol):
@@ -60,7 +60,13 @@ def _coerce_scalar(value: object, target: type, location: str) -> object:
 
 
 def _coerce_tuple(value: object, annotation: object, location: str) -> object:
-    """``tuple[X, ...]`` 型のフィールドを構築する。"""
+    """``tuple[X, ...]`` 型のフィールドを構築する。
+
+    要素は**スカラとは限らない**。``tasks: tuple[TaskSpec, ...]`` のように
+    判別子つき union のリストも受ける (D-123)。要素の変換を ``_coerce`` へ
+    委ねるので、要素側で使える型はフィールド直下と同じである
+    (スカラだけを許していると、設定をリストにした瞬間に読めなくなる)。
+    """
     args = get_args(annotation)
     if len(args) != 2 or args[1] is not Ellipsis:
         raise _fail(location, f"未対応の tuple 型です: {annotation!r}")
@@ -68,21 +74,12 @@ def _coerce_tuple(value: object, annotation: object, location: str) -> object:
     if isinstance(value, str) or not isinstance(value, Sequence):
         raise _fail(location, f"リストが必要です: {value!r}")
     return tuple(
-        _coerce_scalar(element, element_type, f"{location}[{index}]")
+        _coerce(element, element_type, f"{location}[{index}]")
         for index, element in enumerate(value)
     )
 
 
-KIND_KEY = "kind"
-"""判別子のキー名。``kind: esn`` のように書く。
-
-**値そのものは dataclass に入れない** (``ClassVar`` で持つ)。入れると
-``dataclasses.asdict`` に現れて ``meta.json`` が変わり、既存の成果物の指紋が
-壊れる。判別子は「どの型を作るか」の情報であって、その型の設定値ではない。
-"""
-
-
-def _kind_of(cls: object) -> str | None:
+def kind_of(cls: object) -> str | None:
     """union の要素が名乗る種別 (``KIND`` クラス変数)。無ければ ``None``。"""
     kind = getattr(cls, "KIND", None)
     return kind if isinstance(kind, str) else None
@@ -109,7 +106,7 @@ def _coerce_tagged_union(value: object, annotation: object, location: str) -> ob
         for arg in get_args(annotation)
         if dataclasses.is_dataclass(arg) and isinstance(arg, type)
     ]
-    known = {name: cls for cls in members if (name := _kind_of(cls)) is not None}
+    known = {name: cls for cls in members if (name := kind_of(cls)) is not None}
     if len(known) != len(members):
         raise _fail(location, f"KIND を名乗らない要素があります: {annotation!r}")
     if not isinstance(value, Mapping):
@@ -183,7 +180,7 @@ def _build[T](cls: type[T], raw: object, location: str) -> T:
     """
     if not isinstance(raw, Mapping):
         raise _fail(location, f"マッピングが必要です: {raw!r}")
-    declared = _kind_of(cls)
+    declared = kind_of(cls)
     if declared is not None and KIND_KEY in raw:
         written = raw[KIND_KEY]
         if written != declared:
@@ -244,14 +241,50 @@ def _changes_kind(base: object, patch: Mapping[str, object]) -> bool:
     return base.get(KIND_KEY) != patch[KIND_KEY]
 
 
+def _unusedis_kinded_list(value: object) -> bool:
+    """``kind`` を持つマッピングだけからなる、空でないリストか。"""
+    if isinstance(value, str) or not isinstance(value, Sequence) or not value:
+        return False
+    return all(isinstance(item, Mapping) and KIND_KEY in item for item in value)
+
+
+def _merge_kinded_list(
+    base: Sequence[Mapping[str, object]], patch: Sequence[Mapping[str, object]]
+) -> list[dict[str, object]]:
+    """``kind`` で突き合わせて要素ごとに深く重ねる (D-123)。
+
+    **並び順は本体のまま**である。プリセットの並びで上書きすると、プリセットに
+    2件しか書かなかっただけで課題の順が変わり、``comparison.csv`` の行の順が
+    プリセットごとに違うことになる。
+    """
+    overlay = {str(item[KIND_KEY]): item for item in patch}
+    merged = [
+        (
+            _deep_merge(item, overlay.pop(str(item[KIND_KEY])))
+            if str(item[KIND_KEY]) in overlay
+            else dict(item)
+        )
+        for item in base
+    ]
+    merged.extend(dict(item) for item in overlay.values())
+    return merged
+
+
 def _deep_merge(
     base: Mapping[str, object], patch: Mapping[str, object]
 ) -> dict[str, object]:
     """``patch`` を ``base`` に深くかぶせる (プリセット用)。
 
     どちらもマッピングなら再帰し、そうでなければ ``patch`` で置き換える。
-    **リストは置き換える** —— 格子 (``alpha_grid`` など) を部分的に混ぜると、
+    **格子のリストは置き換える** —— ``alpha_grid`` などを部分的に混ぜると、
     プリセットを読んだだけでは実際に回る格子が分からなくなる。
+
+    **``kind`` を持つ要素のリストだけは、``kind`` で突き合わせて重ねる**
+    (``tasks``。D-123)。プリセットは「本体との差分だけを書く」規約なので、
+    課題を1つ小さくするために課題定義を全部書き写すことになると、本体を
+    直したときにプリセットだけ古いまま残る (実測でそういう複製が
+    「効いていない設定」を生んだ)。プリセットに無い ``kind`` の要素は
+    本体のまま残り、プリセットにしか無い ``kind`` は末尾に足される。
 
     **``kind`` が変わるセクションは丸ごと置き換える。** モデルを差し替えると
     設定の**型そのもの**が変わり、前のモデル固有のキー (ESN の ``density`` /
@@ -261,7 +294,12 @@ def _deep_merge(
     merged = dict(base)
     for key, value in patch.items():
         current = merged.get(key)
-        if isinstance(value, Mapping) and _changes_kind(current, value):
+        if is_kinded_list(current) and is_kinded_list(value):
+            merged[key] = _merge_kinded_list(
+                cast("Sequence[Mapping[str, object]]", current),
+                cast("Sequence[Mapping[str, object]]", value),
+            )
+        elif isinstance(value, Mapping) and _changes_kind(current, value):
             merged[key] = dict(value)
         elif isinstance(current, Mapping) and isinstance(value, Mapping):
             merged[key] = _deep_merge(

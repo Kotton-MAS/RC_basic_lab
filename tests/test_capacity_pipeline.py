@@ -30,6 +30,7 @@ from typing import cast
 
 import pytest
 from test_config_wiring_capacity import PENDING_SECTIONS
+from wiring import experiment_config
 
 import main
 from rc_basics_lab.config import (
@@ -38,7 +39,6 @@ from rc_basics_lab.config import (
     CapacityReservoirConfig,
     ConservationConfig,
     ESNConfig,
-    ExperimentConfig,
     IpcConfig,
     IpcSweepConfig,
     LengthSweepConfig,
@@ -191,13 +191,15 @@ narma:
     ridge:
       alpha_grid: [1.0e-2]
       n_lags_grid: [2, 4]
-    esn_mackey_glass:
-      n_units: 7
-      leak_rate: 1.0
-      input_scale: 1.0
-      topology:
-        kind: erdos_renyi
-        density: 0.5
+    tasks:
+      - kind: mackey_glass
+        reservoir:
+          n_units: 7
+          leak_rate: 1.0
+          input_scale: 1.0
+          topology:
+            kind: erdos_renyi
+            density: 0.5
 """
 """縮小設定 (構造は本番と同じ)。本番は 330 秒かかるため CLI テストでは使わない。"""
 
@@ -255,7 +257,7 @@ def tiny_config() -> Capacity03Config:
             n_lags_sweep=(4, 40),
             n_replicates_sweep=2,
             length=900,
-            base=ExperimentConfig(
+            base=experiment_config(
                 name="cli_smoke_narma",
                 n_replicates=2,
                 split=SplitConfig(washout=50, max_start_offset=20),

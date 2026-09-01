@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "8a3d998002b9b2700c144efff52f5da20c452d1f",
+  "commit": "1ac98432eecb43ecff7329ca560d5e0ce181668f",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -105,46 +105,6 @@
     "name": "03_capacity",
     "narma": {
       "base": {
-        "delay_parity": {
-          "delay": 1,
-          "length": 8000,
-          "n_bits": 2
-        },
-        "esn_delay_parity": {
-          "activation": "tanh",
-          "bias_scale": 0.1,
-          "input_scale": 1.0,
-          "leak_rate": 1.0,
-          "n_units": 200,
-          "spectral_radius": 0.9,
-          "state_noise": 0.0,
-          "topology": {
-            "density": 0.1
-          }
-        },
-        "esn_mackey_glass": {
-          "activation": "tanh",
-          "bias_scale": 0.1,
-          "input_scale": 0.5,
-          "leak_rate": 0.3,
-          "n_units": 50,
-          "spectral_radius": 0.9,
-          "state_noise": 0.0,
-          "topology": {
-            "density": 0.1
-          }
-        },
-        "mackey_glass": {
-          "beta": 0.2,
-          "exponent": 10,
-          "gamma": 0.1,
-          "horizon": 1,
-          "integration_burn_in": 1000,
-          "length": 8000,
-          "rk4_step": 0.1,
-          "sample_interval": 10,
-          "tau": 17.0
-        },
         "n_replicates": 5,
         "name": "03_narma10",
         "ridge": {
@@ -187,7 +147,53 @@
           "train_ratio": 0.5,
           "val_ratio": 0.15,
           "washout": 200
-        }
+        },
+        "tasks": [
+          {
+            "params": {
+              "beta": 0.2,
+              "exponent": 10,
+              "gamma": 0.1,
+              "horizon": 1,
+              "integration_burn_in": 1000,
+              "length": 8000,
+              "rk4_step": 0.1,
+              "sample_interval": 10,
+              "tau": 17.0
+            },
+            "reservoir": {
+              "activation": "tanh",
+              "bias_scale": 0.1,
+              "input_scale": 0.5,
+              "leak_rate": 0.3,
+              "n_units": 50,
+              "spectral_radius": 0.9,
+              "state_noise": 0.0,
+              "topology": {
+                "density": 0.1
+              }
+            }
+          },
+          {
+            "params": {
+              "delay": 1,
+              "length": 8000,
+              "n_bits": 2
+            },
+            "reservoir": {
+              "activation": "tanh",
+              "bias_scale": 0.1,
+              "input_scale": 1.0,
+              "leak_rate": 1.0,
+              "n_units": 200,
+              "spectral_radius": 0.9,
+              "state_noise": 0.0,
+              "topology": {
+                "density": 0.1
+              }
+            }
+          }
+        ]
       },
       "length": 8000,
       "n_lags_sweep": [
@@ -396,42 +402,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.8275370001792908
+    "wall_time_s": 3.868400208186358
   },
-  "timestamp_utc": "2026-09-01T01:30:25.374581+00:00",
+  "timestamp_utc": "2026-09-01T03:06:56.916571+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.52687138132751,
-      "wall_time_mc_s": 4.273548622615635,
-      "wall_time_s": 43.43014746066183,
-      "wall_time_state_s": 7.62622050056234
+      "wall_time_ipc_s": 31.683102124603465,
+      "wall_time_mc_s": 4.304789046058431,
+      "wall_time_s": 43.61143357725814,
+      "wall_time_state_s": 7.620071702636778
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 83.35775608965196,
-      "wall_time_mc_s": 9.357601749477908,
-      "wall_time_s": 108.99527637870051,
-      "wall_time_state_s": 16.27534750313498
+      "wall_time_ipc_s": 84.2259009575937,
+      "wall_time_mc_s": 9.45323866745457,
+      "wall_time_s": 109.95966482814401,
+      "wall_time_state_s": 16.27575770718977
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 252.18414450204,
-      "wall_time_mc_s": 22.401088419370353,
-      "wall_time_s": 302.88971995702013,
-      "wall_time_state_s": 28.298935832222924
+      "wall_time_ipc_s": 258.29645303846337,
+      "wall_time_mc_s": 23.043105580843985,
+      "wall_time_s": 309.522091752151,
+      "wall_time_state_s": 28.177037127083167
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.2044118328485638,
-      "wall_time_mc_s": 0.02534141601063311,
-      "wall_time_s": 0.5023757910821587,
-      "wall_time_state_s": 0.049146207980811596
+      "wall_time_ipc_s": 0.20404412504285574,
+      "wall_time_mc_s": 0.024376458022743464,
+      "wall_time_s": 0.4973139171488583,
+      "wall_time_state_s": 0.04851354216225445
     }
   ],
-  "wall_time_s": 470.36641033296473
+  "wall_time_s": 478.1227533330675
 }

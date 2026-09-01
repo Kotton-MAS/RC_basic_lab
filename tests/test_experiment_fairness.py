@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from wiring import experiment_config
 
 from rc_basics_lab.config import (
     ConfigError,
@@ -57,7 +58,7 @@ TINY_N_LAGS_GRID = (1, 64)
 
 def tiny_config() -> ExperimentConfig:
     """秒未満で回る最小構成 (公平性の検査に必要な構造だけを残す)。"""
-    return ExperimentConfig(
+    return experiment_config(
         n_replicates=2,
         seeds=SeedConfig(reservoir=0, task=1, split=2),
         split=SplitConfig(washout=TINY_WASHOUT, max_start_offset=20),
@@ -167,7 +168,7 @@ def test_t0_covers_every_candidate_first_valid() -> None:
 def test_split_seed_changes_boundaries() -> None:
     """seeds.split を変えると開始オフセットが変わり、seeds.reservoir では変わらない。"""
     config = tiny_config()
-    n_steps = config.delay_parity.length
+    n_steps = config.tasks[1].params.length
     t0 = config.split.washout
 
     def offset_for(seeds: SeedConfig) -> int:
@@ -189,7 +190,7 @@ def test_split_window_size_does_not_depend_on_offset() -> None:
     for seed in range(6):
         split = make_split(
             config.split,
-            config.delay_parity.length,
+            config.tasks[1].params.length,
             config.split.washout,
             np.random.default_rng(seed),
         )
@@ -218,13 +219,19 @@ def test_esn_hyperparameters_are_not_validation_selected() -> None:
     )
 
     entry = parity_entry(config)
-    assert entry.reservoir == config.esn_delay_parity
+    assert entry.reservoir == config.tasks[1].reservoir
 
     weak = dataclasses.replace(
         config,
         n_replicates=1,
-        esn_delay_parity=dataclasses.replace(
-            config.esn_delay_parity, spectral_radius=0.05, input_scale=0.05
+        tasks=(
+            config.tasks[0],
+            dataclasses.replace(
+                config.tasks[1],
+                reservoir=dataclasses.replace(
+                    config.tasks[1].reservoir, spectral_radius=0.05, input_scale=0.05
+                ),
+            ),
         ),
     )
     strong = dataclasses.replace(config, n_replicates=1)

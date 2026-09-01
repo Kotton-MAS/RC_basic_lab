@@ -16,14 +16,15 @@ ridge:
   alpha_grid: [1.0e-10, 1.0e-6, 1.0e-2, 1.0]
   n_lags_grid: [1, 8, 64]
 
-mackey_glass:
-  length: 2200
-
-delay_parity:
-  length: 2200
-
-esn_mackey_glass:
-  n_units: 50
-
-esn_delay_parity:
-  n_units: 50
+# 課題はリストだが、**kind で突き合わせて重なる** (D-123)。全部書き写さなくてよい。
+tasks:
+  - kind: mackey_glass
+    params:
+      length: 2200
+    reservoir:
+      n_units: 50
+  - kind: delay_parity
+    params:
+      length: 2200
+    reservoir:
+      n_units: 50

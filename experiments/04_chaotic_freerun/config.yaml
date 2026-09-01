@@ -36,52 +36,47 @@ base:
                  1.0e-02, 1.0e-01, 1.0, 10.0, 100.0]
     n_lags_grid: [1, 2, 4, 8, 16]
   # 04 の MG 課題の生成パラメータ (標準化は mackey_glass.standardize_steps)。
-  mackey_glass:
-    tau: 17.0
-    beta: 0.2
-    gamma: 0.1
-    exponent: 10
-    rk4_step: 0.1
-    sample_interval: 10
-    integration_burn_in: 1000
-    length: 8000
-    horizon: 1
-  # 04 は遅延パリティを回さないが、base が 01 の設定をまるごと内包する以上
-  # セクションは在る (値は 01 の既定のまま。読む経路が無いので効かない)。
-  delay_parity:
-    n_bits: 2
-    delay: 1
-    length: 8000
-  # 04 が読む ESN セクションは esn_mackey_glass の1本 (CHAOS_ESN_SECTION)。
-  # 構造ハイパーパラメータは検証分割で選ばない (D-08)。state_noise は 4-C の
-  # 掃引軸なので、本番の基準点は 0 のまま置く。
-  esn_mackey_glass:
-    n_units: 200
-    spectral_radius: 0.9
-    leak_rate: 0.3
-    input_scale: 0.5
-    bias_scale: 0.1
-    # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-    # barabasi_albert / watts_strogatz / ring に差し替えられる。
-    topology:
-      kind: erdos_renyi
-      density: 0.1
-    activation: tanh
-    state_noise: 0.0
-  esn_delay_parity:
-    n_units: 200
-    spectral_radius: 0.9
-    leak_rate: 1.0
-    input_scale: 1.0
-    bias_scale: 0.1
-    # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-    # barabasi_albert / watts_strogatz / ring に差し替えられる。
-    topology:
-      kind: erdos_renyi
-      density: 0.1
-    activation: tanh
-    state_noise: 0.0
-
+  # 課題は**リスト**である (拡張性方針 §3 / D-123)。
+  tasks:
+    - kind: mackey_glass
+      params:
+        tau: 17.0
+        beta: 0.2
+        gamma: 0.1
+        exponent: 10
+        rk4_step: 0.1
+        sample_interval: 10
+        integration_burn_in: 1000
+        length: 8000
+        horizon: 1
+      reservoir:
+        n_units: 200
+        spectral_radius: 0.9
+        leak_rate: 0.3
+        input_scale: 0.5
+        bias_scale: 0.1
+        # 結合構造は独立した軸である (拡張性方針 §2-1)。
+        topology:
+          kind: erdos_renyi
+          density: 0.1
+        activation: tanh
+        state_noise: 0.0
+    - kind: delay_parity
+      params:
+        n_bits: 2
+        delay: 1
+        length: 8000
+      reservoir:
+        n_units: 200
+        spectral_radius: 0.9
+        leak_rate: 1.0
+        input_scale: 1.0
+        bias_scale: 0.1
+        topology:
+          kind: erdos_renyi
+          density: 0.1
+        activation: tanh
+        state_noise: 0.0
 lorenz:
   # Delta t = rk4_step * sample_interval = 0.01 (T4 の較正で確定)。
   # {5, 10, 25} を代表条件で測り、受け入れ条件1 (自走がアトラクタを再現) と

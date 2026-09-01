@@ -49,6 +49,7 @@ from wiring import (
     assert_yaml_has_all_leaves,
     case,
     changed_leaves,
+    experiment_config,
     leaf_paths,
     plain,
     round_trip,
@@ -72,6 +73,7 @@ from rc_basics_lab.config import (
     StabilityConfig,
     load_config_as,
 )
+from rc_basics_lab.config._dump import as_plain_mapping
 from rc_basics_lab.diagnostics.ipc import count_targets
 from rc_basics_lab.experiment.freerun import (
     estimate_lorenz_lyapunov,
@@ -120,7 +122,7 @@ def base_config() -> Chaos04Config:
     """
     return Chaos04Config(
         name="chaos-wiring",
-        base=ExperimentConfig(
+        base=experiment_config(
             name="chaos-wiring-base",
             n_replicates=1,
             split=SplitConfig(washout=30, max_start_offset=10),
@@ -413,7 +415,7 @@ def test_every_chaos_field_round_trips_yaml(tmp_path: Path) -> None:
     """
     config = Chaos04Config()
     path = tmp_path / "roundtrip.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
+    dumped = cast("Mapping[str, object]", plain(as_plain_mapping(config)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     assert load_config_as(path, Chaos04Config) == config
     assert_yaml_has_all_leaves(
