@@ -14,7 +14,6 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from rc_basics_lab.config import Narma10Config
 from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng
 from rc_basics_lab.tasks.narma import (
     DIVERGENCE_LIMIT,
@@ -23,6 +22,7 @@ from rc_basics_lab.tasks.narma import (
     NARMA10_INPUT_STD,
     NARMA10_ORDER,
     TASK_NAME,
+    Narma10TaskConfig,
     generate_narma10,
     narma10_series,
 )
@@ -237,7 +237,7 @@ def test_divergence_raises_instead_of_clipping() -> None:
     不当に有利/不利になる。
     """
     with pytest.raises(ValueError, match="発散"):
-        generate_narma10(Narma10Config(length=8000), np.random.default_rng(75))
+        generate_narma10(Narma10TaskConfig(length=8000), np.random.default_rng(75))
 
     # 定数入力でも同じ (境界 0.5 を張り付かせると発散する)
     with pytest.raises(ValueError, match="発散"):
@@ -258,7 +258,7 @@ def test_production_replicates_do_not_diverge() -> None:
     D-30 で落ちることを承知の上で行うこと。
     """
     seeds = SeedConfig(reservoir=0, task=1, split=2)
-    cfg = Narma10Config(length=8000)
+    cfg = Narma10TaskConfig(length=8000)
     for replicate in range(5):
         data = generate_narma10(cfg, make_rng(seeds, SeedStream.TASK, replicate))
         assert np.all(np.isfinite(data.y))
@@ -269,7 +269,7 @@ def test_production_replicates_do_not_diverge() -> None:
 
 def test_input_is_uniform_on_the_declared_range() -> None:
     """入力は ``U[0, 0.5]`` i.i.d. で、宣言した標準偏差は閉形式と一致する (D-29)。"""
-    data = generate_narma10(Narma10Config(length=20000), np.random.default_rng(3))
+    data = generate_narma10(Narma10TaskConfig(length=20000), np.random.default_rng(3))
     u = data.u[:, 0]
     assert data.name == TASK_NAME
     assert float(np.min(u)) >= NARMA10_INPUT_LOW
@@ -282,7 +282,7 @@ def test_input_is_uniform_on_the_declared_range() -> None:
 
 def test_shapes_and_params() -> None:
     """``(T, 1)`` の2次元で返り、採用式のパラメータが params に残る。"""
-    data = generate_narma10(Narma10Config(length=500), np.random.default_rng(1))
+    data = generate_narma10(Narma10TaskConfig(length=500), np.random.default_rng(1))
     assert data.u.shape == (500, 1)
     assert data.y.shape == (500, 1)
     assert data.n_inputs == 1
@@ -297,7 +297,7 @@ def test_shapes_and_params() -> None:
 def test_invalid_length_raises(length: int, message: str) -> None:
     """系列長が 1 未満なら ``ValueError`` (他の課題と同じ規律)。"""
     with pytest.raises(ValueError, match=message):
-        generate_narma10(Narma10Config(length=length), np.random.default_rng(0))
+        generate_narma10(Narma10TaskConfig(length=length), np.random.default_rng(0))
 
 
 @pytest.mark.parametrize(

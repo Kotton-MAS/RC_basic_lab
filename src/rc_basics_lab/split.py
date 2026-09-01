@@ -25,7 +25,17 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from rc_basics_lab.config import SplitConfig
+
+@dataclass(frozen=True, slots=True)
+class SplitConfig:
+    """時系列を連続区間で切る分割設定 (シャッフルしない)。"""
+
+    train_ratio: float = 0.5
+    val_ratio: float = 0.15
+    test_ratio: float = 0.35
+    washout: int = 200
+    max_start_offset: int = 200
+
 
 _RATIO_TOLERANCE = 1e-6
 

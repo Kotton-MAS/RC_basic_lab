@@ -65,8 +65,8 @@ from rc_basics_lab.experiment.report import (
     DataclassSummaryMixin,
     write_comparison_csv,
     write_meta_for,
-    write_rows_csv,
 )
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.experiment.symmetry import (
     SYMMETRY_CSV_COLUMNS,

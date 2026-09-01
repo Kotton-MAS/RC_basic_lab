@@ -27,6 +27,7 @@ numpy / scipy による数値実験を行い、記事に載せる図と CSV を�
 │   └── metrics*.py         # 評価指標
 ├── results/                # **成果物**。指紋を tests/artifact_manifest.csv にコミット済み
 ├── tests/                  # pytest
+├── docs/guide/             # **汎用基盤の手引き** (連載を知らない。D-126)
 ├── docs/                   # 要件 / 仕様 (plans/) / ADR (adr/) / サーベイ / 振り返り
 └── .claude/
     ├── decisions.yaml      # D-120 までの保管庫。**追記しない** (D-121)
@@ -53,6 +54,20 @@ make figures-0N             # 実験 N の成果物を results/ に再生成す�
 make data-05                # 外部データセットを data/ に取得する (SHA256 照合つき)
 make artifacts-manifest     # 成果物の指紋を書き直す (**意図して変えたときだけ**)
 ```
+
+## 汎用基盤と連載の境界 (D-126)
+
+**汎用側は連載側を1行も import しない。** 汎用側だけを別リポジトリへ持ち出せる
+形にしてあり、`tests/test_core_series_boundary.py` が機械的に守る
+(分類漏れも赤になる)。
+
+| | |
+|---|---|
+| 汎用 | `tasks/` `reservoir/` `readout/` `diagnostics/` `datasets/` `metrics*.py` `seeds.py` `split.py` `types.py` `cli.py` `overrides.py` `experiment/{rows_csv,diagnostics_rows,capacity_bounds}.py` |
+| 連載 | `experiment/` の各実験パイプライン `plotting/` `config/` `meta.py` `experiments/` `results/` |
+
+**課題の生成パラメータは生成関数と同じモジュールに置く** (`config/` からは
+再エクスポートする)。`config/` に置くと汎用側が連載側を import することになる。
 
 ## アーキテクチャ原則
 

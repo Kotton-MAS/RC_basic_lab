@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from rc_basics_lab.config import DelayParityConfig, MackeyGlassConfig
 from rc_basics_lab.tasks.base import TaskData
-from rc_basics_lab.tasks.delay_parity import generate_delay_parity
-from rc_basics_lab.tasks.mackey_glass import generate_mackey_glass
+from rc_basics_lab.tasks.delay_parity import DelayParityConfig, generate_delay_parity
+from rc_basics_lab.tasks.mackey_glass import MackeyGlassConfig, generate_mackey_glass
 from rc_basics_lab.tasks.protocol import TaskConfig
 
 

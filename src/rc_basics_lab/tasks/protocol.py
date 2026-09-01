@@ -16,7 +16,8 @@
 
 from __future__ import annotations
 
-from rc_basics_lab.config import DelayParityConfig, MackeyGlassConfig
+from rc_basics_lab.tasks.delay_parity import DelayParityConfig
+from rc_basics_lab.tasks.mackey_glass import MackeyGlassConfig
 
 type TaskConfig = MackeyGlassConfig | DelayParityConfig
 """課題の生成設定。課題を足したら union に足す (``ReservoirConfig`` と同じ流儀)。

@@ -889,7 +889,7 @@ def test_config_package_modules_in_the_design_doc_are_current() -> None:
     ``tests/test_config_package_layout.py`` が持っており、表に数字を書くと
     二重管理になる。さらに、行数は無関係なリファクタのたびに動くので、
     **並行するブランチが必ず同じ行を書き換え合ってマージ衝突する**
-    (``docs/モジュール地図.md`` で実際に3本連続で起きた)。
+    (``docs/guide/モジュール地図.md`` で実際に3本連続で起きた)。
     """
     actual = {
         path.name: path.read_text(encoding="utf-8").splitlines()

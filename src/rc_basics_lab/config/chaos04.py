@@ -27,6 +27,7 @@ from rc_basics_lab.config.experiment01 import ExperimentConfig
 from rc_basics_lab.diagnostics.ipc import IpcConfig
 from rc_basics_lab.diagnostics.lyapunov import MaxLyapunovConfig
 from rc_basics_lab.diagnostics.memory_capacity import MemoryCapacityConfig
+from rc_basics_lab.tasks.chaotic import LorenzConfig
 
 LORENZ_LYAPUNOV_REFERENCE = 0.9056
 """Lorenz (10, 28, 8/3) の最大 Lyapunov 指数の**照合用**文献値 [1/時間]。
@@ -42,42 +43,6 @@ Lorenz 系に対して lambda_max = 0.9056。
 **判定基準なので ``config`` 層に置く** (D-15: 系そのものを表す量は ``ctx``、
 判定基準は ``cfg``)。系の定義 (sigma, rho, beta) は ``tasks/chaotic.py`` にある。
 """
-
-
-@dataclass(frozen=True, slots=True)
-class LorenzConfig:
-    """Lorenz 系の生成パラメータ (D-41)。純データ。値域検証は使う側 (D-09)。
-
-    フィールド名と単位は ``MackeyGlassConfig`` にそろえてある (``rk4_step`` /
-    ``sample_interval`` / ``integration_burn_in`` / ``length`` / ``horizon``)。
-    2つのカオス系で同じ語が別の意味を持つと、Delta t の較正結果を読み違える。
-
-    Attributes:
-        rk4_step: RK4 の積分刻み h [時間]。
-        sample_interval: 何積分ステップごとにサンプルするか。
-            サンプリング間隔は ``Delta t = rk4_step * sample_interval``。
-            **Lyapunov 時間正規化の分母** (D-43) がこの値で動く。
-            既定 5 (``Delta t = 0.01``) は T4 の較正で選んだ値で、
-            {5, 10, 25} のうち受け入れ条件1 (自走がアトラクタを再現) と
-            受け入れ条件3 (1ステップ先で ESN と遅延線の差が小さい) の
-            **両方**が成立する唯一の点である (落選値の実測は
-            ``docs/plans/rc-basics-04.md`` の T4 実装メモ)。
-        integration_burn_in: 捨てるサンプル数 (アトラクタへ乗るまでの過渡)。
-            単位は**サンプル**で、積分ステップ数ではない (MG と同じ)。
-        length: 課題の行数 T。
-        horizon: 何ステップ先を予測するか。自走 (D-44) は出力を次時刻の入力へ
-            戻すので、``horizon=1`` 以外では自走の意味が変わる。
-        standardize_steps: 標準化係数を推定する先頭サンプル数 (D-41)。
-            ここでは値域を検証しないが、**訓練区間の内側**でなければならず、
-            実験層 (``experiment/freerun.py``) が分割と突き合わせて検査する。
-    """
-
-    rk4_step: float = 0.002
-    sample_interval: int = 5
-    integration_burn_in: int = 1000
-    length: int = 8000
-    horizon: int = 1
-    standardize_steps: int = 3000
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,3 +170,8 @@ class Chaos04Config:
     )
     mc: MemoryCapacityConfig = field(default_factory=MemoryCapacityConfig)
     ipc: IpcConfig = field(default_factory=IpcConfig)
+
+
+__all__ = [
+    "LorenzConfig",
+]

@@ -1,4 +1,4 @@
-"""``docs/モジュール地図.md`` を生成する.
+"""``docs/guide/モジュール地図.md`` を生成する.
 
 **手書きしない。** 102 本のモジュールを手で並べた表は、次にモジュールを足した
 人が写経を忘れた時点で嘘になる。地図が嘘をつくと、地図が無いより悪い
@@ -30,7 +30,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "rc_basics_lab"
-OUTPUT = ROOT / "docs" / "モジュール地図.md"
+OUTPUT = ROOT / "docs" / "guide" / "モジュール地図.md"
 
 LAYERS: tuple[tuple[str, str], ...] = (
     ("core", "パッケージ直下の単体モジュール (型・指標・入口の道具)"),

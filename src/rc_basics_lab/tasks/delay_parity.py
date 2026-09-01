@@ -20,11 +20,22 @@ NRMSE → 1.0 / 符号正解率 → 0.5 に落ちる。失敗は経験則では�
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from rc_basics_lab.config import DelayParityConfig
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.types import FloatArray
+
+
+@dataclass(frozen=True, slots=True)
+class DelayParityConfig:
+    """遅延パリティ課題の生成パラメータ (D-07)。"""
+
+    n_bits: int = 2
+    delay: int = 1
+    length: int = 8000
+
 
 TASK_NAME = "delay_parity"
 

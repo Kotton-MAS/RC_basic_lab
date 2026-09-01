@@ -1,4 +1,4 @@
-"""``docs/型と名前の対応表.md`` に抽象名が全部載っていることの検査.
+"""``docs/guide/型と名前の対応表.md`` に抽象名が全部載っていることの検査.
 
 **対応表が古いと、載っていない名前だけ調べ方が分からない**という最悪の形に
 なる (表があるので読者は表を信じ、無いものは「無い」と受け取る)。
@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src" / "rc_basics_lab"
-GLOSSARY = ROOT / "docs" / "型と名前の対応表.md"
+GLOSSARY = ROOT / "docs" / "guide" / "型と名前の対応表.md"
 
 
 def _public_abstractions() -> tuple[set[str], set[str]]:
@@ -42,7 +42,7 @@ def test_every_type_alias_is_in_the_glossary() -> None:
     missing = sorted(name for name in aliases if f"`{name}`" not in text)
     assert not missing, (
         f"対応表に無い型エイリアス: {missing}\n"
-        "docs/型と名前の対応表.md に1行足してください。"
+        "docs/guide/型と名前の対応表.md に1行足してください。"
     )
 
 
@@ -57,7 +57,7 @@ def test_every_public_protocol_is_in_the_glossary() -> None:
     missing = sorted(name for name in protocols if f"`{name}`" not in text)
     assert not missing, (
         f"対応表に無い Protocol: {missing}\n"
-        "docs/型と名前の対応表.md に1行足してください。"
+        "docs/guide/型と名前の対応表.md に1行足してください。"
     )
 
 

@@ -22,7 +22,6 @@ from dataclasses import dataclass, fields
 import numpy as np
 
 from rc_basics_lab.config import CrossValidationConfig, ExperimentConfig
-from rc_basics_lab.experiment.split import Split, compute_t0, make_split
 from rc_basics_lab.metrics import nmse, nrmse, rmse, sign_accuracy
 from rc_basics_lab.readout.cross_validation import (
     FoldScheme,
@@ -46,6 +45,7 @@ from rc_basics_lab.readout.ridge import (
 from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
+from rc_basics_lab.split import Split, compute_t0, make_split
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.protocol import TaskConfig
 from rc_basics_lab.tasks.registry import build_task

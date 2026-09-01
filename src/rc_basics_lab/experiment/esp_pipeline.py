@@ -41,7 +41,8 @@ from rc_basics_lab.experiment.esp import (
     run_esp_experiment,
     summarize_verdict_agreement,
 )
-from rc_basics_lab.experiment.report import META_JSON, write_meta_for, write_rows_csv
+from rc_basics_lab.experiment.report import META_JSON, write_meta_for
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 from rc_basics_lab.experiment.threshold import (
     ThresholdRow,
     run_threshold_sweep,

@@ -14,7 +14,7 @@
 ESN 固有の検査が要るときは ``ESN`` を直接名指しする。**それが正しい**ので、
 ``tests/test_reservoir.py`` はこの Protocol を経由しない。
 
-新しいモデルを足す手順は ``docs/リザバーを足す.md`` にある。
+新しいモデルを足す手順は ``docs/guide/リザバーを足す.md`` にある。
 """
 
 from __future__ import annotations

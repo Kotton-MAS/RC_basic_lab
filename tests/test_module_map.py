@@ -1,4 +1,4 @@
-"""``docs/モジュール地図.md`` が現在のコードと一致することの検査.
+"""``docs/guide/モジュール地図.md`` が現在のコードと一致することの検査.
 
 **地図が嘘をつくと、地図が無いより悪い** —— 読者は嘘を確かめる手間を余分に
 払う。手書きの表は、次にモジュールを足した人が写経を忘れた時点で嘘になる。
@@ -17,7 +17,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "module_map.py"
-OUTPUT = ROOT / "docs" / "モジュール地図.md"
+OUTPUT = ROOT / "docs" / "guide" / "モジュール地図.md"
 
 
 def _module_map() -> object:

@@ -28,8 +28,8 @@ from rc_basics_lab.experiment.report import (
     write_comparison_csv,
     write_comparison_summary_csv,
     write_meta,
-    write_rows_csv,
 )
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
     ResultRow,

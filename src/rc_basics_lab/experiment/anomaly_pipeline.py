@@ -76,8 +76,8 @@ from rc_basics_lab.experiment.report import (
     META_JSON,
     DataclassSummaryMixin,
     write_meta_for,
-    write_rows_csv,
 )
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 from rc_basics_lab.tasks.anomaly import SeriesSource
 from rc_basics_lab.types import BoolArray, FloatArray
 

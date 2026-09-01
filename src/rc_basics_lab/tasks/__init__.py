@@ -20,6 +20,7 @@ from rc_basics_lab.tasks import (
     narma,
     protocol,
     registry,
+    synthetic,
 )
 
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     "narma",
     "protocol",
     "registry",
+    "synthetic",
 ]

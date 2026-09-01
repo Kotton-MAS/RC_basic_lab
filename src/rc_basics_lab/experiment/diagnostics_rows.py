@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.diagnostics.base import DiagnosticResult
-from rc_basics_lab.experiment.report import write_rows_csv
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 
 DIAGNOSTICS_CSV = "diagnostics.csv"
 """長形式の診断スカラを書くファイル名 (全実験で共通)。"""
