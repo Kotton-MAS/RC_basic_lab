@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from rc_basics_lab.config import (
     Chaos04Config,
-    ESNConfig,
     ExperimentConfig,
     MackeyGlassTask,
     require_task,
@@ -21,7 +20,7 @@ from rc_basics_lab.config import (
 from rc_basics_lab.experiment.capacity_bounds import validate_state_matrix_bounds
 from rc_basics_lab.experiment.runner import TaskEntry
 from rc_basics_lab.experiment.split import Split
-from rc_basics_lab.reservoir.registry import require_esn
+from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.tasks.chaotic import (
     TASK_NAME_LORENZ,
     generate_lorenz,
@@ -31,21 +30,21 @@ from rc_basics_lab.tasks.chaotic import (
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
 
 
-def chaos_esn_config(base: ExperimentConfig) -> ESNConfig:
+def chaos_reservoir_config(base: ExperimentConfig) -> ReservoirConfig:
     """04 が使う ESN 設定を返す (``CHAOS_ESN_SECTION`` の1本)。
 
     「どのセクションを読むか」をここ1か所に閉じる。呼び出し側が属性を直接
     書くと、宣言したセクションと実際に読むセクションが食い違っても何も落ちない。
     """
     task = require_task(base, MackeyGlassTask, "実験04 (カオス時系列の自由走行)")
-    return require_esn(task.reservoir, "実験04 (カオス時系列の自由走行)")
+    return task.reservoir
 
 
 def lorenz_task_entry(config: Chaos04Config) -> TaskEntry:
     """Lorenz の ``TaskEntry`` を組む (**``build_tasks`` には足さない**、D-31)。"""
     return TaskEntry(
         name=TASK_NAME_LORENZ,
-        reservoir=chaos_esn_config(config.base),
+        reservoir=chaos_reservoir_config(config.base),
         generate=lambda rng: generate_lorenz(config.lorenz, rng),
     )
 
@@ -58,7 +57,7 @@ def mackey_glass_task_entry(config: Chaos04Config) -> TaskEntry:
     """
     return TaskEntry(
         name=TASK_NAME_MACKEY_GLASS,
-        reservoir=chaos_esn_config(config.base),
+        reservoir=chaos_reservoir_config(config.base),
         generate=lambda rng: generate_standardized_mackey_glass(
             require_task(config.base, MackeyGlassTask, "実験04 の MG 課題").params,
             rng,
@@ -165,7 +164,7 @@ def standardize_steps_for(config: Chaos04Config, task_name: str) -> int:
 
 
 __all__ = [
-    "chaos_esn_config",
+    "chaos_reservoir_config",
     "chaos_task_entries",
     "lorenz_task_entry",
     "mackey_glass_task_entry",

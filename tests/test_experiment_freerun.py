@@ -67,7 +67,7 @@ from rc_basics_lab.experiment.freerun import (
     sign_test_p_value,
 )
 from rc_basics_lab.experiment.freerun_tasks import (
-    chaos_esn_config,
+    chaos_reservoir_config,
     chaos_task_entries,
     lorenz_task_entry,
     validate_free_run_bounds,
@@ -173,9 +173,9 @@ def test_chaos_esn_section_matches_the_declared_choice() -> None:
     config = small_config()
     assert CHAOS_ESN_SECTION == "mackey_glass"
     declared = require_task(config.base, MackeyGlassTask, "テスト").reservoir
-    assert chaos_esn_config(config.base) is declared
+    assert chaos_reservoir_config(config.base) is declared
     for entry in chaos_task_entries(config):
-        assert entry.reservoir is chaos_esn_config(config.base)
+        assert entry.reservoir is chaos_reservoir_config(config.base)
 
 
 def test_free_run_spec_matches_the_one_step_esn_candidate() -> None:
@@ -224,8 +224,8 @@ def test_free_run_uses_the_teacher_forced_coefficients() -> None:
 
     from rc_basics_lab.readout.autoregressive import free_run
 
-    reservoir = ESN(
-        chaos_esn_config(config.base),
+    reservoir = build_reservoir(
+        chaos_reservoir_config(config.base),
         make_rng(config.base.seeds, SeedStream.RESERVOIR, 0),
         n_inputs=readout.plan.task.n_inputs,
     )

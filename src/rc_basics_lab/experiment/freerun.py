@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rc_basics_lab.config import Chaos04Config, ESNConfig
+from rc_basics_lab.config import Chaos04Config
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.diagnostics.lyapunov import max_lyapunov
 from rc_basics_lab.experiment.attractor import (
@@ -61,7 +61,7 @@ from rc_basics_lab.experiment.freerun_rows import (
     summarize_valid_time,
 )
 from rc_basics_lab.experiment.freerun_tasks import (
-    chaos_esn_config,
+    chaos_reservoir_config,
     chaos_task_entries,
     lorenz_task_entry,
     mackey_glass_task_entry,
@@ -107,7 +107,7 @@ from rc_basics_lab.readout.design import (
     ReservoirSpec,
 )
 from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
-from rc_basics_lab.reservoir.protocol import Reservoir
+from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
 from rc_basics_lab.tasks.chaotic import (
@@ -135,7 +135,7 @@ CHAOS_ESN_SECTION = "mackey_glass"
 (``delay_parity`` のリザバーは ±1 の2値入力・``leak_rate=1.0`` を前提とした設定)。
 
 D-08 により ESN の構造ハイパーパラメータは検証分割で選ばれないので、
-**宣言した1点をそのまま報告する**。実際に読む属性は ``chaos_esn_config``、
+**宣言した1点をそのまま報告する**。実際に読む属性は ``chaos_reservoir_config``、
 両者の一致は ``test_chaos_esn_section_matches_the_declared_choice`` が固定する。
 """
 
@@ -706,7 +706,7 @@ def evaluate_free_run(
     else:
         surrogate_distance = AttractorDistance(math.nan, math.nan, 0, 0)
 
-    esn = _esn_of(config, outcome)
+    esn = _reservoir_of(config, outcome)
     row = FreeRunRow(
         experiment=EXPERIMENT_FREERUN,
         task=outcome.task,
@@ -764,15 +764,15 @@ def evaluate_free_run(
     )
 
 
-def _esn_of(config: Chaos04Config, outcome: FreeRunOutcome) -> ESNConfig:
-    """行に載せる ESN の条件 (対照の行にも同じ条件を書く)。
+def _reservoir_of(config: Chaos04Config, outcome: FreeRunOutcome) -> ReservoirConfig:
+    """行に載せるリザバーの条件 (対照の行にも同じ条件を書く)。
 
     対照 (線形・遅延線) はリザバーを使わないが、**同じ条件で回した対照である**
     ことを行から読めるようにするため同じ値を書く (3-C が ``capacity.csv`` の
     条件列を埋めるのと同じ流儀)。
     """
     del outcome
-    return chaos_esn_config(config.base)
+    return chaos_reservoir_config(config.base)
 
 
 def _phase_points(series: FloatArray, lag: int) -> FloatArray:
@@ -1121,7 +1121,7 @@ __all__ = [
     "FreeRunRow",
     "TeacherForcedReadout",
     "ValidTimeSensitivity",
-    "chaos_esn_config",
+    "chaos_reservoir_config",
     "chaos_task_entries",
     "closed_loop_setup",
     "delay_line_state_updater",

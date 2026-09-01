@@ -58,7 +58,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NMSE,
     NARMA10_REFERENCE_NOTE,
     Narma10Results,
-    narma_esn_config,
+    narma_reservoir_config,
     narma_task_entry,
     run_narma10,
     summarize_narma10,
@@ -352,7 +352,7 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
     base = config.narma.base
     entry = narma_task_entry(config)
 
-    assert entry.reservoir is narma_esn_config(base)
+    assert entry.reservoir is narma_reservoir_config(base)
     assert NARMA10_ESN_SECTION == "mackey_glass"
     assert entry.reservoir is require_task(base, MackeyGlassTask, "テスト").reservoir
     assert entry.reservoir.n_units == 50

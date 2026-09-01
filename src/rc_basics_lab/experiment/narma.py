@@ -26,7 +26,6 @@ from dataclasses import dataclass
 
 from rc_basics_lab.config import (
     Capacity03Config,
-    ESNConfig,
     ExperimentConfig,
     MackeyGlassTask,
     require_task,
@@ -56,8 +55,9 @@ from rc_basics_lab.experiment.runner import (
     plan_replicate,
     run_task,
 )
-from rc_basics_lab.reservoir.registry import require_esn
-from rc_basics_lab.reservoir.topology import nominal_density
+from rc_basics_lab.reservoir.axes import axis_value
+from rc_basics_lab.reservoir.protocol import ReservoirConfig
+from rc_basics_lab.reservoir.registry import reservoir_density
 from rc_basics_lab.tasks.narma import (
     NARMA10_INPUT_STD,
     TASK_NAME,
@@ -79,7 +79,7 @@ NARMA10_ESN_SECTION = "mackey_glass"
 
 D-08 により ESN の構造ハイパーパラメータは検証分割で選ばれないので、
 **宣言した1点をそのまま報告する**。この定数は宣言であって切り替えスイッチ
-ではない (実際に読む属性は ``narma_esn_config``、両者の一致は
+ではない (実際に読む属性は ``narma_reservoir_config``、両者の一致は
 ``test_narma10_esn_size_matches_the_declared_choice`` が固定する)。
 """
 
@@ -114,7 +114,7 @@ NARMA10_REFERENCE_NOTE_EN = (
 """同じ但し書きの英語版 (CJK フォントが無い環境の図に出る、D-10)。"""
 
 
-def narma_esn_config(base: ExperimentConfig) -> ESNConfig:
+def narma_reservoir_config(base: ExperimentConfig) -> ReservoirConfig:
     """3-C が使う ESN 設定を返す (``NARMA10_ESN_SECTION`` の1本)。
 
     「どのセクションを読むか」をここ1か所に閉じる。呼び出し側が属性を直接
@@ -122,7 +122,7 @@ def narma_esn_config(base: ExperimentConfig) -> ESNConfig:
     食い違っても何も落ちない。
     """
     task = require_task(base, MackeyGlassTask, "実験3-C (NARMA10)")
-    return require_esn(task.reservoir, "実験3-C (NARMA10)")
+    return task.reservoir
 
 
 def narma_task_entry(config: Capacity03Config) -> TaskEntry:
@@ -134,7 +134,7 @@ def narma_task_entry(config: Capacity03Config) -> TaskEntry:
     narma = config.narma
     return TaskEntry(
         name=TASK_NAME,
-        reservoir=narma_esn_config(narma.base),
+        reservoir=narma_reservoir_config(narma.base),
         generate=lambda rng: generate_narma10(narma, rng),
     )
 
@@ -325,7 +325,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
         run_task(base, entry, plan0=plan0, extra_methods=narma10_extra_methods(base))
     )
 
-    esn = require_esn(entry.reservoir, "実験3-C (NARMA10)")
+    reservoir = entry.reservoir
     row = capacity_row_from(
         measurement,
         experiment=EXPERIMENT_NARMA10,
@@ -335,15 +335,15 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
         # 基底シードは task ストリーム (D-06) である。
         seed_drive=base.seeds.task,
         seed_surrogate=config.seeds.surrogate,
-        rho=esn.spectral_radius,
-        leak_rate=esn.leak_rate,
-        input_scale=esn.input_scale,
+        rho=axis_value(reservoir, "spectral_radius"),
+        leak_rate=axis_value(reservoir, "leak_rate"),
+        input_scale=axis_value(reservoir, "input_scale"),
         # 3-C に「駆動強度の設定値」は無いので、宣言した入力分布
         # U[0, 0.5] の標準偏差の閉形式を書く (実測値は input_drive_std)。
         sigma_u=NARMA10_INPUT_STD,
-        n_units=esn.n_units,
-        density=nominal_density(esn.topology, esn.n_units),
-        state_noise=esn.state_noise,
+        n_units=int(axis_value(reservoir, "n_units")),
+        density=reservoir_density(reservoir),
+        state_noise=axis_value(reservoir, "state_noise"),
         n_steps=int(plan0.states.shape[0]),
         washout=config.drive.washout,
         wall_time_state_s=wall_time_state_s,
@@ -357,7 +357,7 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
         "mc_total=%.3f ipc_total=%.3f wall_time=%.2fs",
         EXPERIMENT_NARMA10,
         len(rows),
-        esn.n_units,
+        row.n_units,
         row.n_steps,
         verdict.best_method,
         {key: round(value, 5) for key, value in verdict.nmse_mean.items()},
@@ -383,7 +383,7 @@ __all__ = [
     "NARMA10_REFERENCE_NOTE_EN",
     "Narma10Results",
     "Narma10Verdict",
-    "narma_esn_config",
+    "narma_reservoir_config",
     "narma_task_entry",
     "run_narma10",
     "summarize_narma10",

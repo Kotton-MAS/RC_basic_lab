@@ -33,7 +33,7 @@ from pathlib import Path
 
 import numpy as np
 
-from rc_basics_lab.config import Chaos04Config, ESNConfig
+from rc_basics_lab.config import Chaos04Config
 from rc_basics_lab.diagnostics.base import DiagnosticContext, DiagnosticResult
 from rc_basics_lab.experiment.attractor import (
     REGIMES,
@@ -57,19 +57,22 @@ from rc_basics_lab.experiment.capacity_rows import (
 from rc_basics_lab.experiment.diagnostics_rows import DiagnosticScalarRow, rows_of
 from rc_basics_lab.experiment.freerun import run_free_run
 from rc_basics_lab.experiment.freerun_tasks import (
-    chaos_esn_config,
     lorenz_task_entry,
     task_length,
 )
 from rc_basics_lab.experiment.report import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
+from rc_basics_lab.experiment.stability_axes import (
+    condition_reservoir_config,
+)
 from rc_basics_lab.experiment.stability_rows import (
     STABILITY_CSV_COLUMNS,
+    StabilityCondition,
     StabilityRow,
     stability_diagnostic_rows,
 )
-from rc_basics_lab.reservoir.registry import require_esn
-from rc_basics_lab.reservoir.topology import nominal_density
+from rc_basics_lab.reservoir.axes import axis_value
+from rc_basics_lab.reservoir.registry import reservoir_density
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.tasks.chaotic import sampling_interval
 from rc_basics_lab.types import FloatArray
@@ -157,23 +160,6 @@ def validate_condition_count(n_conditions: int) -> None:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class StabilityCondition:
-    """4-C の1条件 (ハイパーパラメータ平面の1点 x レプリケート)。
-
-    Attributes:
-        rho: スペクトル半径。
-        leak_rate: リーク率。
-        state_noise: 学習時・自走時の状態ノイズ (D-36)。
-        replicate: レプリケート番号。
-    """
-
-    rho: float
-    leak_rate: float
-    state_noise: float
-    replicate: int
-
-
 def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...]:
     """掃引の全条件を作る (**作る前に確保軸5・積の軸を検査する**)。
 
@@ -212,25 +198,6 @@ def stability_conditions(config: Chaos04Config) -> tuple[StabilityCondition, ...
         for leak in stability.leak_rate_grid
         for noise in stability.state_noise_grid
         for replicate in range(stability.n_replicates)
-    )
-
-
-def condition_esn_config(
-    config: Chaos04Config, condition: StabilityCondition
-) -> ESNConfig:
-    """条件の3軸だけを差し替えた ESN 設定を返す (他の構造 HP は動かさない)。
-
-    D-08 により構造ハイパーパラメータは検証分割で選ばない。掃引で動くのは
-    ``spectral_radius`` / ``leak_rate`` / ``state_noise`` の3つだけで、
-    ``n_units`` / ``input_scale`` / ``density`` / ``activation`` は 4-A・4-B と
-    同じ1点のままである (動かすと「ノイズで領域が変わった」のか
-    「別のリザバーだった」のかが分からなくなる)。
-    """
-    return dataclasses.replace(
-        chaos_esn_config(config.base),
-        spectral_radius=condition.rho,
-        leak_rate=condition.leak_rate,
-        state_noise=condition.state_noise,
     )
 
 
@@ -274,7 +241,7 @@ def condition_task_entry(
             trajectory_cache[replicate] = base_entry.generate(rng)
         return trajectory_cache[replicate]
 
-    reservoir = condition_esn_config(config, condition)
+    reservoir = condition_reservoir_config(config, condition)
     return dataclasses.replace(base_entry, reservoir=reservoir, generate=generate)
 
 
@@ -372,14 +339,14 @@ def evaluate_stability_condition(
     )
     wall_time_state_s = time.perf_counter() - started
 
-    esn = require_esn(entry.reservoir, "実験4-D (自走と同じ状態行列への容量)")
+    reservoir = entry.reservoir
     row = StabilityRow(
         experiment=EXPERIMENT_STABILITY,
         rho=condition.rho,
         leak_rate=condition.leak_rate,
         state_noise=condition.state_noise,
         replicate=condition.replicate,
-        n_units=esn.n_units,
+        n_units=int(axis_value(reservoir, "n_units")),
         alpha=outcome.readout.alpha,
         val_nrmse=outcome.readout.val_nrmse,
         regime=verdict.regime,
@@ -409,13 +376,13 @@ def evaluate_stability_condition(
         seed_reservoir=config.base.seeds.reservoir,
         seed_drive=config.base.seeds.task,
         seed_surrogate=config.stability.surrogate_seed,
-        rho=esn.spectral_radius,
-        leak_rate=esn.leak_rate,
-        input_scale=esn.input_scale,
+        rho=axis_value(reservoir, "spectral_radius"),
+        leak_rate=axis_value(reservoir, "leak_rate"),
+        input_scale=axis_value(reservoir, "input_scale"),
         sigma_u=CAPACITY_SIGMA_U,
-        n_units=esn.n_units,
-        density=nominal_density(esn.topology, esn.n_units),
-        state_noise=esn.state_noise,
+        n_units=int(axis_value(reservoir, "n_units")),
+        density=reservoir_density(reservoir),
+        state_noise=axis_value(reservoir, "state_noise"),
         n_steps=int(plan.states.shape[0]),
         washout=config.base.split.washout,
         wall_time_state_s=wall_time_state_s,
@@ -578,7 +545,7 @@ __all__ = [
     "StabilityResults",
     "StabilityRow",
     "capacity_context",
-    "condition_esn_config",
+    "condition_reservoir_config",
     "condition_task_entry",
     "evaluate_stability_condition",
     "regime_counts",
