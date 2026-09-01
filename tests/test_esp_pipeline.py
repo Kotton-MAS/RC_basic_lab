@@ -1,6 +1,6 @@
 """02 の「1コマンドで成果物が出る」経路のテスト (受け入れ条件7).
 
-``main.py --experiment 02`` と ``experiments/02_esp_and_dynamics/run_02.py``
+``main.py --experiment 02`` と ``main.py (--experiment 02)``
 はどちらも ``esp_pipeline.run_and_report_esp`` を呼ぶ薄い層である。ここでは
 縮小設定を一時ディレクトリに書いて**実際に1コマンド相当を走らせ**、
 CSV2枚 (``esp_diagnostics.csv`` / ``washout_sensitivity.csv``) と図4枚と
@@ -12,12 +12,9 @@ from __future__ import annotations
 
 import csv
 import dataclasses
-import importlib.util
 import json
 import math
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 from conftest import png_dpi
@@ -114,17 +111,10 @@ timescale:
 
 
 @pytest.fixture
-def tiny_experiment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path]:
+def tiny_experiment(tmp_path: Path) -> tuple[Path, Path]:
     """縮小設定を ``--experiment 02`` に差し替える (本番は 77 秒かかるため)。"""
     config_path = tmp_path / "config.yaml"
     config_path.write_text(TINY_CONFIG, encoding="utf-8")
-    monkeypatch.setitem(
-        main.EXPERIMENTS,
-        "02",
-        dataclasses.replace(main.EXPERIMENTS["02"], config_path=config_path),
-    )
     return config_path, tmp_path / "out"
 
 
@@ -132,8 +122,13 @@ def test_artifacts_are_regenerated_in_one_command(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
     """1コマンドで宣言済みの成果物がすべて出る (受け入れ条件7)。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "02", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     for name in ESP_ARTIFACTS:
         assert (out_dir / name).is_file(), f"{name} が生成されていません"
     figures = [name for name in ESP_ARTIFACTS if name.endswith(".png")]
@@ -154,8 +149,13 @@ def test_all_four_figures_and_three_csv_in_one_command(
     ``ESP_ARTIFACTS`` から消し忘れた / その逆) に、宣言だけを見るテストは
     黙って通るため。
     """
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "02", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     produced = sorted(path.name for path in out_dir.iterdir() if path.is_file())
     figures = [name for name in produced if name.endswith(".png")]
     csvs = [name for name in produced if name.endswith(".csv")]
@@ -173,8 +173,13 @@ def test_washout_csv_has_the_declared_columns(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
     """``washout_sensitivity.csv`` の列順が ``WashoutRow`` の宣言順と一致する。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "02", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     with (out_dir / WASHOUT_SENSITIVITY_CSV).open(
         encoding="utf-8", newline=""
     ) as handle:
@@ -187,8 +192,13 @@ def test_washout_csv_has_the_declared_columns(
 
 def test_csv_has_the_declared_columns(tiny_experiment: tuple[Path, Path]) -> None:
     """``esp_diagnostics.csv`` の列順が ``EspRow`` の宣言順と一致する。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "02", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     with (out_dir / ESP_DIAGNOSTICS_CSV).open(encoding="utf-8", newline="") as handle:
         reader = csv.reader(handle)
         header = next(reader)
@@ -205,8 +215,13 @@ def test_meta_json_records_defaults_and_verdict_agreement(
     後者は「λ<0 なのに非収束」がどこで起きたかの一次資料 (多安定性の観測)。
     件数だけでなく sigma_u / rho の分布まで載っていることを固定する。
     """
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "02", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "02", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
 
     assert meta["n_rows"] == EXPECTED_ROWS
@@ -223,20 +238,6 @@ def test_meta_json_records_defaults_and_verdict_agreement(
     assert agreement["n_near_boundary"] + agreement["n_compared"] == EXPECTED_ROWS
     for key in ("disagreement_by_sigma", "disagreement_by_rho"):
         assert isinstance(agreement[key], list)
-
-
-def test_run_02_and_main_py_agree(tiny_experiment: tuple[Path, Path]) -> None:
-    """``run_02.py --config`` と ``main.py --experiment 02`` が同じ CSV を出す。"""
-    config_path, out_dir = tiny_experiment
-    run_module = _load_run_module()
-    assert (
-        run_module.main(["--config", str(config_path), "--out", str(out_dir / "run")])
-        == 0
-    )
-    assert main.main(["--experiment", "02", "--out", str(out_dir / "cli")]) == 0
-    left = (out_dir / "run" / ESP_DIAGNOSTICS_CSV).read_text(encoding="utf-8")
-    right = (out_dir / "cli" / ESP_DIAGNOSTICS_CSV).read_text(encoding="utf-8")
-    assert _without_wall_time(left) == _without_wall_time(right)
 
 
 def test_esp_map_figure_works_without_a_no_input_column(tmp_path: Path) -> None:
@@ -271,21 +272,3 @@ def _without_wall_time(csv_text: str) -> list[list[str]]:
     rows = [line.split(",") for line in csv_text.strip().splitlines()]
     index = rows[0].index("wall_time_s")
     return [row[:index] + row[index + 1 :] for row in rows]
-
-
-def _load_run_module() -> ModuleType:
-    """``experiments/02_esp_and_dynamics/run_02.py`` を読み込む (パッケージ外)。"""
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "experiments"
-        / "02_esp_and_dynamics"
-        / "run_02.py"
-    )
-    spec = importlib.util.spec_from_file_location("experiment_02_run", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"読み込めません: {path}")
-    module = importlib.util.module_from_spec(spec)
-    # dataclass の型解決は sys.modules を引くため、exec 前に登録しておく
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module

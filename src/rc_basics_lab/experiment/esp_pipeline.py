@@ -85,7 +85,7 @@ ESP_ARTIFACTS: tuple[str, ...] = (
 
 ``esp_threshold_sensitivity.csv`` (D-16 の閾値感度) は**この並びに入れない**。
 記事に載る成果物ではなく「既定値が結論を作っていないことの根拠」であり、
-2-C の格子をもう一度回すぶん実行時間が倍近くになる。``--threshold-sweep``
+2-C の格子をもう一度回すぶん実行時間が倍近くになる。``--variant threshold``
 (= ``make threshold-02``) で明示的に再生成する。
 """
 

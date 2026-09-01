@@ -17,15 +17,12 @@ from __future__ import annotations
 
 import csv
 import dataclasses
-import importlib.util
 import json
 import math
 import statistics
-import sys
 import time
 from collections import defaultdict
 from pathlib import Path
-from types import ModuleType
 from typing import cast
 
 import pytest
@@ -274,17 +271,10 @@ def tiny_config() -> Capacity03Config:
 
 
 @pytest.fixture
-def tiny_experiment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path]:
+def tiny_experiment(tmp_path: Path) -> tuple[Path, Path]:
     """縮小設定を ``--experiment 03`` に差し替える (本番は 330 秒かかるため)。"""
     config_path = tmp_path / "config.yaml"
     config_path.write_text(TINY_CONFIG, encoding="utf-8")
-    monkeypatch.setitem(
-        main.EXPERIMENTS,
-        "03",
-        dataclasses.replace(main.EXPERIMENTS["03"], config_path=config_path),
-    )
     return config_path, tmp_path / "out"
 
 
@@ -312,17 +302,6 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def _load_run_03() -> ModuleType:
-    """``experiments/03_capacity/run_03.py`` をモジュールとして読み込む。"""
-    path = ROOT / "experiments" / "03_capacity" / "run_03.py"
-    spec = importlib.util.spec_from_file_location("run_03_module", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
 # --- 1コマンドで成果物が出る (受け入れ条件7) ---------------------------------
 
 
@@ -336,9 +315,14 @@ def test_artifacts_are_regenerated_in_one_command_within_the_budget(
     (またはその逆) を黙って通す (02 の
     ``test_all_four_figures_and_two_csv_in_one_command`` と同じ理由)。
     """
-    _, out_dir = tiny_experiment
+    config_path, out_dir = tiny_experiment
     started = time.perf_counter()
-    assert main.main(["--experiment", "03", "--out", str(out_dir)]) == 0
+    assert (
+        main.main(
+            ["--experiment", "03", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     elapsed = time.perf_counter() - started
     assert elapsed < CLI_BUDGET_S, f"縮小設定の CLI が {elapsed:.1f}s かかりました"
     for name in CAPACITY_ARTIFACTS:
@@ -351,33 +335,27 @@ def test_artifacts_are_regenerated_in_one_command_within_the_budget(
     assert CAPACITY_LENGTH_CSV not in produced
 
 
-def test_run_03_and_main_py_agree(tiny_experiment: tuple[Path, Path]) -> None:
-    """``run_03.py`` と ``main.py --experiment 03`` が同じ成果物を出す。"""
-    config_path, out_dir = tiny_experiment
-    module = _load_run_03()
-    assert module.main(["--config", str(config_path), "--out", str(out_dir)]) == 0
-    from_script = (out_dir / CAPACITY_CSV).read_text(encoding="utf-8")
-
-    other = out_dir.parent / "via_main"
-    assert main.main(["--experiment", "03", "--out", str(other)]) == 0
-    assert _without_wall_time(
-        (other / CAPACITY_CSV).read_text(encoding="utf-8")
-    ) == _without_wall_time(from_script)
-
-
 def test_length_sweep_is_not_part_of_the_production_artifacts(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
-    """``--length-sweep`` は ``capacity_length.csv`` だけを書く。
+    """``--variant length`` は ``capacity_length.csv`` だけを書く。
 
     ``threshold-02`` (02 の閾値感度) と同型の分離である。本番
     (``make figures-03``) に含めると T=1e6 の掃引が 900 秒予算に紛れ込む。
     """
     config_path, out_dir = tiny_experiment
-    module = _load_run_03()
     assert (
-        module.main(
-            ["--config", str(config_path), "--out", str(out_dir), "--length-sweep"]
+        main.main(
+            [
+                "--experiment",
+                "03",
+                "--variant",
+                "length",
+                "--config",
+                str(config_path),
+                "--out",
+                str(out_dir),
+            ]
         )
         == 0
     )
@@ -398,8 +376,13 @@ def test_meta_json_records_the_wall_time_breakdown(
     (「予算超過が起きるとすれば診断計算ではなくリザバー状態生成側」) を
     成果物の側で検証可能にするのがこの内訳である。
     """
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "03", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "03", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
     breakdown = meta["wall_time_breakdown"]
     assert [item["experiment"] for item in breakdown] == list(FIGURE_EXPERIMENTS)

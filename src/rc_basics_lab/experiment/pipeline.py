@@ -2,7 +2,7 @@
 
 ``comparison.csv`` / ``comparison_summary.csv`` / ``fig_comparison.png`` /
 ``fig_state_space.png`` / ``meta.json`` の5点をここで一括生成する。CLI
-(``main.py`` と ``experiments/01_what_is_rc/run.py``) はこの関数を呼ぶだけの
+(``main.py`` と ``main.py --experiment 01``) はこの関数を呼ぶだけの
 薄い層にして、「どのコマンドから走らせても同じ成果物が出る」を構造で保証する。
 
 レプリケート0の ``ReplicatePlan`` はここで1回だけ作り、``run_experiment`` と

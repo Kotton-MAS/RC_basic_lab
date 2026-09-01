@@ -2,7 +2,7 @@
 
 ``onestep.csv`` / ``freerun.csv`` / ``freerun_profile.csv`` / ``stability.csv`` /
 ``capacity.csv`` / 図5枚 / ``meta.json`` をここで一括生成する。CLI
-(``main.py --experiment 04`` と ``experiments/04_chaotic_freerun/run_04.py``) は
+(``main.py --experiment 04`` と ``main.py --experiment 04``) は
 この関数を呼ぶだけの薄い層にして、「どのコマンドから走らせても同じ成果物が出る」
 を構造で保証する (01 の ``pipeline.py`` / 02 の ``esp_pipeline.py`` / 03 の
 ``capacity_pipeline.py`` と同じ規律)。

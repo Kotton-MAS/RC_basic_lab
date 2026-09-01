@@ -66,7 +66,7 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     """共通フラグを備えたパーサを返す。
 
-    実験固有のフラグ (``--threshold-sweep`` など) は呼び出し側が
+    実験固有のフラグ (``--variant threshold`` など) は呼び出し側が
     ``parser.add_argument`` で足す。
 
     Args:

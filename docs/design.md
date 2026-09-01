@@ -179,7 +179,7 @@ alpha は検証 NRMSE が最小のものを選び、同点なら**大きい方**
 
 ## 7. 実測結果
 
-再現コマンド: `make figures-01`（= `uv run python experiments/01_what_is_rc/run.py
+再現コマンド: `make figures-01`（= `uv run python main.py --experiment 01
 --config experiments/01_what_is_rc/config.yaml --out results`）。
 以下の数値は `results/comparison.csv`（30行）と `results/meta.json` の実測値であり、
 `results/` の中身はコミット済みなので手元の再実行と突き合わせられる。

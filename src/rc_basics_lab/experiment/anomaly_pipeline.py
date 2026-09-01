@@ -3,7 +3,7 @@
 ``anomaly.csv`` / ``anomaly_threshold.csv`` / ``anomaly_timeline.csv`` /
 ``anomaly_protocol.csv`` / ``anomaly_size.csv`` / 図5枚 / ``meta.json`` を
 ここで一括生成する。CLI (``main.py --experiment 05`` と
-``experiments/05_anomaly_detection/run_05.py``) はこの関数を呼ぶだけの薄い層に
+``main.py --experiment 05``) はこの関数を呼ぶだけの薄い層に
 して、「どのコマンドから走らせても同じ成果物が出る」を構造で保証する
 (01 の ``pipeline.py`` / 02 の ``esp_pipeline.py`` / 03 の
 ``capacity_pipeline.py`` / 04 の ``freerun_pipeline.py`` と同じ規律)。

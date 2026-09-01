@@ -268,7 +268,7 @@ def load_config(
     """YAML から 01 の ``ExperimentConfig`` を読み込む。
 
     ``load_config_as(path, ExperimentConfig, ...)`` への委譲。既存の呼び出し
-    (``experiments/01_what_is_rc/run.py`` / ``main.py``) を壊さないため、
+    (``main.py --experiment 01`` / ``main.py``) を壊さないため、
     ``preset`` / ``overrides`` は**キーワード専用で既定なし**にしてある。
 
     Raises:

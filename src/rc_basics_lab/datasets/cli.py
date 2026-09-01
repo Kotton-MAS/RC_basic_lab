@@ -6,7 +6,7 @@
     uv run python -m rc_basics_lab.datasets --dataset all --data-dir data/05_anomaly
 
 進捗は ``print`` ではなく ``logging`` で出す (ruff T20)。実験スクリプト
-(``experiments/04_chaotic_freerun/run_04.py``) と同じ薄さに保ち、取得・照合の
+(``main.py --experiment 04``) と同じ薄さに保ち、取得・照合の
 本体は ``datasets/fetch.py`` にある。
 
 **pytest はこの経路を呼ばない** (D-60)。テストはネットワークに一切触れない。
