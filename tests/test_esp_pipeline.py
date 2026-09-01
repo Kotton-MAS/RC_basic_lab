@@ -40,7 +40,7 @@ EXPECTED_ROWS = 20
 """2課題ぶんの条件数: 2-A 2x2 + 2-B 2x2 + 2-C (2x3)x2。"""
 
 EXPECTED_FIGURES = 4
-EXPECTED_CSV = 2
+EXPECTED_CSV = 3
 EXPECTED_WASHOUT_ROWS = 24
 """2-D の行数: washout 2点 x 2課題 x 3手法 x 2レプリケート。"""
 
@@ -139,10 +139,12 @@ def test_artifacts_are_regenerated_in_one_command(
         assert png_dpi(out_dir / name) >= RETINA_DPI
 
 
-def test_all_four_figures_and_two_csv_in_one_command(
+def test_all_four_figures_and_three_csv_in_one_command(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
-    """図4枚 + CSV2枚 + meta.json が1コマンドで出る (受け入れ条件7)。
+    """図4枚 + CSV3枚 + meta.json が1コマンドで出る (受け入れ条件7)。
+
+    3枚目は ``diagnostics.csv`` (診断のスカラの長形式、D-118)。
 
     ``ESP_ARTIFACTS`` の**中身**を数えるのではなく、出力ディレクトリを実際に
     走査して数える。宣言と実体が食い違ったとき (図を1枚落としたのに
