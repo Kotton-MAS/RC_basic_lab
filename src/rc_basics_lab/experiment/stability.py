@@ -54,6 +54,7 @@ from rc_basics_lab.experiment.capacity_rows import (
     CapacityRow,
     capacity_row_from,
 )
+from rc_basics_lab.experiment.diagnostics_rows import DiagnosticScalarRow, rows_of
 from rc_basics_lab.experiment.freerun import run_free_run
 from rc_basics_lab.experiment.freerun_tasks import (
     chaos_esn_config,
@@ -62,6 +63,11 @@ from rc_basics_lab.experiment.freerun_tasks import (
 )
 from rc_basics_lab.experiment.report import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
+from rc_basics_lab.experiment.stability_rows import (
+    STABILITY_CSV_COLUMNS,
+    StabilityRow,
+    stability_diagnostic_rows,
+)
 from rc_basics_lab.reservoir.registry import require_esn
 from rc_basics_lab.reservoir.topology import nominal_density
 from rc_basics_lab.tasks.base import TaskData
@@ -273,59 +279,6 @@ def condition_task_entry(
 
 
 @dataclass(frozen=True, slots=True)
-class StabilityRow:
-    """``stability.csv`` の1行 (4-C の1条件)。列順はこの宣言順が単一の真実。
-
-    容量 (MC / IPC) の列は**ここに複製しない**。4-D の行は同じ条件キー
-    (``rho`` / ``leak_rate`` / ``state_noise`` / ``replicate``) を持つ
-    ``capacity.csv`` (04) 側にあり、2枚を join すれば「自走が上手くいく領域が
-    容量指標で説明できるか」を見られる (03 の ``narma10.csv`` と
-    ``capacity.csv`` の関係と同じ)。約35列ある ``CapacityRow`` をここへ写すと
-    列の単一の真実が2つになる。
-
-    Attributes:
-        experiment: ``EXPERIMENT_STABILITY``。
-        rho / leak_rate / state_noise / replicate: 条件。
-        n_units: リザバーのユニット数 (掃引では動かさない)。
-        alpha / val_nrmse: 教師強制で選ばれた読み出し。
-        regime: 3態分類 (D-45)。**純関数 + 数値基準**で決まる。
-        amplitude_ratio / std_ratio / autocorr_peak: 分類の根拠になった数値。
-        diverged / n_completed: 自走の打ち切り。
-        stats_steps: 自走させたステップ数 (4-B と同じ窓で測る)。
-        valid_time_threshold / valid_time_steps / valid_time_lyapunov /
-        valid_time_censored: 有効予測時間 (D-43。4-B と同じ定義)。
-        wall_time_s: 条件の実測 wall time [秒] (状態生成 + 学習 + 自走)。
-    """
-
-    experiment: str
-    rho: float
-    leak_rate: float
-    state_noise: float
-    replicate: int
-    n_units: int
-    alpha: float
-    val_nrmse: float
-    regime: str
-    amplitude_ratio: float
-    std_ratio: float
-    autocorr_peak: float
-    diverged: bool
-    n_completed: int
-    stats_steps: int
-    valid_time_threshold: float
-    valid_time_steps: int
-    valid_time_lyapunov: float
-    valid_time_censored: bool
-    wall_time_s: float
-
-
-STABILITY_CSV_COLUMNS: tuple[str, ...] = tuple(
-    item.name for item in dataclasses.fields(StabilityRow)
-)
-"""``stability.csv`` の列順 (``StabilityRow`` の宣言順)。"""
-
-
-@dataclass(frozen=True, slots=True)
 class StabilityOutcome:
     """1条件ぶんの 4-C + 4-D の結果。
 
@@ -336,6 +289,8 @@ class StabilityOutcome:
 
     row: StabilityRow
     capacity: CapacityRow
+    diagnostics: tuple[DiagnosticScalarRow, ...] = ()
+    """診断のスカラを長形式で運ぶ (D-118)。主表の列は1つも動かさない。"""
 
 
 def capacity_context(config: Chaos04Config) -> DiagnosticContext:
@@ -466,7 +421,13 @@ def evaluate_stability_condition(
         wall_time_state_s=wall_time_state_s,
         wall_time_s=time.perf_counter() - started,
     )
-    return StabilityOutcome(row=row, capacity=capacity)
+    return StabilityOutcome(
+        row=row,
+        capacity=capacity,
+        diagnostics=stability_diagnostic_rows(
+            capacity, (measurement.mc, measurement.ipc)
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -492,6 +453,11 @@ class StabilityResults:
     def capacity_rows(self) -> tuple[CapacityRow, ...]:
         """``capacity.csv`` (04) と同じ行。"""
         return tuple(item.capacity for item in self.outcomes)
+
+    @property
+    def diagnostics(self) -> tuple[DiagnosticScalarRow, ...]:
+        """``diagnostics.csv`` に出す長形式の行 (D-118)。"""
+        return rows_of(self.outcomes)
 
 
 def run_stability_experiment(

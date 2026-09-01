@@ -54,11 +54,10 @@ LINE_BUDGET = 600
 FROZEN: dict[str, int] = {
     "rc_basics_lab/experiment/freerun.py": 1152,
     "rc_basics_lab/experiment/capacity.py": 714,
-    "rc_basics_lab/experiment/esp.py": 906,
+    "rc_basics_lab/experiment/esp.py": 875,
     "rc_basics_lab/diagnostics/ipc.py": 910,
     "rc_basics_lab/diagnostics/_capacity.py": 829,
     "rc_basics_lab/experiment/attractor.py": 707,
-    "rc_basics_lab/experiment/stability.py": 625,
 }
 
 

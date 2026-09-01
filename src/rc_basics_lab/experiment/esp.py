@@ -32,7 +32,7 @@ import logging
 import math
 import time
 from collections import Counter
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -45,6 +45,12 @@ from rc_basics_lab.config import (
 from rc_basics_lab.diagnostics.base import DiagnosticContext, StatePropagator
 from rc_basics_lab.diagnostics.esp import conditional_lyapunov, esp_convergence
 from rc_basics_lab.diagnostics.timescale import autocorrelation_time
+from rc_basics_lab.experiment.diagnostics_rows import DiagnosticScalarRow
+from rc_basics_lab.experiment.esp_rows import (
+    ESP_CSV_COLUMNS,
+    EspRow,
+    esp_diagnostic_rows,
+)
 from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.reservoir.protocol import Reservoir
 from rc_basics_lab.reservoir.registry import build_reservoir
@@ -254,49 +260,6 @@ def esn_propagator(esn: Reservoir, u: FloatArray) -> StatePropagator:
         return esn.step(x, u[t + 1])
 
     return propagate
-
-
-@dataclass(frozen=True, slots=True)
-class EspRow:
-    """``esp_diagnostics.csv`` の1行。**宣言順が CSV の列順の単一の真実**。
-
-    ``input_scale`` / ``n_units`` / ``density`` は ``Esp02Config.reservoir``
-    (``ReservoirSweepConfig``) 由来で、セクション固有の YAML キーではない
-    (F-02-1-004)。``washout`` は λ と自己相関に効く値であり、ESP の距離当て
-    はめには ``ESP_DISTANCE_WASHOUT`` (=0) が使われる点に注意。
-    """
-
-    experiment: str
-    replicate: int
-    seed_reservoir: int
-    seed_drive: int
-    seed_probe: int
-    rho: float
-    leak_rate: float
-    input_scale: float
-    sigma_u: float
-    input_amplitude: float
-    input_drive_std: float
-    n_units: int
-    density: float
-    n_steps: int
-    washout: int
-    window: int
-    n_pairs: int
-    d_initial: float
-    d_tail: float
-    converged: int
-    decay_rate_per_step: float
-    lyapunov_per_step: float
-    lyapunov_per_time: float
-    tau_1e: float
-    tau_censored: float
-    tau_integrated: float
-    wall_time_s: float
-
-
-ESP_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(EspRow))
-"""``esp_diagnostics.csv`` の列順 (``EspRow`` の宣言順が単一の真実)。"""
 
 
 def build_esn_config(
@@ -552,6 +515,8 @@ class ConditionOutcome:
     row: EspRow
     distance: FloatArray
     acf: FloatArray
+    diagnostics: tuple[DiagnosticScalarRow, ...] = ()
+    """診断のスカラを長形式で運ぶ (D-118)。``esp_diagnostics.csv`` の列は動かさない。"""
 
 
 def evaluate_condition(
@@ -646,7 +611,11 @@ def evaluate_condition(
         row.wall_time_s,
     )
     return ConditionOutcome(
-        row=row, distance=esp.arrays["distance"], acf=timescale.arrays["acf"]
+        row=row,
+        distance=esp.arrays["distance"],
+        acf=timescale.arrays["acf"],
+        # 診断のスカラは長形式へ逃がす (D-118)。主表の列は1つも動かさない。
+        diagnostics=esp_diagnostic_rows(row, (esp, lyapunov, timescale)),
     )
 
 

@@ -27,6 +27,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import Esp02Config
+from rc_basics_lab.experiment.diagnostics_rows import (
+    DIAGNOSTICS_CSV,
+    rows_of,
+    write_diagnostics_csv,
+)
 from rc_basics_lab.experiment.esp import (
     ESP_CSV_COLUMNS,
     EspResults,
@@ -63,6 +68,7 @@ ESP_THRESHOLD_SENSITIVITY_CSV = "esp_threshold_sensitivity.csv"
 
 ESP_ARTIFACTS: tuple[str, ...] = (
     ESP_DIAGNOSTICS_CSV,
+    DIAGNOSTICS_CSV,
     WASHOUT_SENSITIVITY_CSV,
     FIG_ESP_DECAY,
     FIG_LEAK_TIMESCALE,
@@ -235,6 +241,7 @@ def run_and_report_esp(config: Esp02Config, out_dir: Path) -> EspOutputs:
     paths = (
         write_esp_csv(rows, out_dir / ESP_DIAGNOSTICS_CSV),
         write_washout_csv(washout_rows, out_dir / WASHOUT_SENSITIVITY_CSV),
+        write_diagnostics_csv(rows_of(results.outcomes), out_dir),
         plot_esp_decay(results.decay, out_dir / FIG_ESP_DECAY, style=style),
         plot_leak_timescale(
             results.timescale, out_dir / FIG_LEAK_TIMESCALE, style=style
