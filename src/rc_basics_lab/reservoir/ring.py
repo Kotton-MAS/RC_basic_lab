@@ -174,6 +174,10 @@ class RingReservoir:
         """再帰重み ``(N, N)``。読み取り専用 (単一閉路)。"""
         return self._recurrent
 
+    def adjacency(self) -> FloatArray:
+        """``GraphReservoir`` の面 (D-122)。再帰結合をそのまま返す。"""
+        return self._recurrent
+
     def initial_state(self) -> FloatArray:
         """既定の初期状態 (零ベクトル)。"""
         return np.zeros(self._config.n_units, dtype=np.float64)

@@ -82,4 +82,27 @@ class Reservoir(Protocol):
         ...
 
 
-__all__ = ["Reservoir", "ReservoirConfig"]
+@runtime_checkable
+class GraphReservoir(Protocol):
+    """結合を明示的な行列として持つモデルだけが満たす**追加の**面 (D-122).
+
+    ``Reservoir`` の5面は広げない。「再帰行列を持つ」はリザバー一般に要求できる
+    性質ではないからで、外部素子のモデルは持たないことがある。
+
+    **解析側がこの面で分岐してはいけない。** ``isinstance(res, GraphReservoir)``
+    で挙動を変えると、行列を持たないモデルを渡したとき「トポロジ診断だけが
+    静かに空になる」実験ができてしまう。トポロジを見る実験の側が
+    ``registry.require_graph(res, used_by=...)`` で**要求する** ——
+    ``require_esn`` と同じ流儀である。
+    """
+
+    def adjacency(self) -> FloatArray:
+        """状態どうしの結合を ``(N, N)`` で返す。
+
+        向きの規約は ``W[i, j] != 0`` が **j から i への辺**
+        (``x_{t+1} = f(W x_t + ...)`` なので行が受け手)。
+        """
+        ...
+
+
+__all__ = ["GraphReservoir", "Reservoir", "ReservoirConfig"]

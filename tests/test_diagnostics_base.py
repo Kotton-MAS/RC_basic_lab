@@ -188,8 +188,15 @@ def _extract_leaked(stdout: str) -> list[str]:
     raise AssertionError(f"probe の stdout に LEAKED= 行が見つかりません: {stdout!r}")
 
 
-def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
+def iter_diagnostic_callables(first_param: str = "X") -> list[tuple[str, Diagnostic]]:
     """diagnostics パッケージ配下の診断 callable を機械的に列挙する。
+
+    **第1引数の名前で署名族を分ける** (D-122)。``X`` を取る族 (D-01) と、
+    結合行列 ``W`` を取る族 (``diagnostics/topology.py``) は別物で、混ぜると
+    「``X`` を無視する診断」が D-01 契約テストを素通りする。族の違いはまさに
+    第1引数にあるので、モジュール名の除外リストを持つより壊れにくい
+    (新しいトポロジ診断を足しても、ここを触らずに正しい族へ入る)。
+
 
     D-01 の被検体探索。
 
@@ -244,9 +251,18 @@ def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
                 signature = inspect.signature(candidate, eval_str=True)
             except (NameError, TypeError):
                 continue
-            if signature.return_annotation is DiagnosticResult:
-                found.append((f"{module.__name__}.{attr_name}", candidate))
+            if signature.return_annotation is not DiagnosticResult:
+                continue
+            parameters = list(signature.parameters)
+            if not parameters or parameters[0] != first_param:
+                continue
+            found.append((f"{module.__name__}.{attr_name}", candidate))
     return found
+
+
+def _iter_diagnostic_callables() -> list[tuple[str, Diagnostic]]:
+    """``X`` を取る族 (D-01) だけを列挙する。"""
+    return iter_diagnostic_callables("X")
 
 
 KNOWN_DIAGNOSTICS = (
