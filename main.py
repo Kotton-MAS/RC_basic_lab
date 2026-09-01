@@ -2,174 +2,36 @@
 
 使い方::
 
-    uv run python main.py --experiment 01
-    uv run python main.py --experiment 02
-    uv run python main.py --experiment 03
-    uv run python main.py --experiment 04
-    uv run python main.py --experiment 05
+    uv run python main.py --experiment 01              # 手元 (scratch/ へ)
+    uv run python main.py --experiment 03 --results    # 成果物 (results/ へ)
+    uv run python main.py --experiment 03 --variant length
+    uv run python main.py --experiment 01 --preset quick --set n_replicates=1
 
-``--experiment`` は ``experiments/`` 配下の実験番号。この層が知っているのは
-「どの設定 YAML を、どのローダで読み、どのパイプラインに渡すか」だけで、
-計算・書き出しは ``rc_basics_lab.experiment.*_pipeline`` が行う
-(``experiments/<番号>_*/run.py`` と完全に同じ経路)。
-別の設定で走らせたいときは ``run.py --config <path>`` を使う。
+**この層が持つ知識はゼロである。** 何を走らせるかは
+``rc_basics_lab.experiment.catalog`` の ``CATALOG`` が宣言し、ここは引数を
+それに渡すだけ (D-125)。かつては ``main.py`` の ``EXPERIMENTS`` 辞書・
+``experiments/0N_*/run_0N.py`` 5本・``Makefile`` の ``figures-0N`` 5ターゲットが
+**同じ事実を3箇所に書いて**おり、食い違いをテストが事後に照合していた。
+
+別の設定で走らせたいときは ``--config <path>``。
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from rc_basics_lab.cli import default_out_for
-from rc_basics_lab.config import (
-    Anomaly05Config,
-    Capacity03Config,
-    Chaos04Config,
-    Esp02Config,
-    load_config,
-    load_config_as,
+from rc_basics_lab.experiment.catalog import (
+    BY_NUMBER,
+    MAIN,
+    RunRequest,
+    spec_for,
 )
-from rc_basics_lab.experiment.anomaly_pipeline import run_and_report_anomaly
-from rc_basics_lab.experiment.capacity_pipeline import run_and_report_capacity
-from rc_basics_lab.experiment.esp_pipeline import run_and_report_esp
-from rc_basics_lab.experiment.freerun_pipeline import run_and_report_freerun
-from rc_basics_lab.experiment.pipeline import run_and_report
 
 logger = logging.getLogger("rc_basics_lab.main")
-
-ROOT = Path(__file__).resolve().parent
-
-
-@dataclass(frozen=True, slots=True)
-class ExperimentSpec:
-    """実験1本ぶんの「設定 YAML と、それを走らせる関数」。
-
-    仕様 §4 T3 は ``(ローダ, パイプライン, YAML パス)`` の組と書いていたが、
-    ローダの戻り値型は実験ごとに違う (``ExperimentConfig`` /
-    ``Esp02Config``) ため、組のままでは ``Any`` を使わずに型を付けられない。
-    「設定を読んでパイプラインへ渡す」までを1つの ``run`` に閉じることで、
-    実験ごとの型が関数の内側に収まり、レジストリは単一の型で書ける。
-
-    Attributes:
-        config_path: 既定の設定 YAML。
-        run: ``(設定 YAML, 出力ディレクトリ)`` を受けて成果物を書く関数。
-        out_dir: ``--out`` 未指定時に使う既定の出力ディレクトリ。実験ごとに
-            異ならなければならない (成果物が衝突すると黙って上書きされる)。
-    """
-
-    config_path: Path
-    run: Callable[[Path, Path], None]
-    out_dir: Path
-
-
-def _run_01(config_path: Path, out_dir: Path) -> None:
-    """実験01 (3ベースラインの比較 + 状態空間 PCA)。"""
-    config = load_config(config_path)
-    logger.info(
-        "実験01 を実行します: %s (n_replicates=%d)", config_path, config.n_replicates
-    )
-    run_and_report(config, out_dir)
-
-
-def _run_02(config_path: Path, out_dir: Path) -> None:
-    """実験02 (ESP・スペクトル半径・リーク率)。"""
-    config = load_config_as(config_path, Esp02Config)
-    logger.info(
-        "実験02 を実行します: %s (n_units=%d, n_steps=%d, n_replicates=%d)",
-        config_path,
-        config.reservoir.n_units,
-        config.drive.n_steps,
-        config.reservoir.n_replicates,
-    )
-    run_and_report_esp(config, out_dir)
-
-
-def _run_03(config_path: Path, out_dir: Path) -> None:
-    """実験03 (メモリ容量・情報処理容量)。"""
-    config = load_config_as(config_path, Capacity03Config)
-    logger.info(
-        "実験03 を実行します: %s (3-A N=%d / 3-B N=%d / n_replicates=%d)",
-        config_path,
-        config.mc_sweep.n_units,
-        config.ipc_sweep.n_units,
-        config.reservoir.n_replicates,
-    )
-    run_and_report_capacity(config, out_dir)
-
-
-def _run_04(config_path: Path, out_dir: Path) -> None:
-    """実験04 (カオス時系列の自由走行予測。4-A / 4-B / 4-C / 4-D)。"""
-    config = load_config_as(config_path, Chaos04Config)
-    logger.info(
-        "実験04 を実行します: %s (Lorenz T=%d dt=%g / n_replicates=%d)",
-        config_path,
-        config.lorenz.length,
-        config.lorenz.rk4_step * config.lorenz.sample_interval,
-        config.base.n_replicates,
-    )
-    run_and_report_freerun(config, out_dir)
-
-
-def _run_05(config_path: Path, out_dir: Path) -> None:
-    """実験05 (センサー時系列の異常検知。5-A / 5-B / 5-C / 5-D)。"""
-    config = load_config_as(config_path, Anomaly05Config)
-    logger.info(
-        "実験05 を実行します: %s (source=%s / 系列 %d 本 / max_length=%d / "
-        "n_replicates=%d)",
-        config_path,
-        config.dataset.source,
-        len(config.dataset.series),
-        config.dataset.max_length,
-        config.reservoir.n_replicates,
-    )
-    run_and_report_anomaly(config, out_dir)
-
-
-EXPERIMENTS: dict[str, ExperimentSpec] = {
-    "01": ExperimentSpec(
-        config_path=ROOT / "experiments" / "01_what_is_rc" / "config.yaml",
-        run=_run_01,
-        out_dir=default_out_for(ROOT / "experiments" / "01_what_is_rc" / "config.yaml"),
-    ),
-    "02": ExperimentSpec(
-        config_path=ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml",
-        run=_run_02,
-        out_dir=default_out_for(
-            ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml"
-        ),
-    ),
-    "03": ExperimentSpec(
-        config_path=ROOT / "experiments" / "03_capacity" / "config.yaml",
-        run=_run_03,
-        out_dir=default_out_for(ROOT / "experiments" / "03_capacity" / "config.yaml"),
-    ),
-    "04": ExperimentSpec(
-        config_path=ROOT / "experiments" / "04_chaotic_freerun" / "config.yaml",
-        run=_run_04,
-        out_dir=default_out_for(
-            ROOT / "experiments" / "04_chaotic_freerun" / "config.yaml"
-        ),
-    ),
-    "05": ExperimentSpec(
-        config_path=ROOT / "experiments" / "05_anomaly_detection" / "config.yaml",
-        run=_run_05,
-        out_dir=default_out_for(
-            ROOT / "experiments" / "05_anomaly_detection" / "config.yaml"
-        ),
-    ),
-}
-"""実験番号 -> ``ExperimentSpec``。
-
-実験を足すときは、その実験の設定クラスとパイプラインを呼ぶ ``_run_XX`` を
-書いてここに1行足す。**設定クラスを 01 の ``ExperimentConfig`` に相乗りさせ
-ない** (D-13)。相乗りさせると YAML の未知キー検査 (D-09) と配線テストの
-被覆が同時に壊れる。**``out_dir`` は実験ごとに異なる値にする** —— 揃えると
-``--out`` 未指定の実行が別実験の成果物 (``meta.json`` など) を黙って上書きする
-(``test_experiment_registry_has_unique_default_out_dirs`` が機械的に守る)。
-"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,46 +39,93 @@ class Args:
     """コマンドライン引数。"""
 
     experiment: str
+    variant: str
     out: Path | None
+    to_results: bool
+    config: Path | None
+    preset: Path | None
+    overrides: tuple[str, ...]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> Args:
     """引数を解析する。未知の実験番号は argparse が弾く。
 
-    ``--out`` を省略した場合は ``None`` を返す。既定の出力先は実験ごとに
-    異なる (``EXPERIMENTS[experiment].out_dir``) ため、この時点 (実験番号と
-    独立に引数を解析する段階) では確定できない。実際の既定値解決は
-    ``main()`` が ``args.experiment`` を見てから行う。
+    ``--out`` を省いた場合は ``None`` を返す。既定の書き出し先は実験ごとに
+    違う (``ExperimentSpec.scratch_dir`` / ``results_dir``) ので、実験番号と
+    独立に解析するこの時点では確定できない。
     """
     parser = argparse.ArgumentParser(description="rc-basics-lab の実験ランナー")
     parser.add_argument(
         "--experiment",
-        choices=sorted(EXPERIMENTS),
+        choices=sorted(BY_NUMBER),
         default="01",
         help="実行する実験番号 (既定: 01)",
     )
     parser.add_argument(
-        "--out",
-        default=None,
-        help="出力ディレクトリ (既定: 実験ごとに異なる。EXPERIMENTS[番号].out_dir)",
+        "--variant",
+        default=MAIN,
+        help=(
+            "走らせ方 (既定: main)。実験ごとの候補は catalog.CATALOG の variants を参照"
+        ),
+    )
+    parser.add_argument("--out", default=None, help="出力ディレクトリ")
+    parser.add_argument(
+        "--results",
+        action="store_true",
+        help="成果物のディレクトリ (results/...) へ書く。make figures-0N が使う",
+    )
+    parser.add_argument("--config", default=None, help="設定 YAML (既定: 実験ごと)")
+    parser.add_argument("--preset", default=None, help="かぶせる YAML")
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="設定を1つ上書きする (例: --set tasks.mackey_glass.reservoir.n_units=50)",
     )
     namespace = parser.parse_args(argv)
-    out = None if namespace.out is None else Path(str(namespace.out))
-    return Args(experiment=str(namespace.experiment), out=out)
+    return Args(
+        experiment=str(namespace.experiment),
+        variant=str(namespace.variant),
+        out=None if namespace.out is None else Path(str(namespace.out)),
+        to_results=bool(namespace.results),
+        config=None if namespace.config is None else Path(str(namespace.config)),
+        preset=None if namespace.preset is None else Path(str(namespace.preset)),
+        overrides=tuple(str(item) for item in namespace.overrides),
+    )
+
+
+def resolve_out(args: Args) -> Path:
+    """書き出し先を決める (**決め方はここ1か所**)。
+
+    優先順は ``--out`` > ``--results`` > 手元 (``scratch/``)。既定を
+    ``scratch/`` にしてあるのは、``--out`` を忘れた実行が ``results/`` の
+    成果物を黙って上書きしないようにするためである。
+    """
+    spec = spec_for(args.experiment)
+    if args.out is not None:
+        return args.out
+    return spec.results_dir if args.to_results else spec.scratch_dir
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """指定した実験を実行し、成果物を ``--out`` に書き出す。
+    """指定した実験の指定した variant を実行する。
 
-    ``--out`` 未指定時は ``EXPERIMENTS[experiment].out_dir`` (実験ごとに異なる
-    既定値) を使う。かつては全実験が同じ ``DEFAULT_OUT = Path("results")`` を
-    共有しており、``--out`` を付けずに ``--experiment 02`` を実行すると 01 の
-    ``results/meta.json`` を黙って上書きしていた。
+    Raises:
+        ValueError: 実験番号または variant が無い場合 (候補を並べて落とす)。
     """
     args = parse_args(argv)
-    spec = EXPERIMENTS[args.experiment]
-    out_dir = spec.out_dir if args.out is None else args.out
-    spec.run(spec.config_path, out_dir)
+    spec = spec_for(args.experiment)
+    run = spec.variant(args.variant)
+    run(
+        RunRequest(
+            config=spec.config_path if args.config is None else args.config,
+            out=resolve_out(args),
+            preset=args.preset,
+            overrides=args.overrides,
+        )
+    )
     return 0
 
 

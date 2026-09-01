@@ -2,7 +2,7 @@
 
 ``capacity.csv`` / ``capacity_profile.csv`` / ``narma10.csv`` / 図5枚 /
 ``meta.json`` をここで一括生成する。CLI (``main.py --experiment 03`` と
-``experiments/03_capacity/run_03.py``) はこの関数を呼ぶだけの薄い層にして、
+``main.py --experiment 03``) はこの関数を呼ぶだけの薄い層にして、
 「どのコマンドから走らせても同じ成果物が出る」を構造で保証する
 (01 の ``pipeline.py`` / 02 の ``esp_pipeline.py`` と同じ規律)。
 
@@ -114,7 +114,7 @@ CAPACITY_ARTIFACTS: tuple[str, ...] = (
 ``capacity_length.csv`` (系列長 T の掃引) は**この並びに入れない**。記事に
 載る成果物ではなく「容量が足りないのか T が足りないのか」を切り分ける補助
 実験であり、T=1e6 まで回すので単独で 900 秒予算を食い潰す。
-``--length-sweep`` (= ``make saturation-03``) で明示的に再生成する
+``--variant length`` (= ``make saturation-03``) で明示的に再生成する
 (02 の ``esp_threshold_sensitivity.csv`` / ``threshold-02`` と同じ規律)。
 """
 

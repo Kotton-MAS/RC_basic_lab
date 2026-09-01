@@ -24,10 +24,10 @@ uv sync --locked
 
 ```bash
 # 縮小設定で速く回す
-uv run python experiments/03_capacity/run_03.py --preset quick
+uv run python main.py --experiment 03 --preset quick
 
 # 値を1つ振る (YAML は触らない)
-uv run python experiments/01_what_is_rc/run.py --set tasks.mackey_glass.reservoir.n_units=50
+uv run python main.py --experiment 01 --set tasks.mackey_glass.reservoir.n_units=50
 ```
 
 `--preset quick` の実測（2026-08-31）:

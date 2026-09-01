@@ -2,7 +2,7 @@
 
 ``docs/design.md`` §9 の感度表の一次資料が
 ``results/02_esp_and_dynamics/esp_threshold_sensitivity.csv`` であり、
-再生成は ``run_02.py --threshold-sweep`` (= ``make threshold-02``)。
+再生成は ``run_02.py --variant threshold`` (= ``make threshold-02``)。
 ここでは縮小格子で **掃引の性質** を固定する:
 
 - 行数が ``abs_tol`` x ``window`` の組の数と一致する
@@ -281,7 +281,7 @@ def test_threshold_csv_header_matches_rows(tmp_path: Path) -> None:
 
 
 def test_threshold_sweep_writes_only_its_own_csv(tmp_path: Path) -> None:
-    """``--threshold-sweep`` 相当は本体の7成果物を上書きしない。"""
+    """``--variant threshold`` 相当は本体の7成果物を上書きしない。"""
     out_dir = tmp_path / "out"
     path = run_and_report_threshold_sweep(small_config(), out_dir)
     assert path.name == ESP_THRESHOLD_SENSITIVITY_CSV

@@ -1,4 +1,4 @@
-.PHONY: module-map sync test cov golden golden-update lint fmt fmt-check type lock-check ci figures-01 figures-02 figures-03 figures-04 figures-05 data-05 threshold-02 saturation-03 symmetry-03 panels washout-02-unpadded pre-commit clean help
+.PHONY: module-map sync test cov golden golden-update lint fmt fmt-check type lock-check ci data-05 threshold-02 saturation-03 symmetry-03 panels washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -80,80 +80,36 @@ lock-check:
 # ここを単一の真実とすることで、ローカルと CI の検証ロジック乖離を防ぐ。
 ci: lock-check lint fmt-check type test
 
-# 実験01の成果物 (comparison.csv / comparison_summary.csv / fig_comparison.png /
-# fig_state_space.png / meta.json) を results/ に再生成する。ci の構成には
-# 入れない (CI は実験を回さない)。
-figures-01:
-	uv run python experiments/01_what_is_rc/run.py --config experiments/01_what_is_rc/config.yaml --out results
+# 実験 0N の成果物を results/ へ再生成する (**パターンルール1本**。D-125)
+#
+# 何をどこへ書くかは Makefile ではなく
+# src/rc_basics_lab/experiment/catalog.py の CATALOG が宣言する。
+# かつては実験ごとにターゲットを手書きし、同じ事実が main.py の EXPERIMENTS と
+# run_0N.py にも書いてあった (3箇所)。成果物の一覧は各 spec の artifacts。
+figures-%:
+	uv run python main.py --experiment $* --results
 
-# 実験02の成果物 (esp_diagnostics.csv / washout_sensitivity.csv / fig_esp_decay.png /
-# fig_leak_timescale.png / fig_esp_map.png / fig_washout_sensitivity.png /
-# meta.json) を results/02_esp_and_dynamics/ に再生成する。
-# 01 と出力先を分けるのは meta.json / results 直下のファイル名が衝突するため。
-figures-02:
-	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics
-
-# 実験03の成果物 (capacity.csv / capacity_profile.csv / narma10.csv /
-# narma10_taps.csv / fig_mc_sweep.png / fig_ipc_profile.png /
-# fig_memory_nonlinearity.png / fig_ipc_conservation.png /
-# fig_narma10_control.png / fig_narma10_taps.png / meta.json) を
-# results/03_capacity/ に再生成する。成果物の一覧の単一の真実は
-# experiment/capacity_pipeline.py の CAPACITY_ARTIFACTS (テストが突き合わせる)。
-# 系列長掃引 (capacity_length.csv) は含めない —— T=1e6 まで回すので単独で
-# 900 秒予算を食い潰す。saturation-03 で明示的に再生成する
-# (threshold-02 と figures-02 の関係と同じ規律)。
-figures-03:
-	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity
-
-# 実験04 の成果物 (onestep.csv / freerun.csv / freerun_profile.csv /
-# stability.csv / capacity.csv / fig_onestep.png / fig_freerun_attractor.png /
-# fig_valid_time.png / fig_stability_map.png / fig_freerun_stats.png /
-# meta.json) を results/04_chaotic_freerun/ に再生成する。成果物の一覧の単一の
-# 真実は experiment/freerun_pipeline.py の FREERUN_ARTIFACTS (テストが突き
-# 合わせる)。4-A だけを回す onestep-04 は置かない —— 同じ meta.json を
-# 区間の一部だけの内訳で上書きしてしまうため。
-figures-04:
-	uv run python experiments/04_chaotic_freerun/run_04.py --config experiments/04_chaotic_freerun/config.yaml --out results/04_chaotic_freerun
-
-# 実験05 の成果物 (anomaly.csv / anomaly_threshold.csv / anomaly_timeline.csv /
-# anomaly_protocol.csv / anomaly_size.csv / fig_pr_curves.png /
-# fig_score_timeline.png / fig_threshold_tradeoff.png /
-# fig_protocol_sensitivity.png / fig_size_vs_performance.png / meta.json) を
-# results/05_anomaly_detection/ に再生成する。成果物の一覧の単一の真実は
-# experiment/anomaly_pipeline.py の ANOMALY_ARTIFACTS (テストが突き合わせる)。
-# **data-05 に依存する** —— 既定の設定 (config.yaml) は実データ源 MGAB で、
-# キャッシュが無ければ ValueError になる (記事のタイトルが「実データで使って
-# みる」なので、主図が合成データでは食い違う)。2回目以降はキャッシュを使うので
-# オフラインで回る。
+# 実験05 は外部データセットの取得が要る
 figures-05: data-05
-	uv run python experiments/05_anomaly_detection/run_05.py --config experiments/05_anomaly_detection/config.yaml --out results/05_anomaly_detection
 
 # 実験05 の外部データセットを data/05_anomaly/ へ取得し SHA256 で照合する
 # (D-58: データ本体はリポジトリに含めない。マニフェストは
-# src/rc_basics_lab/datasets/manifests/*.csv)。既定は MGAB (CC0-1.0) のみ。
-# UCR (ライセンス未指定・ZIP 184 MB) まで要るときは --dataset all を使う。
-# ci の構成には入れない —— pytest はネットワークに一切触れない (D-60)。
+# src/rc_basics_lab/datasets/manifest.py)
 data-05:
 	uv run python -m rc_basics_lab.datasets --dataset mgab
 
-# ESP 判定の閾値感度 (esp_threshold_sensitivity.csv) を再生成する。
-# abs_tol 3点 x window 3点で 2-C の格子を判定し直すので figures-02 とは
-# 分けてある (docs/design.md §9 の感度表の一次資料)。
+# 補助実験 (記事の本体成果物ではない。variant で選ぶ)
 threshold-02:
-	uv run python experiments/02_esp_and_dynamics/run_02.py --config experiments/02_esp_and_dynamics/config.yaml --out results/02_esp_and_dynamics --threshold-sweep
+	uv run python main.py --experiment 02 --variant threshold --results
 
-# 系列長 T の掃引 (capacity_length.csv) を再生成する。T in {1e5, 2e5, 5e5, 1e6}
-# を回すので figures-03 (予算 900 秒) には含めない (予算外・手動、< 1800 秒)。
-# 「容量が足りないのか T が足りないのか」を分けるための補助実験。
+washout-02-unpadded:
+	uv run python main.py --experiment 02 --variant washout-unpadded --results
+
 saturation-03:
-	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity --length-sweep
+	uv run python main.py --experiment 03 --variant length --results
 
-# 駆動入力の対称性の掃引 (capacity_symmetry.csv) を再生成する (D-116)。
-# 記事03 §2.1 の「偶数次のセルがほぼ空」の理由を行の値で確かめる補助実験。
-# 平均だけをずらし、分布 (一様) と標準偏差は変えないので Legendre 基底は
-# 厳密に正規直交のまま (D-28)。figures-03 の予算 (900 秒) には含めない。
 symmetry-03:
-	uv run python experiments/03_capacity/run_03.py --config experiments/03_capacity/config.yaml --out results/03_capacity --symmetry-sweep
+	uv run python main.py --experiment 03 --variant symmetry --results
 
 # 各図のパネル数 (軸の本数) を実測する (FIG-15)。Figure.savefig を捕まえて
 # len(figure.axes) を数え、results/ には触れず一時ディレクトリへ生成する。

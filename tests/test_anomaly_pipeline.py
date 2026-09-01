@@ -1,6 +1,6 @@
 """05 の「1コマンドで成果物が出る」経路のテスト (仕様 §4 T5 受け入れ基準1・5).
 
-``main.py --experiment 05`` と ``experiments/05_anomaly_detection/run_05.py``
+``main.py --experiment 05`` と ``main.py (--experiment 05)``
 はどちらも ``anomaly_pipeline.run_and_report_anomaly`` を呼ぶ薄い層である。
 ここでは縮小設定を一時ディレクトリに書いて**実際に1コマンド相当を走らせ**、
 CSV5枚 (``anomaly.csv`` / ``anomaly_threshold.csv`` / ``anomaly_timeline.csv`` /
@@ -16,12 +16,8 @@ pytest からは走らせない。
 from __future__ import annotations
 
 import csv
-import dataclasses
-import importlib.util
 import json
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 from conftest import png_dpi
@@ -107,33 +103,11 @@ seeds:
 
 
 @pytest.fixture
-def tiny_experiment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path]:
+def tiny_experiment(tmp_path: Path) -> tuple[Path, Path]:
     """縮小設定を ``--experiment 05`` に差し替える (本番は実データ源で数分)。"""
     config_path = tmp_path / "config.yaml"
     config_path.write_text(TINY_CONFIG, encoding="utf-8")
-    monkeypatch.setitem(
-        main.EXPERIMENTS,
-        "05",
-        dataclasses.replace(main.EXPERIMENTS["05"], config_path=config_path),
-    )
     return config_path, tmp_path / "out"
-
-
-def _load_run_module() -> ModuleType:
-    path = (
-        Path(__file__).resolve().parents[1]
-        / "experiments"
-        / "05_anomaly_detection"
-        / "run_05.py"
-    )
-    spec = importlib.util.spec_from_file_location("run_05", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["run_05"] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _rows_of(path: Path) -> tuple[list[str], list[dict[str, str]]]:
@@ -147,8 +121,13 @@ def test_artifacts_are_regenerated_in_one_command(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
     """1コマンドで宣言済みの成果物がすべて出る (受け入れ基準1)。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "05", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "05", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     for name in ANOMALY_ARTIFACTS:
         assert (out_dir / name).is_file(), f"{name} が生成されていません"
     figures = [name for name in ANOMALY_ARTIFACTS if name.endswith(".png")]
@@ -166,8 +145,13 @@ def test_five_figures_and_five_csv_in_one_command(
     実際に走査して数える。宣言と実体が食い違ったとき (図を1枚落としたのに
     宣言から消し忘れた / その逆) に、宣言だけを見るテストは黙って通るため。
     """
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "05", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "05", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     produced = sorted(path.name for path in out_dir.iterdir() if path.is_file())
     assert len([name for name in produced if name.endswith(".png")]) == EXPECTED_FIGURES
     assert len([name for name in produced if name.endswith(".csv")]) == EXPECTED_CSV
@@ -183,7 +167,12 @@ def test_every_csv_has_the_declared_columns(
     """5枚の CSV の列順が、それぞれの単一の真実と一致する。"""
     config_path, out_dir = tiny_experiment
     config = load_config_as(config_path, Anomaly05Config)
-    assert main.main(["--experiment", "05", "--out", str(out_dir)]) == 0
+    assert (
+        main.main(
+            ["--experiment", "05", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     expected: tuple[tuple[str, tuple[str, ...]], ...] = (
         (ANOMALY_CSV, anomaly_csv_columns(config)),
         (ANOMALY_THRESHOLD_CSV, ANOMALY_THRESHOLD_CSV_COLUMNS),
@@ -208,8 +197,13 @@ def test_the_timeline_matches_the_headline_row(
     図に出す1例が別条件で作られていると、記事の図と ``anomaly.csv`` の数値が
     違う実験のものになる。閾値・系列・レプリケート・区間の3点で照合する。
     """
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "05", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "05", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     _, headline = _rows_of(out_dir / ANOMALY_CSV)
     _, timeline = _rows_of(out_dir / ANOMALY_TIMELINE_CSV)
     first = headline[0]
@@ -244,8 +238,13 @@ def test_meta_json_records_the_section_wall_times(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
     """区間別の wall time が meta.json に残り、合計が予算内 (受け入れ基準5)。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "05", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "05", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
     breakdown = meta["wall_time_breakdown"]
     assert set(breakdown) == set(SECTION_BUDGETS_S)
@@ -262,8 +261,13 @@ def test_meta_json_records_the_acceptance_evidence(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
     """仕様 §5 の受け入れ条件1・3・4・5 の一次資料が meta.json にある。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "05", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "05", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
     # 条件1: 同一前処理・同一基準行で6系統を比較している (D-05 / D-57)。
     uniqueness = meta["preprocessor_uniqueness"]
@@ -287,24 +291,6 @@ def test_meta_json_records_the_acceptance_evidence(
     assert set(meta["headline_auprc"]) == set(ANOMALY_METHODS)
     assert "control_sign_p" in meta["headline_auprc"]["esn_residual"]
     assert "cjk_font" in meta
-
-
-def test_run_05_and_main_py_agree(tiny_experiment: tuple[Path, Path]) -> None:
-    """``run_05.py --config`` と ``main.py --experiment 05`` が同じ CSV を出す。"""
-    config_path, out_dir = tiny_experiment
-    run_module = _load_run_module()
-    assert (
-        run_module.main(["--config", str(config_path), "--out", str(out_dir / "run")])
-        == 0
-    )
-    assert main.main(["--experiment", "05", "--out", str(out_dir / "cli")]) == 0
-    left = _rows_of(out_dir / "run" / ANOMALY_CSV)
-    right = _rows_of(out_dir / "cli" / ANOMALY_CSV)
-    assert left[0] == right[0]
-    for first, second in zip(left[1], right[1], strict=True):
-        first.pop("wall_time_s")
-        second.pop("wall_time_s")
-        assert first == second
 
 
 def test_the_summaries_read_only_the_rows(tiny_experiment: tuple[Path, Path]) -> None:

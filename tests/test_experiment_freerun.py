@@ -576,10 +576,10 @@ def test_chaos_artifacts_go_to_their_own_directory() -> None:
     D-51 が守っているのは「衝突しないこと」であって、``results/`` という綴り
     ではない。
     """
-    import main
+    from rc_basics_lab.experiment import catalog
 
-    assert main.EXPERIMENTS["04"].out_dir.name == "04_chaotic_freerun"
-    out_dirs = [spec.out_dir for spec in main.EXPERIMENTS.values()]
+    assert catalog.BY_NUMBER["04"].scratch_dir.name == "04_chaotic_freerun"
+    out_dirs = [spec.scratch_dir for spec in catalog.BY_NUMBER.values()]
     assert len(set(out_dirs)) == len(out_dirs), "既定の出力先が重複しています"
 
 

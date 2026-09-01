@@ -1,6 +1,6 @@
 """CLI エントリのテスト — 「1コマンドで5成果物」の担保 (受け入れ条件5).
 
-``main.py --experiment 01`` と ``experiments/01_what_is_rc/run.py --config ...``
+``main.py --experiment 01`` と ``main.py (--experiment 01) --config ...``
 はどちらも ``pipeline.run_and_report`` を呼ぶ薄い層である。ここでは縮小設定を
 一時ディレクトリに書いて**実際に1コマンド相当を走らせ**、
 ``comparison.csv`` / ``comparison_summary.csv`` / ``fig_comparison.png`` /
@@ -11,16 +11,14 @@ retina 相当であることを見る。
 from __future__ import annotations
 
 import dataclasses
-import importlib.util
 import json
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 from conftest import png_dpi
 
 import main
+from rc_basics_lab.experiment import catalog
 from rc_basics_lab.experiment.pipeline import ARTIFACTS
 from rc_basics_lab.experiment.state_space import (
     DELAY_EMBEDDED_INPUT,
@@ -73,28 +71,23 @@ tasks:
 
 
 @pytest.fixture
-def tiny_experiment(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path]:
-    """縮小設定を ``--experiment 01`` に差し替える (本番設定は数十秒かかるため)。
+def tiny_experiment(tmp_path: Path) -> tuple[Path, Path]:
+    """縮小設定を書き出す (本番設定は数十秒かかるため)。
 
-    ``EXPERIMENTS`` の値は ``ExperimentSpec`` (設定 YAML + 実行関数) なので、
-    差し替えるのは ``config_path`` だけにして実行経路は本物を通す。
+    設定の差し替えは ``--config`` で行う (D-125)。かつては
+    ``EXPERIMENTS`` の値を monkeypatch していたが、カタログの
+    ``config_path`` は ``name`` から導く property になったので、CLI の
+    引数で渡すほうが**実際の経路をそのまま通る**。
     """
     config_path = tmp_path / "config.yaml"
     config_path.write_text(TINY_CONFIG, encoding="utf-8")
-    monkeypatch.setitem(
-        main.EXPERIMENTS,
-        "01",
-        dataclasses.replace(main.EXPERIMENTS["01"], config_path=config_path),
-    )
     return config_path, tmp_path / "out"
 
 
 def test_experiment_registry_points_at_existing_configs() -> None:
     """登録済みの実験番号の設定ファイルが実在する。"""
-    assert main.EXPERIMENTS
-    for number, spec in main.EXPERIMENTS.items():
+    assert catalog.BY_NUMBER
+    for number, spec in catalog.BY_NUMBER.items():
         assert spec.config_path.is_file(), (
             f"実験 {number} の設定が見つかりません: {spec.config_path}"
         )
@@ -113,22 +106,7 @@ def test_experiment_registry_covers_the_experiment_directories() -> None:
         for path in (Path(__file__).resolve().parents[1] / "experiments").iterdir()
         if path.is_dir() and not path.name.startswith((".", "_"))
     }
-    assert set(main.EXPERIMENTS) == directories
-
-
-@pytest.mark.parametrize("number", sorted(main.EXPERIMENTS))
-def test_run_script_default_out_matches_the_registry(number: str) -> None:
-    """``experiments/NN_*/run*.py`` の ``DEFAULT_OUT`` がレジストリの既定出力先と
-    一致する。
-
-    既定出力先は ``main.EXPERIMENTS[NN].out_dir`` と各実験の
-    ``experiments/NN_*/run*.py:DEFAULT_OUT`` に手で二重定義されている。
-    どちらも ``--out`` 未指定時に使われるが、一致を固定するテストが無いと
-    03 以降を足したときに片方だけ書き換えて食い違う経路が HIGH-1 と同じ形で
-    再発する。``main.EXPERIMENTS`` を直接回すので実験追加時に自動で対象が増える。
-    """
-    module = _load_run_module_for(number)
-    assert main.EXPERIMENTS[number].out_dir == module.DEFAULT_OUT
+    assert set(catalog.BY_NUMBER) == directories
 
 
 def test_unknown_experiment_is_rejected() -> None:
@@ -153,7 +131,7 @@ def test_experiment_registry_has_unique_default_out_dirs() -> None:
     レジストリの構造そのものから保証する。03 以降を足したときも
     ``out_dir`` を使い回すとここが赤くなる。
     """
-    out_dirs = [spec.out_dir for spec in main.EXPERIMENTS.values()]
+    out_dirs = [spec.scratch_dir for spec in catalog.BY_NUMBER.values()]
     assert len(out_dirs) == len(set(out_dirs)), f"out_dir が重複しています: {out_dirs}"
 
 
@@ -164,9 +142,9 @@ def test_default_out_dir_does_not_overwrite_other_experiments_meta_json(
 
     HIGH-1: かつては両実験が ``DEFAULT_OUT = Path("results")`` を共有しており、
     ``--out`` を省略すると 02 が 01 の成果物を黙って上書きしていた。
-    実際の ``run`` (フルの ESN 計算) は縮小できないので、ここでは
-    ``run`` を ``out_dir`` を記録するだけのダミーに差し替え、
-    レジストリの ``out_dir`` が実際に使われることだけを確認する。
+    実際の実行 (フルの ESN 計算) は縮小できないので、ここでは variant を
+    「書き出し先を記録するだけ」のダミーに差し替え、カタログの既定が実際に
+    使われることだけを確認する。
     """
     monkeypatch.chdir(tmp_path)
     results_dir = tmp_path / "results"
@@ -176,24 +154,30 @@ def test_default_out_dir_does_not_overwrite_other_experiments_meta_json(
 
     recorded: list[Path] = []
 
-    def _fake_run(config_path: Path, out_dir: Path) -> None:
-        del config_path
-        recorded.append(out_dir)
+    def _fake_run(request: catalog.RunRequest) -> None:
+        recorded.append(request.out)
 
     monkeypatch.setitem(
-        main.EXPERIMENTS,
+        catalog.BY_NUMBER,
         "02",
-        dataclasses.replace(main.EXPERIMENTS["02"], run=_fake_run),
+        dataclasses.replace(
+            catalog.BY_NUMBER["02"], variants={catalog.MAIN: _fake_run}
+        ),
     )
     assert main.main(["--experiment", "02"]) == 0
-    assert recorded == [main.EXPERIMENTS["02"].out_dir]
+    assert recorded == [catalog.BY_NUMBER["02"].scratch_dir]
     assert sentinel.read_text(encoding="utf-8") == '{"owner": "01"}'
 
 
 def test_main_writes_the_four_artifacts(tiny_experiment: tuple[Path, Path]) -> None:
     """1コマンドで5成果物が出る (受け入れ条件5)。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "01", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "01", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     for name in ARTIFACTS:
         assert (out_dir / name).is_file(), f"{name} が生成されていません"
     for name in (name for name in ARTIFACTS if name.endswith(".png")):
@@ -204,8 +188,13 @@ def test_meta_json_records_state_space_comparison(
     tiny_experiment: tuple[Path, Path],
 ) -> None:
     """``n_components_95`` の比較が meta.json に**数値として**残る (受け入れ条件4)。"""
-    _, out_dir = tiny_experiment
-    assert main.main(["--experiment", "01", "--out", str(out_dir)]) == 0
+    config_path, out_dir = tiny_experiment
+    assert (
+        main.main(
+            ["--experiment", "01", "--config", str(config_path), "--out", str(out_dir)]
+        )
+        == 0
+    )
     meta = json.loads((out_dir / "meta.json").read_text(encoding="utf-8"))
     assert meta["n_rows"] == EXPECTED_ROWS
     assert meta["wall_time_s"] > 0.0
@@ -220,20 +209,6 @@ def test_meta_json_records_state_space_comparison(
             assert space["n_components_95"] <= space["n_features"]
 
 
-def test_run_py_and_main_py_agree(tiny_experiment: tuple[Path, Path]) -> None:
-    """``run.py --config`` と ``main.py --experiment`` が同じ CSV を出す。"""
-    config_path, out_dir = tiny_experiment
-    run_module = _load_run_module()
-    assert (
-        run_module.main(["--config", str(config_path), "--out", str(out_dir / "run")])
-        == 0
-    )
-    assert main.main(["--experiment", "01", "--out", str(out_dir / "cli")]) == 0
-    left = (out_dir / "run" / "comparison.csv").read_text(encoding="utf-8")
-    right = (out_dir / "cli" / "comparison.csv").read_text(encoding="utf-8")
-    assert _without_wall_time(left) == _without_wall_time(right)
-
-
 def _without_wall_time(csv_text: str) -> list[list[str]]:
     """CSV から実測時間の列だけ落とす (実行ごとに変わるため)。"""
     rows = [line.split(",") for line in csv_text.strip().splitlines()]
@@ -241,34 +216,55 @@ def _without_wall_time(csv_text: str) -> list[list[str]]:
     return [row[:index] + row[index + 1 :] for row in rows]
 
 
-def _load_run_module() -> ModuleType:
-    """``experiments/01_what_is_rc/run.py`` を読み込む (パッケージ外のため)。"""
-    return _load_run_module_for("01")
+def test_every_experiment_writes_to_its_own_results_dir() -> None:
+    """``results_dir`` が互いに異なる (D-125)。
+
+    ``scratch_dir`` は ``name`` から導くので構造上一意だが、``results_dir`` は
+    **宣言**である (01 だけ ``results/`` 直下なので名前から導けない)。揃えて
+    しまうと ``make figures-0N`` が別実験の成果物を黙って上書きする ——
+    D-51 が ``scratch`` 側で塞いだのと同じ穴が、``results`` 側に開く。
+    """
+    dirs = [spec.results_dir for spec in catalog.CATALOG]
+    assert len(set(dirs)) == len(dirs), f"results_dir が重複しています: {dirs}"
 
 
-def _experiment_dir(number: str) -> Path:
-    """実験番号 -> ``experiments/`` 配下のディレクトリ (接頭辞一致)。"""
-    root = Path(__file__).resolve().parents[1] / "experiments"
-    matches = [
-        path
-        for path in root.iterdir()
-        if path.is_dir() and path.name.split("_", maxsplit=1)[0] == number
-    ]
-    assert len(matches) == 1, (number, matches)
-    return matches[0]
+def test_results_flag_selects_the_declared_results_dir() -> None:
+    """``--results`` がカタログの ``results_dir`` を選ぶ (``make figures-0N`` の経路)。
+
+    ここが効かないと ``make figures-03`` が ``scratch/`` へ書き、**成果物が
+    更新されないのに緑になる**。
+    """
+    for spec in catalog.CATALOG:
+        args = main.parse_args(["--experiment", spec.number, "--results"])
+        assert main.resolve_out(args) == spec.results_dir
+        plain = main.parse_args(["--experiment", spec.number])
+        assert main.resolve_out(plain) == spec.scratch_dir
+        assert spec.results_dir != spec.scratch_dir
 
 
-def _load_run_module_for(number: str) -> ModuleType:
-    """``experiments/NN_*/run*.py`` を読み込む (パッケージ外のため)。"""
-    directory = _experiment_dir(number)
-    candidates = sorted(directory.glob("run*.py"))
-    assert len(candidates) == 1, (number, candidates)
-    path = candidates[0]
-    spec = importlib.util.spec_from_file_location(f"experiment_{number}_run", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"読み込めません: {path}")
-    module = importlib.util.module_from_spec(spec)
-    # dataclass の型解決は sys.modules を引くため、exec 前に登録しておく
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+def test_an_explicit_out_wins_over_the_results_flag(tmp_path: Path) -> None:
+    """``--out`` は ``--results`` より優先される (決め方は resolve_out の1か所)。"""
+    args = main.parse_args(["--experiment", "03", "--results", "--out", str(tmp_path)])
+    assert main.resolve_out(args) == tmp_path
+
+
+def test_an_unknown_variant_is_rejected_with_the_known_ones() -> None:
+    """無い variant は候補を並べて落ちる (黙って main に落ちない)。"""
+    with pytest.raises(ValueError, match="variant") as raised:
+        main.main(["--experiment", "03", "--variant", "no_such"])
+    message = str(raised.value)
+    assert "length" in message and "symmetry" in message
+
+
+def test_every_spec_has_a_main_variant() -> None:
+    """``--variant`` を省いたときに走るものが必ずある。"""
+    for spec in catalog.CATALOG:
+        assert catalog.MAIN in spec.variants, f"実験 {spec.number} に main がありません"
+
+
+def test_every_spec_declares_its_artifacts_and_budget() -> None:
+    """成果物と予算が宣言されている (Makefile のコメントに書かない)。"""
+    for spec in catalog.CATALOG:
+        assert spec.artifacts, f"実験 {spec.number} の artifacts が空です"
+        assert "meta.json" in spec.artifacts
+        assert spec.budget_s > 0.0
