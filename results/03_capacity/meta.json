@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "1ac98432eecb43ecff7329ca560d5e0ce181668f",
+  "commit": "174438e8b5cbe9fc522c450350359197672aca75",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -402,42 +402,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.868400208186358
+    "wall_time_s": 3.888647124869749
   },
-  "timestamp_utc": "2026-09-01T03:06:56.916571+00:00",
+  "timestamp_utc": "2026-09-01T15:05:03.930656+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.683102124603465,
-      "wall_time_mc_s": 4.304789046058431,
-      "wall_time_s": 43.61143357725814,
-      "wall_time_state_s": 7.620071702636778
+      "wall_time_ipc_s": 31.9076266719494,
+      "wall_time_mc_s": 4.314581792103127,
+      "wall_time_s": 43.87713341624476,
+      "wall_time_state_s": 7.651505957590416
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 84.2259009575937,
-      "wall_time_mc_s": 9.45323866745457,
-      "wall_time_s": 109.95966482814401,
-      "wall_time_state_s": 16.27575770718977
+      "wall_time_ipc_s": 84.64143879152834,
+      "wall_time_mc_s": 9.52009383449331,
+      "wall_time_s": 110.71712824958377,
+      "wall_time_state_s": 16.551011372823268
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 258.29645303846337,
-      "wall_time_mc_s": 23.043105580843985,
-      "wall_time_s": 309.522091752151,
-      "wall_time_state_s": 28.177037127083167
+      "wall_time_ipc_s": 257.37682549702004,
+      "wall_time_mc_s": 22.09823170513846,
+      "wall_time_s": 307.6287765435409,
+      "wall_time_state_s": 28.148108832538128
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20404412504285574,
-      "wall_time_mc_s": 0.024376458022743464,
-      "wall_time_s": 0.4973139171488583,
-      "wall_time_state_s": 0.04851354216225445
+      "wall_time_ipc_s": 0.20647137495689094,
+      "wall_time_mc_s": 0.025053874822333455,
+      "wall_time_s": 0.5076724160462618,
+      "wall_time_state_s": 0.04991020797751844
     }
   ],
-  "wall_time_s": 478.1227533330675
+  "wall_time_s": 477.46843037498184
 }

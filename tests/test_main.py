@@ -214,3 +214,57 @@ def _without_wall_time(csv_text: str) -> list[list[str]]:
     rows = [line.split(",") for line in csv_text.strip().splitlines()]
     index = rows[0].index("wall_time_s")
     return [row[:index] + row[index + 1 :] for row in rows]
+
+
+def test_every_experiment_writes_to_its_own_results_dir() -> None:
+    """``results_dir`` が互いに異なる (D-125)。
+
+    ``scratch_dir`` は ``name`` から導くので構造上一意だが、``results_dir`` は
+    **宣言**である (01 だけ ``results/`` 直下なので名前から導けない)。揃えて
+    しまうと ``make figures-0N`` が別実験の成果物を黙って上書きする ——
+    D-51 が ``scratch`` 側で塞いだのと同じ穴が、``results`` 側に開く。
+    """
+    dirs = [spec.results_dir for spec in catalog.CATALOG]
+    assert len(set(dirs)) == len(dirs), f"results_dir が重複しています: {dirs}"
+
+
+def test_results_flag_selects_the_declared_results_dir() -> None:
+    """``--results`` がカタログの ``results_dir`` を選ぶ (``make figures-0N`` の経路)。
+
+    ここが効かないと ``make figures-03`` が ``scratch/`` へ書き、**成果物が
+    更新されないのに緑になる**。
+    """
+    for spec in catalog.CATALOG:
+        args = main.parse_args(["--experiment", spec.number, "--results"])
+        assert main.resolve_out(args) == spec.results_dir
+        plain = main.parse_args(["--experiment", spec.number])
+        assert main.resolve_out(plain) == spec.scratch_dir
+        assert spec.results_dir != spec.scratch_dir
+
+
+def test_an_explicit_out_wins_over_the_results_flag(tmp_path: Path) -> None:
+    """``--out`` は ``--results`` より優先される (決め方は resolve_out の1か所)。"""
+    args = main.parse_args(["--experiment", "03", "--results", "--out", str(tmp_path)])
+    assert main.resolve_out(args) == tmp_path
+
+
+def test_an_unknown_variant_is_rejected_with_the_known_ones() -> None:
+    """無い variant は候補を並べて落ちる (黙って main に落ちない)。"""
+    with pytest.raises(ValueError, match="variant") as raised:
+        main.main(["--experiment", "03", "--variant", "no_such"])
+    message = str(raised.value)
+    assert "length" in message and "symmetry" in message
+
+
+def test_every_spec_has_a_main_variant() -> None:
+    """``--variant`` を省いたときに走るものが必ずある。"""
+    for spec in catalog.CATALOG:
+        assert catalog.MAIN in spec.variants, f"実験 {spec.number} に main がありません"
+
+
+def test_every_spec_declares_its_artifacts_and_budget() -> None:
+    """成果物と予算が宣言されている (Makefile のコメントに書かない)。"""
+    for spec in catalog.CATALOG:
+        assert spec.artifacts, f"実験 {spec.number} の artifacts が空です"
+        assert "meta.json" in spec.artifacts
+        assert spec.budget_s > 0.0
