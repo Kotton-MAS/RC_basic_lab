@@ -20,6 +20,7 @@ from rc_basics_lab.reservoir.protocol import (
     ReservoirConfig,
 )
 from rc_basics_lab.reservoir.ring import RingConfig, RingReservoir
+from rc_basics_lab.reservoir.topology import nominal_density
 from rc_basics_lab.types import FloatArray
 
 
@@ -84,6 +85,31 @@ def require_esn(config: ReservoirConfig, used_by: str) -> ESNConfig:
     )
 
 
+def reservoir_density(config: ReservoirConfig) -> float:
+    """成果物の ``density`` 列に書く値を、モデルによらず返す (D-124)。
+
+    **実測ではなく設定から見込まれる値**である (``topology.nominal_density``
+    と同じ規約)。掃引を ESN 以外へ広げるとき、``config.topology`` を直接
+    読んでいる箇所が ``RingConfig`` で落ちるのを防ぐ。
+
+    リングは巡回結合なので、非零は1行に1つ = ``1 / N`` である。
+
+    Args:
+        config: リザバーの構造設定。
+
+    Returns:
+        密度 (0 以上 1 以下)。
+    """
+    match config:
+        case ESNConfig():
+            return nominal_density(config.topology, config.n_units)
+        case DeepESNConfig():
+            # 層内の密度である (層間の結合は含めない)。層ごとの N で決まる。
+            return nominal_density(config.topology, config.n_units // config.n_layers)
+        case RingConfig():
+            return 1.0 / float(config.n_units)
+
+
 def require_graph(reservoir: Reservoir, used_by: str) -> FloatArray:
     """結合行列を持つモデルに絞り、その隣接行列を返す (D-122)。
 
@@ -123,4 +149,9 @@ def require_graph(reservoir: Reservoir, used_by: str) -> FloatArray:
     return matrix
 
 
-__all__ = ["build_reservoir", "require_esn", "require_graph"]
+__all__ = [
+    "build_reservoir",
+    "require_esn",
+    "require_graph",
+    "reservoir_density",
+]

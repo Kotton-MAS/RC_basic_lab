@@ -22,6 +22,23 @@ from rc_basics_lab.experiment.diagnostics_rows import (
 
 
 @dataclass(frozen=True, slots=True)
+class StabilityCondition:
+    """4-C の1条件 (ハイパーパラメータ平面の1点 x レプリケート)。
+
+    Attributes:
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        state_noise: 学習時・自走時の状態ノイズ (D-36)。
+        replicate: レプリケート番号。
+    """
+
+    rho: float
+    leak_rate: float
+    state_noise: float
+    replicate: int
+
+
+@dataclass(frozen=True, slots=True)
 class StabilityRow:
     """``stability.csv`` の1行 (4-C の1条件)。列順はこの宣言順が単一の真実。
 
@@ -106,6 +123,7 @@ def stability_diagnostic_rows(
 
 __all__ = [
     "STABILITY_CSV_COLUMNS",
+    "StabilityCondition",
     "StabilityRow",
     "stability_diagnostic_rows",
 ]

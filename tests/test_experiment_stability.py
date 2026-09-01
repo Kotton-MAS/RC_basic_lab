@@ -43,7 +43,7 @@ from rc_basics_lab.experiment.stability import (
     STABILITY_CSV_COLUMNS,
     StabilityCondition,
     StabilityRow,
-    condition_esn_config,
+    condition_reservoir_config,
     condition_task_entry,
     regime_map,
     run_stability_experiment,
@@ -191,13 +191,13 @@ def test_stability_conditions_rejects_the_condition_count_by_stats_steps_product
 # --- 掃引の組み立て -------------------------------------------------------------
 
 
-def test_condition_esn_config_moves_only_the_three_axes() -> None:
+def test_condition_reservoir_config_moves_only_the_three_axes() -> None:
     """掃引で動くのは rho / リーク率 / 状態ノイズだけ (D-08)。"""
     config = small_config()
     condition = StabilityCondition(
         rho=1.2, leak_rate=0.8, state_noise=1.0e-3, replicate=0
     )
-    changed = condition_esn_config(config, condition)
+    changed = condition_reservoir_config(config, condition)
     base = config.base.tasks[0].reservoir
     moved = {
         item.name
