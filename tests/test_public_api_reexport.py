@@ -175,6 +175,7 @@ DIAGNOSTICS_ALL = (
     "memory_capacity",
     "state_space",
     "timescale",
+    "topology",
 )
 """``rc_basics_lab.diagnostics.__all__`` のスナップショット (D-52 / 05 公開面縮小)。
 
@@ -196,6 +197,7 @@ DIAGNOSTIC_FUNCTIONS_BY_MODULE = {
     "memory_capacity": ("memory_capacity",),
     "state_space": ("state_pca",),
     "timescale": ("autocorrelation_time",),
+    "topology": ("degree_distribution", "small_world", "spectral_profile"),
 }
 """診断モジュール -> そのモジュールが定義する診断関数 (D-52 の「旧経路」)。
 

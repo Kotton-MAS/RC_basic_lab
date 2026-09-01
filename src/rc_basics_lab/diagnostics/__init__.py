@@ -20,6 +20,7 @@ memristor-rc-lab への移植性の実体であり、
 - ``ipc``          : 情報処理容量 IPC (03。サロゲート閾値は ``ctx.seed``)
 - ``_capacity``    : MC / IPC が共有する容量カーネル (非公開)
 - ``lyapunov``     : 自律系の最大 Lyapunov 指数 (04。``ctx.dt`` で正規化。D-42)
+- ``topology``     : 結合行列 ``W`` を取る診断 (**別の署名族**。D-122)
 
 サイクル 05 で追加予定のモジュール (名前を予約する):
 
@@ -52,6 +53,7 @@ from rc_basics_lab.diagnostics import (
     memory_capacity,
     state_space,
     timescale,
+    topology,
 )
 
 __all__ = [
@@ -63,4 +65,5 @@ __all__ = [
     "memory_capacity",
     "state_space",
     "timescale",
+    "topology",
 ]

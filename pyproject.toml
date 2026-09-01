@@ -22,11 +22,13 @@ packages = ["src/rc_basics_lab"]
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "networkx>=3.4",
     "pre-commit>=4.6.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.4",
     "scikit-learn>=1.9.0",
+    "types-networkx>=3.6.1.20260728",
     "types-pyyaml>=6.0.12.20260815",
 ]
 
@@ -58,9 +60,11 @@ strict = true
 disallow_any_explicit = true
 exclude = ["\\.venv"]
 
-# scipy / matplotlib / sklearn は型スタブを同梱しない。呼び出し側に
+# scipy / matplotlib / sklearn / networkx は型スタブを同梱しない。呼び出し側に
 # `# type: ignore` を撒く代わりに、ここでモジュール単位の未解決 import だけを
-# 許容する (仕様 T1)。sklearn は dev グループのテストオラクル専用 (D-62)。
+# 許容する (仕様 T1)。sklearn と networkx は dev グループのテストオラクル専用
+# (D-62 / D-122)。networkx-stubs という PyPI パッケージは存在するが、
+# 0.0.1 で中身が無いので入れていない。
 [[tool.mypy.overrides]]
-module = ["scipy.*", "matplotlib.*", "mpl_toolkits.*", "sklearn.*"]
+module = ["scipy.*", "matplotlib.*", "mpl_toolkits.*", "sklearn.*", "networkx.*"]
 ignore_missing_imports = true

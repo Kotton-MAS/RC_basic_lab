@@ -14,8 +14,13 @@ import numpy as np
 
 from rc_basics_lab.reservoir.deep import DeepESN, DeepESNConfig
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig
-from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
+from rc_basics_lab.reservoir.protocol import (
+    GraphReservoir,
+    Reservoir,
+    ReservoirConfig,
+)
 from rc_basics_lab.reservoir.ring import RingConfig, RingReservoir
+from rc_basics_lab.types import FloatArray
 
 
 def build_reservoir(
@@ -79,4 +84,43 @@ def require_esn(config: ReservoirConfig, used_by: str) -> ESNConfig:
     )
 
 
-__all__ = ["build_reservoir", "require_esn"]
+def require_graph(reservoir: Reservoir, used_by: str) -> FloatArray:
+    """結合行列を持つモデルに絞り、その隣接行列を返す (D-122)。
+
+    トポロジ診断 (``diagnostics.topology``) は行列を入力に取るので、モデルから
+    行列を取り出す経路が要る。**取り出せないモデルを黙って素通りさせない** ——
+    そうすると「トポロジ診断の行だけが静かに消えた成果物」ができ、
+    再生成しても誰も気づけない。
+
+    解析側で ``isinstance`` して分岐するのではなく、**必要とする側が要求する**
+    (``require_esn`` と同じ流儀)。
+
+    Args:
+        reservoir: 生成済みのリザバー。
+        used_by: 呼び出し元の説明 (エラーに出す)。
+
+    Returns:
+        ``(N, N)`` の隣接行列。``W[i, j] != 0`` が j -> i の辺。
+
+    Raises:
+        TypeError: ``adjacency`` を持たないモデルの場合。
+        ValueError: 返った行列が ``(n_units, n_units)`` でない場合。
+    """
+    if not isinstance(reservoir, GraphReservoir):
+        raise TypeError(
+            f"{used_by} は結合行列を持つモデルだけに対応しています "
+            f"({type(reservoir).__name__} は adjacency を持ちません)。"
+            "トポロジを測る対象が無いので、何を測るのかを決めてから"
+            "対応させてください"
+        )
+    matrix = reservoir.adjacency()
+    expected = (reservoir.n_units, reservoir.n_units)
+    if matrix.shape != expected:
+        raise ValueError(
+            f"{type(reservoir).__name__}.adjacency() の形が n_units と"
+            f"一致しません: {matrix.shape} != {expected}"
+        )
+    return matrix
+
+
+__all__ = ["build_reservoir", "require_esn", "require_graph"]

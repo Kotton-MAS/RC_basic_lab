@@ -235,6 +235,29 @@ class DeepESN:
         start = layer * self._layer_units
         return slice(start, start + self._layer_units)
 
+    def adjacency(self) -> FloatArray:
+        """``GraphReservoir`` の面 (D-122)。**層間の結合も辺として含める**。
+
+        対角ブロックが各層の再帰結合、その1つ下のブロックが層間の結合
+        (第 l 層は第 l-1 層の更新後の状態を受ける) である。層間を落とすと
+        グラフが ``n_layers`` 個の連結成分に割れ、平均最短路長やスモールワールド
+        指標が「層の中だけの値」になって、深層にした意味が消える。
+
+        2種類の辺は時間の扱いが違う (再帰は1ステップ遅れ、層間は同時刻) が、
+        **どちらも「どの素子がどの素子に影響するか」を表す**ので同じ行列に置く。
+        重みは生成時の値そのままで、スペクトル半径の正規化は層ごとに済んでいる。
+        """
+        size = self.n_units
+        matrix: FloatArray = np.zeros((size, size), dtype=np.float64)
+        for layer in range(self._config.n_layers):
+            span = self.layer_slice(layer)
+            matrix[span, span] = self._recurrent[layer]
+            if layer > 0:
+                matrix[span, self.layer_slice(layer - 1)] = self._weights_in[layer][
+                    :, 1:
+                ]
+        return matrix
+
     def initial_state(self) -> FloatArray:
         """既定の初期状態 (零ベクトル、連結後の長さ)。"""
         return np.zeros(self._config.n_units, dtype=np.float64)

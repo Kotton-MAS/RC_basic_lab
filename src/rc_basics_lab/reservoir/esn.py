@@ -183,6 +183,10 @@ class ESN:
         """再帰重み ``(N, N)``。読み取り専用 (名前は更新式の記号に合わせる)。"""
         return self._recurrent
 
+    def adjacency(self) -> FloatArray:
+        """``GraphReservoir`` の面 (D-122)。再帰結合をそのまま返す。"""
+        return self._recurrent
+
     def initial_state(self) -> FloatArray:
         """既定の初期状態 (零ベクトル)。"""
         return np.zeros(self._config.n_units, dtype=np.float64)
