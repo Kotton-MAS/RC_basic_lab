@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "8a3d998002b9b2700c144efff52f5da20c452d1f",
+  "commit": "1ac98432eecb43ecff7329ca560d5e0ce181668f",
   "config": {
     "decay": {
       "leak_rate": 1.0,
@@ -93,46 +93,6 @@
     },
     "washout": {
       "base": {
-        "delay_parity": {
-          "delay": 1,
-          "length": 8200,
-          "n_bits": 2
-        },
-        "esn_delay_parity": {
-          "activation": "tanh",
-          "bias_scale": 0.1,
-          "input_scale": 1.0,
-          "leak_rate": 1.0,
-          "n_units": 200,
-          "spectral_radius": 0.9,
-          "state_noise": 0.0,
-          "topology": {
-            "density": 0.1
-          }
-        },
-        "esn_mackey_glass": {
-          "activation": "tanh",
-          "bias_scale": 0.1,
-          "input_scale": 0.5,
-          "leak_rate": 0.3,
-          "n_units": 200,
-          "spectral_radius": 0.9,
-          "state_noise": 0.0,
-          "topology": {
-            "density": 0.1
-          }
-        },
-        "mackey_glass": {
-          "beta": 0.2,
-          "exponent": 10,
-          "gamma": 0.1,
-          "horizon": 1,
-          "integration_burn_in": 1000,
-          "length": 8200,
-          "rk4_step": 0.1,
-          "sample_interval": 10,
-          "tau": 17.0
-        },
         "n_replicates": 5,
         "name": "02_washout_sensitivity",
         "ridge": {
@@ -177,7 +137,53 @@
           "train_ratio": 0.5,
           "val_ratio": 0.15,
           "washout": 200
-        }
+        },
+        "tasks": [
+          {
+            "params": {
+              "beta": 0.2,
+              "exponent": 10,
+              "gamma": 0.1,
+              "horizon": 1,
+              "integration_burn_in": 1000,
+              "length": 8200,
+              "rk4_step": 0.1,
+              "sample_interval": 10,
+              "tau": 17.0
+            },
+            "reservoir": {
+              "activation": "tanh",
+              "bias_scale": 0.1,
+              "input_scale": 0.5,
+              "leak_rate": 0.3,
+              "n_units": 200,
+              "spectral_radius": 0.9,
+              "state_noise": 0.0,
+              "topology": {
+                "density": 0.1
+              }
+            }
+          },
+          {
+            "params": {
+              "delay": 1,
+              "length": 8200,
+              "n_bits": 2
+            },
+            "reservoir": {
+              "activation": "tanh",
+              "bias_scale": 0.1,
+              "input_scale": 1.0,
+              "leak_rate": 1.0,
+              "n_units": 200,
+              "spectral_radius": 0.9,
+              "state_noise": 0.0,
+              "topology": {
+                "density": 0.1
+              }
+            }
+          }
+        ]
       },
       "grid": [
         0,
@@ -228,7 +234,7 @@
     "probe": 3,
     "reservoir": 0
   },
-  "timestamp_utc": "2026-09-01T01:20:54.363734+00:00",
+  "timestamp_utc": "2026-09-01T02:57:18.895368+00:00",
   "verdict_lyapunov_agreement": {
     "boundary_lambda": 0.01,
     "disagreement_by_rho": [
@@ -285,7 +291,7 @@
     "n_rows": 369,
     "strong_drive_sigma": 0.5
   },
-  "wall_time_s": 129.6314291660674,
+  "wall_time_s": 130.24675341695547,
   "washout_sensitivity": {
     "by_method": [
       {
