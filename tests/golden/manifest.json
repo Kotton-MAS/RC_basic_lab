@@ -10,6 +10,7 @@
       "meta.json": "sha256:54b11a31928a6807267fd51dea371bcc5c5357ce1bc50625a3f50aef6d5e662d"
     },
     "02_esp_and_dynamics": {
+      "diagnostics.csv": "sha256:5fec77ac5ed2b018f49f459005a195a5386536c057fdc18acf90febeb9b0a0fe",
       "esp_diagnostics.csv": "sha256:ff0358f71b1fb12d325cba456bfdd311cb7c9af133832c3bba349ebba0a91c1b",
       "esp_threshold_sensitivity.csv": "sha256:85550c59e7cdf11aa3e877ab718444ca0b4e16726d66d17d37fc0d3808301731",
       "fig_esp_decay.png": "sha256:f531e46827a773cb50055f180ddcf078cc5872c9c2e3e057f0f0d38a9a91b01c",
@@ -35,6 +36,7 @@
     },
     "04_chaotic_freerun": {
       "capacity.csv": "sha256:5bf30fe94900fde5114ec5a1207e3177a15001e057708e66020f3771b95de51e",
+      "diagnostics.csv": "sha256:e214ff6dbd95df5607c2cbe17b90c0df0d1ba86674558055ce7c90986dae5bd5",
       "fig_freerun_attractor.png": "sha256:6d1048f68962d9928f30418af736d8cf49c8836697a66f95eade317731849063",
       "fig_freerun_stats.png": "sha256:ba560e41acd6cb8d60e03c9a286363e1ae1c7305e9a98c943caa47d653820746",
       "fig_freerun_timeline.png": "sha256:a53d4967c2fc510915a01c6c1bfb026bde08b0d01017108d4f899c8c90881a1e",
