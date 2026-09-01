@@ -105,24 +105,27 @@ def test_a_leaf_typo_is_caught_by_the_unknown_key_check() -> None:
     上書き専用の検査を別に書かないので、YAML 側と CLI 側で厳しさが割れない。
     """
     with pytest.raises(ConfigError, match="未知のキーです: n_unit"):
-        load_config(CONFIG, overrides=["esn_mackey_glass.n_unit=50"])
+        load_config(CONFIG, overrides=["tasks.mackey_glass.reservoir.n_unit=50"])
 
 
 def test_an_override_reaches_the_built_config() -> None:
     """``--set`` が実際に設定へ届く (D-13: 効かないフィールドは飾りである)。"""
     base = load_config(CONFIG)
-    changed = load_config(CONFIG, overrides=["esn_mackey_glass.n_units=17"])
-    assert base.esn_mackey_glass.n_units != 17
-    assert changed.esn_mackey_glass.n_units == 17
+    changed = load_config(CONFIG, overrides=["tasks.mackey_glass.reservoir.n_units=17"])
+    assert base.tasks[0].reservoir.n_units != 17
+    assert changed.tasks[0].reservoir.n_units == 17
 
 
 def test_overrides_apply_left_to_right() -> None:
     """同じキーを2回指定したら右が勝つ。"""
     config = load_config(
         CONFIG,
-        overrides=["esn_mackey_glass.n_units=17", "esn_mackey_glass.n_units=23"],
+        overrides=[
+            "tasks.mackey_glass.reservoir.n_units=17",
+            "tasks.mackey_glass.reservoir.n_units=23",
+        ],
     )
-    assert config.esn_mackey_glass.n_units == 23
+    assert config.tasks[0].reservoir.n_units == 23
 
 
 def test_a_preset_is_merged_under_the_overrides() -> None:
@@ -141,9 +144,10 @@ def test_a_preset_only_changes_what_it_names() -> None:
     """
     base = load_config(CONFIG)
     quick = load_config(CONFIG, preset=QUICK)
-    assert quick.esn_mackey_glass.n_units != base.esn_mackey_glass.n_units
+    assert quick.tasks[0].reservoir.n_units != base.tasks[0].reservoir.n_units
     assert (
-        quick.esn_mackey_glass.spectral_radius == base.esn_mackey_glass.spectral_radius
+        quick.tasks[0].reservoir.spectral_radius
+        == base.tasks[0].reservoir.spectral_radius
     ), "プリセットが書いていないフィールドが消えています"
 
 

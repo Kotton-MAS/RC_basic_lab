@@ -35,6 +35,7 @@ from typing import Protocol
 
 import numpy as np
 import pytest
+from wiring import experiment_config
 
 import rc_basics_lab.diagnostics as diagnostics_package
 from rc_basics_lab.config import (
@@ -638,7 +639,7 @@ def tiny_01_config() -> ExperimentConfig:
     3b-2 の T4 が足す NARMA10 と同じ形だからである (診断層は ``u`` を
     ``(T, D)`` の2次元で受け取る)。
     """
-    return ExperimentConfig(
+    return experiment_config(
         n_replicates=1,
         seeds=SeedConfig(reservoir=0, task=1, split=2),
         split=SplitConfig(washout=50, max_start_offset=10),

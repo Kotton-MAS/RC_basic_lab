@@ -164,55 +164,56 @@ narma:
       # u[t-1] と u[t-10] の積を含むので、k < 10 では対照が構造的に届かない
       # (対照を不当に弱くしない)。上端 30 は要件書の指定そのまま。
       n_lags_grid: [10, 15, 20, 25, 30]
-    mackey_glass:
-      tau: 17.0
-      beta: 0.2
-      gamma: 0.1
-      exponent: 10
-      rk4_step: 0.1
-      sample_interval: 10
-      integration_burn_in: 1000
-      length: 8000
-      horizon: 1
-    delay_parity:
-      n_bits: 2
-      delay: 1
-      length: 8000
-    # 3-C が読むのは esn_mackey_glass の**1本だけ** (experiment/narma.py の
-    # NARMA10_ESN_SECTION)。NARMA10 は連続値入力の回帰課題で、漏れ積分が効く
-    # 点で MG と同型だからである。
+    # 課題は**リスト**である (拡張性方針 §3 / D-123)。
+    #
+    # 3-C が読むのは mackey_glass エントリのリザバー**1本だけ**
+    # (experiment/narma.py の NARMA10_ESN_SECTION)。NARMA10 は連続値入力の
+    # 回帰課題で、漏れ積分が効く点で MG と同型だからである。
     #
     # n_units = 50 は D-39 (仕様 §8、ユーザー承認済み): 参照値 (0.16 / 0.107)
     # が N = 50 規模の報告であり、N=200 で回すと『先行より良い』が規模差なのか
     # 対照設計の差なのか分離できない。3-B (IPC 掃引、N=50) とそのまま
     # 突き合わせられる利点もある。D-08 により N は検証分割で選ばれないので、
     # 宣言した1点をそのまま報告する。
-    esn_mackey_glass:
-      n_units: 50
-      spectral_radius: 0.9
-      leak_rate: 0.3
-      input_scale: 0.5
-      bias_scale: 0.1
-      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-      # barabasi_albert / watts_strogatz / ring に差し替えられる。
-      topology:
-        kind: erdos_renyi
-        density: 0.1
-      activation: tanh
-      state_noise: 0.0
-    # 内包した 01 の ExperimentConfig の一部だが 3-C では**不活性**である
-    # (課題は narma10 の1本だけで、build_tasks は通らない, D-31)。値の効きの
-    # 実測は 01 側 (tests/test_config_wiring.py) へ委譲する。
-    esn_delay_parity:
-      n_units: 200
-      spectral_radius: 0.9
-      leak_rate: 1.0
-      input_scale: 1.0
-      bias_scale: 0.1
-      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-      # barabasi_albert / watts_strogatz / ring に差し替えられる。
-      topology:
-        kind: erdos_renyi
-        density: 0.1
-      activation: tanh
-      state_noise: 0.0
+    tasks:
+      - kind: mackey_glass
+        params:
+          tau: 17.0
+          beta: 0.2
+          gamma: 0.1
+          exponent: 10
+          rk4_step: 0.1
+          sample_interval: 10
+          integration_burn_in: 1000
+          length: 8000
+          horizon: 1
+        reservoir:
+          n_units: 50
+          spectral_radius: 0.9
+          leak_rate: 0.3
+          input_scale: 0.5
+          bias_scale: 0.1
+          topology:
+            kind: erdos_renyi
+            density: 0.1
+          activation: tanh
+          state_noise: 0.0
+      # 内包した 01 の ExperimentConfig の一部だが 3-C では**不活性**である
+      # (課題は narma10 の1本だけで、build_tasks は通らない, D-31)。値の効きの
+      # 実測は 01 側 (tests/test_config_wiring.py) へ委譲する。
+      - kind: delay_parity
+        params:
+          n_bits: 2
+          delay: 1
+          length: 8000
+        reservoir:
+          n_units: 200
+          spectral_radius: 0.9
+          leak_rate: 1.0
+          input_scale: 1.0
+          bias_scale: 0.1
+          topology:
+            kind: erdos_renyi
+            density: 0.1
+          activation: tanh
+          state_noise: 0.0

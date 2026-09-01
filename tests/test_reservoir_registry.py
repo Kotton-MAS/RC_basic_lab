@@ -12,7 +12,7 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from rc_basics_lab.config._common import _kind_of
+from rc_basics_lab.config._common import kind_of
 from rc_basics_lab.reservoir.deep import DeepESNConfig
 from rc_basics_lab.reservoir.esn import ESN, ESNConfig
 from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
@@ -79,7 +79,7 @@ def test_every_union_member_is_reachable_from_the_registry() -> None:
     members = get_args(ReservoirConfig.__value__)
     assert len(members) >= 3, f"union の要素が減っています: {members}"
     for member in members:
-        assert _kind_of(member) is not None, f"{member} が KIND を名乗っていません"
+        assert kind_of(member) is not None, f"{member} が KIND を名乗っていません"
 
 
 def test_the_esn_satisfies_the_reservoir_protocol() -> None:

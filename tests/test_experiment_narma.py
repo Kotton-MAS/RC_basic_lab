@@ -25,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from wiring import experiment_config
 
 from rc_basics_lab.config import (
     Capacity03Config,
@@ -32,12 +33,14 @@ from rc_basics_lab.config import (
     ESNConfig,
     ExperimentConfig,
     IpcConfig,
+    MackeyGlassTask,
     MemoryCapacityConfig,
     Narma10Config,
     RidgeConfig,
     SplitConfig,
     load_config,
     load_config_as,
+    require_task,
 )
 from rc_basics_lab.diagnostics.base import DiagnosticContext
 from rc_basics_lab.experiment import narma as narma_module
@@ -100,7 +103,7 @@ def tiny_config() -> Capacity03Config:
         ),
         narma=Narma10Config(
             length=700,
-            base=ExperimentConfig(
+            base=experiment_config(
                 name="narma-tiny-base",
                 n_replicates=3,
                 seeds=SeedConfig(reservoir=0, task=1, split=2),
@@ -350,7 +353,8 @@ def test_narma10_esn_size_matches_the_declared_choice() -> None:
     entry = narma_task_entry(config)
 
     assert entry.reservoir is narma_esn_config(base)
-    assert entry.reservoir is getattr(base, NARMA10_ESN_SECTION)
+    assert NARMA10_ESN_SECTION == "mackey_glass"
+    assert entry.reservoir is require_task(base, MackeyGlassTask, "テスト").reservoir
     assert entry.reservoir.n_units == 50
     assert entry.reservoir.n_units == config.ipc_sweep.n_units, (
         "D-39: 3-C の ESN は 3-B (IPC 掃引) と同じ規模にする"
@@ -408,7 +412,7 @@ float64 の eps (2.2e-16) を超える条件数なので、実装差が増幅さ
 
 構造変更 (上限側、01 の本番設定で実測):
 
-- ``esn_mackey_glass.leak_rate`` を +1% : 7.6e-3
+- ``tasks.mackey_glass.reservoir.leak_rate`` を +1% : 7.6e-3
 - ``mackey_glass.length`` を +1%        : 2.1e-2
 - ``seeds.task`` を +1                  : 3.8e-2
 
@@ -655,7 +659,15 @@ def test_oversized_narma10_n_units_is_rejected_before_any_allocation(
             config.narma,
             base=replace(
                 base,
-                esn_mackey_glass=replace(base.esn_mackey_glass, n_units=_MAX_UNITS + 1),
+                tasks=(
+                    replace(
+                        base.tasks[0],
+                        reservoir=replace(
+                            base.tasks[0].reservoir, n_units=_MAX_UNITS + 1
+                        ),
+                    ),
+                    *base.tasks[1:],
+                ),
             ),
         ),
     )
@@ -692,7 +704,7 @@ def test_narma10_n_units_boundary_is_accepted() -> None:
 
 
 def test_narma10_length_boundary_plus_one_over_n_units_product_is_rejected() -> None:
-    """``narma.length * base.esn_mackey_glass.n_units`` の上限超過も塞がる。
+    """``narma.length * base.tasks[0].reservoir.n_units`` の上限超過も塞がる。
 
     ``length`` 単体は上限内でも、``n_units`` を掛けた状態行列の確保量が
     上限を超えれば確保より前に ``ValueError`` になる (``_MAX_STATE_ELEMENTS``、
@@ -704,7 +716,7 @@ def test_narma10_length_boundary_plus_one_over_n_units_product_is_rejected() -> 
     over_limit_length = _MAX_STATE_ELEMENTS // n_units + 1
     cfg = Narma10Config(
         length=over_limit_length,
-        base=ExperimentConfig(esn_mackey_glass=ESNConfig(n_units=n_units)),
+        base=experiment_config(esn_mackey_glass=ESNConfig(n_units=n_units)),
     )
     with pytest.raises(ValueError, match="n_units"):
         _validate(cfg)

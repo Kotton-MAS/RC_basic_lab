@@ -114,30 +114,99 @@ def apply_overrides(
 
 
 def _deep_copy(raw: Mapping[str, object]) -> dict[str, object]:
-    """マッピングだけを再帰的に複製する (リストや値はそのまま共有する)。"""
-    return {
-        str(key): _deep_copy(cast("Mapping[str, object]", value))
-        if isinstance(value, Mapping)
-        else value
-        for key, value in raw.items()
-    }
+    """マッピングとリストを再帰的に複製する (値はそのまま共有する)。
+
+    リストも複製するのは、``tasks`` の要素を ``--set`` で書き替えられるように
+    したため (D-123)。共有したままだと、上書きが**元の生マッピングにも及ぶ** ——
+    同じ設定を2回読む経路があるので、2回目が1回目の上書きを引き継ぐ。
+    """
+    return {str(key): _copy_value(value) for key, value in raw.items()}
+
+
+def _copy_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return _deep_copy(cast("Mapping[str, object]", value))
+    if not isinstance(value, str) and isinstance(value, Sequence):
+        return [_copy_value(item) for item in value]
+    return value
 
 
 def _assign(
     target: dict[str, object], path: tuple[str, ...], value: object, text: str
 ) -> None:
     """``path`` の位置に ``value`` を書く。親が無ければ ``OverrideError``。"""
-    node = target
-    for depth, part in enumerate(path[:-1]):
+    node: dict[str, object] = target
+    index = 0
+    while index < len(path) - 1:
+        part = path[index]
         child = node.get(part)
+        if is_kinded_list(child):
+            # リストは「名前 -> kind」の2つで1段降りる (tasks.mackey_glass...)
+            if index + 2 > len(path) - 1:
+                raise OverrideError(
+                    f"{text}: {PATH_SEPARATOR.join(path)} は課題そのものを"
+                    "指しています (params.* か reservoir.* まで書いてください)"
+                )
+            node = _element_of(
+                cast("Sequence[dict[str, object]]", child),
+                path[index + 1],
+                path[: index + 2],
+                text,
+            )
+            index += 2
+            continue
         if not isinstance(child, dict):
-            location = PATH_SEPARATOR.join(path[: depth + 1])
+            location = PATH_SEPARATOR.join(path[: index + 1])
             known = ", ".join(sorted(node)) or "(空)"
             raise OverrideError(
                 f"{text}: {location} という設定はありません (既知: {known})"
             )
         node = child
+        index += 1
     node[path[-1]] = value
 
 
-__all__ = ["OverrideError", "apply_overrides", "parse_override"]
+def is_kinded_list(value: object) -> bool:
+    """``kind`` を持つマッピングだけからなる、空でないリストか (D-123)。"""
+    if isinstance(value, str) or not isinstance(value, Sequence) or not value:
+        return False
+    return all(isinstance(item, Mapping) and KIND_KEY in item for item in value)
+
+
+def _element_of(
+    items: Sequence[dict[str, object]],
+    kind: str,
+    location: tuple[str, ...],
+    text: str,
+) -> dict[str, object]:
+    """``kind`` でリストの要素を1つ選ぶ (``tasks.mackey_glass.params.length``)。
+
+    添字 (``tasks[0]``) にしないのは、並び順を替えただけで ``--set`` の意味が
+    変わるためである。``kind`` なら並びに依存しない。
+    """
+    for item in items:
+        if item[KIND_KEY] == kind:
+            return item
+    known = ", ".join(sorted(str(item[KIND_KEY]) for item in items))
+    raise OverrideError(
+        f"{text}: {PATH_SEPARATOR.join(location)} という {KIND_KEY} はありません "
+        f"(既知: {known})"
+    )
+
+
+KIND_KEY = "kind"
+"""判別子のキー名 (``kind: esn`` のように書く)。
+
+**定義はここ1か所**である。``config._common`` はこの層を import する側なので
+(``load_config_as`` が ``apply_overrides`` を呼ぶ)、上から下へ読めば循環しない。
+設定の**型**を知らない ``overrides`` に置くのは妙に見えるが、判別子は
+「生のマッピングのどのキーを見るか」の取り決めであって型ではない。
+"""
+
+__all__ = [
+    "KIND_KEY",
+    "OverrideError",
+    "apply_overrides",
+    "is_kinded_list",
+    "parse_override",
+]

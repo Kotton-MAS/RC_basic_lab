@@ -86,22 +86,25 @@ washout:
     ridge:
       alpha_grid: [1.0e-4, 1.0]
       n_lags_grid: [1, 4]
-    mackey_glass:
-      length: 500
-    delay_parity:
-      length: 500
-    esn_mackey_glass:
-      n_units: 30
-      topology:
-        kind: erdos_renyi
-        density: 0.3
-    esn_delay_parity:
-      n_units: 30
-      topology:
-        kind: erdos_renyi
-        density: 0.3
-      leak_rate: 1.0
-      input_scale: 1.0
+    tasks:
+      - kind: mackey_glass
+        params:
+          length: 500
+        reservoir:
+          n_units: 30
+          topology:
+            kind: erdos_renyi
+            density: 0.3
+      - kind: delay_parity
+        params:
+          length: 500
+        reservoir:
+          n_units: 30
+          topology:
+            kind: erdos_renyi
+            density: 0.3
+          leak_rate: 1.0
+          input_scale: 1.0
 esp:
   window: 100
   fit_skip: 10

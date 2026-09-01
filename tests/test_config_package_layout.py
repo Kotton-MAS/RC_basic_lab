@@ -50,7 +50,6 @@ PRE_SPLIT_ALL = (
     "DEFAULT_ALPHA_GRID",
     "DEFAULT_ESP_MAP_RHO_GRID",
     "DEFAULT_ESP_MAP_SIGMA_GRID",
-    "TASK_LENGTH_FIELDS",
     "Capacity03Config",
     "CapacityDriveConfig",
     "CapacityReservoirConfig",
@@ -200,6 +199,22 @@ SYMMETRY_ADDITIONS = ("SymmetrySweepConfig",)
 """
 
 
+TASK_REGISTRY_ADDITIONS = (
+    "DelayParityTask",
+    "MackeyGlassTask",
+    "TaskSpec",
+    "require_task",
+    "with_length",
+)
+"""課題をリストにした (D-123) ときに足した公開名。
+
+``TASK_LENGTH_FIELDS`` は同時に**消えた** —— 課題の系列長は課題設定が持つので、
+「どの課題がどのフィールドの length を持つか」の対応表が要らなくなった。
+消えた名前は ``PRE_SPLIT_ALL`` から外してある (D-49 が守るのは「分割で消えない
+こと」であり、決定に基づいて畳んだ名前まで残す約束ではない)。
+"""
+
+
 SURVIVING_DIR_ONLY = ("annotations",)
 """分割後も ``dir(config)`` に残る ``PRE_SPLIT_DIR_ONLY`` の名前。
 
@@ -224,6 +239,7 @@ EXPECTED_SUBMODULES = (
 ALLOWED_INTERNAL_EDGES = frozenset(
     {
         ("__init__", "_common"),
+        ("_dump", "_common"),
         ("__init__", "experiment01"),
         ("__init__", "esp02"),
         ("__init__", "capacity03"),
@@ -328,6 +344,7 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
         | set(CROSS_VALIDATION_ADDITIONS)
         | set(ANOMALY05_ADDITIONS)
         | set(SYMMETRY_ADDITIONS)
+        | set(TASK_REGISTRY_ADDITIONS)
     )
     assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
         "config.__all__ が記録していない公開名を増やしています "
@@ -340,7 +357,11 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
 
 
 EXPECTED_ALL: tuple[str, ...] = (
-    PRE_SPLIT_ALL + CHAOS04_ADDITIONS + ANOMALY05_ADDITIONS + SYMMETRY_ADDITIONS
+    PRE_SPLIT_ALL
+    + CHAOS04_ADDITIONS
+    + ANOMALY05_ADDITIONS
+    + SYMMETRY_ADDITIONS
+    + TASK_REGISTRY_ADDITIONS
 )
 """``config.__all__`` に在るべき名前の全体。
 
@@ -373,7 +394,7 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
     """
     actual = {name for name in dir(config_pkg) if not name.startswith("_")}
     before = set(PRE_SPLIT_ALL) | set(PRE_SPLIT_DIR_ONLY)
-    assert len(before) == 53, "スナップショットの名前数が実測 (53) と違います"
+    assert len(before) == 52, "スナップショットの名前数が実測 (52) と違います"
 
     expected_removed = set(PRE_SPLIT_DIR_ONLY) - set(SURVIVING_DIR_ONLY)
     assert before - actual == expected_removed
@@ -383,6 +404,7 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
         | set(CROSS_VALIDATION_ADDITIONS)
         | set(ANOMALY05_ADDITIONS)
         | set(SYMMETRY_ADDITIONS)
+        | set(TASK_REGISTRY_ADDITIONS)
     )
 
 
@@ -449,7 +471,7 @@ def test_config_package_has_exactly_the_expected_modules() -> None:
     モジュールを足すときも同じ場所が赤くなる。
     """
     submodules = {info.name for info in pkgutil.iter_modules([str(PACKAGE_DIR)])}
-    assert submodules == {"_common", *EXPECTED_SUBMODULES}
+    assert submodules == {"_common", "_dump", *EXPECTED_SUBMODULES}
 
 
 def test_config_package_internal_dependencies_are_one_way() -> None:

@@ -23,11 +23,14 @@ import json
 import math
 import statistics
 from collections.abc import Sequence
+from dataclasses import fields
 from functools import lru_cache
 from pathlib import Path
+from typing import get_args
 
 import pytest
 from conftest import png_dpi
+from wiring import experiment_config
 
 from rc_basics_lab.config import (
     DelayParityConfig,
@@ -69,6 +72,7 @@ from rc_basics_lab.plotting.figures_washout import plot_washout_sensitivity
 from rc_basics_lab.plotting.style import setup_style
 from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.tasks.delay_parity import TASK_NAME as DELAY_PARITY
+from rc_basics_lab.tasks.protocol import TaskConfig
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ESP_CONFIG_PATH = REPO_ROOT / "experiments" / "02_esp_and_dynamics" / "config.yaml"
@@ -81,7 +85,7 @@ RETINA_DPI = 200
 
 def tiny_base(*, washout: int = 40) -> ExperimentConfig:
     """秒未満で1周できる 01 用の縮小設定 (掃引の土台)。"""
-    return ExperimentConfig(
+    return experiment_config(
         name="washout-test",
         n_replicates=2,
         split=SplitConfig(washout=washout, max_start_offset=40),
@@ -242,40 +246,38 @@ def test_training_size_is_constant_is_false_when_a_task_diverges() -> None:
     assert sensitivity.training_size_is_constant is False
 
 
-def test_variant_for_rejects_a_task_that_is_not_registered_for_compensation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """``build_tasks`` の課題が ``config.TASK_LENGTH_FIELDS`` に無ければ
-    ``ValueError`` になる (F-1-003: 3つ目の課題を足しても黙って補償が外れない)。
+def test_every_task_config_carries_a_length() -> None:
+    """全課題設定が ``length`` を持つこと (D-123)。
+
+    ``variant_for`` は課題を一様に回して ``params.length`` を伸ばす。かつては
+    ``config.TASK_LENGTH_FIELDS`` への登録と ``variant_for`` 本体の名指しの
+    配線という**2段の写経**があり、片方を忘れると補償が黙って外れた
+    (前者は ``ValueError``、後者は ``NotImplementedError`` で落としていた)。
+
+    課題がリストになって配線は消えたが、**前提は残っている** —— ``length`` を
+    持たない課題設定を union に足すと ``variant_for`` が落ちる。ここでその前提
+    そのものを測る。実行時ではなく**型から**測るので、課題を足した人は
+    その課題を回さなくても気づく。
     """
-    import rc_basics_lab.experiment.washout as washout_module
+    for member in get_args(TaskConfig.__value__):
+        names = {item.name for item in fields(member)}
+        assert "length" in names, (
+            f"{member.__name__} に length がありません。"
+            "washout 感度実験 (D-19) の系列長補償が回せません"
+        )
 
-    monkeypatch.setattr(
-        washout_module, "TASK_LENGTH_FIELDS", {"mackey_glass": "mackey_glass"}
-    )
+
+def test_padding_compensates_every_task_in_the_list() -> None:
+    """補償が**リストの全課題**に効く (課題名の名指しが無いこと)。"""
     section = tiny_sweep_config(grid=(0, 40, 120)).washout
-    with pytest.raises(ValueError, match="登録されていない課題"):
-        variant_for(section, 40)
-
-
-def test_variant_for_rejects_a_registered_task_with_no_wiring(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """登録はあるが ``variant_for`` 本体に配線が無い課題は ``NotImplementedError``。
-
-    「``TASK_LENGTH_FIELDS`` に登録したのに ``variant_for`` の
-    ``dataclasses.replace`` を足し忘れる」という新しい黙って壊れる経路を防ぐ。
-    """
-    import rc_basics_lab.experiment.washout as washout_module
-
-    monkeypatch.setattr(
-        washout_module,
-        "TASK_LENGTH_FIELDS",
-        {"mackey_glass": "mackey_glass", "delay_parity": "not_a_real_field"},
+    base_lengths = [spec.params.length for spec in section.base.tasks]
+    variant = variant_for(section, 120)
+    padded = [spec.params.length for spec in variant.tasks]
+    assert len(padded) == len(base_lengths) >= 2
+    deltas = {new - old for new, old in zip(padded, base_lengths, strict=True)}
+    assert len(deltas) == 1 and deltas.pop() > 0, (
+        f"課題ごとに補償量が違います: {base_lengths} -> {padded}"
     )
-    section = tiny_sweep_config(grid=(0, 40, 120)).washout
-    with pytest.raises(NotImplementedError, match="配線を持たない"):
-        variant_for(section, 40)
 
 
 def test_padding_uses_the_same_t0_as_the_runner() -> None:
@@ -302,18 +304,16 @@ def test_variant_only_changes_the_washout_and_the_series_length() -> None:
     base = section.base
     variant = variant_for(section, 120)
     assert variant.split.washout == 120
-    assert variant.mackey_glass.length > base.mackey_glass.length
-    assert variant.delay_parity.length > base.delay_parity.length
-    assert (
-        variant.mackey_glass.length - base.mackey_glass.length
-        == variant.delay_parity.length - base.delay_parity.length
-    )
+    deltas = {
+        after.params.length - before.params.length
+        for after, before in zip(variant.tasks, base.tasks, strict=True)
+    }
+    assert len(deltas) == 1 and deltas.pop() > 0, "課題ごとに補償量が違います"
     # length と washout を戻したら元の設定と完全一致する
     restored = dataclasses.replace(
         variant,
         split=dataclasses.replace(variant.split, washout=base.split.washout),
-        mackey_glass=base.mackey_glass,
-        delay_parity=base.delay_parity,
+        tasks=base.tasks,
     )
     assert restored == base
 

@@ -25,6 +25,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from wiring import experiment_config
 
 from rc_basics_lab.config import (
     Chaos04Config,
@@ -34,8 +35,10 @@ from rc_basics_lab.config import (
     LorenzConfig,
     MackeyGlassConfig,
     MackeyGlassStandardizeConfig,
+    MackeyGlassTask,
     RidgeConfig,
     SplitConfig,
+    require_task,
 )
 from rc_basics_lab.experiment import freerun as freerun_module
 from rc_basics_lab.experiment import freerun_rows as freerun_rows_module
@@ -103,7 +106,7 @@ def small_config() -> Chaos04Config:
     """
     return Chaos04Config(
         name="chaos-freerun-test",
-        base=ExperimentConfig(
+        base=experiment_config(
             name="chaos-freerun-test-base",
             n_replicates=2,
             split=SplitConfig(washout=30, max_start_offset=10),
@@ -123,6 +126,11 @@ def small_config() -> Chaos04Config:
 
 
 # --- 1. 01 の経路をそのまま通す (D-31) ---------------------------------------
+
+
+def mg_params(config: Chaos04Config) -> MackeyGlassConfig:
+    """04 の土台にある MG 課題の生成パラメータ (D-123)。"""
+    return require_task(config.base, MackeyGlassTask, "04 のテスト").params
 
 
 def test_onestep_reuses_the_01_result_row() -> None:
@@ -163,8 +171,9 @@ def test_chaos_tasks_are_not_added_to_build_tasks() -> None:
 def test_chaos_esn_section_matches_the_declared_choice() -> None:
     """宣言した ESN セクション名と、実際に読む属性が一致する。"""
     config = small_config()
-    assert CHAOS_ESN_SECTION == "esn_mackey_glass"
-    assert chaos_esn_config(config.base) is getattr(config.base, CHAOS_ESN_SECTION)
+    assert CHAOS_ESN_SECTION == "mackey_glass"
+    declared = require_task(config.base, MackeyGlassTask, "テスト").reservoir
+    assert chaos_esn_config(config.base) is declared
     for entry in chaos_task_entries(config):
         assert entry.reservoir is chaos_esn_config(config.base)
 
@@ -744,8 +753,7 @@ def test_only_lorenz_rows_carry_the_lyapunov_normalization() -> None:
             assert math.isnan(row.lyapunov_time)
             assert math.isnan(row.valid_time_lyapunov)
             assert row.dt == pytest.approx(
-                config.base.mackey_glass.rk4_step
-                * config.base.mackey_glass.sample_interval
+                mg_params(config).rk4_step * mg_params(config).sample_interval
             )
 
 

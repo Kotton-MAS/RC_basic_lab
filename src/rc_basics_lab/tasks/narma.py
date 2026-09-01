@@ -22,7 +22,7 @@ import math
 
 import numpy as np
 
-from rc_basics_lab.config import Narma10Config
+from rc_basics_lab.config import MackeyGlassTask, Narma10Config, require_task
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.types import FloatArray
 
@@ -94,11 +94,13 @@ def _validate(cfg: Narma10Config) -> None:
             f"length が上限を超えています: {cfg.length} > {_MAX_LENGTH} "
             "(u / y の確保量は length に比例するため、確保する前に検査で落とす)"
         )
-    n_units = cfg.base.esn_mackey_glass.n_units
+    n_units = require_task(
+        cfg.base, MackeyGlassTask, "NARMA10 の確保量検査"
+    ).reservoir.n_units
     n_state_elements = cfg.length * n_units
     if n_state_elements > _MAX_STATE_ELEMENTS:
         raise ValueError(
-            "length * base.esn_mackey_glass.n_units が上限を超えています: "
+            "length * (MG 課題のリザバー).n_units が上限を超えています: "
             f"{n_state_elements} > {_MAX_STATE_ELEMENTS} "
             "(3-C の状態行列の確保量は length * n_units に比例するため、"
             "確保する前に検査で落とす)"

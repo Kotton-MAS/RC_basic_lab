@@ -37,7 +37,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
@@ -53,6 +52,7 @@ from wiring import (
     apply_case,
     assert_yaml_has_all_leaves,
     case,
+    experiment_config,
     leaf_paths,
     plain,
 )
@@ -67,6 +67,7 @@ from rc_basics_lab.config import (
     SplitConfig,
     load_config,
 )
+from rc_basics_lab.config._dump import as_plain_mapping
 from rc_basics_lab.experiment.runner import ResultRow, run_experiment
 from rc_basics_lab.meta import collect_meta
 from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
@@ -92,7 +93,7 @@ def base_config() -> ExperimentConfig:
     しておき、``ridge.n_lags_grid`` を大きくしたときに ``t0`` が動くことも
     見えるようにしている。
     """
-    return ExperimentConfig(
+    return experiment_config(
         name="wiring",
         n_replicates=1,
         seeds=SeedConfig(reservoir=0, task=1, split=2),
@@ -175,20 +176,20 @@ WIRING_CASES: tuple[WiringCase, ...] = (
         overrides=(("ridge.cv.n_folds", 3), ("ridge.cv.embargo", 40)),
         note="禁足区間も同様。既定 (null) は first_valid を使う",
     ),
-    case("mackey_glass.tau", 20.0, scope=MACKEY_GLASS),
-    case("mackey_glass.beta", 0.3, scope=MACKEY_GLASS),
-    case("mackey_glass.gamma", 0.15, scope=MACKEY_GLASS),
-    case("mackey_glass.exponent", 8, scope=MACKEY_GLASS),
-    case("mackey_glass.rk4_step", 0.2, scope=MACKEY_GLASS),
-    case("mackey_glass.sample_interval", 5, scope=MACKEY_GLASS),
-    case("mackey_glass.integration_burn_in", 80, scope=MACKEY_GLASS),
-    case("mackey_glass.length", 260, scope=MACKEY_GLASS),
-    case("mackey_glass.horizon", 3, scope=MACKEY_GLASS),
-    case("delay_parity.n_bits", 3, scope=DELAY_PARITY),
-    case("delay_parity.delay", 2, scope=DELAY_PARITY),
-    case("delay_parity.length", 260, scope=DELAY_PARITY),
-    *_esn_cases("esn_mackey_glass", MACKEY_GLASS, leak_rate=0.9),
-    *_esn_cases("esn_delay_parity", DELAY_PARITY, leak_rate=0.4),
+    case("tasks[0].params.tau", 20.0, scope=MACKEY_GLASS),
+    case("tasks[0].params.beta", 0.3, scope=MACKEY_GLASS),
+    case("tasks[0].params.gamma", 0.15, scope=MACKEY_GLASS),
+    case("tasks[0].params.exponent", 8, scope=MACKEY_GLASS),
+    case("tasks[0].params.rk4_step", 0.2, scope=MACKEY_GLASS),
+    case("tasks[0].params.sample_interval", 5, scope=MACKEY_GLASS),
+    case("tasks[0].params.integration_burn_in", 80, scope=MACKEY_GLASS),
+    case("tasks[0].params.length", 260, scope=MACKEY_GLASS),
+    case("tasks[0].params.horizon", 3, scope=MACKEY_GLASS),
+    case("tasks[1].params.n_bits", 3, scope=DELAY_PARITY),
+    case("tasks[1].params.delay", 2, scope=DELAY_PARITY),
+    case("tasks[1].params.length", 260, scope=DELAY_PARITY),
+    *_esn_cases("tasks[0].reservoir", MACKEY_GLASS, leak_rate=0.9),
+    *_esn_cases("tasks[1].reservoir", DELAY_PARITY, leak_rate=0.4),
 )
 
 
@@ -303,7 +304,7 @@ def test_every_field_round_trips_yaml(tmp_path: Path) -> None:
     """
     config = base_config()
     path = tmp_path / "roundtrip.yaml"
-    dumped = cast("Mapping[str, object]", plain(dataclasses.asdict(config)))
+    dumped = cast("Mapping[str, object]", plain(as_plain_mapping(config)))
     path.write_text(yaml.safe_dump(dumped, allow_unicode=True), encoding="utf-8")
     assert load_config(path) == config
     # 葉フィールドがすべて YAML に書き出されていること

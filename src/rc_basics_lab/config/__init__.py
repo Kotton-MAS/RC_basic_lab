@@ -71,14 +71,18 @@ from rc_basics_lab.config.esp02 import (
 )
 from rc_basics_lab.config.experiment01 import (
     DEFAULT_ALPHA_GRID,
-    TASK_LENGTH_FIELDS,
     CrossValidationConfig,
     DelayParityConfig,
+    DelayParityTask,
     ExperimentConfig,
     MackeyGlassConfig,
+    MackeyGlassTask,
     RidgeConfig,
     SplitConfig,
+    TaskSpec,
     load_config,
+    require_task,
+    with_length,
 )
 from rc_basics_lab.diagnostics.esp import EspConfig, LyapunovConfig
 from rc_basics_lab.diagnostics.ipc import IpcConfig
@@ -92,7 +96,6 @@ __all__ = [
     "DEFAULT_ESP_MAP_RHO_GRID",
     "DEFAULT_ESP_MAP_SIGMA_GRID",
     "LORENZ_LYAPUNOV_REFERENCE",
-    "TASK_LENGTH_FIELDS",
     "Anomaly05Config",
     "AnomalyDatasetConfig",
     "AnomalyEvaluationConfig",
@@ -112,6 +115,7 @@ __all__ = [
     "ConservationConfig",
     "CrossValidationConfig",
     "DelayParityConfig",
+    "DelayParityTask",
     "DriveConfig",
     "ESNConfig",
     "Esp02Config",
@@ -128,6 +132,7 @@ __all__ = [
     "LyapunovConfig",
     "MackeyGlassConfig",
     "MackeyGlassStandardizeConfig",
+    "MackeyGlassTask",
     "MaxLyapunovConfig",
     "McSweepConfig",
     "MemoryCapacityConfig",
@@ -139,6 +144,7 @@ __all__ = [
     "SymmetrySweepConfig",
     "SyntheticAnomalyConfig",
     "SyntheticMackeyGlassConfig",
+    "TaskSpec",
     "TimescaleConfig",
     "TimescaleSweepConfig",
     "WashoutSweepConfig",
@@ -146,4 +152,6 @@ __all__ = [
     "esp_stream_seed",
     "load_config",
     "load_config_as",
+    "require_task",
+    "with_length",
 ]

@@ -124,15 +124,15 @@ logger = logging.getLogger(__name__)
 ONESTEP_CSV = "onestep.csv"
 """4-A の成果物名 (列順は 01 の ``ResultRow`` の宣言順が単一の真実)。"""
 
-CHAOS_ESN_SECTION = "esn_mackey_glass"
+CHAOS_ESN_SECTION = "mackey_glass"
 """04 が読む ESN セクション名 (3-C の ``NARMA10_ESN_SECTION`` と同じ流儀)。
 
 ``Chaos04Config.base`` は 01 の ``ExperimentConfig`` をまるごと内包しているので
-ESN セクションが2本 (``esn_mackey_glass`` / ``esn_delay_parity``) 在るが、04 の
+課題が2本 (``mackey_glass`` / ``delay_parity``) 在るが、04 の
 課題は連続値のカオス時系列2本だけなので読むのは一方である。**Mackey-Glass 側**
 を選ぶ理由は、Lorenz も MG も連続値の入力を受けて連続値を出す回帰課題であり、
 漏れ積分 (``leak_rate=0.3``) が効く点で同型だからである
-(``esn_delay_parity`` は ±1 の2値入力・``leak_rate=1.0`` を前提とした設定)。
+(``delay_parity`` のリザバーは ±1 の2値入力・``leak_rate=1.0`` を前提とした設定)。
 
 D-08 により ESN の構造ハイパーパラメータは検証分割で選ばれないので、
 **宣言した1点をそのまま報告する**。実際に読む属性は ``chaos_esn_config``、

@@ -84,47 +84,47 @@ washout:
           1.0e-2, 1.0e-1, 1.0, 10.0, 100.0,
         ]
       n_lags_grid: [1, 2, 4, 8, 16, 32, 64]
-    mackey_glass:
-      tau: 17.0
-      beta: 0.2
-      gamma: 0.1
-      exponent: 10
-      rk4_step: 0.1
-      sample_interval: 10
-      integration_burn_in: 1000
-      length: 8200
-      horizon: 1
-    delay_parity:
-      n_bits: 2
-      delay: 1
-      length: 8200
-    esn_mackey_glass:
-      n_units: 200
-      spectral_radius: 0.9
-      leak_rate: 0.3
-      input_scale: 0.5
-      bias_scale: 0.1
-      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-      # barabasi_albert / watts_strogatz / ring に差し替えられる。
-      topology:
-        kind: erdos_renyi
-        density: 0.1
-      activation: tanh
-      state_noise: 0.0
-    esn_delay_parity:
-      n_units: 200
-      spectral_radius: 0.9
-      leak_rate: 1.0
-      input_scale: 1.0
-      bias_scale: 0.1
-      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-      # barabasi_albert / watts_strogatz / ring に差し替えられる。
-      topology:
-        kind: erdos_renyi
-        density: 0.1
-      activation: tanh
-      state_noise: 0.0
-
+    # 課題は**リスト**である (拡張性方針 §3 / D-123)。
+    tasks:
+      - kind: mackey_glass
+        params:
+          tau: 17.0
+          beta: 0.2
+          gamma: 0.1
+          exponent: 10
+          rk4_step: 0.1
+          sample_interval: 10
+          integration_burn_in: 1000
+          length: 8200
+          horizon: 1
+        reservoir:
+          n_units: 200
+          spectral_radius: 0.9
+          leak_rate: 0.3
+          input_scale: 0.5
+          bias_scale: 0.1
+          # 結合構造は独立した軸である (拡張性方針 §2-1)。
+          topology:
+            kind: erdos_renyi
+            density: 0.1
+          activation: tanh
+          state_noise: 0.0
+      - kind: delay_parity
+        params:
+          n_bits: 2
+          delay: 1
+          length: 8200
+        reservoir:
+          n_units: 200
+          spectral_radius: 0.9
+          leak_rate: 1.0
+          input_scale: 1.0
+          bias_scale: 0.1
+          topology:
+            kind: erdos_renyi
+            density: 0.1
+          activation: tanh
+          state_noise: 0.0
 # 診断の判定基準 (D-15: 診断の設定は ctx ではなく cfg で渡る)。
 esp:
   # D-16 の既定値。abs_tol=1e-6 は float64 の eps から十分離れ、初期距離

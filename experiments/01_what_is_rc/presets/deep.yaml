@@ -13,28 +13,30 @@
 #   第1層 0.822 / 第2層 0.979 / 第3層 0.992   (単層 ESN は 0.802)
 # リーク率は全層で同じなので、この差は積んだこと自体から出ている。
 
-esn_mackey_glass:
-  kind: deep_esn
-  n_units: 200
-  n_layers: 2
-  spectral_radius: 0.9
-  leak_rate: 0.3
-  input_scale: 0.5
-  inter_layer_scale: 0.5
-  bias_scale: 0.1
-  topology:
-    kind: erdos_renyi
-    density: 0.1
-
-esn_delay_parity:
-  kind: deep_esn
-  n_units: 200
-  n_layers: 2
-  spectral_radius: 0.9
-  leak_rate: 1.0
-  input_scale: 1.0
-  inter_layer_scale: 0.5
-  bias_scale: 0.1
-  topology:
-    kind: erdos_renyi
-    density: 0.1
+tasks:
+  - kind: mackey_glass
+    reservoir:
+      kind: deep_esn
+      n_units: 200
+      n_layers: 2
+      spectral_radius: 0.9
+      leak_rate: 0.3
+      input_scale: 0.5
+      inter_layer_scale: 0.5
+      bias_scale: 0.1
+      topology:
+        kind: erdos_renyi
+        density: 0.1
+  - kind: delay_parity
+    reservoir:
+      kind: deep_esn
+      n_units: 200
+      n_layers: 2
+      spectral_radius: 0.9
+      leak_rate: 1.0
+      input_scale: 1.0
+      inter_layer_scale: 0.5
+      bias_scale: 0.1
+      topology:
+        kind: erdos_renyi
+        density: 0.1

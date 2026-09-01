@@ -29,16 +29,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields
 
 from rc_basics_lab.config import (
-    TASK_LENGTH_FIELDS,
     Esp02Config,
     ExperimentConfig,
     WashoutSweepConfig,
+    with_length,
 )
 from rc_basics_lab.experiment.runner import (
     ESN_METHOD,
     ResultRow,
     build_methods,
-    build_tasks,
     run_experiment,
 )
 from rc_basics_lab.experiment.split import compute_t0
@@ -257,61 +256,13 @@ def predicted_t0(base: ExperimentConfig, washout: int) -> int:
     return compute_t0(_first_valids(base), washout)
 
 
-_WIRED_LENGTH_FIELDS: frozenset[str] = frozenset({"mackey_glass", "delay_parity"})
-"""``variant_for`` の ``dataclasses.replace`` が実際に系列長を伸ばす配線を持つ
-フィールド名 (``config.TASK_LENGTH_FIELDS`` の値の部分集合)。
-
-``dataclasses.replace`` はキーワード引数を動的な dict から展開すると
-フィールドごとの型検査ができない (mypy の dataclass プラグインの制約) ため、
-``ExperimentConfig`` 側の実際の伸長処理は名指しのキーワード引数で書く必要が
-ある。ここは「``TASK_LENGTH_FIELDS`` への登録」と「``variant_for`` 本体の配線」
-の2段になっており、後者を足し忘れた課題は ``NotImplementedError`` で検出する
-(登録だけして配線を忘れる、という新しい黙って壊れる経路を作らないため)。
-"""
-
-
-def _task_names(base: ExperimentConfig) -> tuple[str, ...]:
-    """課題の列挙点は ``build_tasks`` が唯一の真実 (``conventions.md``)。
-
-    ここで名指しの課題リストを持たないのは、``build_tasks`` に課題が増えても
-    ``variant_for`` が黙って追従しなくなる経路を作らないため (F-1-003)。
-
-    Raises:
-        ValueError: ``build_tasks`` が返す課題が
-            ``config.TASK_LENGTH_FIELDS`` に登録されていない場合。系列長の
-            補償先が無いまま実行すると D-19 の交絡除去が黙って効かなくなる。
-        NotImplementedError: 登録はあるが ``variant_for`` 本体に伸長の配線が
-            まだ無い課題の場合 (``_WIRED_LENGTH_FIELDS`` を参照)。
-    """
-    names = tuple(entry.name for entry in build_tasks(base))
-    unregistered = tuple(name for name in names if name not in TASK_LENGTH_FIELDS)
-    if unregistered:
-        raise ValueError(
-            "washout 補償の対象フィールドが config.TASK_LENGTH_FIELDS に"
-            f" 登録されていない課題です: {unregistered}. build_tasks に課題を"
-            "追加したときは TASK_LENGTH_FIELDS にも登録してください"
-        )
-    unwired = tuple(
-        name for name in names if TASK_LENGTH_FIELDS[name] not in _WIRED_LENGTH_FIELDS
-    )
-    if unwired:
-        raise NotImplementedError(
-            f"variant_for が系列長補償の配線を持たない課題です: {unwired}. "
-            "config.TASK_LENGTH_FIELDS への登録に加え、variant_for 本体の "
-            "dataclasses.replace にもキーワード引数を足してください"
-        )
-    return names
-
-
 def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
     """1格子点ぶんの 01 用設定を作る (**差し替えるのは washout と系列長だけ**)。
 
-    ``pad_series`` が真なら、``t0`` が増えたぶんだけ全課題 (``build_tasks`` が
-    列挙するもの。D-19 の対象は ``config.TASK_LENGTH_FIELDS`` に登録された
-    フィールドの ``length``) を伸ばして
+    ``pad_series`` が真なら、``t0`` が増えたぶんだけ**全課題**を伸ばして
     ``n_usable = n_steps - max_start_offset - t0`` を一定に保つ (D-19)。
-    基準は**格子の最小値**での ``t0`` なので、補償は常に「伸ばす」側に
-    働き、01 の本番設定より短い系列で測ることはない。
+    基準は**格子の最小値**での ``t0`` なので、補償は常に「伸ばす」側に働き、
+    01 の本番設定より短い系列で測ることはない。
 
     仕様 §4 T4 の式は ``length = base_length + (max(grid) - washout)`` と
     書かれていたが、この式は washout が大きいほど系列を**短く**するので
@@ -322,22 +273,18 @@ def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
     行数がそろわない (実測: 本番格子の washout=0 と 50 はどちらも
     ``t0 = 64`` になる)。
 
-    ``build_tasks`` の課題は ``_task_names`` (``config.TASK_LENGTH_FIELDS``) が
-    唯一の真実として検証するが、実際に系列を伸ばす ``dataclasses.replace`` の
-    キーワード引数は ``mackey_glass`` / ``delay_parity`` の2つを名指しで書く
-    (``dataclasses.replace`` は動的なキーワード展開をフィールドごとに型検査
-    できないため)。3つ目の課題が ``TASK_LENGTH_FIELDS`` に登録されても
-    ここに配線が無ければ ``NotImplementedError`` になり、黙って補償が効かな
-    くなることはない。
+    **課題ごとの名指しの配線は無い** (D-123)。かつては
+    ``config.TASK_LENGTH_FIELDS`` への登録と、``dataclasses.replace`` の
+    キーワード引数を名指しで書く配線の2段があり、後者を忘れた課題は
+    ``NotImplementedError`` で落としていた。課題がリストになったので、
+    ここは ``base.tasks`` を一様に回すだけでよく、**登録も配線も消えた**。
+    すべての課題設定が ``length`` を持つことは
+    ``tests/test_tasks_registry.py`` が固定する。
 
     Raises:
         ValueError: ``washout`` が格子の最小値より小さい場合 (補償が負になる)。
-        ValueError: ``build_tasks`` が返す課題が
-            ``config.TASK_LENGTH_FIELDS`` に登録されていない場合。
-        NotImplementedError: 登録はあるが本関数に配線が無い課題の場合。
     """
     base = section.base
-    task_names = _task_names(base)
     baseline_t0 = predicted_t0(base, min(section.grid))
     t0 = predicted_t0(base, washout)
     if t0 < baseline_t0:
@@ -349,19 +296,8 @@ def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
     return dataclasses.replace(
         base,
         split=dataclasses.replace(base.split, washout=washout),
-        mackey_glass=(
-            dataclasses.replace(
-                base.mackey_glass, length=base.mackey_glass.length + padding
-            )
-            if "mackey_glass" in task_names
-            else base.mackey_glass
-        ),
-        delay_parity=(
-            dataclasses.replace(
-                base.delay_parity, length=base.delay_parity.length + padding
-            )
-            if "delay_parity" in task_names
-            else base.delay_parity
+        tasks=tuple(
+            with_length(spec, spec.params.length + padding) for spec in base.tasks
         ),
     )
 
@@ -415,7 +351,7 @@ def run_washout_sweep(config: Esp02Config) -> tuple[WashoutRow, ...]:
             washout,
             section.pad_series,
             result_rows[0].t0 if result_rows else -1,
-            variant.mackey_glass.length,
+            variant.tasks[0].params.length,
             len(result_rows),
             time.perf_counter() - started,
         )

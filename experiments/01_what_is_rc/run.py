@@ -7,7 +7,8 @@
 
     # 手元で試す (既定の出力先は scratch/01_what_is_rc)
     uv run python experiments/01_what_is_rc/run.py --preset quick
-    uv run python experiments/01_what_is_rc/run.py --set esn_mackey_glass.n_units=50
+    uv run python experiments/01_what_is_rc/run.py \\
+        --set tasks.mackey_glass.reservoir.n_units=50
 
 ``--out`` (既定 ``scratch/01_what_is_rc``) に ``comparison.csv`` /
 ``comparison_summary.csv`` / ``fig_comparison.png`` / ``fig_state_space.png`` /

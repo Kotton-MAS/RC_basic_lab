@@ -11,7 +11,13 @@
 
 from __future__ import annotations
 
-from rc_basics_lab.config import Chaos04Config, ESNConfig, ExperimentConfig
+from rc_basics_lab.config import (
+    Chaos04Config,
+    ESNConfig,
+    ExperimentConfig,
+    MackeyGlassTask,
+    require_task,
+)
 from rc_basics_lab.experiment.capacity_bounds import validate_state_matrix_bounds
 from rc_basics_lab.experiment.runner import TaskEntry
 from rc_basics_lab.experiment.split import Split
@@ -31,7 +37,8 @@ def chaos_esn_config(base: ExperimentConfig) -> ESNConfig:
     「どのセクションを読むか」をここ1か所に閉じる。呼び出し側が属性を直接
     書くと、宣言したセクションと実際に読むセクションが食い違っても何も落ちない。
     """
-    return require_esn(base.esn_mackey_glass, "実験04 (カオス時系列の自由走行)")
+    task = require_task(base, MackeyGlassTask, "実験04 (カオス時系列の自由走行)")
+    return require_esn(task.reservoir, "実験04 (カオス時系列の自由走行)")
 
 
 def lorenz_task_entry(config: Chaos04Config) -> TaskEntry:
@@ -53,7 +60,7 @@ def mackey_glass_task_entry(config: Chaos04Config) -> TaskEntry:
         name=TASK_NAME_MACKEY_GLASS,
         reservoir=chaos_esn_config(config.base),
         generate=lambda rng: generate_standardized_mackey_glass(
-            config.base.mackey_glass,
+            require_task(config.base, MackeyGlassTask, "実験04 の MG 課題").params,
             rng,
             standardize_steps=config.mackey_glass.standardize_steps,
         ),
@@ -77,7 +84,9 @@ def task_length(config: Chaos04Config, task_name: str) -> int:
         case _ if task_name == TASK_NAME_LORENZ:
             return config.lorenz.length
         case _ if task_name == TASK_NAME_MACKEY_GLASS:
-            return config.base.mackey_glass.length
+            return require_task(
+                config.base, MackeyGlassTask, "実験04 の系列長"
+            ).params.length
         case _:
             raise ValueError(f"04 の課題ではありません: {task_name!r}")
 
@@ -136,7 +145,9 @@ def task_sampling_interval(config: Chaos04Config, task_name: str) -> float:
         case _ if task_name == TASK_NAME_LORENZ:
             return sampling_interval(config.lorenz)
         case _ if task_name == TASK_NAME_MACKEY_GLASS:
-            mackey_glass = config.base.mackey_glass
+            mackey_glass = require_task(
+                config.base, MackeyGlassTask, "実験04 のサンプリング間隔"
+            ).params
             return mackey_glass.rk4_step * mackey_glass.sample_interval
         case _:
             raise ValueError(f"04 の課題ではありません: {task_name!r}")

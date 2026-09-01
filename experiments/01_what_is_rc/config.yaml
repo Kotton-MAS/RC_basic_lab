@@ -68,48 +68,56 @@ ridge:
     scheme: rolling
     embargo: null
 
-mackey_glass:
-  tau: 17.0
-  beta: 0.2
-  gamma: 0.1
-  exponent: 10
-  rk4_step: 0.1
-  sample_interval: 10   # Delta t = 1.0
-  integration_burn_in: 1000
-  length: 8200
-  horizon: 1
+# 課題は**リスト**である (拡張性方針 §3 / D-123)。
+#
+# 課題を1つ足すのは tasks/<name>.py + union に1行 + registry に case を1つ +
+# ここに3行。並び順がそのまま comparison.csv の課題の順になる。
+#
+# params は課題の生成パラメータ、reservoir はその課題で使うリザバー。
+# 分けてあるのは MackeyGlassConfig を 04 / 05 も使うためで、課題設定に
+# リザバーを埋めると、リザバーを使わない経路までそれを引きずる。
+tasks:
+  - kind: mackey_glass
+    params:
+      tau: 17.0
+      beta: 0.2
+      gamma: 0.1
+      exponent: 10
+      rk4_step: 0.1
+      sample_interval: 10   # Delta t = 1.0
+      integration_burn_in: 1000
+      length: 8200
+      horizon: 1
+    # ESN の構造ハイパーパラメータは文献既定値に固定し、検証分割で調整しない (D-08)。
+    reservoir:
+      n_units: 200
+      spectral_radius: 0.9
+      leak_rate: 0.3
+      input_scale: 0.5
+      bias_scale: 0.1
+      # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
+      # barabasi_albert / watts_strogatz / ring に差し替えられる。
+      topology:
+        kind: erdos_renyi
+        density: 0.1
+      activation: tanh
+      state_noise: 0.0
 
-delay_parity:
-  # y[t] = u[t-1] * u[t-2]。目標が {1, u[t-k]} の張る線形空間に厳密に直交する (D-07)。
-  n_bits: 2
-  delay: 1
-  length: 8200
-
-# ESN の構造ハイパーパラメータは文献既定値に固定し、検証分割で調整しない (D-08)。
-esn_mackey_glass:
-  n_units: 200
-  spectral_radius: 0.9
-  leak_rate: 0.3
-  input_scale: 0.5
-  bias_scale: 0.1
-  # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-  # barabasi_albert / watts_strogatz / ring に差し替えられる。
-  topology:
-    kind: erdos_renyi
-    density: 0.1
-  activation: tanh
-  state_noise: 0.0
-
-esn_delay_parity:
-  n_units: 200
-  spectral_radius: 0.9
-  leak_rate: 1.0
-  input_scale: 1.0
-  bias_scale: 0.1
-  # 結合構造は独立した軸である (拡張性方針 §2-1)。kind を替えれば
-  # barabasi_albert / watts_strogatz / ring に差し替えられる。
-  topology:
-    kind: erdos_renyi
-    density: 0.1
-  activation: tanh
-  state_noise: 0.0
+  - kind: delay_parity
+    params:
+      # y[t] = u[t-1] * u[t-2]。目標が {1, u[t-k]} の張る線形空間に厳密に
+      # 直交する (D-07)。
+      n_bits: 2
+      delay: 1
+      length: 8200
+    reservoir:
+      n_units: 200
+      spectral_radius: 0.9
+      leak_rate: 1.0
+      input_scale: 1.0
+      bias_scale: 0.1
+      topology:
+        kind: erdos_renyi
+        density: 0.1
+      activation: tanh
+      state_noise: 0.0

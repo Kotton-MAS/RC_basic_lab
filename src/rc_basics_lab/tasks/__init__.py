@@ -18,6 +18,8 @@ from rc_basics_lab.tasks import (
     delay_parity,
     mackey_glass,
     narma,
+    protocol,
+    registry,
 )
 
 __all__ = [
@@ -27,4 +29,6 @@ __all__ = [
     "delay_parity",
     "mackey_glass",
     "narma",
+    "protocol",
+    "registry",
 ]

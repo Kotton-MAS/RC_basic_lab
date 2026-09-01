@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from wiring import experiment_config
+
 from rc_basics_lab.config import (
     DelayParityConfig,
     ESNConfig,
@@ -39,7 +41,7 @@ N_LAGS_GRID = (1, 4)
 
 def tiny_config() -> ExperimentConfig:
     """秒未満で回る縮小設定 (構造は本番と同じ)。"""
-    return ExperimentConfig(
+    return experiment_config(
         n_replicates=1,
         seeds=SeedConfig(reservoir=0, task=1, split=2),
         split=SplitConfig(
@@ -69,7 +71,7 @@ def test_reservoir_state_spans_more_components_than_the_raw_input() -> None:
         state = report.space(RESERVOIR_STATE)
         raw = report.space(RAW_INPUT)
         assert raw.n_features == 1
-        assert state.n_features == config.esn_mackey_glass.n_units
+        assert state.n_features == config.tasks[0].reservoir.n_units
         assert state.n_components_95 > raw.n_components_95, report.task
 
 
@@ -90,7 +92,7 @@ def test_analysis_uses_the_same_rows_as_the_experiment() -> None:
     entry = build_tasks(config)[0]
     report = analyze_task(config, entry)
     n_usable = (
-        config.mackey_glass.length
+        config.tasks[0].params.length
         - config.split.max_start_offset
         - max(config.split.washout, max(N_LAGS_GRID))
     )

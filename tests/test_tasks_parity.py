@@ -19,6 +19,7 @@ import statistics
 
 import numpy as np
 import pytest
+from wiring import experiment_config
 
 from rc_basics_lab.config import (
     DelayParityConfig,
@@ -117,7 +118,7 @@ REDUCED_TRAIN_ROWS = 2000
 
 def reduced_config() -> ExperimentConfig:
     """縮小設定 (N=100, 学習 2000 点, 3シード)。10秒以内に終わる規模。"""
-    return ExperimentConfig(
+    return experiment_config(
         n_replicates=REDUCED_N_REPLICATES,
         split=SplitConfig(washout=100, max_start_offset=50),
         ridge=RidgeConfig(

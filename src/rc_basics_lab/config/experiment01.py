@@ -12,9 +12,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import dataclasses
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar
 
 from rc_basics_lab.config._common import load_config_as
 from rc_basics_lab.reservoir.esn import ESNConfig
@@ -132,6 +134,80 @@ def _delay_parity_esn() -> ESNConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class MackeyGlassTask:
+    """Mackey-Glass 課題と、その課題で使うリザバーの組 (D-123)。"""
+
+    KIND: ClassVar[str] = "mackey_glass"
+
+    params: MackeyGlassConfig = field(default_factory=MackeyGlassConfig)
+    reservoir: ReservoirConfig = field(default_factory=ESNConfig)
+
+
+@dataclass(frozen=True, slots=True)
+class DelayParityTask:
+    """遅延パリティ課題と、その課題で使うリザバーの組 (D-123)。"""
+
+    KIND: ClassVar[str] = "delay_parity"
+
+    params: DelayParityConfig = field(default_factory=DelayParityConfig)
+    reservoir: ReservoirConfig = field(default_factory=_delay_parity_esn)
+
+
+type TaskSpec = MackeyGlassTask | DelayParityTask
+"""課題とリザバーの組。**課題を足したら union に1行足す** (D-123)。
+
+``kind`` で選ぶ判別子つき union なので、YAML は課題のリストになる:
+
+.. code-block:: yaml
+
+    tasks:
+      - kind: mackey_glass
+        params: {length: 8200, horizon: 1}
+        reservoir: {leak_rate: 0.3}
+
+``params`` と ``reservoir`` を分けるのは、``MackeyGlassConfig`` を 04 / 05 も
+使うためである。課題設定にリザバーを埋めると、リザバーを使わない経路まで
+その設定を引きずる。
+"""
+
+
+def with_length(spec: TaskSpec, length: int) -> TaskSpec:
+    """系列長だけを差し替えた同じ種類の課題エントリを返す (D-123)。
+
+    02 の washout 感度実験 (D-19) が ``t0`` の増分だけ系列を伸ばすのに使う。
+
+    **``match`` を1つ書く必要はここに残る。** ``dataclasses.replace`` は
+    union の上では型が解けず (``params`` が ``Never`` に落ちる)、要素ごとに
+    絞ってからでないと書けないため。かつては
+    ``config.TASK_LENGTH_FIELDS`` への登録と ``variant_for`` 本体の
+    キーワード引数という**実行時にしか気づけない2段**だったので、
+    mypy の網羅性検査が見る ``match`` 1つに移ったぶんは前進である
+    (足し忘れは型検査で落ちる)。
+
+    Args:
+        spec: 課題エントリ。
+        length: 新しい系列長 [ステップ]。
+
+    Returns:
+        ``params.length`` だけを差し替えた同じ種類のエントリ。
+    """
+    match spec:
+        case MackeyGlassTask():
+            return dataclasses.replace(
+                spec, params=dataclasses.replace(spec.params, length=length)
+            )
+        case DelayParityTask():
+            return dataclasses.replace(
+                spec, params=dataclasses.replace(spec.params, length=length)
+            )
+
+
+def _default_tasks() -> tuple[TaskSpec, ...]:
+    """既定の課題列 (**並び順が ``comparison.csv`` の課題の順**)。"""
+    return (MackeyGlassTask(), DelayParityTask())
+
+
+@dataclass(frozen=True, slots=True)
 class ExperimentConfig:
     """実験1本ぶんの設定。
 
@@ -150,26 +226,37 @@ class ExperimentConfig:
     seeds: SeedConfig = field(default_factory=SeedConfig)
     split: SplitConfig = field(default_factory=SplitConfig)
     ridge: RidgeConfig = field(default_factory=RidgeConfig)
-    mackey_glass: MackeyGlassConfig = field(default_factory=MackeyGlassConfig)
-    delay_parity: DelayParityConfig = field(default_factory=DelayParityConfig)
-    esn_mackey_glass: ReservoirConfig = field(default_factory=ESNConfig)
-    esn_delay_parity: ReservoirConfig = field(default_factory=_delay_parity_esn)
+    tasks: tuple[TaskSpec, ...] = field(default_factory=_default_tasks)
 
 
-TASK_LENGTH_FIELDS: Mapping[str, str] = {
-    "mackey_glass": "mackey_glass",
-    "delay_parity": "delay_parity",
-}
-"""``build_tasks`` (``experiment/runner.py``) が返す課題名 -> ``ExperimentConfig``
-上で対応する、系列長 (``length: int`` 属性) を持つフィールド名。
+def require_task[T: TaskSpec](
+    config: ExperimentConfig, kind: type[T], used_by: str
+) -> T:
+    """課題列から1つを型で取り出す (D-123)。**無ければ落とす**。
 
-課題の列挙点は ``build_tasks`` が唯一の真実 (``conventions.md``) だが、washout
-感度実験 (D-19) の系列長補償 (``experiment.washout.variant_for``) は
-「どの課題がどのフィールドの ``length`` を持つか」を別に知る必要がある。この
-対応をここ1か所に集約し、``build_tasks`` に課題を追加してもここへの登録を
-忘れると、その課題の系列長は補償されず D-19 の交絡除去が黙って効かなくなる
-(``variant_for`` は未登録の課題があれば ``ValueError`` にする)。
-"""
+    ``reservoir.registry.require_esn`` と同じ流儀である。``config.tasks`` は
+    YAML で並べ替えも削除もできるので、02〜05 が「MG があるはず」と決め打つと
+    課題を1つ外しただけで**別の課題の設定を使って走る**ことになる。
+
+    Args:
+        config: 01 の設定 (02〜05 は ``base`` に持つ)。
+        kind: 取り出したい ``TaskSpec`` の型。
+        used_by: 呼び出し元の説明 (エラーに出す)。
+
+    Returns:
+        その型の課題エントリ (**最初の1つ**)。
+
+    Raises:
+        ValueError: その課題が ``config.tasks`` に無い場合。
+    """
+    for spec in config.tasks:
+        if isinstance(spec, kind):
+            return spec
+    present = ", ".join(type(spec).KIND for spec in config.tasks)
+    raise ValueError(
+        f"{used_by} は課題 {kind.KIND} を要求しますが、tasks にありません "
+        f"(あるのは: {present or 'なし'})"
+    )
 
 
 def load_config(
