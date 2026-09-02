@@ -745,3 +745,45 @@ def test_the_capacity_rows_carry_the_topology_diagnostics() -> None:
     # 条件キーは他の診断と同じ (トポロジは振っていない軸なので現れない)
     keys = {row.condition_id for row in outcome.diagnostics}
     assert len(keys) == 1, f"条件キーが割れています: {keys}"
+
+
+def test_a_swept_topology_appears_in_the_condition_key() -> None:
+    """トポロジを振ると ``condition_id`` に入る (D-137)。
+
+    入らないと **BA と次数保存ランダム化が区別できない** —— どちらも nominal
+    density が同じなので、行を見てもどちらの条件か分からない (実測で確認)。
+
+    振らない実験の条件キーは1文字も変わらないこと (D-118 の「振っていない軸は
+    入れない」) も併せて固定する。
+    """
+    import dataclasses
+
+    from rc_basics_lab.experiment.capacity import run_length_sweep
+    from rc_basics_lab.reservoir.topology import (
+        BarabasiAlbertConfig,
+        DegreePreservingConfig,
+    )
+
+    config = base_config()
+    section = dataclasses.replace(config.length_sweep, n_units=20, n_steps_grid=(800,))
+
+    plain = run_length_sweep(dataclasses.replace(config, length_sweep=section))
+    plain_keys = {row.condition_id for outcome in plain for row in outcome.diagnostics}
+    assert all("topology=" not in key for key in plain_keys), (
+        f"振っていないのに条件キーにトポロジが入っています: {plain_keys}"
+    )
+
+    swept = run_length_sweep(
+        dataclasses.replace(
+            config,
+            length_sweep=dataclasses.replace(
+                section,
+                topologies=(BarabasiAlbertConfig(m=2), DegreePreservingConfig()),
+            ),
+        )
+    )
+    keys = {row.condition_id for outcome in swept for row in outcome.diagnostics}
+    kinds = {key.split("topology=")[-1] for key in keys if "topology=" in key}
+    assert kinds == {"barabasi_albert", "degree_preserving"}, (
+        f"トポロジで条件キーが分かれていません: {sorted(keys)}"
+    )

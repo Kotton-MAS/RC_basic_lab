@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "aa9dc68c91f6e30c1502bfcb570f3201e9e9bb93",
+  "commit": "71649bca0d0c22645f6aaba09272aa5243252cca",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -74,7 +74,8 @@
       ],
       "n_units": 50,
       "rho": 0.95,
-      "sigma_u": 0.2
+      "sigma_u": 0.2,
+      "topologies": []
     },
     "mc": {
       "alpha": 1e-09,
@@ -354,7 +355,8 @@
       "replicate": 0,
       "rho": 0.95,
       "sigma_u": 0.2,
-      "state_noise": 0.0
+      "state_noise": 0.0,
+      "topology": null
     },
     "default_ipc_mode": "surrogate",
     "default_mc_mode": "surrogate",
@@ -408,42 +410,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.8410392499063164
+    "wall_time_s": 3.9111427920870483
   },
-  "timestamp_utc": "2026-09-02T02:41:34.781833+00:00",
+  "timestamp_utc": "2026-09-02T05:28:34.670769+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.42278816225007,
-      "wall_time_mc_s": 4.256281002890319,
-      "wall_time_s": 43.27640166669153,
-      "wall_time_state_s": 7.593604624737054
+      "wall_time_ipc_s": 31.47902650339529,
+      "wall_time_mc_s": 4.273574833292514,
+      "wall_time_s": 43.419584626564756,
+      "wall_time_state_s": 7.663276499370113
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 83.72293733409606,
-      "wall_time_mc_s": 9.465987585252151,
-      "wall_time_s": 109.37305021216162,
-      "wall_time_state_s": 16.179334956454113
+      "wall_time_ipc_s": 83.27920362353325,
+      "wall_time_mc_s": 9.353461083956063,
+      "wall_time_s": 108.97021508729085,
+      "wall_time_state_s": 16.33273370983079
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 251.35212966706604,
-      "wall_time_mc_s": 22.07067679427564,
-      "wall_time_s": 301.49788087327033,
-      "wall_time_state_s": 28.06937395571731
+      "wall_time_ipc_s": 256.80091779329814,
+      "wall_time_mc_s": 23.14974833303131,
+      "wall_time_s": 308.1867102480028,
+      "wall_time_state_s": 28.230373372789472
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20461041596718132,
-      "wall_time_mc_s": 0.025335875106975436,
-      "wall_time_s": 0.5020441659726202,
-      "wall_time_state_s": 0.04890950000844896
+      "wall_time_ipc_s": 0.20640074997209013,
+      "wall_time_mc_s": 0.02472100011073053,
+      "wall_time_s": 0.5045101661235094,
+      "wall_time_state_s": 0.049660541117191315
     }
   ],
-  "wall_time_s": 470.06025774986483
+  "wall_time_s": 476.5629786660429
 }
