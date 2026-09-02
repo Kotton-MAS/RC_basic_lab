@@ -19,6 +19,7 @@ from rc_basics_lab.experiment.diagnostics_rows import (
     condition_key,
     scalar_rows,
 )
+from rc_basics_lab.reservoir.topology import TopologyConfig
 from rc_basics_lab.types import FloatArray
 
 DIAGNOSTIC_MC = "mc"
@@ -290,6 +291,9 @@ class CapacityCondition:
         sigma_u: 駆動信号の標準偏差 (D-17)。
         n_steps: 系列長 [ステップ]。
         replicate: レプリケート番号 (0 始まり)。
+        topology: 結合構造。``None`` なら横断共有の ``density`` から
+            Erdos-Renyi を組む (従来どおり)。トポロジを振る掃引だけが渡す
+            (D-137)。**既定を None にしてあるので既存の条件は動かない。**
     """
 
     experiment: str
@@ -300,6 +304,7 @@ class CapacityCondition:
     sigma_u: float
     n_steps: int
     replicate: int
+    topology: TopologyConfig | None = None
 
 
 CAPACITY_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(CapacityRow))
@@ -421,6 +426,7 @@ def capacity_outcome_from(
     measurement: CapacityMeasurement,
     row: CapacityRow,
     graph: Sequence[DiagnosticResult] = (),
+    topology_kind: str | None = None,
 ) -> CapacityOutcome:
     """行と測定結果から ``CapacityOutcome`` を組む (図が使う配列を積み替える)。
 
@@ -434,10 +440,9 @@ def capacity_outcome_from(
         row=row,
         # 診断のスカラは長形式へ逃がす (D-118)。主表 (capacity.csv) の 39 列は
         # 1つも動かさないので、診断を足しても指紋も golden も動かない。
-        # graph は W を取る族 (D-122)。**条件キーは他の診断と同じ**にする ——
-        # トポロジは今この実験では振っていない軸なので条件キーに現れない
-        # (振る実験を作れば他の軸と同じように現れる)。どのトポロジだったかは
-        # meta.json が判別子つきで記録している (D-129)。
+        # graph は W を取る族 (D-122)。条件キーにトポロジが入るのは**振った
+        # ときだけ**である (D-137)。振らない実験では meta.json が判別子つきで
+        # 記録している (D-129) ので素性は復元できる。
         diagnostics=scalar_rows(
             (measurement.mc, measurement.ipc, *graph),
             experiment=row.experiment,
@@ -447,6 +452,9 @@ def capacity_outcome_from(
                     "leak_rate": row.leak_rate,
                     "n_units": row.n_units,
                     "state_noise": row.state_noise,
+                    # 振ったときだけ入る (D-118 の「振っていない軸は入れない」)。
+                    # 振らない実験の条件キーは1文字も変わらない。
+                    **({} if topology_kind is None else {"topology": topology_kind}),
                 }
             ),
             replicate=row.replicate,

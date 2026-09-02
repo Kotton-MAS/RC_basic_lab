@@ -57,6 +57,7 @@ from rc_basics_lab.experiment.capacity_bounds import (
     validate_state_matrix_bounds,
     validate_total_step_count,
 )
+from rc_basics_lab.experiment.capacity_conditions import length_sweep_conditions
 from rc_basics_lab.experiment.capacity_rows import (
     DIAGNOSTIC_IPC,
     DIAGNOSTIC_MC,
@@ -268,6 +269,7 @@ def simulate_condition_trajectory(
         replicate=condition.replicate,
         state_noise=condition.state_noise,
         drive_offset=drive_offset,
+        topology=condition.topology,
     )
 
 
@@ -417,7 +419,13 @@ def evaluate_capacity_condition(
         row.wall_time_mc_s,
         row.wall_time_ipc_s,
     )
-    return capacity_outcome_from(measurement, row, graph_diagnostics(reference.esn))
+    return capacity_outcome_from(
+        measurement,
+        row,
+        graph_diagnostics(reference.esn),
+        # 振ったときだけ条件キーへ (振らない実験の行は1文字も変わらない)
+        None if condition.topology is None else type(condition.topology).KIND,
+    )
 
 
 def n_replicates_for(config: Capacity03Config, experiment: str) -> int:
@@ -567,23 +575,10 @@ def run_length_sweep(config: Capacity03Config) -> tuple[CapacityOutcome, ...]:
     T=1e6 まで回すので単独で 900 秒予算を食い潰す。成果物も
     ``capacity_length.csv`` に分ける (仕様 §8)。
     """
-    section = config.length_sweep
     return _sweep(
         config,
         EXPERIMENT_LENGTH_SWEEP,
-        tuple(
-            CapacityCondition(
-                experiment=EXPERIMENT_LENGTH_SWEEP,
-                rho=section.rho,
-                leak_rate=section.leak_rate,
-                n_units=section.n_units,
-                state_noise=0.0,
-                sigma_u=section.sigma_u,
-                n_steps=n_steps,
-                replicate=0,
-            )
-            for n_steps in section.n_steps_grid
-        ),
+        length_sweep_conditions(config.length_sweep),
     )
 
 

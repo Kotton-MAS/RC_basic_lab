@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from rc_basics_lab.config.experiment01 import ExperimentConfig
 from rc_basics_lab.diagnostics.ipc import IpcConfig
 from rc_basics_lab.diagnostics.memory_capacity import MemoryCapacityConfig
+from rc_basics_lab.reservoir.topology import TopologyConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +181,15 @@ class LengthSweepConfig:
     leak_rate: float = 1.0
     sigma_u: float = 0.2
     n_units: int = 50
+    topologies: tuple[TopologyConfig, ...] = ()
+    """振るトポロジ。**空なら横断共有の density (Erdos-Renyi) 1本だけ** (D-137)。
+
+    「ハブ型は飽和に必要な T が長いかもしれない」を測るための軸である。もし
+    そうなら、同じ T で ER と BA を比べた文献は BA を過小評価していることに
+    なるので、**トポロジの結論を出す前に**確かめる必要がある。
+
+    既定を空にしてあるので、``make saturation-03`` の既存の成果物は動かない。
+    """
 
 
 @dataclass(frozen=True, slots=True)

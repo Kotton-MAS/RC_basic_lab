@@ -27,7 +27,7 @@ import dataclasses
 import json
 import pkgutil
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from types import UnionType
 from typing import (
@@ -188,8 +188,27 @@ def leaf_paths(cls: type, prefix: str = "") -> set[str]:
     hints = get_type_hints(cls)
     paths: set[str] = set()
     for item in fields(cast("type[DataclassInstance]", cls)):
-        paths |= _leaf_paths_of(hints[item.name], f"{prefix}{item.name}")
+        path = f"{prefix}{item.name}"
+        if _defaults_to_empty_sequence(item):
+            # 既定が空の並びは、要素の葉を数えても**設定できるものが無い**。
+            # 並びそのものを1つの葉として扱い、ケース側で非空を入れて
+            # 「変えたら出力が変わる」を測る (D-137)。
+            paths.add(path)
+            continue
+        paths |= _leaf_paths_of(hints[item.name], path)
     return paths
+
+
+def _defaults_to_empty_sequence(item: object) -> bool:
+    """フィールドの既定が空のタプル / リストか。"""
+    factory = getattr(item, "default_factory", MISSING)
+    default = getattr(item, "default", MISSING)
+    for value in (default, factory() if factory is not MISSING else MISSING):
+        if value is MISSING:
+            continue
+        if isinstance(value, tuple | list) and not value:
+            return True
+    return False
 
 
 def _leaf_paths_of(annotation: object, path: str) -> set[str]:

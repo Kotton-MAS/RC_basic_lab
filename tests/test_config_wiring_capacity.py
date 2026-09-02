@@ -107,7 +107,7 @@ from rc_basics_lab.experiment.capacity_rows import (
 )
 from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.meta import collect_meta_for
-from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
+from rc_basics_lab.reservoir.topology import BarabasiAlbertConfig, ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
@@ -365,6 +365,13 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     section_case("length_sweep.leak_rate", 0.5, EXPERIMENT_LENGTH_SWEEP),
     section_case("length_sweep.sigma_u", 0.6, EXPERIMENT_LENGTH_SWEEP),
     section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
+    # トポロジを振ると (トポロジ x T) の格子になる (D-137)。既定は空なので
+    # 既存の行は動かない —— **空を非空にしたときに行が増えること**を測る。
+    section_case(
+        "length_sweep.topologies",
+        (BarabasiAlbertConfig(m=2),),
+        EXPERIMENT_LENGTH_SWEEP,
+    ),
     # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
     # --- 3-S: 駆動入力の対称性 (make symmetry-03。figures-03 には含めない) ---
     case("symmetry_sweep.offset_ratio_grid", (0.0, 4.0), channel=CHANNEL_SYMMETRY),
