@@ -34,11 +34,11 @@ from rc_basics_lab.config import Capacity03Config
 from rc_basics_lab.diagnostics.ipc import ipc
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_SYMMETRY,
-    CapacityCondition,
     capacity_context,
     ipc_config_for,
     simulate_condition_trajectory,
 )
+from rc_basics_lab.experiment.capacity_rows import CapacityCondition
 
 logger = logging.getLogger(__name__)
 

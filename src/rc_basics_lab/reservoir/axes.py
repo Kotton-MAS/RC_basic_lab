@@ -30,23 +30,51 @@ NUMERIC_TYPES: tuple[type, ...] = (int, float)
 ないので ``numeric_axes`` が明示的に外す。"""
 
 
+AXIS_SEPARATOR = "."
+"""入れ子の軸の区切り (``topology.m``)。``--set`` と同じ記法にする (D-130)。"""
+
+
 def numeric_axes(config: object) -> frozenset[str]:
     """設定が持つ数値フィールドの名前 (= 掃引できる軸)。
+
+    **入れ子の設定へ1段だけ潜る** (D-130)。``topology`` のような設定は
+    それ自体が数値ではないが、その中の ``m`` (BA の枝数) や ``density`` は
+    振りたい軸である。``topology.m`` のようにドットで繋いだ名前で返す
+    (``--set`` が既に使っている記法)。
+
+    **1段に限る。** 深さを制限しないと軸名が長くなるだけでなく、格子を書く人が
+    「どこまで潜れるのか」を毎回確かめることになる。2段目が要るようになったら、
+    それは設定の入れ子が深すぎるというシグナルである。
 
     Args:
         config: リザバーの設定 (frozen dataclass)。
 
     Returns:
-        軸名の集合。
+        軸名の集合 (入れ子は ``親.子``)。
 
     Raises:
         TypeError: dataclass でない場合。
     """
     if not dataclasses.is_dataclass(config) or isinstance(config, type):
         raise TypeError(f"dataclass のインスタンスが必要です: {type(config).__name__}")
+    found: set[str] = set()
+    for item in dataclasses.fields(config):
+        value = getattr(config, item.name)
+        if isinstance(value, NUMERIC_TYPES) and not isinstance(value, bool):
+            found.add(item.name)
+        elif dataclasses.is_dataclass(value) and not isinstance(value, type):
+            found |= {
+                f"{item.name}{AXIS_SEPARATOR}{nested}"
+                for nested in _direct_numeric_axes(value)
+            }
+    return frozenset(found)
+
+
+def _direct_numeric_axes(config: object) -> frozenset[str]:
+    """1段だけの数値フィールド名 (さらに潜らない)。"""
     return frozenset(
         item.name
-        for item in dataclasses.fields(config)
+        for item in dataclasses.fields(config)  # type: ignore[arg-type]
         if isinstance(getattr(config, item.name), NUMERIC_TYPES)
         and not isinstance(getattr(config, item.name), bool)
     )
@@ -102,6 +130,10 @@ def with_axis[T](config: T, name: str, value: float) -> T:
         ValueError: そのモデルに ``name`` という軸が無い場合。
     """
     require_axes(config, (name,), used_by=f"{type(config).__name__} の掃引")
+    head, separator, rest = name.partition(AXIS_SEPARATOR)
+    if separator:
+        nested = dataclasses.replace(getattr(config, head), **{rest: value})
+        return dataclasses.replace(config, **{head: nested})  # type: ignore[type-var]
     return dataclasses.replace(config, **{name: value})  # type: ignore[type-var]
 
 
@@ -112,10 +144,14 @@ def axis_value(config: object, name: str) -> float:
         ValueError: その軸が無い場合。
     """
     require_axes(config, (name,), used_by=f"軸 {name} の読み出し")
-    return float(getattr(config, name))
+    node: object = config
+    for part in name.split(AXIS_SEPARATOR):
+        node = getattr(node, part)
+    return float(node)  # type: ignore[arg-type]
 
 
 __all__ = [
+    "AXIS_SEPARATOR",
     "NUMERIC_TYPES",
     "axis_value",
     "numeric_axes",

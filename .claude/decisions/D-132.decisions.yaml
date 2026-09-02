@@ -1,0 +1,4 @@
+- id: D-132
+  rule: "W を取る診断 (D-122) は experiment/graph_diagnostics.py がまとめて回し、実験はそれを呼ぶ。03 は1条件につき1回、結合行列を測って diagnostics.csv へ出す。トポロジは振っていない軸なので condition_id には現れない (振る実験を作れば他の軸と同じように現れる)"
+  rationale: "diagnostics/topology.py は 312 行 + テスト一式が入っていたが、**実験からの呼び出しが0件**で results/ にトポロジ由来の行が1行も無かった。道具は完成しているのに配線だけが無い状態である。配線を後回しにするほど高くつく: diagnostics.csv の condition_id は『振った軸だけ』を並べる形式 (D-118) なので、トポロジを振る実験を作る段になって『条件キーにトポロジをどう書くか』を決めることになり、それは形式の変更 = 全実験の CSV が動く。**いま決めておく**: トポロジは軸として扱い、振っていなければ他の振っていない軸と同じく条件キーに現れない。どのトポロジで回したかは meta.json が判別子つきで記録する (D-129) ので、成果物から素性は復元できる。置き場所を experiment/graph_diagnostics.py にしたのは、capacity.py が 600 行の上限を超えて凍結されており足せないためで、役割としても『モデルから行列を取り出して族をまとめて回す』のは容量測定とは別の仕事である。変異注入: graph_diagnostics の呼び出しを外すと guard_test が赤"
+  guard_test: "tests/test_experiment_capacity.py::test_the_capacity_rows_carry_the_topology_diagnostics"

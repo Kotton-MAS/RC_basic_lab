@@ -26,8 +26,6 @@ from pathlib import Path
 
 from rc_basics_lab.config import Capacity03Config
 from rc_basics_lab.experiment.capacity import (
-    CAPACITY_CSV_COLUMNS,
-    CAPACITY_PROFILE_CSV_COLUMNS,
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_MC_SWEEP,
@@ -38,6 +36,8 @@ from rc_basics_lab.experiment.capacity import (
     run_length_sweep,
 )
 from rc_basics_lab.experiment.capacity_rows import (
+    CAPACITY_CSV_COLUMNS,
+    CAPACITY_PROFILE_CSV_COLUMNS,
     CapacityOutcome,
     CapacityProfileRow,
     CapacityRow,

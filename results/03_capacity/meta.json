@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "174438e8b5cbe9fc522c450350359197672aca75",
+  "commit": "aa9dc68c91f6e30c1502bfcb570f3201e9e9bb93",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -150,6 +150,7 @@
         },
         "tasks": [
           {
+            "kind": "mackey_glass",
             "params": {
               "beta": 0.2,
               "exponent": 10,
@@ -165,16 +166,19 @@
               "activation": "tanh",
               "bias_scale": 0.1,
               "input_scale": 0.5,
+              "kind": "esn",
               "leak_rate": 0.3,
               "n_units": 50,
               "spectral_radius": 0.9,
               "state_noise": 0.0,
               "topology": {
-                "density": 0.1
+                "density": 0.1,
+                "kind": "erdos_renyi"
               }
             }
           },
           {
+            "kind": "delay_parity",
             "params": {
               "delay": 1,
               "length": 8000,
@@ -184,12 +188,14 @@
               "activation": "tanh",
               "bias_scale": 0.1,
               "input_scale": 1.0,
+              "kind": "esn",
               "leak_rate": 1.0,
               "n_units": 200,
               "spectral_radius": 0.9,
               "state_noise": 0.0,
               "topology": {
-                "density": 0.1
+                "density": 0.1,
+                "kind": "erdos_renyi"
               }
             }
           }
@@ -402,42 +408,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.888647124869749
+    "wall_time_s": 3.8410392499063164
   },
-  "timestamp_utc": "2026-09-01T15:05:03.930656+00:00",
+  "timestamp_utc": "2026-09-02T02:41:34.781833+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.9076266719494,
-      "wall_time_mc_s": 4.314581792103127,
-      "wall_time_s": 43.87713341624476,
-      "wall_time_state_s": 7.651505957590416
+      "wall_time_ipc_s": 31.42278816225007,
+      "wall_time_mc_s": 4.256281002890319,
+      "wall_time_s": 43.27640166669153,
+      "wall_time_state_s": 7.593604624737054
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 84.64143879152834,
-      "wall_time_mc_s": 9.52009383449331,
-      "wall_time_s": 110.71712824958377,
-      "wall_time_state_s": 16.551011372823268
+      "wall_time_ipc_s": 83.72293733409606,
+      "wall_time_mc_s": 9.465987585252151,
+      "wall_time_s": 109.37305021216162,
+      "wall_time_state_s": 16.179334956454113
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 257.37682549702004,
-      "wall_time_mc_s": 22.09823170513846,
-      "wall_time_s": 307.6287765435409,
-      "wall_time_state_s": 28.148108832538128
+      "wall_time_ipc_s": 251.35212966706604,
+      "wall_time_mc_s": 22.07067679427564,
+      "wall_time_s": 301.49788087327033,
+      "wall_time_state_s": 28.06937395571731
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20647137495689094,
-      "wall_time_mc_s": 0.025053874822333455,
-      "wall_time_s": 0.5076724160462618,
-      "wall_time_state_s": 0.04991020797751844
+      "wall_time_ipc_s": 0.20461041596718132,
+      "wall_time_mc_s": 0.025335875106975436,
+      "wall_time_s": 0.5020441659726202,
+      "wall_time_state_s": 0.04890950000844896
     }
   ],
-  "wall_time_s": 477.46843037498184
+  "wall_time_s": 470.06025774986483
 }

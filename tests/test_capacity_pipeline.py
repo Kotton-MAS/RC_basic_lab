@@ -46,16 +46,14 @@ from rc_basics_lab.config import (
     SplitConfig,
     load_config_as,
 )
+from rc_basics_lab.config._dump import as_plain_mapping
 from rc_basics_lab.experiment.capacity import (
-    CAPACITY_CSV_COLUMNS,
-    CAPACITY_PROFILE_CSV_COLUMNS,
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_LENGTH_SWEEP,
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_NARMA10,
     FIGURE_EXPERIMENTS,
-    CapacityCondition,
     n_replicates_for,
     reservoir_config_for,
     run_capacity_experiment,
@@ -72,8 +70,11 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     write_capacity_profile_csv,
 )
 from rc_basics_lab.experiment.capacity_rows import (
+    CAPACITY_CSV_COLUMNS,
+    CAPACITY_PROFILE_CSV_COLUMNS,
     DIAGNOSTIC_IPC,
     DIAGNOSTIC_MC,
+    CapacityCondition,
 )
 from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.experiment.report import META_JSON
@@ -726,8 +727,8 @@ def test_production_config_matches_the_committed_meta_json() -> None:
     ``test_conservation_respects_the_bound`` は設定と成果物が食い違ったまま
     受け入れ条件1・2 の「通過」を続けてしまう。``meta.json['config']`` は
     ``run_and_report_capacity`` が書き出し時点の設定を丸ごとダンプしたもの
-    (``dataclasses.asdict``) なので、現在の ``load_config_as(...)`` と突き合わ
-    せれば値ドリフトを丸ごと閉じられる。
+    (``config._dump.as_plain_mapping``。D-129 で判別子つきになった) なので、
+    現在の ``load_config_as(...)`` と突き合わせれば値ドリフトを丸ごと閉じられる。
 
     ``PENDING_SECTIONS`` (``tests/test_config_wiring_capacity.py``) に含まれる
     セクション (現状は ``narma`` のみ) は比較対象から除く。``figures-03`` の
@@ -740,9 +741,12 @@ def test_production_config_matches_the_committed_meta_json() -> None:
     config = load_config_as(
         ROOT / "experiments" / "03_capacity" / "config.yaml", Capacity03Config
     )
+    # meta.json と**同じ経路**で落とす (D-129)。asdict は判別子を落とすので、
+    # ここだけ asdict のままだと「記録には kind があるのに比較側には無い」で
+    # 永久に食い違う。
     current = cast(
         "dict[str, object]",
-        _normalize_for_json_comparison(dataclasses.asdict(config)),
+        _normalize_for_json_comparison(as_plain_mapping(config)),
     )
     meta_path = RESULTS / META_JSON
     assert meta_path.is_file(), "make figures-03 を実行してください"

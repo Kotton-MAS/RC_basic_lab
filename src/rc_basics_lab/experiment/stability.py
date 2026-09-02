@@ -52,6 +52,8 @@ from rc_basics_lab.experiment.capacity_bounds import (
 from rc_basics_lab.experiment.capacity_rows import (
     CapacityMeasurement,
     CapacityRow,
+    CapacityRowIdentity,
+    CapacityRowTiming,
     capacity_row_from,
 )
 from rc_basics_lab.experiment.diagnostics_rows import DiagnosticScalarRow, rows_of
@@ -371,22 +373,26 @@ def evaluate_stability_condition(
     )
     capacity = capacity_row_from(
         measurement,
-        experiment=EXPERIMENT_FREERUN_CAPACITY,
-        replicate=condition.replicate,
-        seed_reservoir=config.base.seeds.reservoir,
-        seed_drive=config.base.seeds.task,
-        seed_surrogate=config.stability.surrogate_seed,
-        rho=axis_value(reservoir, "spectral_radius"),
-        leak_rate=axis_value(reservoir, "leak_rate"),
-        input_scale=axis_value(reservoir, "input_scale"),
-        sigma_u=CAPACITY_SIGMA_U,
-        n_units=int(axis_value(reservoir, "n_units")),
-        density=reservoir_density(reservoir),
-        state_noise=axis_value(reservoir, "state_noise"),
-        n_steps=int(plan.states.shape[0]),
-        washout=config.base.split.washout,
-        wall_time_state_s=wall_time_state_s,
-        wall_time_s=time.perf_counter() - started,
+        CapacityRowIdentity(
+            experiment=EXPERIMENT_FREERUN_CAPACITY,
+            replicate=condition.replicate,
+            seed_reservoir=config.base.seeds.reservoir,
+            seed_drive=config.base.seeds.task,
+            seed_surrogate=config.stability.surrogate_seed,
+            rho=axis_value(reservoir, "spectral_radius"),
+            leak_rate=axis_value(reservoir, "leak_rate"),
+            input_scale=axis_value(reservoir, "input_scale"),
+            sigma_u=CAPACITY_SIGMA_U,
+            n_units=int(axis_value(reservoir, "n_units")),
+            density=reservoir_density(reservoir),
+            state_noise=axis_value(reservoir, "state_noise"),
+            n_steps=int(plan.states.shape[0]),
+            washout=config.base.split.washout,
+        ),
+        CapacityRowTiming(
+            wall_time_state_s=wall_time_state_s,
+            wall_time_s=time.perf_counter() - started,
+        ),
     )
     return StabilityOutcome(
         row=row,

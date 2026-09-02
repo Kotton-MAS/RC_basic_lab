@@ -52,8 +52,8 @@ LINE_BUDGET = 600
 #: 上限を超えたまま凍結している既存モジュール (2026-08-21 の実測値)。
 #: **増やすために書き換えないこと。** 減らしたときだけ実測値へ更新する。
 FROZEN: dict[str, int] = {
-    "rc_basics_lab/experiment/freerun.py": 1152,
-    "rc_basics_lab/experiment/capacity.py": 714,
+    "rc_basics_lab/experiment/freerun.py": 893,
+    "rc_basics_lab/experiment/capacity.py": 657,
     "rc_basics_lab/experiment/esp.py": 875,
     "rc_basics_lab/diagnostics/ipc.py": 910,
     "rc_basics_lab/diagnostics/_capacity.py": 829,

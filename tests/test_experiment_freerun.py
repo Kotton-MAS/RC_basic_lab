@@ -41,6 +41,7 @@ from rc_basics_lab.config import (
     require_task,
 )
 from rc_basics_lab.experiment import freerun as freerun_module
+from rc_basics_lab.experiment import freerun_fit as freerun_fit_module
 from rc_basics_lab.experiment import freerun_rows as freerun_rows_module
 from rc_basics_lab.experiment import freerun_tasks as freerun_tasks_module
 from rc_basics_lab.experiment.attractor import shuffled_surrogate
@@ -728,7 +729,7 @@ def test_freerun_experiment_shares_one_plan_across_methods() -> None:
         return plan
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(freerun_module, "plan_replicate", spy)
+        patch.setattr(freerun_fit_module, "plan_replicate", spy)
         run_freerun_experiment(config, estimate_lorenz_lyapunov(config))
     assert len(calls) == 2 * config.base.n_replicates
 

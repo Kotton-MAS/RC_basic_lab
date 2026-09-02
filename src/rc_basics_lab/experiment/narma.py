@@ -42,6 +42,8 @@ from rc_basics_lab.experiment.capacity_bounds import (
 )
 from rc_basics_lab.experiment.capacity_rows import (
     CapacityOutcome,
+    CapacityRowIdentity,
+    CapacityRowTiming,
     capacity_outcome_from,
     capacity_row_from,
 )
@@ -335,26 +337,30 @@ def run_narma10(config: Capacity03Config) -> Narma10Results:
     reservoir = entry.reservoir
     row = capacity_row_from(
         measurement,
-        experiment=EXPERIMENT_NARMA10,
-        replicate=0,
-        seed_reservoir=base.seeds.reservoir,
-        # 3-C のリザバーを駆動するのは課題の入力そのものなので、駆動側の
-        # 基底シードは task ストリーム (D-06) である。
-        seed_drive=base.seeds.task,
-        seed_surrogate=config.seeds.surrogate,
-        rho=axis_value(reservoir, "spectral_radius"),
-        leak_rate=axis_value(reservoir, "leak_rate"),
-        input_scale=axis_value(reservoir, "input_scale"),
-        # 3-C に「駆動強度の設定値」は無いので、宣言した入力分布
-        # U[0, 0.5] の標準偏差の閉形式を書く (実測値は input_drive_std)。
-        sigma_u=NARMA10_INPUT_STD,
-        n_units=int(axis_value(reservoir, "n_units")),
-        density=reservoir_density(reservoir),
-        state_noise=axis_value(reservoir, "state_noise"),
-        n_steps=int(plan0.states.shape[0]),
-        washout=config.drive.washout,
-        wall_time_state_s=wall_time_state_s,
-        wall_time_s=wall_time_capacity_s,
+        CapacityRowIdentity(
+            experiment=EXPERIMENT_NARMA10,
+            replicate=0,
+            seed_reservoir=base.seeds.reservoir,
+            # 3-C のリザバーを駆動するのは課題の入力そのものなので、駆動側の
+            # 基底シードは task ストリーム (D-06) である。
+            seed_drive=base.seeds.task,
+            seed_surrogate=config.seeds.surrogate,
+            rho=axis_value(reservoir, "spectral_radius"),
+            leak_rate=axis_value(reservoir, "leak_rate"),
+            input_scale=axis_value(reservoir, "input_scale"),
+            # 3-C に「駆動強度の設定値」は無いので、宣言した入力分布
+            # U[0, 0.5] の標準偏差の閉形式を書く (実測値は input_drive_std)。
+            sigma_u=NARMA10_INPUT_STD,
+            n_units=int(axis_value(reservoir, "n_units")),
+            density=reservoir_density(reservoir),
+            state_noise=axis_value(reservoir, "state_noise"),
+            n_steps=int(plan0.states.shape[0]),
+            washout=config.drive.washout,
+        ),
+        CapacityRowTiming(
+            wall_time_state_s=wall_time_state_s,
+            wall_time_s=wall_time_capacity_s,
+        ),
     )
     verdict = summarize_narma10(rows)
     wall_time_s = time.perf_counter() - started

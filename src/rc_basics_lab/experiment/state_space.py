@@ -150,6 +150,13 @@ class StateSpaceReport:
     n_rows: int
     spaces: tuple[SpaceSummary, ...]
     unit_activity: UnitActivity
+    diagnostics: tuple[DiagnosticResult, ...] = ()
+    """診断の結果そのもの (長形式 CSV へ流すため。D-118)。
+
+    ``spaces`` / ``unit_activity`` は図と ``meta.json`` が読む**要約**で、
+    こちらは ``diagnostics.csv`` へ出す生のスカラである。要約から復元しないのは、
+    要約が捨てた値 (説明率の全成分など) を後から測り直せなくするため。
+    """
 
     def space(self, name: str) -> SpaceSummary:
         """名前で要約を引く。"""
@@ -197,10 +204,12 @@ def analyze_task(
         (DELAY_EMBEDDED_INPUT, embedded[start:stop]),
         (RESERVOIR_STATE, resolved_plan.states[start:stop]),
     )
+    pca_results = tuple((name, state_pca(matrix)) for name, matrix in matrices)
     spaces = tuple(
-        SpaceSummary.from_result(name, state_pca(matrix)) for name, matrix in matrices
+        SpaceSummary.from_result(name, result) for name, result in pca_results
     )
     reservoir_state = resolved_plan.states[start:stop]
+    activity = unit_activity(reservoir_state)
     report = StateSpaceReport(
         task=task_entry.name,
         replicate=replicate,
@@ -209,7 +218,20 @@ def analyze_task(
         spaces=spaces,
         # 活性度はリザバー状態にだけ意味がある (入力空間の「ユニット」は
         # 遅延タップであって、動かないタップという概念が無い)。
-        unit_activity=UnitActivity.from_result(unit_activity(reservoir_state)),
+        unit_activity=UnitActivity.from_result(activity),
+        # 空間ごとに名前が要る (3空間とも診断名は state_pca なので、そのままだと
+        # diagnostics.csv の3行が区別できない)。
+        diagnostics=(
+            *(
+                DiagnosticResult(
+                    name=f"{result.name}:{name}",
+                    scalars=result.scalars,
+                    params=result.params,
+                )
+                for name, result in pca_results
+            ),
+            activity,
+        ),
     )
     for summary in spaces:
         logger.info(

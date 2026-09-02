@@ -25,6 +25,10 @@ from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.reservoir.registry import reservoir_density
 from rc_basics_lab.reservoir.ring import RingConfig
+from rc_basics_lab.reservoir.topology import (
+    BarabasiAlbertConfig,
+    ErdosRenyiConfig,
+)
 
 MODELS: tuple[ReservoirConfig, ...] = (
     ESNConfig(),
@@ -39,9 +43,12 @@ def test_axes_come_from_the_fields(config: ReservoirConfig) -> None:
     axes = numeric_axes(config)
     assert axes, f"{type(config).__name__} に軸がありません"
     for name in axes:
-        assert isinstance(getattr(config, name), int | float)
+        node: object = config
+        for part in name.split("."):
+            node = getattr(node, part)
+        assert isinstance(node, int | float)
     assert "activation" not in axes  # 文字列
-    assert "topology" not in axes  # 入れ子の設定 (kind で選ぶ。D-122)
+    assert "topology" not in axes  # 入れ子そのものは軸ではない (中身が軸)
 
 
 @pytest.mark.parametrize("config", MODELS, ids=lambda c: type(c).__name__)
@@ -94,3 +101,35 @@ def test_the_ring_density_is_one_edge_per_row() -> None:
 def test_axis_value_rejects_an_unknown_axis() -> None:
     with pytest.raises(ValueError, match="持っていません"):
         axis_value(ESNConfig(), "n_layers")
+
+
+def test_nested_axes_reach_one_level_into_the_topology() -> None:
+    """入れ子の設定へ1段だけ潜る (D-130)。
+
+    ``density`` は ``topology`` へ移った (D-122) ので、潜れないと**分離前に
+    できた掃引ができなくなる**。BA の ``m`` や WS の ``k`` / ``beta`` も同じ。
+    """
+    er = ESNConfig()
+    assert "topology.density" in numeric_axes(er)
+    assert with_axis(er, "topology.density", 0.3).topology == ErdosRenyiConfig(
+        density=0.3
+    )
+    assert axis_value(er, "topology.density") == pytest.approx(0.1)
+
+    ba = ESNConfig(topology=BarabasiAlbertConfig(m=2))
+    assert "topology.m" in numeric_axes(ba)
+    assert "topology.density" not in numeric_axes(ba), (
+        "BA は density を持たない —— 軸はモデルの言葉のままにする (D-124)"
+    )
+    assert with_axis(ba, "topology.m", 4).topology == BarabasiAlbertConfig(m=4)
+
+
+def test_the_nesting_stops_at_one_level() -> None:
+    """2段目へは潜らない (軸名が長くなるだけで、深さの上限が読めなくなる)。"""
+    for name in numeric_axes(ESNConfig()):
+        assert name.count(".") <= 1, f"2段以上の軸があります: {name}"
+
+
+def test_a_nested_axis_a_model_does_not_have_is_rejected() -> None:
+    with pytest.raises(ValueError, match="持っていません"):
+        with_axis(ESNConfig(), "topology.m", 4)

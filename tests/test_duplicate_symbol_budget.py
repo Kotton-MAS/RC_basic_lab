@@ -88,7 +88,8 @@ FROZEN: dict[str, tuple[str, ...]] = {
     ),
     "_rows": (
         "rc_basics_lab/experiment/anomaly_score.py",
-        "rc_basics_lab/experiment/freerun.py",
+        # freerun.py から freerun_fit.py へ**移した** (D-128)。件数は増えていない
+        "rc_basics_lab/experiment/freerun_fit.py",
         "rc_basics_lab/experiment/runner.py",
     ),
     "_sweep": (

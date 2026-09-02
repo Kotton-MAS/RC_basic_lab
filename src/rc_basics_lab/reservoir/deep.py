@@ -35,8 +35,11 @@ from rc_basics_lab.reservoir._kernel import (
 )
 from rc_basics_lab.reservoir.esn import spectral_radius
 from rc_basics_lab.reservoir.topology import (
+    BarabasiAlbertConfig,
     ErdosRenyiConfig,
+    RingTopologyConfig,
     TopologyConfig,
+    WattsStrogatzConfig,
     build_mask,
     nominal_density,
 )
@@ -71,6 +74,24 @@ class DeepESNConfig:
     bias_scale: float = 0.1
     topology: TopologyConfig = field(default_factory=ErdosRenyiConfig)
     state_noise: float = 0.0
+
+
+def _density_knob(topology: TopologyConfig) -> str:
+    """密度を上げるために触るキーの名前 (トポロジによって違う。D-131)。
+
+    ``require_axes`` が「持っている軸はこれ」と直し方まで言う水準に揃える ——
+    ``kind: barabasi_albert`` の設定で「density を上げてください」と言われても、
+    そのキーは存在しない。
+    """
+    match topology:
+        case ErdosRenyiConfig():
+            return "topology.density"
+        case BarabasiAlbertConfig():
+            return "topology.m"
+        case WattsStrogatzConfig():
+            return "topology.k"
+        case RingTopologyConfig():
+            return "n_units (リングは密度を選べません)"
 
 
 def _validate_deep_config(config: DeepESNConfig, n_inputs: int) -> None:
@@ -112,9 +133,10 @@ def _validate_deep_config(config: DeepESNConfig, n_inputs: int) -> None:
         raise ValueError(
             f"density * (n_units / n_layers) は 1 以上が必要です "
             f"({density} * {layer_units} = {density * layer_units:.2f})。"
-            "層あたりのユニット数が少なすぎるか density が低すぎます —— "
+            "層あたりのユニット数が少なすぎるか結合が疎すぎます —— "
             "この条件では再帰の無い W (冪零) がシード次第で生まれます。"
-            "n_layers を減らすか density を上げてください"
+            f"n_layers を減らすか、{_density_knob(config.topology)} を"
+            "上げてください"
         )
     if not 0.0 < config.leak_rate <= 1.0:
         raise ValueError(

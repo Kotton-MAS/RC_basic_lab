@@ -1,0 +1,4 @@
+- id: D-133
+  rule: "diagnostics.csv を出さない実験は tests/test_diagnostics_coverage.py の WITHOUT_DIAGNOSTICS に理由つきで載せる。載せた実験が診断を呼び始めたら検査が赤くなり、配線を要求する"
+  rationale: "D-118 の rule は『診断が返すスカラは diagnostics.csv へ』と全称で書いてあるが、実際に出しているのは 01 / 02 / 03 / 04 で 05 だけ出していない。理由は 05 が DiagnosticResult を返す診断を1本も呼んでいないからで (ESN は回すが、測っているのは検知の成績であって内部状態ではない)、出す行が無いのに空の CSV を1枚増やすと指紋とゴールデンの維持コストだけが増えて情報は増えない。**問題は判断ではなく記録である**: 『意図的に外した』のか『まだ配線していない』のかが成果物からも決定からも読めず、次に見た人が同じ調査をやり直す (実際にレビューで指摘された)。散文で『05 は出さない』と書くだけだと、05 に診断を足した日に更新を忘れて嘘になる。実験ごとの宣言 (spec.artifacts) とコミット済みの成果物の両方を照合し、さらに『05 が diagnostics を import していないこと』という**理由そのもの**を測る。理由が消えたら赤くなってリストから外すよう言う。変異注入: 05 に diagnostics の import を足すと guard_test が赤"
+  guard_test: "tests/test_diagnostics_coverage.py::test_experiment_05_still_calls_no_diagnostic"

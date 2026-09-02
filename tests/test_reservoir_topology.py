@@ -11,9 +11,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
+from rc_basics_lab.reservoir import topology as topology_module
 from rc_basics_lab.reservoir.topology import (
     BarabasiAlbertConfig,
     ErdosRenyiConfig,
@@ -188,3 +191,41 @@ def test_the_nominal_density_is_close_to_the_realised_one(
     assert 0.4 * nominal <= realised <= 2.5 * nominal, (
         f"{config}: 見込み {nominal:.4f} と実測 {realised:.4f} が離れすぎです"
     )
+
+
+# --- docstring と実態の一致 (D-131) ---------------------------------------
+
+SYMMETRY_TABLE: tuple[tuple[TopologyConfig, bool, bool], ...] = (
+    (ErdosRenyiConfig(density=0.1), True, False),
+    (BarabasiAlbertConfig(), False, True),
+    (WattsStrogatzConfig(), False, True),
+    (RingTopologyConfig(), False, False),
+)
+"""``(設定, 自己ループを持つか, 辺の有無が対称か)`` の実測 (N=200, seed=7)。
+
+``reservoir/topology.py`` の docstring の表と**同じ内容**である。散文が実態と
+ずれると、次に読む人が「自己結合はどれにもある」という前提で実験を設計する。
+"""
+
+
+@pytest.mark.parametrize(
+    ("config", "has_self_loop", "symmetric"),
+    SYMMETRY_TABLE,
+    ids=lambda v: type(v).__name__ if hasattr(v, "__class__") else str(v),
+)
+def test_the_docstring_table_matches_the_measured_symmetry(
+    config: TopologyConfig, has_self_loop: bool, symmetric: bool
+) -> None:
+    """自己ループと対称性が docstring の表どおりであること (D-131)。"""
+    mask = _mask(config, seed=7, n_units=200)
+    assert bool(np.trace(mask) > 0) is has_self_loop
+    assert bool((mask == mask.T).all()) is symmetric
+
+
+def test_the_docstring_records_every_topology_in_the_table() -> None:
+    """docstring の表に全トポロジが載っていること (落とすと交絡が隠れる)。"""
+    source = Path(topology_module.__file__).read_text(encoding="utf-8")
+    header = source.split('"""')[1]
+    for config, _, _ in SYMMETRY_TABLE:
+        name = type(config).__name__
+        assert name in header, f"docstring の表に {name} がありません (D-131)"
