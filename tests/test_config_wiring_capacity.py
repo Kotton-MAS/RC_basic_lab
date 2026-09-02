@@ -79,6 +79,7 @@ from rc_basics_lab.config import (
     ExperimentConfig,
     IpcConfig,
     IpcSweepConfig,
+    LadderSweepConfig,
     LengthSweepConfig,
     McSweepConfig,
     MemoryCapacityConfig,
@@ -130,6 +131,26 @@ CHANNEL_LADDER = "ladder"
 ``CHANNEL_SYMMETRY`` と同じ理由で専用チャネルにする —— ``capacity.csv`` に行が
 出ないので ``CHANNEL_ROWS`` では測れないが、**変えたら出力が変わる**ことは
 ここでも実測する。
+"""
+
+CHANNEL_LADDER_ERROR = "ladder-error"
+"""3-T の梯子が**大声で落ちる**ことで効いている葉 (D-139)。
+
+``CHANNEL_ERROR`` は ``capacity.csv`` の経路を回すので、梯子でしか起きない
+拒否は捕まえられない。密度を決める側の水準 (BA と、その次数列を借りる
+次数保存ランダム化) は**片方だけ動かすと食い違う**ので、そこで落ちる。
+"""
+
+CHANNEL_DERIVED = "derived"
+"""**実行時に導出されるので、書いても効かない**葉 (D-139)。
+
+3-T の水準の密度がこれである —— 梯子は BA の ``2m/N`` に全水準をそろえ直す
+ので、YAML に書いた密度は使われない。N を掃引する以上そうするしかない
+(固定値では N=50 でしかそろわない)。
+
+**「効かない」を素通りさせるチャネルではない。** 効かないことを ``==`` で
+**実測する** —— 誰かが密度そろえを外したらここが赤くなる。逃がし先としても
+使えないよう、``note`` に導出の根拠を書くことを必須にしてある。
 """
 
 CHANNEL_TAPS = "taps"
@@ -293,7 +314,16 @@ def base_config() -> Capacity03Config:
         # 3-T は水準5本ぶん回すので、土台の側で秒未満に縮めておく
         # (ケース側で縮めると、n_units などの葉の効きを打ち消してしまう)
         topology_ladder=TopologyLadderConfig(
-            n_units=20, n_steps=900, n_graphs=1, n_replicates=1
+            n_units=20,
+            n_steps=900,
+            n_graphs=1,
+            n_replicates=1,
+            # 掃引の葉 (sweeps[i].*) を D-13 の検査に載せるため、土台にも
+            # 2本置く。本番と同じ軸を、1点ずつの最小の格子で持つ。
+            sweeps=(
+                LadderSweepConfig(axis="n_units", values=(20.0,)),
+                LadderSweepConfig(axis="leak_rate", values=(0.5,)),
+            ),
         ),
     )
 
@@ -390,16 +420,40 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("topology_ladder.n_graphs", 2, channel=CHANNEL_LADDER),
     case("topology_ladder.n_replicates", 2, channel=CHANNEL_LADDER),
     # 水準ごとの葉。**どの水準を変えても行が動く**ことを1つずつ測る
-    case("topology_ladder.levels[0].density", 0.3, channel=CHANNEL_LADDER),
-    case("topology_ladder.levels[1].base.density", 0.3, channel=CHANNEL_LADDER),
+    case(
+        "topology_ladder.levels[0].density",
+        0.3,
+        channel=CHANNEL_DERIVED,
+        note="密度は BA の 2m/N にそろえ直される (D-139)",
+    ),
+    case(
+        "topology_ladder.levels[1].base.density",
+        0.3,
+        channel=CHANNEL_DERIVED,
+        note="密度は BA の 2m/N にそろえ直される (D-139)",
+    ),
     case("topology_ladder.levels[1].symmetrize", False, channel=CHANNEL_LADDER),
     case("topology_ladder.levels[1].drop_self_loops", True, channel=CHANNEL_LADDER),
-    case("topology_ladder.levels[2].base.density", 0.3, channel=CHANNEL_LADDER),
+    case(
+        "topology_ladder.levels[2].base.density",
+        0.3,
+        channel=CHANNEL_DERIVED,
+        note="密度は BA の 2m/N にそろえ直される (D-139)",
+    ),
     case("topology_ladder.levels[2].symmetrize", True, channel=CHANNEL_LADDER),
     case("topology_ladder.levels[2].drop_self_loops", False, channel=CHANNEL_LADDER),
-    case("topology_ladder.levels[3].base.m", 4, channel=CHANNEL_LADDER),
+    # 密度を決める側の水準は2本あり、片方だけ動かすと食い違って落ちる (D-139)。
+    # 「効かない」ではなく「大声で落ちる」ので効いている。
+    case("topology_ladder.levels[3].base.m", 4, channel=CHANNEL_LADDER_ERROR),
     case("topology_ladder.levels[3].swaps_per_edge", 1, channel=CHANNEL_LADDER),
-    case("topology_ladder.levels[4].m", 4, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[4].m", 4, channel=CHANNEL_LADDER_ERROR),
+    case("topology_ladder.state_noise", 0.05, channel=CHANNEL_LADDER),
+    # 値は土台の軸 (sweeps[0]=n_units / sweeps[1]=leak_rate) に合わせる。
+    # 軸の外れた値 (leak_rate=0 / rho=0) は診断側が値域で弾くので効きを測れない。
+    case("topology_ladder.sweeps[0].axis", "rho", channel=CHANNEL_LADDER),
+    case("topology_ladder.sweeps[0].values", (18.0, 24.0), channel=CHANNEL_LADDER),
+    case("topology_ladder.sweeps[1].axis", "rho", channel=CHANNEL_LADDER),
+    case("topology_ladder.sweeps[1].values", (0.25, 0.75), channel=CHANNEL_LADDER),
     case("symmetry_sweep.offset_ratio_grid", (0.0, 4.0), channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.rho", 0.6, channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.leak_rate", 0.5, channel=CHANNEL_SYMMETRY),
@@ -593,6 +647,18 @@ def test_each_capacity_parameter_changes_output(
         assert _symmetry_fingerprint(changed_config) != _symmetry_fingerprint(base)
         assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
             f"{wiring_case.field} が本番の掃引の行まで変えています"
+        )
+        return
+
+    if wiring_case.channel == CHANNEL_LADDER_ERROR:
+        with pytest.raises(ValueError):
+            _ladder_fingerprint(changed_config)
+        return
+
+    if wiring_case.channel == CHANNEL_DERIVED:
+        assert wiring_case.note, "導出の根拠が書かれていません"
+        assert _ladder_fingerprint(changed_config) == _ladder_fingerprint(base), (
+            f"{wiring_case.field} は導出されるはずですが、出力が変わりました"
         )
         return
 

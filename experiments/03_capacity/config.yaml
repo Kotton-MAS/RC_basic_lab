@@ -238,18 +238,28 @@ topology_ladder:
   sigma_u: 0.2
   n_units: 50
   n_steps: 20000
+  state_noise: 0.0
   n_graphs: 8
   n_replicates: 3
+  # 密度は書かない。BA の 2m/N に実行時でそろえ直す (D-139)。
+  # N を振る以上、ここに固定値を書いても N=50 でしかそろわない。
   levels:
     - kind: erdos_renyi
-      density: 0.08
     - kind: control
-      base: {kind: erdos_renyi, density: 0.08}
+      base: {kind: erdos_renyi}
       symmetrize: true
     - kind: control
-      base: {kind: erdos_renyi, density: 0.08}
+      base: {kind: erdos_renyi}
       drop_self_loops: true
     - kind: degree_preserving
       base: {kind: barabasi_albert, m: 2}
     - kind: barabasi_albert
       m: 2
+  # 掃引はここに並べた順で回り、同じ CSV に sweep_axis 列で区別して入る。
+  sweeps:
+    # §3: トポロジの順位は N に依存するか (物理リザバーは小さい N に住む)
+    - axis: n_units
+      values: [25, 50, 100]
+    # §4: ノイズなしで選んだ最適トポロジは、ノイズ下でも最適か
+    - axis: state_noise
+      values: [0.0, 0.01, 0.1]

@@ -47,6 +47,9 @@ from rc_basics_lab.config.capacity03 import (
     McSweepConfig,
     Narma10Config,
     SymmetrySweepConfig,
+)
+from rc_basics_lab.config.capacity03_ladder import (
+    LadderSweepConfig,
     TopologyLadderConfig,
 )
 from rc_basics_lab.config.chaos04 import (
@@ -128,6 +131,7 @@ __all__ = [
     "FreeRunConfig",
     "IpcConfig",
     "IpcSweepConfig",
+    "LadderSweepConfig",
     "LengthSweepConfig",
     "LorenzConfig",
     "LyapunovConfig",

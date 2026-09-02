@@ -55,7 +55,7 @@ BA / WS でも**重みの値**は非対称になる —— 対称なのは**辺�
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 import numpy as np
@@ -231,6 +231,39 @@ def nominal_density(config: TopologyConfig, n_units: int) -> float:
             # 対称化は辺を増やし、自己ループの除去は減らす。**見込みは土台の
             # まま**にする —— 実測の密度は degree_distribution が出す (D-138)。
             return nominal_density(config.base, n_units)
+
+
+def rescaled_to_density(
+    config: TopologyConfig, density: float
+) -> TopologyConfig | None:
+    """密度を ``density`` に合わせた複製を返す。**合わせられなければ None**。
+
+    Erdos-Renyi は密度そのものを持つので任意の値に合わせられる。BA と
+    Watts-Strogatz は**整数の枝数**で密度が決まるので、任意の値には合わせ
+    られない (``None`` を返す)。リングも同様に ``1/N`` で固定である。
+
+    合わせられない水準があること自体は異常ではない —— **そちらが密度を
+    決める側**になる (3-T の梯子は BA の密度に他を合わせる。D-139)。
+
+    Args:
+        config: トポロジの設定。
+        density: 合わせたい密度。
+
+    Returns:
+        同じ kind の複製、または合わせられないなら ``None``。
+    """
+    match config:
+        case ErdosRenyiConfig():
+            return replace(config, density=density)
+        case TopologyControlConfig():
+            return replace(config, base=replace(config.base, density=density))
+        case (
+            RingTopologyConfig()
+            | BarabasiAlbertConfig()
+            | WattsStrogatzConfig()
+            | DegreePreservingConfig()
+        ):
+            return None
 
 
 def build_mask(
@@ -430,4 +463,5 @@ __all__ = [
     "WattsStrogatzConfig",
     "build_mask",
     "nominal_density",
+    "rescaled_to_density",
 ]

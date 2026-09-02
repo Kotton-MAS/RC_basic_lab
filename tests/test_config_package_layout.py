@@ -199,11 +199,15 @@ SYMMETRY_ADDITIONS = ("SymmetrySweepConfig",)
 """
 
 
-LADDER_ADDITIONS = ("TopologyLadderConfig",)
-"""3-T (対照の梯子、D-138) で足した公開名。
+LADDER_ADDITIONS = ("LadderSweepConfig", "TopologyLadderConfig")
+"""3-T (対照の梯子、D-138 / D-139) で足した公開名。
 
-``make ladder-03`` の設定セクション1つ。本番の ``figures-03`` は読まない
-(``symmetry_sweep`` と同じ扱い)。
+``make ladder-03`` の設定である。本番の ``figures-03`` は読まない
+(``symmetry_sweep`` と同じ扱い)。``LadderSweepConfig`` は梯子に掛ける掃引軸
+1本ぶんで、N とノイズを振るために足した (D-139)。
+
+2つとも ``capacity03_ladder.py`` に置く —— ``capacity03.py`` が上限
+(非空 300 行) に達したためで、**上限のほうは動かさない**。
 """
 
 
@@ -234,6 +238,7 @@ EXPECTED_SUBMODULES = (
     "anomaly05",
     "anomaly05_sweep",
     "capacity03",
+    "capacity03_ladder",
     "chaos04",
     "esp02",
     "experiment01",
@@ -251,6 +256,8 @@ ALLOWED_INTERNAL_EDGES = frozenset(
         ("__init__", "experiment01"),
         ("__init__", "esp02"),
         ("__init__", "capacity03"),
+        ("__init__", "capacity03_ladder"),
+        ("capacity03", "capacity03_ladder"),
         ("__init__", "chaos04"),
         ("__init__", "anomaly05"),
         ("__init__", "anomaly05_sweep"),
@@ -269,6 +276,9 @@ ALLOWED_INTERNAL_EDGES = frozenset(
   どのサイクルモジュールも import しない
 - ``esp02 -> experiment01``: ``WashoutSweepConfig.base: ExperimentConfig``
   (2-D が 01 の ``run_experiment`` を再利用するための内包、D-19)
+- ``capacity03 -> capacity03_ladder``: ``Capacity03Config.topology_ladder``
+  (3-T の節。``capacity03`` が上限に達したので割った。逆向きは引かない ——
+  梯子は ``Capacity03Config`` を知らない)
 - ``capacity03 -> experiment01``: ``Narma10Config.base: ExperimentConfig``
   (3-C が 01 の ``run_task`` を再利用するための内包、D-31)
 - ``chaos04 -> experiment01``: ``Chaos04Config.base: ExperimentConfig``

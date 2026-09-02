@@ -12,20 +12,32 @@ import dataclasses
 import numpy as np
 import pytest
 
-from rc_basics_lab.config import Capacity03Config, load_config_as
+from rc_basics_lab.config import (
+    Capacity03Config,
+    LadderSweepConfig,
+    TopologyLadderConfig,
+    load_config_as,
+)
 from rc_basics_lab.experiment.topology_ladder import (
+    DESIGN_AXES,
     EXPERIMENT_TOPOLOGY_LADDER,
     TOPOLOGY_LADDER_CSV_COLUMNS,
     TopologyLadderRow,
     level_name,
+    matched_levels,
     run_topology_ladder,
+    sweep_points,
 )
+from rc_basics_lab.reservoir.axes import numeric_axes
 from rc_basics_lab.reservoir.topology import (
     BarabasiAlbertConfig,
     DegreePreservingConfig,
     ErdosRenyiConfig,
+    RingTopologyConfig,
     TopologyControlConfig,
+    WattsStrogatzConfig,
     build_mask,
+    nominal_density,
 )
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
@@ -44,6 +56,7 @@ def tiny_config() -> Capacity03Config:
             n_steps=1200,
             n_graphs=2,
             n_replicates=2,
+            sweeps=(),
         ),
     )
 
@@ -121,22 +134,144 @@ def test_the_row_columns_are_the_declaration_order() -> None:
         tuple(item.name for item in dataclasses.fields(TopologyLadderRow))
         == TOPOLOGY_LADDER_CSV_COLUMNS
     )
-    assert TOPOLOGY_LADDER_CSV_COLUMNS[:3] == ("experiment", "level", "topology_kind")
+    assert TOPOLOGY_LADDER_CSV_COLUMNS[:4] == (
+        "experiment",
+        "sweep_axis",
+        "level",
+        "topology_kind",
+    )
 
 
-def test_the_nominal_density_is_the_same_across_levels() -> None:
-    """全水準の見込み密度がそろっている (D-138)。
+def test_the_nominal_density_is_the_same_across_levels_at_every_sweep_point() -> None:
+    """**どの掃引点でも**全水準の見込み密度がそろっている (D-139)。
 
     そろっていないと「密度が違うから容量が違う」という**一番つまらない交絡**が
-    最初に効いてしまい、梯子が答えたい問いに届かない。
+    最初に効いてしまい、梯子が答えたい問いに届かない。N を掃引すると BA の
+    密度は ``2m/N`` で動くので、**N=50 で手で合わせた値では他の N で崩れる**
+    (実測: N=25 で BA が ER の2倍、N=100 で半分)。
     """
     config = load_config_as("experiments/03_capacity/config.yaml", Capacity03Config)
-    from rc_basics_lab.reservoir.topology import nominal_density
+    points = sweep_points(config.topology_ladder)
+    assert len(points) > 1, "掃引が設定されていません"
+    for axis, point in points:
+        densities = [
+            nominal_density(topology, point.n_units)
+            for topology in matched_levels(point.levels, point.n_units)
+        ]
+        assert densities == pytest.approx([densities[0]] * len(densities)), (
+            f"{axis}: N={point.n_units} で水準ごとに密度が違います: {densities}"
+        )
 
-    section = config.topology_ladder
-    densities = [
-        nominal_density(topology, section.n_units) for topology in section.levels
-    ]
-    assert densities == pytest.approx([densities[0]] * len(densities)), (
-        f"水準ごとに見込み密度が違います: {densities}"
+
+def test_every_sweepable_axis_is_also_a_csv_column() -> None:
+    """**振れる軸は必ず CSV の列にある** (D-139)。
+
+    列に出ない軸を振ると、成果物を見た人には「同じ条件を繰り返し測っている」
+    ようにしか見えない。専用の ``sweep_value`` 列を作らずに済むのも、この
+    包含関係が成り立っているからである。
+    """
+    sweepable = numeric_axes(TopologyLadderConfig()) - DESIGN_AXES
+    columns = set(TOPOLOGY_LADDER_CSV_COLUMNS)
+    assert sweepable <= columns, (
+        f"列に出ない軸を振れてしまいます: {sorted(sweepable - columns)}"
     )
+
+
+def test_the_design_axes_cannot_be_swept() -> None:
+    """対の本数を決める軸は振れない (対応のある検定が組めなくなる)。"""
+    for axis in sorted(DESIGN_AXES):
+        section = TopologyLadderConfig(
+            sweeps=(LadderSweepConfig(axis=axis, values=(1.0, 2.0)),)
+        )
+        with pytest.raises(ValueError, match=axis):
+            sweep_points(section)
+
+
+def test_an_unknown_axis_is_rejected() -> None:
+    """持っていない軸を振ろうとしたら落ちる (黙って素通しにしない)。"""
+    section = TopologyLadderConfig(
+        sweeps=(LadderSweepConfig(axis="temperature", values=(1.0,)),)
+    )
+    with pytest.raises(ValueError, match="temperature"):
+        sweep_points(section)
+
+
+def test_no_sweep_gives_one_point_with_an_empty_axis() -> None:
+    """掃引が無ければ基準の1点だけ (``sweep_axis`` は空文字)。"""
+    section = TopologyLadderConfig(sweeps=())
+    assert sweep_points(section) == (("", section),)
+    empty = TopologyLadderConfig(sweeps=(LadderSweepConfig(axis="n_units", values=()),))
+    assert sweep_points(empty) == (("", empty),)
+
+
+def test_an_int_axis_stays_an_int() -> None:
+    """``n_units`` に float を渡しても int で入る (格子は YAML から来る)。"""
+    section = TopologyLadderConfig(
+        sweeps=(LadderSweepConfig(axis="n_units", values=(25.0,)),)
+    )
+    ((_, point),) = sweep_points(section)
+    assert isinstance(point.n_units, int) and point.n_units == 25
+
+
+def test_matched_levels_raises_when_pinned_levels_disagree() -> None:
+    """密度を指定できない水準どうしが食い違ったら落ちる。
+
+    BA も Watts-Strogatz も整数の枝数で密度が決まるので、**どちらも譲れない**。
+    黙って片方に寄せると、寄せられた側の水準が名前と違うものになる。
+    """
+    levels = (BarabasiAlbertConfig(m=2), WattsStrogatzConfig(k=6))
+    with pytest.raises(ValueError, match="食い違"):
+        matched_levels(levels, 50)
+    assert matched_levels((BarabasiAlbertConfig(m=2), ErdosRenyiConfig()), 50) == (
+        BarabasiAlbertConfig(m=2),
+        ErdosRenyiConfig(density=0.08),
+    )
+
+
+def test_matched_levels_falls_back_to_the_first_level() -> None:
+    """指定できない水準が1つも無ければ先頭に合わせる。"""
+    levels = (ErdosRenyiConfig(density=0.3), ErdosRenyiConfig(density=0.9))
+    assert matched_levels(levels, 50) == (
+        ErdosRenyiConfig(density=0.3),
+        ErdosRenyiConfig(density=0.3),
+    )
+    with pytest.raises(ValueError, match="空"):
+        matched_levels((), 50)
+    # リングは 1/N で固定なので、こちらが密度を決める側になる
+    assert matched_levels((RingTopologyConfig(), ErdosRenyiConfig()), 50) == (
+        RingTopologyConfig(),
+        ErdosRenyiConfig(density=0.02),
+    )
+
+
+def test_the_shared_baseline_matches_across_sweep_blocks() -> None:
+    """2つの掃引に重複して入る基準点が**同じ数を出す** (D-139)。
+
+    掃引点の間で乱数や文脈が漏れていたら、同じ条件の行が食い違う。重複を
+    残しているのはこの検査が無料で付いてくるからでもある。
+    """
+    config = tiny_config()
+    section = dataclasses.replace(
+        config.topology_ladder,
+        sweeps=(
+            LadderSweepConfig(axis="n_units", values=(float(20),)),
+            LadderSweepConfig(axis="state_noise", values=(0.0,)),
+        ),
+    )
+    rows = run_topology_ladder(dataclasses.replace(config, topology_ladder=section))
+    first = {
+        (row.level, row.graph, row.replicate): row
+        for row in rows
+        if row.sweep_axis == "n_units"
+    }
+    second = {
+        (row.level, row.graph, row.replicate): row
+        for row in rows
+        if row.sweep_axis == "state_noise"
+    }
+    assert first and first.keys() == second.keys()
+    for key, row in first.items():
+        assert row.mc_total == pytest.approx(second[key].mc_total), (
+            f"{key} の MC が掃引ブロック間で食い違います"
+        )
+        assert row.ipc_total == pytest.approx(second[key].ipc_total)

@@ -1339,6 +1339,7 @@ NARMA10 が要求する非線形性は `u[t-9] u[t]` の1項（次数2）が主�
 | `experiment01.py` | 01 の設定 dataclass 群 / `CrossValidationConfig` / `TASK_LENGTH_FIELDS` / `load_config` |
 | `esp02.py` | 02 の設定 dataclass 群 / `esp_stream_seed` / 2-C の格子定数 |
 | `capacity03.py` | 03 の設定 dataclass 群 / `Narma10Config` / `SymmetrySweepConfig` |
+| `capacity03_ladder.py` | 3-T 対照の梯子 `TopologyLadderConfig` / `LadderSweepConfig` (D-139) |
 | `chaos04.py` | 04 の設定 dataclass 群 / `Chaos04Config` / `LORENZ_LYAPUNOV_REFERENCE` |
 | `anomaly05.py` | 05 の設定 dataclass 群 / `Anomaly05Config` / `SyntheticAnomalyConfig` / `anomaly_stream_seed` |
 | `anomaly05_sweep.py` | 05 の掃引の格子 / `AnomalyProtocolSweepConfig` / `AnomalySizeSweepConfig` |
