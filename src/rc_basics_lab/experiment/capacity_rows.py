@@ -9,8 +9,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
+from rc_basics_lab.config import Capacity03Config
 from rc_basics_lab.diagnostics.base import DiagnosticResult
 from rc_basics_lab.experiment.diagnostics_rows import (
     DiagnosticScalarRow,
@@ -206,25 +207,154 @@ class CapacityMeasurement:
     wall_time_ipc_s: float
 
 
+@dataclass(frozen=True, slots=True)
+class CapacityRowIdentity:
+    """``capacity.csv`` の1行を**どの条件で測ったか**だけを持つ束 (D-128)。
+
+    3-A / 3-B / 3-B' (``capacity.py``)・3-C (``narma.py``)・4-D
+    (``stability.py``) の3経路が、**同じ16個を同じ順で**渡していた。束にすると
+    ``capacity_row_from`` の引数が 17 個から 3 個になり、「測定結果」と
+    「条件」と「時間」という読み方が署名に出る。
+
+    測定結果 (``CapacityMeasurement``) は含めない —— あちらは測って得た値、
+    こちらは測る前に決まっている値で、混ぜると「どちらが入力か」が読めなくなる。
+
+    Attributes:
+        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか (CSV の ``experiment``)。
+        replicate: レプリケート番号 (0 始まり)。
+        seed_reservoir: リザバー重みの基底シード。
+        seed_drive: 駆動入力の基底シード。
+        seed_surrogate: しきい値サロゲートのシード (``ctx.seed`` と同じ値、D-37)。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        input_scale: 入力結合の強さ。
+        sigma_u: 駆動信号の標準偏差の**設定値** (実測は
+            ``measurement.input_drive_std``)。
+        n_units: リザバーのユニット数 N。
+        density: 再帰結合の密度。
+        state_noise: 状態ノイズの標準偏差。
+        n_steps: 系列長 [ステップ]。
+        washout: ``ctx.washout`` として渡した値 (実効基準点は ``t0_mc`` /
+            ``t0_ipc`` に別途出る、D-24)。
+    """
+
+    experiment: str
+    replicate: int
+    seed_reservoir: int
+    seed_drive: int
+    seed_surrogate: int
+    rho: float
+    leak_rate: float
+    input_scale: float
+    sigma_u: float
+    n_units: int
+    density: float
+    state_noise: float
+    n_steps: int
+    washout: int
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityRowTiming:
+    """行に載せる実測時間 (D-128)。
+
+    Attributes:
+        wall_time_state_s: 状態行列の生成にかかった時間 [秒]。
+        wall_time_s: **容量測定 (状態生成 + MC + IPC) の合計時間** [秒]。
+            3-C (``run_narma10``) を含む全経路で同じ意味であり、``run_task``
+            (3手法 x 全レプリケート) は含まない (F-3b2-1-004/M4)。
+    """
+
+    wall_time_state_s: float
+    wall_time_s: float
+
+
+@dataclass(frozen=True, slots=True)
+class CapacityCondition:
+    """容量測定の1条件。掃引の違いはどの軸を振るかだけである。
+
+    02 の ``evaluate_condition`` はキーワード引数で軸を受けていたが、03 は軸が
+    8本 (実験ラベル・rho・リーク率・N・状態ノイズ・駆動強度・系列長・
+    レプリケート) あり、``n_units`` と ``n_steps`` がセクションごとに違う
+    (D-32) ため、条件そのものを1つの値として持ち回る。
+
+    Attributes:
+        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。CSV の ``experiment``
+            列になり、3-B' だけ IPC の打ち切りが上書きされる (下記
+            ``ipc_config_for``)。
+        rho: スペクトル半径。
+        leak_rate: リーク率。
+        n_units: リザバーのユニット数 N (**セクションが持つ**、D-32)。
+        state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。
+        sigma_u: 駆動信号の標準偏差 (D-17)。
+        n_steps: 系列長 [ステップ]。
+        replicate: レプリケート番号 (0 始まり)。
+    """
+
+    experiment: str
+    rho: float
+    leak_rate: float
+    n_units: int
+    state_noise: float
+    sigma_u: float
+    n_steps: int
+    replicate: int
+
+
+CAPACITY_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(CapacityRow))
+"""``capacity.csv`` の列順 (``CapacityRow`` の宣言順が単一の真実)。"""
+
+
+CAPACITY_PROFILE_CSV_COLUMNS: tuple[str, ...] = tuple(
+    f.name for f in fields(CapacityProfileRow)
+)
+"""``capacity_profile.csv`` の列順 (``CapacityProfileRow`` の宣言順が単一の真実)。
+
+**cfg に依らず一定**であることが D-38 の中心で、
+``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
+が2つの異なる打ち切り設定で実測する。
+"""
+
+
+def identity_for(
+    condition: CapacityCondition, config: Capacity03Config, *, seed_drive: int
+) -> CapacityRowIdentity:
+    """3-A / 3-B / 3-B' の条件から識別子を組む (D-128)。
+
+    ``CapacityCondition`` と横断共有値 (``config.reservoir`` / ``config.drive``)
+    のどちらから来るかの対応はここにしかない。掃引側に書くと、掃引を1本足す
+    たびに 14 行の写経が増える。
+
+    Args:
+        condition: 掃引の1条件。
+        config: 03 の設定 (横断共有値を引く)。
+        seed_drive: 駆動入力の基底シード (3-C だけ task ストリームなので引数)。
+
+    Returns:
+        ``capacity_row_from`` に渡す識別子。
+    """
+    return CapacityRowIdentity(
+        experiment=condition.experiment,
+        replicate=condition.replicate,
+        seed_reservoir=config.seeds.reservoir,
+        seed_drive=seed_drive,
+        seed_surrogate=config.seeds.surrogate,
+        rho=condition.rho,
+        leak_rate=condition.leak_rate,
+        input_scale=config.reservoir.input_scale,
+        sigma_u=condition.sigma_u,
+        n_units=condition.n_units,
+        density=config.reservoir.density,
+        state_noise=condition.state_noise,
+        n_steps=condition.n_steps,
+        washout=config.drive.washout,
+    )
+
+
 def capacity_row_from(
     measurement: CapacityMeasurement,
-    *,
-    experiment: str,
-    replicate: int,
-    seed_reservoir: int,
-    seed_drive: int,
-    seed_surrogate: int,
-    rho: float,
-    leak_rate: float,
-    input_scale: float,
-    sigma_u: float,
-    n_units: int,
-    density: float,
-    state_noise: float,
-    n_steps: int,
-    washout: int,
-    wall_time_state_s: float,
-    wall_time_s: float,
+    identity: CapacityRowIdentity,
+    timing: CapacityRowTiming,
 ) -> CapacityRow:
     """測定結果と条件の識別子から ``capacity.csv`` の1行を組む (**唯一の経路**)。
 
@@ -235,32 +365,8 @@ def capacity_row_from(
 
     Args:
         measurement: ``measure_capacity`` の返り値。
-        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか (CSV の ``experiment``)。
-        replicate: レプリケート番号 (0 始まり)。
-        seed_reservoir: リザバー重みの基底シード。
-        seed_drive: 駆動入力の基底シード。
-        seed_surrogate: しきい値サロゲートのシード (``ctx.seed`` と同じ値、D-37)。
-        rho: スペクトル半径。
-        leak_rate: リーク率。
-        input_scale: 入力結合の強さ (横断共有値)。
-        sigma_u: 駆動信号の標準偏差の**設定値** (実測は
-            ``measurement.input_drive_std``)。
-        n_units: リザバーのユニット数 N。
-        density: 再帰結合の密度 (横断共有値)。
-        state_noise: 状態ノイズの標準偏差。
-        n_steps: 系列長 [ステップ]。
-        washout: ``ctx.washout`` として渡した値 (実効基準点は ``t0_mc`` /
-            ``t0_ipc`` に別途出る、D-24)。
-        wall_time_state_s: 状態行列の生成にかかった時間 [秒]。
-        wall_time_s: **容量測定 (状態生成 + MC + IPC) の合計時間** [秒]。3-C
-            (``run_narma10``) を含む全経路で同じ意味であり、``run_task``
-            (3手法 x 全レプリケート) は含まない (F-3b2-1-004/M4)。区間単位の
-            ``capacity_pipeline.SectionTiming.wall_time_s`` は3-C だけこれとは
-            別の値 (``run_task`` を含む3-C全体) に差し替わる —— 同じ列名
-            ``wall_time_s`` が行単位 (ここ) と区間単位 (``SectionTiming``) で
-            指す量が3-Cだけ食い違うので、``meta.json`` を読む側は
-            ``capacity.csv`` の行の ``wall_time_s`` と
-            ``wall_time_breakdown`` の ``wall_time_s`` を同一視しないこと。
+        identity: どの条件で測ったか (``CapacityRowIdentity``)。
+        timing: 実測時間 (``CapacityRowTiming``)。
 
     Returns:
         ``capacity.csv`` の1行。
@@ -268,21 +374,21 @@ def capacity_row_from(
     mc = measurement.mc
     ipc_result = measurement.ipc
     return CapacityRow(
-        experiment=experiment,
-        replicate=replicate,
-        seed_reservoir=seed_reservoir,
-        seed_drive=seed_drive,
-        seed_surrogate=seed_surrogate,
-        rho=rho,
-        leak_rate=leak_rate,
-        input_scale=input_scale,
-        sigma_u=sigma_u,
+        experiment=identity.experiment,
+        replicate=identity.replicate,
+        seed_reservoir=identity.seed_reservoir,
+        seed_drive=identity.seed_drive,
+        seed_surrogate=identity.seed_surrogate,
+        rho=identity.rho,
+        leak_rate=identity.leak_rate,
+        input_scale=identity.input_scale,
+        sigma_u=identity.sigma_u,
         input_drive_std=measurement.input_drive_std,
-        n_units=n_units,
-        density=density,
-        state_noise=state_noise,
-        n_steps=n_steps,
-        washout=washout,
+        n_units=identity.n_units,
+        density=identity.density,
+        state_noise=identity.state_noise,
+        n_steps=identity.n_steps,
+        washout=identity.washout,
         t0_mc=int(mc.params["t0"]),
         n_samples_mc=int(mc.params["n_samples"]),
         mc_total=mc.scalars["mc_total"],
@@ -303,10 +409,10 @@ def capacity_row_from(
         n_degrees=len(measurement.ipc_thresholds),
         chunk_size_mc_effective=int(mc.params["chunk_size_effective"]),
         chunk_size_ipc_effective=int(ipc_result.params["chunk_size_effective"]),
-        wall_time_state_s=wall_time_state_s,
+        wall_time_state_s=timing.wall_time_state_s,
         wall_time_mc_s=measurement.wall_time_mc_s,
         wall_time_ipc_s=measurement.wall_time_ipc_s,
-        wall_time_s=wall_time_s,
+        wall_time_s=timing.wall_time_s,
     )
 
 
@@ -402,10 +508,13 @@ def profile_rows(outcome: CapacityOutcome) -> tuple[CapacityProfileRow, ...]:
 __all__ = [
     "DIAGNOSTIC_IPC",
     "DIAGNOSTIC_MC",
+    "CapacityCondition",
     "CapacityMeasurement",
     "CapacityOutcome",
     "CapacityProfileRow",
     "CapacityRow",
+    "CapacityRowIdentity",
+    "CapacityRowTiming",
     "capacity_outcome_from",
     "capacity_row_from",
     "profile_rows",

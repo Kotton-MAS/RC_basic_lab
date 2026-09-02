@@ -37,7 +37,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -60,12 +60,15 @@ from rc_basics_lab.experiment.capacity_bounds import (
 from rc_basics_lab.experiment.capacity_rows import (
     DIAGNOSTIC_IPC,
     DIAGNOSTIC_MC,
+    CapacityCondition,
     CapacityMeasurement,
     CapacityOutcome,
     CapacityProfileRow,
     CapacityRow,
+    CapacityRowTiming,
     capacity_outcome_from,
     capacity_row_from,
+    identity_for,
     profile_rows,
 )
 from rc_basics_lab.experiment.esp import (
@@ -159,53 +162,6 @@ def _validate_condition_bounds(condition: CapacityCondition) -> None:
     (3b-2 reviewer-security の実測)。
     """
     validate_state_matrix_bounds(condition.n_units, condition.n_steps)
-
-
-@dataclass(frozen=True, slots=True)
-class CapacityCondition:
-    """容量測定の1条件。掃引の違いはどの軸を振るかだけである。
-
-    02 の ``evaluate_condition`` はキーワード引数で軸を受けていたが、03 は軸が
-    8本 (実験ラベル・rho・リーク率・N・状態ノイズ・駆動強度・系列長・
-    レプリケート) あり、``n_units`` と ``n_steps`` がセクションごとに違う
-    (D-32) ため、条件そのものを1つの値として持ち回る。
-
-    Attributes:
-        experiment: ``CAPACITY_EXPERIMENTS`` のいずれか。CSV の ``experiment``
-            列になり、3-B' だけ IPC の打ち切りが上書きされる (下記
-            ``ipc_config_for``)。
-        rho: スペクトル半径。
-        leak_rate: リーク率。
-        n_units: リザバーのユニット数 N (**セクションが持つ**、D-32)。
-        state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。
-        sigma_u: 駆動信号の標準偏差 (D-17)。
-        n_steps: 系列長 [ステップ]。
-        replicate: レプリケート番号 (0 始まり)。
-    """
-
-    experiment: str
-    rho: float
-    leak_rate: float
-    n_units: int
-    state_noise: float
-    sigma_u: float
-    n_steps: int
-    replicate: int
-
-
-CAPACITY_CSV_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(CapacityRow))
-"""``capacity.csv`` の列順 (``CapacityRow`` の宣言順が単一の真実)。"""
-
-
-CAPACITY_PROFILE_CSV_COLUMNS: tuple[str, ...] = tuple(
-    f.name for f in fields(CapacityProfileRow)
-)
-"""``capacity_profile.csv`` の列順 (``CapacityProfileRow`` の宣言順が単一の真実)。
-
-**cfg に依らず一定**であることが D-38 の中心で、
-``tests/test_capacity_pipeline.py::test_profile_csv_columns_are_static_and_cells_are_positive``
-が2つの異なる打ち切り設定で実測する。
-"""
 
 
 def reservoir_config_for(
@@ -439,22 +395,11 @@ def evaluate_capacity_condition(
     )
     row = capacity_row_from(
         measurement,
-        experiment=condition.experiment,
-        replicate=condition.replicate,
-        seed_reservoir=config.seeds.reservoir,
-        seed_drive=config.seeds.drive,
-        seed_surrogate=config.seeds.surrogate,
-        rho=condition.rho,
-        leak_rate=condition.leak_rate,
-        input_scale=config.reservoir.input_scale,
-        sigma_u=condition.sigma_u,
-        n_units=condition.n_units,
-        density=config.reservoir.density,
-        state_noise=condition.state_noise,
-        n_steps=condition.n_steps,
-        washout=config.drive.washout,
-        wall_time_state_s=wall_time_state_s,
-        wall_time_s=time.perf_counter() - started,
+        identity_for(condition, config, seed_drive=config.seeds.drive),
+        CapacityRowTiming(
+            wall_time_state_s=wall_time_state_s,
+            wall_time_s=time.perf_counter() - started,
+        ),
     )
     logger.debug(
         "experiment=%s rep=%d rho=%.3f leak=%.2f N=%d noise=%.4f "
@@ -680,9 +625,7 @@ def run_capacity_experiment(config: Capacity03Config) -> CapacityResults:
 
 
 __all__ = [
-    "CAPACITY_CSV_COLUMNS",
     "CAPACITY_EXPERIMENTS",
-    "CAPACITY_PROFILE_CSV_COLUMNS",
     "DIAGNOSTIC_IPC",
     "DIAGNOSTIC_MC",
     "EXPERIMENT_CONSERVATION",
@@ -691,7 +634,6 @@ __all__ = [
     "EXPERIMENT_MC_SWEEP",
     "EXPERIMENT_NARMA10",
     "FIGURE_EXPERIMENTS",
-    "CapacityCondition",
     "CapacityOutcome",
     "CapacityProfileRow",
     "CapacityResults",

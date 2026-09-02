@@ -53,12 +53,12 @@ from rc_basics_lab.diagnostics.memory_capacity import (
 )
 from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_IPC_SWEEP,
-    CapacityCondition,
     capacity_context,
     ipc_config_for,
     measure_capacity,
     simulate_condition_trajectory,
 )
+from rc_basics_lab.experiment.capacity_rows import CapacityCondition
 from rc_basics_lab.experiment.report import DataclassSummaryMixin
 
 logger = logging.getLogger(__name__)

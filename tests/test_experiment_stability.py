@@ -33,6 +33,7 @@ from rc_basics_lab.config import (
     SplitConfig,
     StabilityConfig,
 )
+from rc_basics_lab.experiment import freerun_fit as freerun_fit_module
 from rc_basics_lab.experiment.attractor import REGIMES
 from rc_basics_lab.experiment.freerun import estimate_lorenz_lyapunov
 from rc_basics_lab.experiment.stability import (
@@ -244,7 +245,6 @@ def test_one_state_matrix_per_condition_is_shared_by_4c_and_4d() -> None:
     ではなく同一性で測るのは、「同じシードで作り直した」実装が値では通って
     しまうためである。
     """
-    import rc_basics_lab.experiment.freerun as freerun_module
     from rc_basics_lab.experiment.capacity import measure_capacity
     from rc_basics_lab.experiment.runner import plan_replicate
 
@@ -264,7 +264,7 @@ def test_one_state_matrix_per_condition_is_shared_by_4c_and_4d() -> None:
         return original_measure(states, u, **kwargs)  # type: ignore[arg-type]
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(freerun_module, "plan_replicate", spy_plan)
+        patch.setattr(freerun_fit_module, "plan_replicate", spy_plan)
         patch.setattr(stability_module, "measure_capacity", spy_measure)
         results = run_stability_experiment(config, estimate_lorenz_lyapunov(config))
 
@@ -286,7 +286,9 @@ def test_capacity_rows_go_through_the_03_seam() -> None:
     original = capacity_row_from
 
     def spy(*args: object, **kwargs: object) -> object:
-        calls.append(str(kwargs.get("experiment")))
+        # 識別子は第2引数の束 (D-128)
+        identity = args[1] if len(args) > 1 else kwargs["identity"]
+        calls.append(str(getattr(identity, "experiment", None)))
         return original(*args, **kwargs)  # type: ignore[arg-type]
 
     with pytest.MonkeyPatch.context() as patch:

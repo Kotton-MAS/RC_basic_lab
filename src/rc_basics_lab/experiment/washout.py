@@ -273,13 +273,9 @@ def variant_for(section: WashoutSweepConfig, washout: int) -> ExperimentConfig:
     行数がそろわない (実測: 本番格子の washout=0 と 50 はどちらも
     ``t0 = 64`` になる)。
 
-    **課題ごとの名指しの配線は無い** (D-123)。かつては
-    ``config.TASK_LENGTH_FIELDS`` への登録と、``dataclasses.replace`` の
-    キーワード引数を名指しで書く配線の2段があり、後者を忘れた課題は
-    ``NotImplementedError`` で落としていた。課題がリストになったので、
-    ここは ``base.tasks`` を一様に回すだけでよく、**登録も配線も消えた**。
+    **課題ごとの名指しの配線は無い** (D-123)。``base.tasks`` を一様に回す。
     すべての課題設定が ``length`` を持つことは
-    ``tests/test_tasks_registry.py`` が固定する。
+    ``tests/test_experiment_washout.py`` が型から固定する。
 
     Raises:
         ValueError: ``washout`` が格子の最小値より小さい場合 (補償が負になる)。

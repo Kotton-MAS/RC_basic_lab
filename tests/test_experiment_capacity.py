@@ -62,12 +62,14 @@ from rc_basics_lab.experiment.capacity import (
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_MC_SWEEP,
-    CapacityCondition,
     evaluate_capacity_condition,
     ipc_config_for,
     measure_capacity,
 )
 from rc_basics_lab.experiment.capacity_rows import (
+    CapacityCondition,
+    CapacityRowIdentity,
+    CapacityRowTiming,
     capacity_row_from,
 )
 from rc_basics_lab.experiment.esp import (
@@ -676,25 +678,29 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     esn = require_esn(entry.reservoir, "テスト (03 の容量行)")
     row = capacity_row_from(
         measurement,
-        experiment="3C_narma10",
-        replicate=0,
-        seed_reservoir=config_01.seeds.reservoir,
-        seed_drive=config_01.seeds.task,
-        seed_surrogate=config.seeds.surrogate,
-        # rho は ESN 設定から取れるが、sigma_u (駆動信号の標準偏差の設定値) は
-        # 3-C に存在しない。何を書くか (NaN / 0.0 / 実測値) は T4 が決めること
-        # で、このテストが固定するのは**接ぎ目が在ること**だけである。
-        rho=esn.spectral_radius,
-        leak_rate=esn.leak_rate,
-        input_scale=esn.input_scale,
-        sigma_u=float("nan"),
-        n_units=esn.n_units,
-        density=nominal_density(esn.topology, esn.n_units),
-        state_noise=esn.state_noise,
-        n_steps=int(states.shape[0]),
-        washout=config.drive.washout,
-        wall_time_state_s=0.0,
-        wall_time_s=0.0,
+        CapacityRowIdentity(
+            experiment="3C_narma10",
+            replicate=0,
+            seed_reservoir=config_01.seeds.reservoir,
+            seed_drive=config_01.seeds.task,
+            seed_surrogate=config.seeds.surrogate,
+            # rho は ESN 設定から取れるが、sigma_u (駆動信号の標準偏差の設定値) は
+            # 3-C に存在しない。何を書くか (NaN / 0.0 / 実測値) は T4 が決めること
+            # で、このテストが固定するのは**接ぎ目が在ること**だけである。
+            rho=esn.spectral_radius,
+            leak_rate=esn.leak_rate,
+            input_scale=esn.input_scale,
+            sigma_u=float("nan"),
+            n_units=esn.n_units,
+            density=nominal_density(esn.topology, esn.n_units),
+            state_noise=esn.state_noise,
+            n_steps=int(states.shape[0]),
+            washout=config.drive.washout,
+        ),
+        CapacityRowTiming(
+            wall_time_state_s=0.0,
+            wall_time_s=0.0,
+        ),
     )
 
     assert row.experiment == "3C_narma10"

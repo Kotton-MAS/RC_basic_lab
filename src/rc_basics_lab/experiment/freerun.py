@@ -37,19 +37,30 @@ from rc_basics_lab.experiment.attractor import (
     RegimeVerdict,
     attractor_distance,
     classify_regime,
-    first_autocorrelation_zero,
     lyapunov_normalized,
     normalized_error_curve,
-    power_spectrum,
-    return_map_points,
     shuffled_surrogate,
     valid_time_from_errors,
     validate_stats_bounds,
 )
 from rc_basics_lab.experiment.capacity_bounds import (
-    validate_n_units_bound,
     validate_sequential_run_count,
     validate_state_matrix_bounds,
+)
+from rc_basics_lab.experiment.freerun_fit import (
+    FREE_RUN_SPEC,
+    TeacherForcedReadout,
+    fit_teacher_forced,
+    method_candidates,
+)
+from rc_basics_lab.experiment.freerun_profile import (
+    KIND_PHASE,
+    KIND_RETURN_MAP,
+    KIND_SPECTRUM,
+    PROFILE_MAX_POINTS,
+    SOURCE_FREERUN,
+    SOURCE_TRUTH,
+    freerun_profile_rows,
 )
 from rc_basics_lab.experiment.freerun_rows import (
     AttractorVerdict,
@@ -84,8 +95,6 @@ from rc_basics_lab.experiment.runner import (
     ReplicatePlan,
     ResultRow,
     TaskEntry,
-    build_methods,
-    plan_replicate,
     run_task,
 )
 from rc_basics_lab.experiment.state_updaters import (
@@ -101,12 +110,11 @@ from rc_basics_lab.readout.autoregressive import (
     free_run,
 )
 from rc_basics_lab.readout.design import (
-    DesignMatrix,
     FeatureSpec,
     PassthroughSpec,
     ReservoirSpec,
 )
-from rc_basics_lab.readout.ridge import fit_ridge, predict, select_alpha
+from rc_basics_lab.readout.ridge import predict
 from rc_basics_lab.reservoir.protocol import Reservoir, ReservoirConfig
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng
@@ -139,16 +147,6 @@ D-08 により ESN の構造ハイパーパラメータは検証分割で選ば�
 両者の一致は ``test_chaos_esn_section_matches_the_declared_choice`` が固定する。
 """
 
-FREE_RUN_SPEC = ReservoirSpec()
-"""自走に使う特徴仕様 ``[1, u[t], x[t]]``。
-
-多項式読み出しは v0.1 では入れない (仕様 §3.2)。
-
-01 の ``build_methods`` が ESN 手法に与える候補と**同一の値**であることを
-``test_free_run_spec_matches_the_one_step_esn_candidate`` が固定する。ここが
-ずれると「教師強制と自走で別の特徴を使う」(仕様 §5 禁止する構造2) になる。
-"""
-
 
 def run_onestep(config: Chaos04Config) -> list[ResultRow]:
     """実験 4-A: 教師強制の1ステップ先予測を3手法で回す (D-31)。
@@ -179,142 +177,6 @@ def run_onestep(config: Chaos04Config) -> list[ResultRow]:
         sorted({row.task for row in rows}),
     )
     return rows
-
-
-@dataclass(frozen=True, slots=True)
-class TeacherForcedReadout:
-    """教師強制で学習した read-out (自走はこれをそのまま使う、D-44)。
-
-    Attributes:
-        plan: 01 の ``plan_replicate`` が作った課題・状態・設計行列・分割。
-        design: 選ばれた候補の設計行列。
-        alpha: 検証分割で選ばれた正則化係数 (D-04 の格子から)。
-        coefficients: リッジ解 ``(F, D_out)``。**このオブジェクトを自走へ渡す**。
-        val_nrmse: 選択時の検証 NRMSE。
-        method: 手法名 (``LINEAR`` / ``DELAY_LINE`` / ``ESN_METHOD``)。
-            対照 (線形・遅延線) も自走させるのは、受け入れ条件3 の後半
-            「自走では対照が成立しない」を**数値で**示すためである。
-            「原理的に不利」を主張だけで済ませると、読者は「回してみたら
-            動いたかもしれない」を否定できない。
-        spec: 学習に使った特徴仕様 (遅延線は選ばれた ``n_lags`` を持つ)。
-            **閉ループで使う仕様とは表現が違うことがある** ——
-            ``closed_loop_setup`` を参照。
-    """
-
-    plan: ReplicatePlan
-    design: DesignMatrix
-    alpha: float
-    coefficients: FloatArray
-    val_nrmse: float
-    method: str = ESN_METHOD
-    spec: FeatureSpec = FREE_RUN_SPEC
-
-
-def _rows(array: FloatArray, selection: range) -> FloatArray:
-    block: FloatArray = array[selection.start : selection.stop]
-    return block
-
-
-def method_candidates(config: Chaos04Config, method: str) -> tuple[FeatureSpec, ...]:
-    """手法名 -> 候補の特徴仕様。
-
-    **手法の列挙は 01 の ``build_methods`` が単一の真実**である。
-
-    04 側で ``PassthroughSpec()`` / ``DelayLineSpec(...)`` を書き写さないのは、
-    01 が候補を1本足したときに 04 の自走だけ古い候補を使い続ける事故を防ぐため
-    である (``plan.designs[method]`` の並びとここが必ず一致する)。
-
-    Raises:
-        ValueError: 04 が自走させない手法名の場合。
-    """
-    for item in build_methods(config.base):
-        if item.name == method:
-            return item.candidates
-    raise ValueError(f"01 の手法ではありません: {method!r}")
-
-
-def fit_teacher_forced(
-    config: Chaos04Config,
-    task_entry: TaskEntry,
-    replicate: int,
-    *,
-    method: str = ESN_METHOD,
-    plan: ReplicatePlan | None = None,
-) -> TeacherForcedReadout:
-    """教師強制で読み出しを学習する (01 の ``_evaluate`` と同じ2段)。
-
-    ``select_alpha`` (検証分割で候補と alpha を選ぶ) -> ``fit_ridge`` (訓練区間で
-    係数を解く) の順序も、渡す行集合 (``plan.split``) も、同点のときに先に
-    評価した候補を残す規律も 01 と同一である。**同じ (候補, alpha) が選ばれる
-    こと**は ``test_free_run_readout_matches_the_one_step_selection`` が 4-A の
-    行と突き合わせて実測する (経路が2本あることを主張だけで済ませない)。
-
-    Args:
-        config: 04 の設定。
-        task_entry: 課題 (ESN 設定を含む)。
-        replicate: レプリケート番号。
-        method: 学習する手法 (既定は ESN)。対照も同じ経路で学習する。
-        plan: すでに作ってある ``ReplicatePlan``。``None`` なら作る。
-            **同じ (課題, レプリケート) で3手法を回すときは1個を共有する** ——
-            01 の ``run_task(..., plan0=...)`` (3-C) と同じ形で、状態行列が
-            1本しか存在しないことを構造で保証する。
-
-    Raises:
-        ValueError: 標準化の推定区間が訓練区間を越える場合 (D-41)、ESN 手法の
-            候補が1本でない場合 (D-08)、または課題・分割側の値域違反。
-    """
-    base = config.base
-    validate_n_units_bound(task_entry.reservoir.n_units)
-    if plan is None:
-        plan = plan_replicate(base, task_entry, replicate)
-    validate_standardization_window(
-        standardize_steps_for(config, task_entry.name), plan.split
-    )
-    specs = method_candidates(config, method)
-    designs = plan.designs[method]
-    if method == ESN_METHOD and len(designs) != 1:
-        raise ValueError(f"ESN 手法の候補は1本のはずです (D-08): {len(designs)} 本")
-    if len(designs) != len(specs):
-        raise ValueError(
-            f"候補数が一致しません: designs={len(designs)} specs={len(specs)}"
-        )
-    split = plan.split
-    y_train = _rows(plan.task.y, split.train)
-    y_val = _rows(plan.task.y, split.val)
-    best_index = -1
-    best_alpha = math.nan
-    best_val_nrmse = math.inf
-    for index, design in enumerate(designs):
-        selection = select_alpha(
-            _rows(design.phi, split.train),
-            y_train,
-            _rows(design.phi, split.val),
-            y_val,
-            base.ridge.alpha_grid,
-            bias_column=design.bias_column,
-        )
-        if selection.val_nrmse < best_val_nrmse:
-            best_index = index
-            best_alpha = selection.alpha
-            best_val_nrmse = selection.val_nrmse
-    if best_index < 0:  # pragma: no cover - 候補が空なら build_methods が落ちる
-        raise ValueError(f"候補の選択に失敗しました: {method!r}")
-    design = designs[best_index]
-    coefficients = fit_ridge(
-        _rows(design.phi, split.train),
-        y_train,
-        best_alpha,
-        bias_column=design.bias_column,
-    )
-    return TeacherForcedReadout(
-        plan=plan,
-        design=design,
-        alpha=best_alpha,
-        coefficients=coefficients,
-        val_nrmse=best_val_nrmse,
-        method=method,
-        spec=specs[best_index],
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -603,30 +465,6 @@ FREERUN_PROFILE_CSV = "freerun_profile.csv"
 経路 (CSV には無いものを図が描く) を構造で塞ぐ。
 """
 
-KIND_PHASE = "phase"
-"""``FreeRunProfileRow.kind``: 位相図 (Lorenz は (x, z)、1変数系は遅延座標)。"""
-
-KIND_RETURN_MAP = "return_map"
-"""``FreeRunProfileRow.kind``: リターンマップ ``(z_n, z_(n+1))`` (D-46 の1本目)。"""
-
-KIND_SPECTRUM = "spectrum"
-"""``FreeRunProfileRow.kind``: 正規化パワースペクトル (D-46 の2本目)。"""
-
-SOURCE_TRUTH = "truth"
-"""``FreeRunProfileRow.source``: 真の軌道。"""
-
-SOURCE_FREERUN = "freerun"
-"""``FreeRunProfileRow.source``: 自走の軌道。"""
-
-PROFILE_MAX_POINTS = 4000
-"""確保軸6: 位相図に載せる点数の上限 (間引きの上限)。
-
-PNG のサイズと描画時間はここに比例する。**上書き不能な定数**で、
-``freerun_profile_rows`` が ``stats_steps`` に関係なくこの本数まで間引く
-(``stats_steps`` を伸ばすと図の点数が黙って増える、を塞ぐ)。
-"""
-
-
 FREERUN_CSV_COLUMNS: tuple[str, ...] = tuple(
     item.name for item in dataclasses.fields(FreeRunRow)
 )
@@ -773,103 +611,6 @@ def _reservoir_of(config: Chaos04Config, outcome: FreeRunOutcome) -> ReservoirCo
     """
     del outcome
     return chaos_reservoir_config(config.base)
-
-
-def _phase_points(series: FloatArray, lag: int) -> FloatArray:
-    """位相図の2次元投影。多変数なら (第0成分, 最終成分)、1変数なら遅延座標。
-
-    ``lag`` は**真の軌道から**決めた1個を自走側にも使う (別々に決めると同じ
-    座標系で重ね描きできない)。
-    """
-    if series.shape[1] >= 2:
-        projected: FloatArray = np.stack([series[:, 0], series[:, -1]], axis=1)
-        return projected
-    if series.shape[0] <= lag:
-        return np.empty((0, 2), dtype=np.float64)
-    embedded: FloatArray = np.stack(
-        [series[lag:, 0], series[: series.shape[0] - lag, 0]], axis=1
-    )
-    return embedded
-
-
-def _thinned(points: FloatArray) -> FloatArray:
-    """確保軸6: 図に載せる点数を ``PROFILE_MAX_POINTS`` まで間引く。"""
-    if points.shape[0] <= PROFILE_MAX_POINTS:
-        return points
-    stride = int(np.ceil(points.shape[0] / PROFILE_MAX_POINTS))
-    thinned: FloatArray = points[::stride][:PROFILE_MAX_POINTS]
-    return thinned
-
-
-def _profile_block(
-    row: FreeRunRow, kind: str, source: str, points: FloatArray
-) -> list[FreeRunProfileRow]:
-    return [
-        FreeRunProfileRow(
-            experiment=row.experiment,
-            task=row.task,
-            method=row.method,
-            replicate=row.replicate,
-            kind=kind,
-            source=source,
-            index=index,
-            x=float(point[0]),
-            y=float(point[1]),
-        )
-        for index, point in enumerate(points)
-    ]
-
-
-def freerun_profile_rows(
-    evaluation: FreeRunEvaluation, dt: float
-) -> tuple[FreeRunProfileRow, ...]:
-    """図が読む長形式の行を組む (**診断も実験もここでは走らせない**)。
-
-    位相図・リターンマップ・スペクトルの3種類を、真の軌道と自走の両方について
-    出す。点数は ``PROFILE_MAX_POINTS`` (確保軸6) で間引く。
-
-    Args:
-        evaluation: ``evaluate_free_run`` の結果。
-        dt: サンプリング間隔 [時間] (スペクトルの周波数軸)。
-
-    Returns:
-        長形式の行。
-    """
-    row = evaluation.row
-    truth = evaluation.truth_series
-    trajectory = evaluation.trajectory
-    lag = first_autocorrelation_zero(truth)
-    rows: list[FreeRunProfileRow] = []
-    rows += _profile_block(
-        row, KIND_PHASE, SOURCE_TRUTH, _thinned(_phase_points(truth, lag))
-    )
-    rows += _profile_block(
-        row, KIND_RETURN_MAP, SOURCE_TRUTH, _thinned(return_map_points(truth))
-    )
-    if trajectory.shape[0] >= 3:
-        rows += _profile_block(
-            row, KIND_PHASE, SOURCE_FREERUN, _thinned(_phase_points(trajectory, lag))
-        )
-        rows += _profile_block(
-            row,
-            KIND_RETURN_MAP,
-            SOURCE_FREERUN,
-            _thinned(return_map_points(trajectory)),
-        )
-    n_common = min(truth.shape[0], trajectory.shape[0])
-    if n_common >= 8:
-        for source, series in (
-            (SOURCE_TRUTH, truth[:n_common]),
-            (SOURCE_FREERUN, trajectory[:n_common]),
-        ):
-            frequencies, power = power_spectrum(series, dt)
-            rows += _profile_block(
-                row,
-                KIND_SPECTRUM,
-                source,
-                _thinned(np.stack([frequencies, power], axis=1)),
-            )
-    return tuple(rows)
 
 
 @dataclass(frozen=True, slots=True)

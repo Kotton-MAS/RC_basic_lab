@@ -47,15 +47,12 @@ from rc_basics_lab.config import (
     load_config_as,
 )
 from rc_basics_lab.experiment.capacity import (
-    CAPACITY_CSV_COLUMNS,
-    CAPACITY_PROFILE_CSV_COLUMNS,
     EXPERIMENT_CONSERVATION,
     EXPERIMENT_IPC_SWEEP,
     EXPERIMENT_LENGTH_SWEEP,
     EXPERIMENT_MC_SWEEP,
     EXPERIMENT_NARMA10,
     FIGURE_EXPERIMENTS,
-    CapacityCondition,
     n_replicates_for,
     reservoir_config_for,
     run_capacity_experiment,
@@ -72,8 +69,11 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     write_capacity_profile_csv,
 )
 from rc_basics_lab.experiment.capacity_rows import (
+    CAPACITY_CSV_COLUMNS,
+    CAPACITY_PROFILE_CSV_COLUMNS,
     DIAGNOSTIC_IPC,
     DIAGNOSTIC_MC,
+    CapacityCondition,
 )
 from rc_basics_lab.experiment.narma import run_narma10
 from rc_basics_lab.experiment.report import META_JSON
