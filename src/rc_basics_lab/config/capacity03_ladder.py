@@ -70,6 +70,10 @@ def _ladder_sweeps() -> tuple[LadderSweepConfig, ...]:
     - ``rho``: 先行 (Nonlinear Dynamics 2025) の主張は「**広い rho の範囲で**
       BA が優れる」「rho > 1 でも性能を保つ」である。1点で測っている限り
       反証も追認もできないので、rho > 1 を含めて振る (D-140)
+    - ``n_steps``: **ハブ型は飽和に必要な T が長いかもしれない** (D-142)。
+      もしそうなら、同じ T で ER と BA を比べた文献は BA を過小評価して
+      いることになる —— そして**この梯子の結論も同じ疑いを受ける**ので、
+      トポロジの主張と同じ成果物の中で確かめる
 
     両方を**同じ CSV** に入れる (``sweep_axis`` 列で区別する)。基準点
     (N=50 / ノイズ 0) が2つの掃引に重複して入るが、そこは**同じ数が出るはず
@@ -79,6 +83,7 @@ def _ladder_sweeps() -> tuple[LadderSweepConfig, ...]:
         LadderSweepConfig(axis="n_units", values=(25.0, 50.0, 100.0)),
         LadderSweepConfig(axis="state_noise", values=(0.0, 0.01, 0.1)),
         LadderSweepConfig(axis="rho", values=(0.5, 0.8, 0.95, 1.1, 1.3)),
+        LadderSweepConfig(axis="n_steps", values=(5_000.0, 20_000.0, 80_000.0)),
     )
 
 

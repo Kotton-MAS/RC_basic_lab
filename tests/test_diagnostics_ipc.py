@@ -1295,3 +1295,106 @@ def test_targets_are_enumerated_in_degree_order() -> None:
     """列挙順が次数昇順である (次数ごとのしきい値を区間で切り出す前提)。"""
     degrees = _sorted_by_degree(enumerate_targets(IpcConfig()))
     assert degrees == sorted(degrees)
+
+
+# --- 解析解のオラクル (D-142) --------------------------------------------
+
+_ORACLE_DELAYS = 10
+"""オラクルの遅延線の段数 K。容量の期待値がそのまま K になる。"""
+
+
+def _delay_line(
+    n_steps: int, n_delays: int, seed: int
+) -> tuple[FloatArray, FloatArray]:
+    """**完全な遅延線**の状態行列と駆動入力を返す (D-142)。
+
+    列 ``k`` がちょうど ``u[t-k-1]`` である状態からは、次数1の遅延 1..K が
+    誤差なく取れ、**次数2以上は一切取れない** (線形な状態からルジャンドル
+    2次以上は作れない)。したがって ``ipc_linear`` は厳密に K、
+    ``ipc_nonlinear`` は有限標本の下駄だけになる。
+    """
+    rng = np.random.default_rng(seed)
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, (n_steps, 1))
+    states: FloatArray = np.zeros((n_steps, n_delays))
+    for delay in range(n_delays):
+        states[delay + 1 :, delay] = inputs[: n_steps - delay - 1, 0]
+    return states, inputs
+
+
+def _second_degree_only(n_steps: int, seed: int) -> tuple[FloatArray, FloatArray]:
+    """状態が ``P2(u[t-1]) = (3x^2-1)/2`` **1列だけ**の系を返す (D-142)。"""
+    rng = np.random.default_rng(seed)
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, (n_steps, 1))
+    states: FloatArray = np.zeros((n_steps, 1))
+    states[1:, 0] = 1.5 * inputs[: n_steps - 1, 0] ** 2 - 0.5
+    return states, inputs
+
+
+def test_the_linear_capacity_of_a_perfect_delay_line_is_exactly_its_length() -> None:
+    """完全遅延線の ``ipc_linear`` が**厳密に段数 K** (D-142)。
+
+    保存則 (``<= N``) と飽和比の下限だけでは、容量が体系的に何割か目減り
+    していても緑で通る。**絶対値を当てる検査**はそこを塞ぐ。自前実装で
+    測っていることの弱点はここでしか埋まらない。
+    """
+    states, inputs = _delay_line(8000, _ORACLE_DELAYS, seed=0)
+    result = ipc(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=100, seed=CTX_SEED),
+        cfg=IpcConfig(),
+    )
+    scalars = _scalars(result)
+    assert scalars["ipc_linear"] == pytest.approx(_ORACLE_DELAYS, abs=1.0e-6), (
+        f"完全遅延線 K={_ORACLE_DELAYS} の ipc_linear が {scalars['ipc_linear']} です"
+    )
+    assert scalars["ipc_nonlinear"] < 0.2, (
+        "線形な状態から非線形容量を拾っています: "
+        f"{scalars['ipc_nonlinear']} (有限標本の下駄は実測 T=8000 で 0.059)"
+    )
+
+
+def test_a_purely_quadratic_state_puts_all_capacity_in_degree_two() -> None:
+    """次数2だけの系で容量が**全部次数2に乗る** (D-142)。
+
+    次数の分解がラベルだけの飾りでないことを、次数を1つに絞った系で
+    確かめる。``ipc_linear`` と ``ipc_nonlinear`` の割り振りを入れ替える
+    変異はここでしか赤くならない。
+    """
+    states, inputs = _second_degree_only(8000, seed=3)
+    result = ipc(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=100, seed=CTX_SEED),
+        cfg=IpcConfig(),
+    )
+    scalars = _scalars(result)
+    assert scalars["ipc_nonlinear"] == pytest.approx(1.0, abs=0.05), (
+        f"次数2の容量が 1 になりません: {scalars['ipc_nonlinear']}"
+    )
+    assert scalars["ipc_linear"] < 0.05, (
+        f"2次だけの状態から線形容量を拾っています: {scalars['ipc_linear']}"
+    )
+
+
+def test_the_false_positive_floor_shrinks_with_the_series_length() -> None:
+    """偽陽性の下駄が T とともに縮む (D-142)。
+
+    完全遅延線の非線形成分は**本来 0** なので、そこに出る値はまるごと
+    有限標本の偽陽性である。T を4倍にして下駄が半分以下にならないなら、
+    それは有限標本の効果ではなく系統誤差である。実測: T=4000 で 0.338、
+    T=16000 で 0.045。
+    """
+    floors = []
+    for n_steps in (4000, 16000):
+        states, inputs = _delay_line(n_steps, _ORACLE_DELAYS, seed=0)
+        result = ipc(
+            states,
+            inputs,
+            ctx=DiagnosticContext(washout=100, seed=CTX_SEED),
+            cfg=IpcConfig(),
+        )
+        floors.append(_scalars(result)["ipc_nonlinear"])
+    assert floors[1] < floors[0] / 2.0, (
+        f"T を4倍にしても偽陽性の下駄が縮みません: {floors}"
+    )
