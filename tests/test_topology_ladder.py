@@ -222,9 +222,11 @@ def test_matched_levels_raises_when_pinned_levels_disagree() -> None:
     levels = (BarabasiAlbertConfig(m=2), WattsStrogatzConfig(k=6))
     with pytest.raises(ValueError, match="食い違"):
         matched_levels(levels, 50)
+    # BA の密度は厳密に数える (D-140)。N=50 / m=2 なら
+    # (2*3 + 2*2*47) / 2500 = 0.0776 で、近似の 2m/N = 0.08 ではない。
     assert matched_levels((BarabasiAlbertConfig(m=2), ErdosRenyiConfig()), 50) == (
         BarabasiAlbertConfig(m=2),
-        ErdosRenyiConfig(density=0.08),
+        ErdosRenyiConfig(density=0.0776),
     )
 
 
@@ -275,3 +277,93 @@ def test_the_shared_baseline_matches_across_sweep_blocks() -> None:
             f"{key} の MC が掃引ブロック間で食い違います"
         )
         assert row.ipc_total == pytest.approx(second[key].ipc_total)
+
+
+def test_the_realized_density_matches_the_nominal_one() -> None:
+    """**そう設定した密度**と**そうなった密度**が一致する (D-140)。
+
+    ``nominal_density`` は設定から決まる値でしかない。密度そろえ (D-139) が
+    実現値まで届いているかは、生成された行列を数えないと分からない ——
+    BA の ``2m/N`` は「各点が m 本を張る」という見込みで、最初の m 点の
+    扱いによっては本数がずれ得る。
+    """
+    rows = run_topology_ladder(tiny_config())
+    for level in {row.level for row in rows}:
+        selected = [row for row in rows if row.level == level]
+        realized = [row.realized_density for row in selected]
+        nominal = selected[0].nominal_density
+        assert sum(realized) / len(realized) == pytest.approx(nominal, rel=0.15), (
+            f"{level}: 見込み {nominal:.4f} に対し実測の平均 "
+            f"{sum(realized) / len(realized):.4f}"
+        )
+
+
+def test_the_hub_levels_have_a_wider_degree_distribution() -> None:
+    """BA 系の水準は入次数が広がる (梯子が本当に別の構造を作っている)。
+
+    密度をそろえてある以上、平均入次数は水準によらない。**違うのは分布の
+    広がりだけ**で、それがこの梯子が動かしている当のものである。ここが
+    壊れると「同じ構造を5回測っただけ」の成果物になる。
+    """
+    rows = run_topology_ladder(tiny_config())
+    spread = {
+        level: sum(row.in_degree_std for row in rows if row.level == level)
+        / sum(1 for row in rows if row.level == level)
+        for level in {row.level for row in rows}
+    }
+    assert spread["barabasi_albert"] > spread["erdos_renyi"], (
+        f"BA の次数分布が ER より広くありません: {spread}"
+    )
+    assert spread["degree_preserving"] == pytest.approx(
+        spread["barabasi_albert"], rel=0.05
+    ), f"次数保存ランダム化が次数列を保っていません: {spread}"
+
+
+def test_the_effective_gain_is_reported_per_row() -> None:
+    """実効ゲイン (交絡4) が行に出ている。
+
+    ``spectral_gap`` では測れない —— 実行列の固有値は共役対で出るので
+    構造的に 0 になる (D-140)。詳細は
+    ``test_diagnostics_topology.py::test_the_spectral_gap_cannot_separate_hubs``。
+    """
+    rows = run_topology_ladder(tiny_config())
+    assert all(row.gain_max > 0.0 for row in rows)
+    assert all(row.gain_std > 0.0 for row in rows)
+    assert len({round(row.gain_max, 6) for row in rows}) > 1, (
+        "実効ゲインが全条件で同じです (measure が定数を返しています)"
+    )
+
+
+def test_the_symmetrised_control_does_not_double_the_density() -> None:
+    """対称化の対照が**密度まで動かしていない** (D-140)。
+
+    ``mask | mask.T`` は密度を ``d`` から ``2d - d^2`` に上げる。実測で
+    N=50 / d=0.08 のとき 0.152 —— ほぼ倍である。土台の密度をそのまま
+    見込みとして報告していた間、対照そのものが「梯子が排除したはずの
+    交絡」を持っていた。逆算するようになったので、生成されるマスクの
+    密度が基準の水準とそろう。
+    """
+    n_units = 50
+    levels = matched_levels(
+        (ErdosRenyiConfig(), TopologyControlConfig(symmetrize=True)), n_units
+    )
+    realized = [
+        float(
+            np.mean(
+                [
+                    build_mask(level, n_units, np.random.default_rng(seed)).mean()
+                    for seed in range(60)
+                ]
+            )
+        )
+        for level in levels
+    ]
+    assert realized[1] == pytest.approx(realized[0], rel=0.05), (
+        f"対称化で密度が動いています: {realized}"
+    )
+    # 逆算していなければ土台の 0.1 のまま対称化され 0.19 になる
+    control = levels[1]
+    assert isinstance(control, TopologyControlConfig)
+    assert control.base.density < 0.06, (
+        f"土台の密度を逆算していません: {control.base.density}"
+    )

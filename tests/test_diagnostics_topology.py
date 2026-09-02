@@ -29,6 +29,7 @@ from rc_basics_lab.diagnostics.topology import (
     SmallWorldConfig,
     SpectralConfig,
     degree_distribution,
+    effective_gain,
     small_world,
     spectral_profile,
 )
@@ -36,6 +37,7 @@ from rc_basics_lab.types import FloatArray
 
 KNOWN_GRAPH_DIAGNOSTICS = (
     "rc_basics_lab.diagnostics.topology.degree_distribution",
+    "rc_basics_lab.diagnostics.topology.effective_gain",
     "rc_basics_lab.diagnostics.topology.spectral_profile",
     "rc_basics_lab.diagnostics.topology.small_world",
 )
@@ -226,7 +228,7 @@ def test_unweighted_changes_the_path_length() -> None:
 
 
 @pytest.mark.parametrize(
-    "diagnostic", [degree_distribution, spectral_profile, small_world]
+    "diagnostic", [degree_distribution, effective_gain, spectral_profile, small_world]
 )
 def test_a_non_square_matrix_is_rejected(diagnostic: object) -> None:
     assert callable(diagnostic)
@@ -235,7 +237,7 @@ def test_a_non_square_matrix_is_rejected(diagnostic: object) -> None:
 
 
 @pytest.mark.parametrize(
-    "diagnostic", [degree_distribution, spectral_profile, small_world]
+    "diagnostic", [degree_distribution, effective_gain, spectral_profile, small_world]
 )
 def test_an_empty_matrix_is_rejected(diagnostic: object) -> None:
     assert callable(diagnostic)
@@ -244,7 +246,7 @@ def test_an_empty_matrix_is_rejected(diagnostic: object) -> None:
 
 
 @pytest.mark.parametrize(
-    "diagnostic", [degree_distribution, spectral_profile, small_world]
+    "diagnostic", [degree_distribution, effective_gain, spectral_profile, small_world]
 )
 def test_every_graph_diagnostic_returns_a_result(diagnostic: object) -> None:
     assert callable(diagnostic)
@@ -252,3 +254,33 @@ def test_every_graph_diagnostic_returns_a_result(diagnostic: object) -> None:
     assert isinstance(result, DiagnosticResult)
     assert result.name
     assert result.scalars
+
+
+def test_the_effective_gain_is_the_row_norm() -> None:
+    """実効ゲインは行の L2 ノルムそのもの (numpy を素で使ったオラクル)。
+
+    向きの規約 (``W[i, j]`` が j -> i) を取り違えると列ノルムになる。
+    **非対称な行列でないと取り違えが見えない**ので、行ごとに違う値を置く。
+    """
+    W = np.array([[3.0, 4.0, 0.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    result = effective_gain(W)
+    assert result.arrays["gains"] == pytest.approx([5.0, 0.0, 1.0])
+    assert result.scalars["gain_max"] == pytest.approx(5.0)
+    assert result.scalars["gain_mean"] == pytest.approx(2.0)
+    # 列ノルムなら [sqrt(10), 4, 0] になる。取り違えていないこと。
+    assert result.arrays["gains"] != pytest.approx(np.linalg.norm(W, axis=0))
+
+
+def test_the_spectral_gap_cannot_separate_hubs() -> None:
+    """``spectral_gap`` は交絡4 に使えない (**実行列の固有値は共役対**)。
+
+    最大固有値が複素なら ``|l1| - |l2|`` は構造的に 0 になる。ここが 0 に
+    ならないのは行列が対称なとき (固有値が実数になる) だけなので、あれが
+    測っているのは「ハブが支配的か」ではなく「行列が対称か」である。
+    この事実を明文で固定しておかないと、次に交絡4 を測ろうとした人が
+    もう一度 spectral_gap を選ぶ (D-140)。
+    """
+    asymmetric = _random_matrix(40, 0.2, seed=7)
+    assert spectral_profile(asymmetric).scalars["spectral_gap"] == pytest.approx(0.0)
+    symmetric = np.triu(asymmetric) + np.triu(asymmetric, 1).T
+    assert spectral_profile(symmetric).scalars["spectral_gap"] > 0.0

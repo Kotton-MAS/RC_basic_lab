@@ -323,6 +323,7 @@ def base_config() -> Capacity03Config:
             sweeps=(
                 LadderSweepConfig(axis="n_units", values=(20.0,)),
                 LadderSweepConfig(axis="leak_rate", values=(0.5,)),
+                LadderSweepConfig(axis="rho", values=(0.95,)),
             ),
         ),
     )
@@ -454,6 +455,8 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("topology_ladder.sweeps[0].values", (18.0, 24.0), channel=CHANNEL_LADDER),
     case("topology_ladder.sweeps[1].axis", "rho", channel=CHANNEL_LADDER),
     case("topology_ladder.sweeps[1].values", (0.25, 0.75), channel=CHANNEL_LADDER),
+    case("topology_ladder.sweeps[2].axis", "sigma_u", channel=CHANNEL_LADDER),
+    case("topology_ladder.sweeps[2].values", (0.6, 0.9), channel=CHANNEL_LADDER),
     case("symmetry_sweep.offset_ratio_grid", (0.0, 4.0), channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.rho", 0.6, channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.leak_rate", 0.5, channel=CHANNEL_SYMMETRY),
