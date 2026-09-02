@@ -77,6 +77,7 @@ from rc_basics_lab.experiment.symmetry import (
 )
 from rc_basics_lab.experiment.topology_ladder import (
     TOPOLOGY_LADDER_CSV_COLUMNS,
+    TopologyLadderRow,
     run_topology_ladder,
 )
 from rc_basics_lab.experiment.waveform_data import waveform_predictions
@@ -469,6 +470,18 @@ def write_symmetry_csv(rows: Sequence[SymmetryRow], path: Path) -> Path:
     return write_rows_csv(rows, path, SYMMETRY_CSV_COLUMNS)
 
 
+def _ladder_group(row: TopologyLadderRow) -> tuple[str, float, str]:
+    """log をまとめる単位 (掃引軸, その値, 水準)。
+
+    掃引した値は**行の既存の列から読む** (``n_units`` を振ったなら
+    ``n_units`` 列)。専用の値の列を作らないのは、CSV だけを見た人が
+    「何を振ったのか」を設定と突き合わせずに読めるようにするためである。
+    """
+    if not row.sweep_axis:
+        return ("", 0.0, row.level)
+    return (row.sweep_axis, float(getattr(row, row.sweep_axis)), row.level)
+
+
 def run_and_report_topology_ladder(config: Capacity03Config, out_dir: Path) -> Path:
     """対照の梯子を回し ``capacity_topology.csv`` に書く (3-T、D-138)。
 
@@ -483,10 +496,13 @@ def run_and_report_topology_ladder(config: Capacity03Config, out_dir: Path) -> P
     path = write_rows_csv(
         rows, out_dir / CAPACITY_TOPOLOGY_CSV, TOPOLOGY_LADDER_CSV_COLUMNS
     )
-    for level in dict.fromkeys(row.level for row in rows):
-        selected = [row for row in rows if row.level == level]
+    for key in dict.fromkeys(_ladder_group(row) for row in rows):
+        selected = [row for row in rows if _ladder_group(row) == key]
+        axis, value, level = key
+        where = f"{axis}={value:g} " if axis else ""
         logger.info(
-            "3-T %s: MC=%.3f IPC=%.3f (線形 %.3f / 非線形 %.3f) n=%d",
+            "3-T %s%s: MC=%.3f IPC=%.3f (線形 %.3f / 非線形 %.3f) n=%d",
+            where,
             level,
             mean(row.mc_total for row in selected),
             mean(row.ipc_total for row in selected),

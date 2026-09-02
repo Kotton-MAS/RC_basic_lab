@@ -14,16 +14,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from rc_basics_lab.config.capacity03_ladder import TopologyLadderConfig
 from rc_basics_lab.config.experiment01 import ExperimentConfig
 from rc_basics_lab.diagnostics.ipc import IpcConfig
 from rc_basics_lab.diagnostics.memory_capacity import MemoryCapacityConfig
-from rc_basics_lab.reservoir.topology import (
-    BarabasiAlbertConfig,
-    DegreePreservingConfig,
-    ErdosRenyiConfig,
-    TopologyConfig,
-    TopologyControlConfig,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,80 +240,6 @@ class Narma10Config:
     base: ExperimentConfig = field(default_factory=ExperimentConfig)
     n_lags_sweep: tuple[int, ...] = ()
     n_replicates_sweep: int | None = None
-
-
-_LADDER_N_UNITS = 50
-"""梯子の既定の N (``TopologyLadderConfig.n_units`` と同じ値)。"""
-
-_LADDER_BA_M = 2
-"""梯子の既定の BA の枝数。密度をここから決める。"""
-
-
-def _ladder_levels() -> tuple[TopologyConfig, ...]:
-    """梯子の既定の水準 (D-138)。**密度は BA と揃える**。
-
-    ``density = 2m/N`` は BA の見込み密度である。揃えないと「密度が違うから
-    容量が違う」という一番つまらない交絡が最初に効いてしまう。
-    """
-    density = 2.0 * _LADDER_BA_M / _LADDER_N_UNITS
-    base = ErdosRenyiConfig(density=density)
-    return (
-        base,
-        TopologyControlConfig(base=base, symmetrize=True),
-        TopologyControlConfig(base=base, drop_self_loops=True),
-        DegreePreservingConfig(base=BarabasiAlbertConfig(m=_LADDER_BA_M)),
-        BarabasiAlbertConfig(m=_LADDER_BA_M),
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class TopologyLadderConfig:
-    """実験 3-T: **交絡を1つずつ剥がす対照の梯子** (D-138)。
-
-    「スケールフリーは記憶容量に効くか」は既に主張がある問いなので、BA を足して
-    測るだけでは追試にしかならない。同じ密度で ER と BA を比べると次数分布・
-    相互結合率・自己ループが同時に動くので (D-131)、**1つだけ動かした水準**を
-    並べて何が効いているのかを分ける。
-
-    水準は ``levels`` に並べた順で回る。既定の5水準:
-
-    ===================  ==============================================
-    水準                 何を変えるか
-    ===================  ==============================================
-    ``erdos_renyi``      基準
-    ``control`` (対称)   相互結合だけを入れる
-    ``control`` (対角)   自己ループだけを抜く
-    ``degree_preserving``  BA の次数列だけを残す (**本命の帰無モデル**)
-    ``barabasi_albert``  全部
-    ===================  ==============================================
-
-    **グラフと重みを入れ子にする** (``n_graphs`` x ``n_replicates``)。トポロジ
-    比較には2種類の分散があり (グラフの実現値 / 重みの実現値)、片方だけを振ると
-    「BA が良い」がグラフ間分散に埋もれているかを判定できない。実測 (N=50,
-    T=20000) ではグラフ間 s.d. 0.69〜0.83、重み間 s.d. 0.71〜0.94 と**同程度**
-    だった —— どちらか一方では足りない。
-
-    ``make figures-03`` の予算の外で手動実行する (``symmetry_sweep`` と同じ扱い)。
-
-    Attributes:
-        levels: 回すトポロジ。空なら梯子を回さない。
-        rho: スペクトル半径 (全水準で同じ)。
-        leak_rate: リーク率。
-        sigma_u: 駆動信号の標準偏差 (D-17)。
-        n_units: リザバーのユニット数 N。
-        n_steps: 系列長 [ステップ]。
-        n_graphs: グラフの実現値の本数 (topology ストリーム)。
-        n_replicates: 1グラフあたりの重みの実現値の本数 (reservoir ストリーム)。
-    """
-
-    levels: tuple[TopologyConfig, ...] = field(default_factory=_ladder_levels)
-    rho: float = 0.95
-    leak_rate: float = 1.0
-    sigma_u: float = 0.2
-    n_units: int = 50
-    n_steps: int = 20_000
-    n_graphs: int = 8
-    n_replicates: int = 3
 
 
 @dataclass(frozen=True, slots=True)

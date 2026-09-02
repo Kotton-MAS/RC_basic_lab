@@ -33,7 +33,12 @@ from rc_basics_lab.experiment.capacity import (
 )
 from rc_basics_lab.experiment.capacity_rows import CapacityCondition
 from rc_basics_lab.experiment.esp import simulate_reference_trajectory
-from rc_basics_lab.reservoir.topology import TopologyConfig, nominal_density
+from rc_basics_lab.reservoir.axes import require_axes, with_axis
+from rc_basics_lab.reservoir.topology import (
+    TopologyConfig,
+    nominal_density,
+    rescaled_to_density,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +52,7 @@ class TopologyLadderRow:
 
     Attributes:
         experiment: ``EXPERIMENT_TOPOLOGY_LADDER``。
+        sweep_axis: この行が属する掃引の軸名 (掃引なしなら空文字)。
         level: 梯子の水準の名前 (``erdos_renyi`` / ``control_symmetric`` など)。
         topology_kind: トポロジの判別子 (``level`` は同じ kind を区別する)。
         graph: グラフの実現値の番号 (topology ストリーム)。
@@ -56,6 +62,7 @@ class TopologyLadderRow:
         rho: スペクトル半径。
         leak_rate: リーク率。
         sigma_u: 駆動信号の標準偏差。
+        state_noise: 状態ノイズの標準偏差。
         nominal_density: 設定から見込まれる密度 (実測ではない)。
         mc_total: 線形メモリ容量。
         ipc_total: しきい値後の総容量。
@@ -65,6 +72,7 @@ class TopologyLadderRow:
     """
 
     experiment: str
+    sweep_axis: str
     level: str
     topology_kind: str
     graph: int
@@ -74,6 +82,7 @@ class TopologyLadderRow:
     rho: float
     leak_rate: float
     sigma_u: float
+    state_noise: float
     nominal_density: float
     mc_total: float
     ipc_total: float
@@ -108,6 +117,97 @@ def level_name(topology: TopologyConfig) -> str:
     return "control_identity"
 
 
+DESIGN_AXES: frozenset[str] = frozenset({"n_graphs", "n_replicates"})
+"""掃引で振ってはいけない軸 (D-139)。
+
+対の本数を決めるフィールドである。これを振ると掃引点ごとに対の数が変わり、
+**対応のある検定が組めなくなる** —— 水準差を見るための入れ子設計そのものが
+掃引点によって変わってしまう。
+"""
+
+
+def matched_levels(
+    levels: tuple[TopologyConfig, ...], n_units: int
+) -> tuple[TopologyConfig, ...]:
+    """全水準の見込み密度をそろえた水準列を返す (D-139)。
+
+    **密度を指定できない水準が、密度を決める側になる。** BA は枝数 m が整数
+    なので密度が ``2m/N`` に固定される。N を掃引する以上、YAML に固定値を
+    書く方式では N=50 でしかそろわない (実測: N=25 で BA が ER の2倍、
+    N=100 で半分)。そろっていないと「密度が違うから容量が違う」という
+    **一番つまらない交絡**が最初に効いてしまい、梯子が答えたい問いに届かない。
+
+    指定できない水準が複数あるなら、それらは互いにそろっていなければならない
+    (BA と、その次数列を借りる次数保存ランダム化は定義上そろう)。1つも無ければ
+    先頭の水準の密度に合わせる。
+
+    Args:
+        levels: 梯子の水準。
+        n_units: そのときのユニット数 N。
+
+    Returns:
+        密度をそろえた水準列 (``levels`` と同じ並び)。
+
+    Raises:
+        ValueError: 空、または密度を指定できない水準どうしが食い違う場合。
+    """
+    if not levels:
+        raise ValueError("梯子の水準が空です")
+    pinned = tuple(
+        level
+        for level in levels
+        if rescaled_to_density(level, nominal_density(level, n_units)) is None
+    )
+    if pinned:
+        targets = {round(nominal_density(level, n_units), 12) for level in pinned}
+        if len(targets) != 1:
+            raise ValueError(
+                f"密度を指定できない水準どうしが N={n_units} で食い違います: "
+                f"{sorted(targets)} "
+                f"({', '.join(level_name(level) for level in pinned)})"
+            )
+        target = targets.pop()
+    else:
+        target = nominal_density(levels[0], n_units)
+    return tuple(rescaled_to_density(level, target) or level for level in levels)
+
+
+def sweep_points(
+    section: TopologyLadderConfig,
+) -> tuple[tuple[str, TopologyLadderConfig], ...]:
+    """掃引を (軸名, その点の設定) の並びに展開する (D-139).
+
+    掃引が無ければ基準の1点だけを ``("", section)`` として返す。掃引が複数
+    あれば宣言順に連結する —— 別々の CSV に分けると、基準点が2つのファイルに
+    散らばって「同じ条件を測っているのか」を読者が確かめられなくなる。
+
+    Args:
+        section: 梯子の設定。
+
+    Returns:
+        ``(軸名, 設定)`` の並び。
+
+    Raises:
+        ValueError: 存在しない軸、または ``DESIGN_AXES`` を振ろうとした場合。
+    """
+    points: list[tuple[str, TopologyLadderConfig]] = []
+    for sweep in section.sweeps:
+        if not sweep.values:
+            continue
+        if sweep.axis in DESIGN_AXES:
+            raise ValueError(
+                f"軸 {sweep.axis!r} は掃引できません (対の本数が変わるため。D-139)。"
+                f" 振れないのは {sorted(DESIGN_AXES)}"
+            )
+        require_axes(section, (sweep.axis,), "実験3-T (対照の梯子)")
+        current = getattr(section, sweep.axis)
+        points.extend(
+            (sweep.axis, with_axis(section, sweep.axis, type(current)(value)))
+            for value in sweep.values
+        )
+    return tuple(points) if points else (("", section),)
+
+
 def _ladder_condition(
     section: TopologyLadderConfig, replicate: int
 ) -> CapacityCondition:
@@ -116,7 +216,7 @@ def _ladder_condition(
         rho=section.rho,
         leak_rate=section.leak_rate,
         n_units=section.n_units,
-        state_noise=0.0,
+        state_noise=section.state_noise,
         sigma_u=section.sigma_u,
         n_steps=section.n_steps,
         replicate=replicate,
@@ -145,15 +245,20 @@ def run_topology_ladder(config: Capacity03Config) -> tuple[TopologyLadderRow, ..
     section = config.topology_ladder
     ctx = capacity_context(config)
     rows: list[TopologyLadderRow] = []
-    for topology in section.levels:
-        name = level_name(topology)
-        for graph in range(section.n_graphs):
-            for replicate in range(section.n_replicates):
-                rows.append(
-                    _measure(config, section, topology, name, graph, replicate, ctx)
-                )
+    points = sweep_points(section)
+    for axis, point in points:
+        for topology in matched_levels(point.levels, point.n_units):
+            name = level_name(topology)
+            for graph in range(point.n_graphs):
+                for replicate in range(point.n_replicates):
+                    rows.append(
+                        _measure(
+                            config, point, axis, topology, name, graph, replicate, ctx
+                        )
+                    )
     logger.info(
-        "3-T: 水準=%d x グラフ=%d x 重み=%d = %d 行",
+        "3-T: 掃引点=%d x 水準=%d x グラフ=%d x 重み=%d = %d 行",
+        len(points),
         len(section.levels),
         section.n_graphs,
         section.n_replicates,
@@ -165,6 +270,7 @@ def run_topology_ladder(config: Capacity03Config) -> tuple[TopologyLadderRow, ..
 def _measure(
     config: Capacity03Config,
     section: TopologyLadderConfig,
+    axis: str,
     topology: TopologyConfig,
     name: str,
     graph: int,
@@ -182,6 +288,7 @@ def _measure(
         leak_rate=condition.leak_rate,
         sigma_u=condition.sigma_u,
         replicate=replicate,
+        state_noise=condition.state_noise,
         topology=topology,
         graph_replicate=graph,
     )
@@ -196,6 +303,7 @@ def _measure(
     )
     return TopologyLadderRow(
         experiment=EXPERIMENT_TOPOLOGY_LADDER,
+        sweep_axis=axis,
         level=name,
         topology_kind=type(topology).KIND,
         graph=graph,
@@ -205,6 +313,7 @@ def _measure(
         rho=section.rho,
         leak_rate=section.leak_rate,
         sigma_u=section.sigma_u,
+        state_noise=section.state_noise,
         nominal_density=nominal_density(topology, section.n_units),
         mc_total=mc.scalars["mc_total"],
         ipc_total=capacity.scalars["ipc_total"],
@@ -215,9 +324,12 @@ def _measure(
 
 
 __all__ = [
+    "DESIGN_AXES",
     "EXPERIMENT_TOPOLOGY_LADDER",
     "TOPOLOGY_LADDER_CSV_COLUMNS",
     "TopologyLadderRow",
     "level_name",
+    "matched_levels",
     "run_topology_ladder",
+    "sweep_points",
 ]
