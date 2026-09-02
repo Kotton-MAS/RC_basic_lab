@@ -23,6 +23,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from statistics import mean
 
 from rc_basics_lab.config import Capacity03Config
 from rc_basics_lab.experiment.capacity import (
@@ -53,6 +54,11 @@ from rc_basics_lab.experiment.diagnostics_rows import (
     write_diagnostics_csv,
 )
 from rc_basics_lab.experiment.narma import Narma10Results, run_narma10
+from rc_basics_lab.experiment.narma_operating import (
+    OPERATING_CSV_COLUMNS,
+    OperatingPointRow,
+    run_narma10_operating_sweep,
+)
 from rc_basics_lab.experiment.narma_taps import (
     CSV_COLUMNS as NARMA10_TAPS_CSV_COLUMNS,
 )
@@ -463,6 +469,51 @@ def write_symmetry_csv(rows: Sequence[SymmetryRow], path: Path) -> Path:
     return write_rows_csv(rows, path, SYMMETRY_CSV_COLUMNS)
 
 
+NARMA10_OPERATING_CSV = "narma10_operating.csv"
+"""3-C'' の成果物 (``results/03_capacity/`` 配下)。"""
+
+
+def run_and_report_narma10_operating(config: Capacity03Config, out_dir: Path) -> Path:
+    """動作点の掃引を回し ``narma10_operating.csv`` に書く (3-C''、D-144)。
+
+    本体の成果物とは独立に走る。``make operating-03`` として手動実行する。
+
+    **動作点ごとに ESN と遅延線の勝敗を log に出す。** 見たいのは NRMSE の
+    絶対値ではなく**どちらが勝つか**なので、勝者を出さないと CSV を開かない
+    限り結論が読めない。
+    """
+    started = time.perf_counter()
+    rows = run_narma10_operating_sweep(config)
+    path = write_rows_csv(rows, out_dir / NARMA10_OPERATING_CSV, OPERATING_CSV_COLUMNS)
+    for point in dict.fromkeys((row.n_units, row.leak_rate) for row in rows):
+        selected = [row for row in rows if (row.n_units, row.leak_rate) == point]
+        esn = _mean_nrmse(selected, "esn")
+        delay = _mean_nrmse(selected, "delay_line")
+        share = selected[0].nonlinear_share
+        logger.info(
+            "3-C'' N=%d leak=%g: ESN=%.4f 遅延線=%.4f -> %s (非線形の割合 %.3f)",
+            point[0],
+            point[1],
+            esn,
+            delay,
+            "ESN" if esn < delay else "遅延線",
+            share,
+        )
+    logger.info(
+        "動作点の掃引: %d 行 / wall_time=%.2fs / 出力=%s",
+        len(rows),
+        time.perf_counter() - started,
+        path,
+    )
+    return path
+
+
+def _mean_nrmse(rows: list[OperatingPointRow], method: str) -> float:
+    """その手法の NRMSE の平均 (行が無ければ nan)。"""
+    values = [row.nrmse for row in rows if row.method == method]
+    return mean(values) if values else float("nan")
+
+
 def run_and_report_symmetry_sweep(config: Capacity03Config, out_dir: Path) -> Path:
     """駆動入力の対称性の掃引を回し ``capacity_symmetry.csv`` に書く (D-116)。
 
@@ -498,11 +549,13 @@ __all__ = [
     "FIG_MEMORY_NONLINEARITY",
     "FIG_NARMA10",
     "NARMA10_CSV",
+    "NARMA10_OPERATING_CSV",
     "NARMA10_TAPS_CSV",
     "CapacityOutputs",
     "SectionTiming",
     "run_and_report_capacity",
     "run_and_report_length_sweep",
+    "run_and_report_narma10_operating",
     "run_and_report_symmetry_sweep",
     "summarize_timing",
     "write_capacity_csv",

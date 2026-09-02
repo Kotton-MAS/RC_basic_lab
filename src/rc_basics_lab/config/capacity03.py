@@ -246,6 +246,30 @@ class Narma10Config:
 
 
 @dataclass(frozen=True, slots=True)
+class NarmaOperatingConfig:
+    """実験 3-C'': NARMA10 の勝敗が**手法側の動作点**で変わるか (D-144)。
+
+    3-C 本体は D-39 により N=50 の1点を報告する (先行の参照値が N=50 規模の
+    ため) が、その1点で「ESN が遅延線に負けた」と書くと、**動作点を1つ
+    選んだ結果**を現象として報告することになる。宣言した格子を全件出す。
+
+    先行 (Kubota & Nakajima) は NARMA10 が**課題側**の動作点 (入力範囲・
+    初期値) に敏感だと論じている。こちらは**手法側**で勝敗が変わることを
+    示す。2つ合わせると「NARMA10 は両側の動作点に敏感で、単独の数値に意味が
+    ない」という一段強い主張になる。
+
+    ``make figures-03`` の予算の外で手動実行する。
+
+    Attributes:
+        n_units_grid: ESN のユニット数の格子。空なら掃引しない。
+        leak_rate_grid: ESN のリーク率の格子。空なら掃引しない。
+    """
+
+    n_units_grid: tuple[int, ...] = (25, 50, 100, 200)
+    leak_rate_grid: tuple[float, ...] = (0.3, 0.6, 1.0)
+
+
+@dataclass(frozen=True, slots=True)
 class Capacity03Config:
     """実験03 (メモリ容量・情報処理容量) 1本ぶんの設定 (D-13)。
 
@@ -274,6 +298,7 @@ class Capacity03Config:
     length_sweep: LengthSweepConfig = field(default_factory=LengthSweepConfig)
     symmetry_sweep: SymmetrySweepConfig = field(default_factory=SymmetrySweepConfig)
     topology_ladder: TopologyLadderConfig = field(default_factory=TopologyLadderConfig)
+    narma_operating: NarmaOperatingConfig = field(default_factory=NarmaOperatingConfig)
     ladder_threshold: LadderThresholdConfig = field(
         default_factory=LadderThresholdConfig
     )
