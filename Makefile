@@ -1,4 +1,4 @@
-.PHONY: module-map sync test cov golden golden-update lint fmt fmt-check type lock-check ci data-05 threshold-02 saturation-03 symmetry-03 panels washout-02-unpadded pre-commit clean help
+.PHONY: module-map sync test cov golden golden-update lint fmt fmt-check type lock-check ci data-05 threshold-02 saturation-03 symmetry-03 ladder-03 panels washout-02-unpadded pre-commit clean help
 
 help:
 	@echo "Available targets:"
@@ -111,6 +111,11 @@ saturation-03:
 
 symmetry-03:
 	uv run python main.py --experiment 03 --variant symmetry --results
+
+# 3-T: 交絡を1つずつ剥がす対照の梯子 (D-138)。既定は N=50 / T=20000 /
+# 8 グラフ x 3 重み = 120 行で実測 約100 秒。
+ladder-03:
+	uv run python main.py --experiment 03 --variant ladder --results
 
 # 各図のパネル数 (軸の本数) を実測する (FIG-15)。Figure.savefig を捕まえて
 # len(figure.axes) を数え、results/ には触れず一時ディレクトリへ生成する。

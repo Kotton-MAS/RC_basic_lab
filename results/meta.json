@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "aa9dc68c91f6e30c1502bfcb570f3201e9e9bb93",
+  "commit": "f7c5ca7e0b990c9c2c14350e28e40b62fe2f9f03",
   "config": {
     "n_replicates": 5,
     "name": "01_what_is_rc",
@@ -204,6 +204,6 @@
       }
     }
   ],
-  "timestamp_utc": "2026-09-02T02:29:52.310732+00:00",
-  "wall_time_s": 1.2248488748446107
+  "timestamp_utc": "2026-09-02T08:01:04.267598+00:00",
+  "wall_time_s": 1.2162916669622064
 }

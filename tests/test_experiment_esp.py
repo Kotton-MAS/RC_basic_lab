@@ -60,6 +60,7 @@ from rc_basics_lab.experiment.esp import (
     summarize_verdict_agreement,
 )
 from rc_basics_lab.reservoir.esn import ESN
+from rc_basics_lab.reservoir.topology import TopologyConfig
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
@@ -878,8 +879,11 @@ def test_simulate_condition_rejects_a_noisy_esn_from_any_route(
         leak_rate: float,
         *,
         state_noise: float = 0.0,
+        topology: TopologyConfig | None = None,
     ) -> ESNConfig:
-        return original(reservoir, rho, leak_rate, state_noise=NOISE_SIGMA)
+        return original(
+            reservoir, rho, leak_rate, state_noise=NOISE_SIGMA, topology=topology
+        )
 
     monkeypatch.setattr(esp_module, "build_esn_config", noisy_build)
 

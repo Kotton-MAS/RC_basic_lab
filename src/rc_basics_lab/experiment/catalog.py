@@ -34,6 +34,7 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     run_and_report_capacity,
     run_and_report_length_sweep,
     run_and_report_symmetry_sweep,
+    run_and_report_topology_ladder,
 )
 from rc_basics_lab.experiment.esp_pipeline import (
     ESP_ARTIFACTS,
@@ -212,6 +213,11 @@ def _run_03_symmetry(request: RunRequest) -> None:
     run_and_report_symmetry_sweep(_load_03(request), request.out)
 
 
+def _run_03_ladder(request: RunRequest) -> None:
+    """対照の梯子だけを回す (``capacity_topology.csv``、3-T / D-138)。"""
+    run_and_report_topology_ladder(_load_03(request), request.out)
+
+
 def _run_04(request: RunRequest) -> None:
     """実験04 (カオス時系列の自由走行予測)。"""
     config = load_config_as(
@@ -281,6 +287,7 @@ CATALOG: tuple[ExperimentSpec, ...] = (
             MAIN: _run_03,
             "length": _run_03_length,
             "symmetry": _run_03_symmetry,
+            "ladder": _run_03_ladder,
         },
     ),
     ExperimentSpec(

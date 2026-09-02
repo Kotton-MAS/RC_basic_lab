@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "aa9dc68c91f6e30c1502bfcb570f3201e9e9bb93",
+  "commit": "f7c5ca7e0b990c9c2c14350e28e40b62fe2f9f03",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -238,6 +238,51 @@
       ],
       "rho": 0.95,
       "sigma_u": 0.2
+    },
+    "topology_ladder": {
+      "leak_rate": 1.0,
+      "levels": [
+        {
+          "density": 0.08,
+          "kind": "erdos_renyi"
+        },
+        {
+          "base": {
+            "density": 0.08,
+            "kind": "erdos_renyi"
+          },
+          "drop_self_loops": false,
+          "kind": "control",
+          "symmetrize": true
+        },
+        {
+          "base": {
+            "density": 0.08,
+            "kind": "erdos_renyi"
+          },
+          "drop_self_loops": true,
+          "kind": "control",
+          "symmetrize": false
+        },
+        {
+          "base": {
+            "kind": "barabasi_albert",
+            "m": 2
+          },
+          "kind": "degree_preserving",
+          "swaps_per_edge": 100
+        },
+        {
+          "kind": "barabasi_albert",
+          "m": 2
+        }
+      ],
+      "n_graphs": 8,
+      "n_replicates": 3,
+      "n_steps": 20000,
+      "n_units": 50,
+      "rho": 0.95,
+      "sigma_u": 0.2
     }
   },
   "matplotlib_version": "3.11.1",
@@ -408,42 +453,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.8410392499063164
+    "wall_time_s": 3.9415339580737054
   },
-  "timestamp_utc": "2026-09-02T02:41:34.781833+00:00",
+  "timestamp_utc": "2026-09-02T08:12:53.543288+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.42278816225007,
-      "wall_time_mc_s": 4.256281002890319,
-      "wall_time_s": 43.27640166669153,
-      "wall_time_state_s": 7.593604624737054
+      "wall_time_ipc_s": 31.45806307788007,
+      "wall_time_mc_s": 4.314455249346793,
+      "wall_time_s": 43.42988887266256,
+      "wall_time_state_s": 7.653739539440721
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 83.72293733409606,
-      "wall_time_mc_s": 9.465987585252151,
-      "wall_time_s": 109.37305021216162,
-      "wall_time_state_s": 16.179334956454113
+      "wall_time_ipc_s": 83.70452042203397,
+      "wall_time_mc_s": 9.324586582370102,
+      "wall_time_s": 109.33981874841265,
+      "wall_time_state_s": 16.3058244579006
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 251.35212966706604,
-      "wall_time_mc_s": 22.07067679427564,
-      "wall_time_s": 301.49788087327033,
-      "wall_time_state_s": 28.06937395571731
+      "wall_time_ipc_s": 257.4946828307584,
+      "wall_time_mc_s": 22.27658529067412,
+      "wall_time_s": 307.9940511661116,
+      "wall_time_state_s": 28.217146083246917
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20461041596718132,
-      "wall_time_mc_s": 0.025335875106975436,
-      "wall_time_s": 0.5020441659726202,
-      "wall_time_state_s": 0.04890950000844896
+      "wall_time_ipc_s": 0.20552641618996859,
+      "wall_time_mc_s": 0.024758624844253063,
+      "wall_time_s": 0.5056221249978989,
+      "wall_time_state_s": 0.05065070907585323
     }
   ],
-  "wall_time_s": 470.06025774986483
+  "wall_time_s": 476.8681788330432
 }

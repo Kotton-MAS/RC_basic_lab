@@ -46,15 +46,15 @@ from rc_basics_lab.diagnostics.base import DiagnosticContext, StatePropagator
 from rc_basics_lab.diagnostics.esp import conditional_lyapunov, esp_convergence
 from rc_basics_lab.diagnostics.timescale import autocorrelation_time
 from rc_basics_lab.experiment.diagnostics_rows import DiagnosticScalarRow
+from rc_basics_lab.experiment.esp_reservoir import BIAS_SCALE, build_esn_config
 from rc_basics_lab.experiment.esp_rows import (
     ESP_CSV_COLUMNS,
     EspRow,
     esp_diagnostic_rows,
 )
-from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.reservoir.protocol import Reservoir
 from rc_basics_lab.reservoir.registry import build_reservoir
-from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
+from rc_basics_lab.reservoir.topology import TopologyConfig
 from rc_basics_lab.seeds import SeedStream, make_rng_for
 from rc_basics_lab.types import FloatArray
 
@@ -67,15 +67,6 @@ EXPERIMENT_DECAY = "2A_decay"
 EXPERIMENT_TIMESCALE = "2B_timescale"
 EXPERIMENT_ESP_MAP = "2C_esp_map"
 
-BIAS_SCALE = 0.0
-"""02 の ESN が使うバイアス幅。**0 に固定する** (実装メモ / Q2)。
-
-``ESNConfig`` の既定は 0.1 だが、定数バイアスは ``[1; u]`` の先頭成分に掛かる
-**振幅一定の入力そのもの**であり、``sigma_u = 0`` を「無入力」と呼べなくなる。
-実測: ``bias_scale=0.1`` では無入力・rho=1.2 でも2軌道が収束してしまい、
-受け入れ条件1 (「無入力で rho>1 なら非収束」) が成立しない。D-17 が入力強度を
-駆動信号の標準偏差で定義している以上、その定義に入らない常時入力は 0 にする。
-"""
 
 ESP_DISTANCE_WASHOUT = 0
 """``esp_convergence`` に渡す ctx の washout。**0 に固定する** (実装メモ)。
@@ -262,37 +253,6 @@ def esn_propagator(esn: Reservoir, u: FloatArray) -> StatePropagator:
     return propagate
 
 
-def build_esn_config(
-    reservoir: ReservoirSweepConfig,
-    rho: float,
-    leak_rate: float,
-    *,
-    state_noise: float = 0.0,
-) -> ESNConfig:
-    """1条件ぶんの ``ESNConfig`` を組む。掃引軸だけが条件ごとに変わる。
-
-    引数は ``ReservoirSweepConfig`` に narrow してある (F-1-005)。本体が読むのは
-    ``reservoir`` の4フィールドと ``BIAS_SCALE`` だけで、``Esp02Config`` に型で
-    結合すると 03 が ESN 構成の再利用のために丸ごと写経する羽目になる。
-
-    ``state_noise`` は **既定値つきキーワード**である (D-36)。03 の 3-B' は
-    「ノイズ下では IPC_total が厳密に N 未満」(受け入れ条件2) を測るために
-    状態ノイズを掛ける必要があるが、02 の呼び出しは書き換えない。
-    ``state_noise=0`` では ``ESN`` が乱数を1個も引かないため、02 の成果物は
-    バイト単位で不変である
-    (``tests/test_experiment_capacity.py::test_reference_states_match_esp_simulate_condition``)。
-    """
-    return ESNConfig(
-        n_units=reservoir.n_units,
-        spectral_radius=rho,
-        leak_rate=leak_rate,
-        input_scale=reservoir.input_scale,
-        bias_scale=BIAS_SCALE,
-        topology=ErdosRenyiConfig(density=reservoir.density),
-        state_noise=state_noise,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class ReferenceTrajectory:
     """参照軌道1本と、それを作った ESN・駆動入力 (F-1-005)。
@@ -329,6 +289,8 @@ def simulate_reference_trajectory(
     x0: FloatArray | None = None,
     state_noise: float = 0.0,
     drive_offset: float = 0.0,
+    topology: TopologyConfig | None = None,
+    graph_replicate: int | None = None,
 ) -> ReferenceTrajectory:
     """参照軌道1本を作る (``Esp02Config`` を要らない。F-1-005)。
 
@@ -351,6 +313,12 @@ def simulate_reference_trajectory(
         state_noise: tanh 内部に加えるガウスノイズの標準偏差 (D-36)。**既定値
             つきキーワード**なので 02 の呼び出しは書き換えない。0 のとき
             ``ESN`` は乱数を1個も引かず、既存の成果物はバイト単位で不変である。
+        topology: 結合構造。``None`` なら横断共有の ``density`` から
+            Erdos-Renyi を組む (従来どおり)。3-T の梯子だけが渡す (D-138)。
+        graph_replicate: グラフの実現値の番号。渡すと**構造を topology
+            ストリームから引く** (D-134) ので、同じ重み行列を違うマスクで
+            切り出せる —— トポロジ比較でペアが組める。``None`` なら従来どおり
+            reservoir ストリームから引く (既存の成果物はバイト不変)。
 
     Returns:
         ESN・駆動入力・状態系列 ``(T, N)``。
@@ -365,9 +333,18 @@ def simulate_reference_trajectory(
     )
     reservoir_rng = make_rng_for(reservoir_seed, SeedStream.RESERVOIR, replicate)
     esn = build_reservoir(
-        build_esn_config(reservoir, rho, leak_rate, state_noise=state_noise),
+        build_esn_config(
+            reservoir, rho, leak_rate, state_noise=state_noise, topology=topology
+        ),
         reservoir_rng,
         n_inputs=_N_INPUTS,
+        # 渡したときだけ構造を別ストリームから引く (D-134)。渡さなければ
+        # 従来どおり reservoir ストリームなので、既存の成果物は動かない。
+        topology_rng=(
+            None
+            if graph_replicate is None
+            else make_rng_for(reservoir_seed, SeedStream.TOPOLOGY, graph_replicate)
+        ),
     )
     # 状態ノイズ用の rng は**常に**渡す (D-36)。
     # state_noise=0 では1個も引かれないので既存の結果は変わらない。``rng`` を

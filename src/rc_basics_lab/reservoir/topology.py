@@ -151,12 +151,43 @@ class DegreePreservingConfig:
     swaps_per_edge: int = 100
 
 
+@dataclass(frozen=True, slots=True)
+class TopologyControlConfig:
+    """**交絡を1つずつ剥がすための対照** (D-138)。
+
+    同じ密度で Erdos-Renyi と Barabasi-Albert を比べると、次数分布のほかに
+    相互結合率と自己ループの有無も同時に動く (D-131)。どれが効いているのかは、
+    **1つだけ動かした水準**を並べないと分からない。
+
+    ``base`` のマスクを作ってから:
+
+    - ``symmetrize`` が真なら ``mask | mask.T`` (相互結合だけを入れる)
+    - ``drop_self_loops`` が真なら対角を落とす (自己ループだけを抜く)
+
+    どちらも偽なら ``base`` そのものである (恒等)。**次数分布は変える手段を
+    持たない** —— それは ``DegreePreservingConfig`` の仕事で、剥がす交絡が
+    違う (D-135)。
+
+    Attributes:
+        base: 土台のトポロジ。
+        symmetrize: 辺を対称にするか (相互結合を入れる)。
+        drop_self_loops: 対角を落とすか (自己ループを抜く)。
+    """
+
+    KIND: ClassVar[str] = "control"
+
+    base: ErdosRenyiConfig = field(default_factory=ErdosRenyiConfig)
+    symmetrize: bool = False
+    drop_self_loops: bool = False
+
+
 type TopologyConfig = (
     ErdosRenyiConfig
     | RingTopologyConfig
     | BarabasiAlbertConfig
     | WattsStrogatzConfig
     | DegreePreservingConfig
+    | TopologyControlConfig
 )
 """結合構造の設定。**先頭が既定** (``kind`` を省くと Erdos-Renyi)。
 
@@ -196,6 +227,10 @@ def nominal_density(config: TopologyConfig, n_units: int) -> float:
         case DegreePreservingConfig():
             # 次数列を保つので、借りてきた BA と同じ密度になる (D-135)
             return nominal_density(config.base, n_units)
+        case TopologyControlConfig():
+            # 対称化は辺を増やし、自己ループの除去は減らす。**見込みは土台の
+            # まま**にする —— 実測の密度は degree_distribution が出す (D-138)。
+            return nominal_density(config.base, n_units)
 
 
 def build_mask(
@@ -227,6 +262,8 @@ def build_mask(
             return _watts_strogatz(config, n_units, rng)
         case DegreePreservingConfig():
             return _degree_preserving(config, n_units, rng)
+        case TopologyControlConfig():
+            return _control(config, n_units, rng)
 
 
 def _erdos_renyi(
@@ -369,6 +406,19 @@ def _degree_preserving(
     return working
 
 
+def _control(
+    config: TopologyControlConfig, n_units: int, rng: np.random.Generator
+) -> BoolArray:
+    """土台のマスクから交絡を1つだけ動かす (D-138)。"""
+    mask = build_mask(config.base, n_units, rng)
+    if config.symmetrize:
+        mask = mask | mask.T
+    if config.drop_self_loops:
+        mask = mask.copy()
+        np.fill_diagonal(mask, False)
+    return mask
+
+
 __all__ = [
     "MIN_UNITS",
     "BarabasiAlbertConfig",
@@ -376,6 +426,7 @@ __all__ = [
     "ErdosRenyiConfig",
     "RingTopologyConfig",
     "TopologyConfig",
+    "TopologyControlConfig",
     "WattsStrogatzConfig",
     "build_mask",
     "nominal_density",
