@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "f7c5ca7e0b990c9c2c14350e28e40b62fe2f9f03",
+  "commit": "4159054097461e2aace117bc00fd4010aeaa0f35",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -243,12 +243,12 @@
       "leak_rate": 1.0,
       "levels": [
         {
-          "density": 0.08,
+          "density": 0.1,
           "kind": "erdos_renyi"
         },
         {
           "base": {
-            "density": 0.08,
+            "density": 0.1,
             "kind": "erdos_renyi"
           },
           "drop_self_loops": false,
@@ -257,7 +257,7 @@
         },
         {
           "base": {
-            "density": 0.08,
+            "density": 0.1,
             "kind": "erdos_renyi"
           },
           "drop_self_loops": true,
@@ -282,7 +282,26 @@
       "n_steps": 20000,
       "n_units": 50,
       "rho": 0.95,
-      "sigma_u": 0.2
+      "sigma_u": 0.2,
+      "state_noise": 0.0,
+      "sweeps": [
+        {
+          "axis": "n_units",
+          "values": [
+            25.0,
+            50.0,
+            100.0
+          ]
+        },
+        {
+          "axis": "state_noise",
+          "values": [
+            0.0,
+            0.01,
+            0.1
+          ]
+        }
+      ]
     }
   },
   "matplotlib_version": "3.11.1",
@@ -453,42 +472,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.9415339580737054
+    "wall_time_s": 3.888137625064701
   },
-  "timestamp_utc": "2026-09-02T08:12:53.543288+00:00",
+  "timestamp_utc": "2026-09-02T09:25:13.763025+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.45806307788007,
-      "wall_time_mc_s": 4.314455249346793,
-      "wall_time_s": 43.42988887266256,
-      "wall_time_state_s": 7.653739539440721
+      "wall_time_ipc_s": 31.485125919105485,
+      "wall_time_mc_s": 4.276629539905116,
+      "wall_time_s": 43.36103000398725,
+      "wall_time_state_s": 7.595746542094275
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 83.70452042203397,
-      "wall_time_mc_s": 9.324586582370102,
-      "wall_time_s": 109.33981874841265,
-      "wall_time_state_s": 16.3058244579006
+      "wall_time_ipc_s": 84.01086495816708,
+      "wall_time_mc_s": 9.412928959587589,
+      "wall_time_s": 109.80001537222415,
+      "wall_time_state_s": 16.371529582189396
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 257.4946828307584,
-      "wall_time_mc_s": 22.27658529067412,
-      "wall_time_s": 307.9940511661116,
-      "wall_time_state_s": 28.217146083246917
+      "wall_time_ipc_s": 252.36719949916005,
+      "wall_time_mc_s": 21.920941958902404,
+      "wall_time_s": 302.4798090001568,
+      "wall_time_state_s": 28.186039917636663
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20552641618996859,
-      "wall_time_mc_s": 0.024758624844253063,
-      "wall_time_s": 0.5056221249978989,
-      "wall_time_state_s": 0.05065070907585323
+      "wall_time_ipc_s": 0.20892050000838935,
+      "wall_time_mc_s": 0.024832417024299502,
+      "wall_time_s": 0.5082875830121338,
+      "wall_time_state_s": 0.04992516711354256
     }
   ],
-  "wall_time_s": 476.8681788330432
+  "wall_time_s": 471.6964874158148
 }
