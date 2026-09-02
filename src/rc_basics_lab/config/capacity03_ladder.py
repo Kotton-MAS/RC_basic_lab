@@ -141,4 +141,41 @@ class TopologyLadderConfig:
     sweeps: tuple[LadderSweepConfig, ...] = field(default_factory=_ladder_sweeps)
 
 
-__all__ = ["LadderSweepConfig", "TopologyLadderConfig"]
+@dataclass(frozen=True, slots=True)
+class LadderThresholdConfig:
+    """実験 3-Th: **閾値の選び方が梯子の結論を作っていないか** (D-143)。
+
+    容量はサロゲートのしきい値で切ってから足す (D-27)。既定の
+    ``n_surrogates=100`` / ``surrogate_quantile=0.99`` は**判定基準そのもの**
+    なので、値によって水準の順位が動くなら、梯子が語っているのは現象ではなく
+    閾値の選び方である。02 の ``abs_tol`` 感度掃引 (``experiment/threshold.py``)
+    と同じ形を容量側でも置く。
+
+    **軌道は条件ごとに1回しか作らない。** しきい値は診断の中で容量を切る段
+    だけを変えるので、状態を1回作って判定だけをやり直せる。
+
+    ``chi2`` を格子に入れない。MC は ``chi2`` を持たない (次数1しか測らない
+    ため) ので、入れると MC と IPC で違う基準を並べることになる —— 順位が
+    動いたのが閾値のせいか診断の違いかを分けられなくなる。モードの比較自体は
+    ``capacity_threshold.py`` が代表条件1つで既にやっている。
+
+    実験計画を梯子より小さくしてある。問いが「順位が動くか」であって効果量の
+    推定ではないためで、梯子の実測 (BA - ER = -1.92、対ごとの s.d. 0.8) なら
+    8対で符号検定 p = 0.004 に届く。
+
+    Attributes:
+        n_surrogates_grid: サロゲート本数の格子 (既定 100 を中心に上下4倍)。
+        quantile_grid: 分位点の格子 (既定 0.99 を中心に)。
+        include_no_threshold: しきい値なし (生の容量) も並べるか。
+        n_graphs: グラフの実現値の本数。
+        n_replicates: 1グラフあたりの重みの実現値の本数。
+    """
+
+    n_surrogates_grid: tuple[int, ...] = (25, 100, 400)
+    quantile_grid: tuple[float, ...] = (0.95, 0.99, 0.999)
+    include_no_threshold: bool = True
+    n_graphs: int = 4
+    n_replicates: int = 2
+
+
+__all__ = ["LadderSweepConfig", "LadderThresholdConfig", "TopologyLadderConfig"]

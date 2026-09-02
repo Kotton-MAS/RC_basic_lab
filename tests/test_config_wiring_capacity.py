@@ -80,6 +80,7 @@ from rc_basics_lab.config import (
     IpcConfig,
     IpcSweepConfig,
     LadderSweepConfig,
+    LadderThresholdConfig,
     LengthSweepConfig,
     McSweepConfig,
     MemoryCapacityConfig,
@@ -131,6 +132,13 @@ CHANNEL_LADDER = "ladder"
 ``CHANNEL_SYMMETRY`` と同じ理由で専用チャネルにする —— ``capacity.csv`` に行が
 出ないので ``CHANNEL_ROWS`` では測れないが、**変えたら出力が変わる**ことは
 ここでも実測する。
+"""
+
+CHANNEL_LADDER_THRESHOLD = "ladder-threshold"
+"""3-Th の閾値感度 (``capacity_topology_threshold.csv``) だけを変える葉 (D-143)。
+
+``CHANNEL_LADDER`` と同じ理由で専用チャネルにする —— ``capacity.csv`` にも
+``capacity_topology.csv`` にも行が出ないので、そこでは測れない。
 """
 
 CHANNEL_LADDER_ERROR = "ladder-error"
@@ -313,6 +321,10 @@ def base_config() -> Capacity03Config:
         ),
         # 3-T は水準5本ぶん回すので、土台の側で秒未満に縮めておく
         # (ケース側で縮めると、n_units などの葉の効きを打ち消してしまう)
+        # 3-Th は判定基準 x 水準ぶん回すので、土台の側で秒未満に縮めておく
+        ladder_threshold=LadderThresholdConfig(
+            n_surrogates_grid=(5,), quantile_grid=(0.9,), n_graphs=1, n_replicates=1
+        ),
         topology_ladder=TopologyLadderConfig(
             n_units=20,
             n_steps=900,
@@ -450,6 +462,15 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("topology_ladder.levels[3].swaps_per_edge", 1, channel=CHANNEL_LADDER),
     case("topology_ladder.levels[4].m", 4, channel=CHANNEL_LADDER_ERROR),
     case("topology_ladder.state_noise", 0.05, channel=CHANNEL_LADDER),
+    case("ladder_threshold.n_surrogates_grid", (7,), channel=CHANNEL_LADDER_THRESHOLD),
+    case("ladder_threshold.quantile_grid", (0.8,), channel=CHANNEL_LADDER_THRESHOLD),
+    case(
+        "ladder_threshold.include_no_threshold",
+        False,
+        channel=CHANNEL_LADDER_THRESHOLD,
+    ),
+    case("ladder_threshold.n_graphs", 2, channel=CHANNEL_LADDER_THRESHOLD),
+    case("ladder_threshold.n_replicates", 2, channel=CHANNEL_LADDER_THRESHOLD),
     # 値は土台の軸 (sweeps[0]=n_units / sweeps[1]=leak_rate) に合わせる。
     # 軸の外れた値 (leak_rate=0 / rho=0) は診断側が値域で弾くので効きを測れない。
     case("topology_ladder.sweeps[0].axis", "rho", channel=CHANNEL_LADDER),
@@ -533,6 +554,28 @@ def _seed_fingerprints(config: Capacity03Config) -> dict[SeedStream, bytes]:
         stream: make_rng_for(seeds[stream], stream, 0).bytes(_N_BYTES)
         for stream in CAPACITY_SEED_STREAMS
     }
+
+
+def _threshold_fingerprint(config: Capacity03Config) -> str:
+    """3-Th の行の指紋 (実測時間の列は外す)。"""
+    from rc_basics_lab.experiment.ladder_threshold import run_ladder_threshold
+
+    rows = run_ladder_threshold(config)
+    return json.dumps(
+        [
+            [
+                row.threshold_mode,
+                row.n_surrogates,
+                row.surrogate_quantile,
+                row.level,
+                row.graph,
+                row.replicate,
+                round(row.mc_total, 9),
+                round(row.ipc_total, 9),
+            ]
+            for row in rows
+        ]
+    )
 
 
 def _ladder_fingerprint(config: Capacity03Config) -> str:
@@ -668,6 +711,14 @@ def test_each_capacity_parameter_changes_output(
         assert _symmetry_fingerprint(changed_config) != _symmetry_fingerprint(base)
         assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
             f"{wiring_case.field} が本番の掃引の行まで変えています"
+        )
+        return
+
+    if wiring_case.channel == CHANNEL_LADDER_THRESHOLD:
+        # 3-Th の行が変わり、かつ 3-T の梯子の行は変わらない
+        assert _threshold_fingerprint(changed_config) != _threshold_fingerprint(base)
+        assert _ladder_fingerprint(changed_config) == _ladder_fingerprint(base), (
+            f"{wiring_case.field} が 3-T の梯子の行まで変えています"
         )
         return
 

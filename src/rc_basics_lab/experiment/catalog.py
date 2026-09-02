@@ -34,7 +34,6 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     run_and_report_capacity,
     run_and_report_length_sweep,
     run_and_report_symmetry_sweep,
-    run_and_report_topology_ladder,
 )
 from rc_basics_lab.experiment.esp_pipeline import (
     ESP_ARTIFACTS,
@@ -45,6 +44,10 @@ from rc_basics_lab.experiment.esp_pipeline import (
 from rc_basics_lab.experiment.freerun_pipeline import (
     FREERUN_ARTIFACTS,
     run_and_report_freerun,
+)
+from rc_basics_lab.experiment.ladder_pipeline import (
+    run_and_report_ladder_threshold,
+    run_and_report_topology_ladder,
 )
 from rc_basics_lab.experiment.pipeline import ARTIFACTS, run_and_report
 from rc_basics_lab.experiment.washout import run_washout_sweep
@@ -208,6 +211,11 @@ def _run_03_length(request: RunRequest) -> None:
     run_and_report_length_sweep(_load_03(request), request.out)
 
 
+def _run_03_ladder_threshold(request: RunRequest) -> None:
+    """閾値感度だけを回す (``capacity_topology_threshold.csv``、3-Th / D-143)。"""
+    run_and_report_ladder_threshold(_load_03(request), request.out)
+
+
 def _run_03_symmetry(request: RunRequest) -> None:
     """駆動入力の対称性の掃引だけを回す (``capacity_symmetry.csv``、D-116)。"""
     run_and_report_symmetry_sweep(_load_03(request), request.out)
@@ -288,6 +296,7 @@ CATALOG: tuple[ExperimentSpec, ...] = (
             "length": _run_03_length,
             "symmetry": _run_03_symmetry,
             "ladder": _run_03_ladder,
+            "ladder-threshold": _run_03_ladder_threshold,
         },
     ),
     ExperimentSpec(

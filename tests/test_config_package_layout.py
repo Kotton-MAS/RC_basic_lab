@@ -199,12 +199,17 @@ SYMMETRY_ADDITIONS = ("SymmetrySweepConfig",)
 """
 
 
-LADDER_ADDITIONS = ("LadderSweepConfig", "TopologyLadderConfig")
+LADDER_ADDITIONS = (
+    "LadderSweepConfig",
+    "LadderThresholdConfig",
+    "TopologyLadderConfig",
+)
 """3-T (対照の梯子、D-138 / D-139) で足した公開名。
 
 ``make ladder-03`` の設定である。本番の ``figures-03`` は読まない
 (``symmetry_sweep`` と同じ扱い)。``LadderSweepConfig`` は梯子に掛ける掃引軸
-1本ぶんで、N とノイズを振るために足した (D-139)。
+1本ぶんで、N とノイズを振るために足した (D-139)。``LadderThresholdConfig``
+は 3-Th (閾値感度、D-143) の設定である。
 
 2つとも ``capacity03_ladder.py`` に置く —— ``capacity03.py`` が上限
 (非空 300 行) に達したためで、**上限のほうは動かさない**。
