@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import pytest
 from _artifact_manifest import (
     MANIFEST_PATH,
     REPO_ROOT,
@@ -41,20 +42,33 @@ def test_every_artifact_matches_its_committed_fingerprint() -> None:
     expected = read_manifest()
     changed: list[str] = []
     timing_only: list[str] = []
+    stale_content: list[str] = []
     for path in artifact_paths():
         relative, digest, size, content = fingerprint(path)
         if relative not in expected:
             continue  # 追加は別のテストが見る
         want_digest, want_size, want_content = expected[relative]
-        if (digest, size) == (want_digest, want_size):
-            continue
         line = f"{relative}: {want_digest[:12]}…/{want_size}B → {digest[:12]}…/{size}B"
-        if content == want_content:
+        # **内容指紋を先に、バイト指紋と独立に見る** (D-141)。バイトが一致
+        # したら content を見ない書き方だと、内容指紋の列が古くなっても
+        # 誰も気づけない —— そして次に本物の退行が起きたとき、古い値との
+        # 比較で「実行時の値だけが変わった」側に分類されて素通りする。
+        if content != want_content:
+            if (digest, size) == (want_digest, want_size):
+                stale_content.append(
+                    f"{relative}: {want_content[:12]}… → {content[:12]}…"
+                )
+            else:
+                changed.append(line)
+        elif (digest, size) != (want_digest, want_size):
             timing_only.append(line)
-        else:
-            changed.append(line)
 
     report = ""
+    if stale_content:
+        report += (
+            "**内容指紋の列が古くなっています** (バイトは一致。指紋の取り方を"
+            "変えたか、列を手で書き換えたか):\n" + "\n".join(stale_content) + "\n\n"
+        )
     if changed:
         report += "**実行時の値以外が変わった成果物**:\n" + "\n".join(changed) + "\n\n"
     if timing_only:
@@ -109,3 +123,46 @@ def test_the_manifest_covers_the_results_directory() -> None:
     assert any(name.endswith("meta.json") for name in expected), (
         "meta.json の指紋がありません"
     )
+
+
+def test_a_stale_content_digest_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    """**バイトが一致していても内容指紋の食い違いを見つける** (D-141)。
+
+    以前はバイト指紋が一致した時点で ``content_sha256`` を見ずに次へ進んで
+    いた。指紋の取り方を変えても列が古いまま緑で通り、そのあと本物の退行が
+    起きたときに**古い値との比較で「実行時の値だけが変わった」側へ分類**
+    されて素通りする。ここが空虚だと、分類そのものが信用できなくなる。
+    """
+    import test_artifact_invariance as module
+
+    real = read_manifest()
+    target = "results/03_capacity/meta.json"
+    assert target in real, "対象の成果物がありません (この検査が空振りします)"
+    digest, size, _ = real[target]
+    poisoned = {**real, target: (digest, size, "0" * 64)}
+    monkeypatch.setattr(module, "read_manifest", lambda: poisoned)
+
+    with pytest.raises(AssertionError, match="内容指紋の列が古くなっています"):
+        module.test_every_artifact_matches_its_committed_fingerprint()
+
+
+def test_a_real_change_is_not_filed_under_timing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**数値が変わった成果物を「実行時の値だけ」側へ入れない** (D-141)。
+
+    分類を間違えても行数は同じなので、報告は一見もっともらしいまま通る。
+    「実行時の値だけが変わった」は**説明を要さない**という意味なので、
+    そこへ誤って入った退行は誰にも読まれない。
+    """
+    import test_artifact_invariance as module
+
+    real = read_manifest()
+    target = "results/03_capacity/meta.json"
+    assert target in real, "対象の成果物がありません (この検査が空振りします)"
+    _, size, _ = real[target]
+    poisoned = {**real, target: ("f" * 64, size + 1, "0" * 64)}
+    monkeypatch.setattr(module, "read_manifest", lambda: poisoned)
+
+    with pytest.raises(AssertionError, match="実行時の値以外が変わった成果物"):
+        module.test_every_artifact_matches_its_committed_fingerprint()
