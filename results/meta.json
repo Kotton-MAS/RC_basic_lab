@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "174438e8b5cbe9fc522c450350359197672aca75",
+  "commit": "aa9dc68c91f6e30c1502bfcb570f3201e9e9bb93",
   "config": {
     "n_replicates": 5,
     "name": "01_what_is_rc",
@@ -49,6 +49,7 @@
     },
     "tasks": [
       {
+        "kind": "mackey_glass",
         "params": {
           "beta": 0.2,
           "exponent": 10,
@@ -64,16 +65,19 @@
           "activation": "tanh",
           "bias_scale": 0.1,
           "input_scale": 0.5,
+          "kind": "esn",
           "leak_rate": 0.3,
           "n_units": 200,
           "spectral_radius": 0.9,
           "state_noise": 0.0,
           "topology": {
-            "density": 0.1
+            "density": 0.1,
+            "kind": "erdos_renyi"
           }
         }
       },
       {
+        "kind": "delay_parity",
         "params": {
           "delay": 1,
           "length": 8200,
@@ -83,12 +87,14 @@
           "activation": "tanh",
           "bias_scale": 0.1,
           "input_scale": 1.0,
+          "kind": "esn",
           "leak_rate": 1.0,
           "n_units": 200,
           "spectral_radius": 0.9,
           "state_noise": 0.0,
           "topology": {
-            "density": 0.1
+            "density": 0.1,
+            "kind": "erdos_renyi"
           }
         }
       }
@@ -198,6 +204,6 @@
       }
     }
   ],
-  "timestamp_utc": "2026-09-01T14:53:13.641539+00:00",
-  "wall_time_s": 1.2139435838907957
+  "timestamp_utc": "2026-09-02T02:29:52.310732+00:00",
+  "wall_time_s": 1.2248488748446107
 }

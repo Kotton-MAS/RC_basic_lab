@@ -92,15 +92,21 @@ def test_every_config_dump_carries_a_kind_where_a_union_is_involved() -> None:
 
 
 @pytest.mark.parametrize("spec", CATALOG, ids=lambda s: s.number)
-def test_the_committed_meta_json_records_the_kinds(spec: ExperimentSpec) -> None:
-    """コミット済みの ``meta.json`` から素性が読める (``kind`` が入っている)。"""
+def test_the_committed_meta_json_rebuilds_the_config(spec: ExperimentSpec) -> None:
+    """コミット済みの ``meta.json`` から**設定が組み直せる** (D-129)。
+
+    ``kind`` という文字列の有無ではなく round-trip を見る。判別子つき union を
+    1つも持たない実験 (05) では ``kind`` が現れないのが正しく、文字列で測ると
+    その実験だけ嘘の赤が出る。**測りたいのは「素性が復元できること」**である。
+    """
     path = spec.results_dir / "meta.json"
     if not path.is_file():
         pytest.skip(f"{path} がまだありません")
-    text = path.read_text(encoding="utf-8")
-    assert f'"{KIND_KEY}"' in text, (
-        f"{path} に判別子がありません。どのモデル・どの課題で回したかが"
-        "成果物から復元できません (make figures-0N で取り直してください)"
+    recorded = json.loads(path.read_text(encoding="utf-8"))["config"]
+    rebuilt = _rebuild(recorded, CONFIG_TYPES[spec.number])
+    expected: object = load_config_as(spec.config_path, CONFIG_TYPES[spec.number])
+    assert rebuilt == expected, (
+        f"{path} の設定が読み直せません (make figures-0N で取り直してください)"
     )
 
 
