@@ -19,10 +19,10 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
-from rc_basics_lab.config import MackeyGlassTask, Narma10Config, require_task
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.types import FloatArray
 
@@ -86,24 +86,29 @@ _MAX_STATE_ELEMENTS = 200_000_000
 """
 
 
-def _validate(cfg: Narma10Config) -> None:
+@dataclass(frozen=True, slots=True)
+class Narma10TaskConfig:
+    """NARMA10 の生成パラメータ (D-126)。
+
+    **``length`` だけを持つ。** 係数と入力分布は設定にしない (D-29)。
+    3-C の掃引設定 (``config.Narma10Config``) は 01 の土台 (``base``) も
+    抱えるが、それは実験側の関心であって課題の生成には要らない ——
+    課題層が実験の設定を import しないために分けてある。
+
+    Attributes:
+        length: 系列長 [ステップ]。
+    """
+
+    length: int = 8000
+
+
+def _validate(cfg: Narma10TaskConfig) -> None:
     if cfg.length < 1:
         raise ValueError(f"length は 1 以上である必要があります: {cfg.length}")
     if cfg.length > _MAX_LENGTH:
         raise ValueError(
             f"length が上限を超えています: {cfg.length} > {_MAX_LENGTH} "
             "(u / y の確保量は length に比例するため、確保する前に検査で落とす)"
-        )
-    n_units = require_task(
-        cfg.base, MackeyGlassTask, "NARMA10 の確保量検査"
-    ).reservoir.n_units
-    n_state_elements = cfg.length * n_units
-    if n_state_elements > _MAX_STATE_ELEMENTS:
-        raise ValueError(
-            "length * (MG 課題のリザバー).n_units が上限を超えています: "
-            f"{n_state_elements} > {_MAX_STATE_ELEMENTS} "
-            "(3-C の状態行列の確保量は length * n_units に比例するため、"
-            "確保する前に検査で落とす)"
         )
 
 
@@ -149,7 +154,7 @@ def narma10_series(u: FloatArray) -> FloatArray:
     return y
 
 
-def generate_narma10(cfg: Narma10Config, rng: np.random.Generator) -> TaskData:
+def generate_narma10(cfg: Narma10TaskConfig, rng: np.random.Generator) -> TaskData:
     """``u ~ U[0, 0.5]`` を引いて入出力系列を作る。返す行数は ``cfg.length``。
 
     Args:
@@ -190,6 +195,7 @@ __all__ = [
     "NARMA10_ORDER",
     "NARMA10_QUADRATIC",
     "TASK_NAME",
+    "Narma10TaskConfig",
     "generate_narma10",
     "narma10_series",
 ]

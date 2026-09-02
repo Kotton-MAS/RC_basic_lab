@@ -31,8 +31,10 @@ from typing import Protocol, runtime_checkable
 
 import numpy as np
 
-from rc_basics_lab.config import SyntheticAnomalyConfig
 from rc_basics_lab.tasks.mackey_glass import generate_mackey_glass
+from rc_basics_lab.tasks.synthetic import (
+    SyntheticAnomalyConfig,
+)
 from rc_basics_lab.types import BoolArray, FloatArray
 
 TASK_NAME = "synthetic_mackey_glass_anomalies"

@@ -19,8 +19,8 @@ from rc_basics_lab.config import (
 )
 from rc_basics_lab.experiment.capacity_bounds import validate_state_matrix_bounds
 from rc_basics_lab.experiment.runner import TaskEntry
-from rc_basics_lab.experiment.split import Split
 from rc_basics_lab.reservoir.protocol import ReservoirConfig
+from rc_basics_lab.split import Split
 from rc_basics_lab.tasks.chaotic import (
     TASK_NAME_LORENZ,
     generate_lorenz,

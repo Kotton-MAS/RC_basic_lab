@@ -322,13 +322,13 @@ def test_only_to_mackey_glass_builds_the_generation_parameters() -> None:
     ]
     assert {str(path.relative_to(SRC)) for path in on_path} >= {
         "config/anomaly05.py",
-        "tasks/anomaly.py",
+        "tasks/synthetic.py",
     }, "合成源の経路のモジュールが見つかりません (探索条件が壊れています)"
 
     sites = [
         site for path in on_path for site in _length_bearing_construction_sites(path)
     ]
-    assert sites == ["config/anomaly05.py::to_mackey_glass"], (
+    assert sites == ["tasks/synthetic.py::to_mackey_glass"], (
         "合成源の経路で MackeyGlassConfig を組み立てている場所が "
         f"to_mackey_glass 以外にあります (D-70): {sites}"
     )

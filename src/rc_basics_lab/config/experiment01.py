@@ -1,5 +1,10 @@
 """実験01 (What is RC) の設定 dataclass 群 (D-13).
 
+**課題の生成パラメータはここには無い** (D-126)。``MackeyGlassConfig`` /
+``DelayParityConfig`` は ``tasks/`` にある —— 汎用層 (``tasks``) が連載層
+(``config`` の実験ごとの設定) を import しない形にするため。互換のため
+``config`` からも引けるように再エクスポートする (D-49)。
+
 **実験ごとに設定 dataclass を分ける** (D-13) の 01 側。``ExperimentConfig`` は
 01 専用で、02 は ``esp02.Esp02Config``、03 は ``capacity03.Capacity03Config``
 を使う。ローダ本体 (``_common.load_config_as``) だけを共有する。
@@ -23,6 +28,9 @@ from rc_basics_lab.reservoir.esn import ESNConfig
 from rc_basics_lab.reservoir.protocol import ReservoirConfig
 from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedConfig
+from rc_basics_lab.split import SplitConfig
+from rc_basics_lab.tasks.delay_parity import DelayParityConfig
+from rc_basics_lab.tasks.mackey_glass import MackeyGlassConfig
 
 DEFAULT_ALPHA_GRID: tuple[float, ...] = (
     1e-08,
@@ -48,30 +56,6 @@ test_production_config_matches_the_committed_yaml`` が CI でだけ落ちてい
 
 設定の既定値はプラットフォームに依存してはならない。
 """
-
-
-@dataclass(frozen=True, slots=True)
-class MackeyGlassConfig:
-    """Mackey-Glass 系列の生成パラメータ (仕様 §3 未確定1 の決定値)。"""
-
-    tau: float = 17.0
-    beta: float = 0.2
-    gamma: float = 0.1
-    exponent: int = 10
-    rk4_step: float = 0.1
-    sample_interval: int = 10
-    integration_burn_in: int = 1000
-    length: int = 8000
-    horizon: int = 1
-
-
-@dataclass(frozen=True, slots=True)
-class DelayParityConfig:
-    """遅延パリティ課題の生成パラメータ (D-07)。"""
-
-    n_bits: int = 2
-    delay: int = 1
-    length: int = 8000
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,17 +88,6 @@ class RidgeConfig:
     alpha_grid: tuple[float, ...] = DEFAULT_ALPHA_GRID
     n_lags_grid: tuple[int, ...] = (1, 2, 4, 8, 16)
     cv: CrossValidationConfig = field(default_factory=CrossValidationConfig)
-
-
-@dataclass(frozen=True, slots=True)
-class SplitConfig:
-    """時系列を連続区間で切る分割設定 (シャッフルしない)。"""
-
-    train_ratio: float = 0.5
-    val_ratio: float = 0.15
-    test_ratio: float = 0.35
-    washout: int = 200
-    max_start_offset: int = 200
 
 
 def _delay_parity_esn() -> ESNConfig:
@@ -276,3 +249,10 @@ def load_config(
         OverrideError: ``--set`` の書式か経路が不正な場合。
     """
     return load_config_as(path, ExperimentConfig, preset=preset, overrides=overrides)
+
+
+__all__ = [
+    "DelayParityConfig",
+    "MackeyGlassConfig",
+    "SplitConfig",
+]

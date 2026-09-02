@@ -10,7 +10,7 @@
 
 ``experiment`` 層が見るのは ``Reservoir`` (接合面) と ``build_reservoir``
 (唯一の生成口) だけである。``ESN`` を名指しするのは ESN 固有の検査だけで、
-モデルを足す手順は ``docs/リザバーを足す.md`` にある。
+モデルを足す手順は ``docs/guide/リザバーを足す.md`` にある。
 """
 
 from rc_basics_lab.reservoir.deep import DeepESN, DeepESNConfig

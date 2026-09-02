@@ -43,7 +43,7 @@ uv run python main.py --experiment 01 --set tasks.mackey_glass.reservoir.n_units
 容量や有効予測時間の値は別物になる。見るのは形だけ。
 
 タイプミスは黙って通らない（既知キーの一覧つきで落ちる）。詳しくは
-**[docs/条件を変えて試す.md](docs/条件を変えて試す.md)**。
+**[docs/guide/条件を変えて試す.md](docs/guide/条件を変えて試す.md)**。
 
 ### 3. 成果物を作り直す（`results/` に出る）
 
@@ -64,16 +64,16 @@ make figures-01
 `experiment` 層は `Reservoir`（`reservoir/protocol.py`）だけを見ており、
 `ESN` を名指ししている場所は無い。生成は `build_reservoir` の 1 本に寄せてある。
 
-手順は **[docs/リザバーを足す.md](docs/リザバーを足す.md)**（3 ファイル + テスト 1 本）。
+手順は **[docs/guide/リザバーを足す.md](docs/guide/リザバーを足す.md)**（3 ファイル + テスト 1 本）。
 
 ## どこに何があるか
 
 `src/rc_basics_lab/` は 102 モジュールある。**層ごとの一覧と 1 行要約、
-依存の向きの図は [docs/モジュール地図.md](docs/モジュール地図.md)**
+依存の向きの図は [docs/guide/モジュール地図.md](docs/guide/モジュール地図.md)**
 （`make module-map` でコードから生成する。手書きしないので古くならない）。
 
 抽象的な名前（`FeatureSpec` / `StateUpdater` など）から実体を引くには
-**[docs/型と名前の対応表.md](docs/型と名前の対応表.md)**。
+**[docs/guide/型と名前の対応表.md](docs/guide/型と名前の対応表.md)**。
 
 | やりたいこと             | まず開く                                                     |
 | ------------------------ | ------------------------------------------------------------ |
@@ -411,7 +411,7 @@ ZIP は member 名を検査してから必要な8ファイルだけを展開す�
 ## リポジトリ構成
 
 ```
-src/rc_basics_lab/   # ライブラリ本体 (層の一覧は docs/モジュール地図.md)
+src/rc_basics_lab/   # ライブラリ本体 (層の一覧は docs/guide/モジュール地図.md)
 experiments/0N_*/    # 実験ごとの config.yaml / run スクリプト / presets/
 results/             # **成果物**。指紋を tests/artifact_manifest.csv に固定
 scratch/             # 手元の試行の出力先 (gitignore)
@@ -421,7 +421,7 @@ tests/               # pytest
 
 **モジュールの一覧はここに書かない。** 以前ここに手書きのツリーがあったが、
 実測すると直下モジュール 8 本のうち 4 本が漏れていた。一覧は
-[docs/モジュール地図.md](docs/モジュール地図.md) がコードから生成する。
+[docs/guide/モジュール地図.md](docs/guide/モジュール地図.md) がコードから生成する。
 
 ## 開発
 
@@ -431,7 +431,7 @@ tests/               # pytest
 make ci            # lock-check + lint + fmt-check + type + test (CI と同じ)
 make figures-0N    # 実験 N の成果物を results/ に再生成
 make data-05       # 実験05 の外部データを data/ に取得 (SHA256 照合)
-make module-map    # docs/モジュール地図.md をコードから再生成
+make module-map    # docs/guide/モジュール地図.md をコードから再生成
 make panels        # 図のパネル数を実測 (約 20 分。ci には入れない)
 ```
 

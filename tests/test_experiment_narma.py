@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from collections.abc import Sequence
 from dataclasses import replace
@@ -625,7 +626,10 @@ def test_oversized_narma10_length_is_rejected_before_any_allocation(
     monkeypatch.setattr(
         "rc_basics_lab.experiment.runner.build_reservoir", _fail_if_built
     )
-    with pytest.raises(ValueError, match="length"):
+    # 課題層の length 検査と実験層の length * n_units 検査のどちらが先に鳴るかは
+    # 配線の順序で決まる (D-126 で後者が entry の組み立て時に移った)。**確保より
+    # 前に落ちること**が保証で、どちらの上限で落ちたかは問わない。
+    with pytest.raises(ValueError, match="上限を超えています"):
         run_narma10(huge)
     assert not called, "上限検査より前にリザバーの重み行列の確保が始まっています"
     # 確認: narma.length 単体で見ても同じ上限で落ちる (課題層単体の経路、F-3b2-1-001)。
@@ -709,14 +713,22 @@ def test_narma10_length_boundary_plus_one_over_n_units_product_is_rejected() -> 
     ``length`` 単体は上限内でも、``n_units`` を掛けた状態行列の確保量が
     上限を超えれば確保より前に ``ValueError`` になる (``_MAX_STATE_ELEMENTS``、
     F-3b2-1-001/HIGH-1)。
+
+    検査は**実験側**にある (D-126)。課題層は ``length`` しか知らないので、
+    ``length * n_units`` の上限は「リザバーを知っている側」でしか掛けられない。
     """
-    from rc_basics_lab.tasks.narma import _MAX_STATE_ELEMENTS, _validate
+    from rc_basics_lab.experiment.capacity_bounds import _MAX_STATE_ELEMENTS
 
     n_units = 200
     over_limit_length = _MAX_STATE_ELEMENTS // n_units + 1
-    cfg = Narma10Config(
-        length=over_limit_length,
-        base=experiment_config(esn_mackey_glass=ESNConfig(n_units=n_units)),
+    config = tiny_config()
+    cfg = dataclasses.replace(
+        config,
+        narma=dataclasses.replace(
+            config.narma,
+            length=over_limit_length,
+            base=experiment_config(esn_mackey_glass=ESNConfig(n_units=n_units)),
+        ),
     )
-    with pytest.raises(ValueError, match="n_units"):
-        _validate(cfg)
+    with pytest.raises(ValueError, match="n_units \\* n_steps"):
+        narma_task_entry(cfg)

@@ -40,8 +40,8 @@ from rc_basics_lab.experiment.runner import (
     build_methods,
     run_experiment,
 )
-from rc_basics_lab.experiment.split import compute_t0
 from rc_basics_lab.readout.design import first_valid_for
+from rc_basics_lab.split import compute_t0
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as MACKEY_GLASS
 
 logger = logging.getLogger(__name__)

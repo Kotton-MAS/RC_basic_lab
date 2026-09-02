@@ -16,11 +16,28 @@ RK4 の中間段が必要とする ``x(t - tau + h/2)`` は履歴の線形補間
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from rc_basics_lab.config import MackeyGlassConfig
 from rc_basics_lab.tasks.base import TaskData
 from rc_basics_lab.types import FloatArray
+
+
+@dataclass(frozen=True, slots=True)
+class MackeyGlassConfig:
+    """Mackey-Glass 系列の生成パラメータ (仕様 §3 未確定1 の決定値)。"""
+
+    tau: float = 17.0
+    beta: float = 0.2
+    gamma: float = 0.1
+    exponent: int = 10
+    rk4_step: float = 0.1
+    sample_interval: int = 10
+    integration_burn_in: int = 1000
+    length: int = 8000
+    horizon: int = 1
+
 
 TASK_NAME = "mackey_glass"
 

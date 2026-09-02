@@ -83,7 +83,6 @@ from rc_basics_lab.experiment.runner import (
     build_tasks,
     plan_replicate,
 )
-from rc_basics_lab.experiment.split import make_split
 from rc_basics_lab.experiment.valid_time import (
     LITERATURE_VPT_THRESHOLD,
     VALID_TIME_THRESHOLD_GRID,
@@ -94,6 +93,7 @@ from rc_basics_lab.reservoir.esn import ESN
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.reservoir.topology import ErdosRenyiConfig
 from rc_basics_lab.seeds import SeedStream, make_rng
+from rc_basics_lab.split import make_split
 from rc_basics_lab.tasks.chaotic import TASK_NAME_LORENZ, integrate_lorenz
 from rc_basics_lab.tasks.mackey_glass import TASK_NAME as TASK_NAME_MACKEY_GLASS
 from rc_basics_lab.types import FloatArray

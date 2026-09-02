@@ -60,7 +60,7 @@ from rc_basics_lab.experiment.freerun_tasks import (
     lorenz_task_entry,
     task_length,
 )
-from rc_basics_lab.experiment.report import write_rows_csv
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 from rc_basics_lab.experiment.runner import ESN_METHOD, TaskEntry
 from rc_basics_lab.experiment.stability_axes import (
     condition_reservoir_config,

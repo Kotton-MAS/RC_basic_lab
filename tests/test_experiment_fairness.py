@@ -41,11 +41,11 @@ from rc_basics_lab.experiment.runner import (
     plan_replicate,
     run_task,
 )
-from rc_basics_lab.experiment.split import compute_t0, make_split
 from rc_basics_lab.readout.design import DelayLineSpec
 from rc_basics_lab.readout.ridge import AlphaSelection
 from rc_basics_lab.readout.ridge import select_alpha as real_select_alpha
 from rc_basics_lab.seeds import SeedConfig, SeedStream, make_rng
+from rc_basics_lab.split import compute_t0, make_split
 from rc_basics_lab.types import FloatArray
 
 TINY_ALPHA_GRID = (1e-4, 1e-2, 1.0)

@@ -74,8 +74,8 @@ from rc_basics_lab.experiment.freerun_tasks import (
 from rc_basics_lab.experiment.report import (
     META_JSON,
     write_meta_for,
-    write_rows_csv,
 )
+from rc_basics_lab.experiment.rows_csv import write_rows_csv
 from rc_basics_lab.experiment.runner import (
     CSV_COLUMNS,
     DELAY_LINE,

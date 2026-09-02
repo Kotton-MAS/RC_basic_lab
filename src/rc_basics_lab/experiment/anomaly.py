@@ -62,7 +62,6 @@ from rc_basics_lab.experiment.anomaly_threshold import (
     evaluate_at_threshold,
     sweep_thresholds,
 )
-from rc_basics_lab.experiment.split import Split, compute_t0, make_split
 from rc_basics_lab.metrics_detection import (
     BoolArray,
     PointAdjustReport,
@@ -72,6 +71,7 @@ from rc_basics_lab.metrics_detection import (
 )
 from rc_basics_lab.reservoir.registry import build_reservoir
 from rc_basics_lab.seeds import SeedStream, make_rng_for
+from rc_basics_lab.split import Split, compute_t0, make_split
 from rc_basics_lab.tasks.anomaly import (
     AnomalyPreprocessor,
     AnomalySeries,

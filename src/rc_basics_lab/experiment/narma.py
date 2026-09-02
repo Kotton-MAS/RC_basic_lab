@@ -38,6 +38,7 @@ from rc_basics_lab.experiment.capacity import (
 )
 from rc_basics_lab.experiment.capacity_bounds import (
     validate_n_units_bound,
+    validate_state_matrix_bounds,
 )
 from rc_basics_lab.experiment.capacity_rows import (
     CapacityOutcome,
@@ -61,6 +62,7 @@ from rc_basics_lab.reservoir.registry import reservoir_density
 from rc_basics_lab.tasks.narma import (
     NARMA10_INPUT_STD,
     TASK_NAME,
+    Narma10TaskConfig,
     generate_narma10,
 )
 
@@ -132,10 +134,15 @@ def narma_task_entry(config: Capacity03Config) -> TaskEntry:
     (D-04 / D-05 / D-08) を1行も書き写さずに 3-C へ効かせられる。
     """
     narma = config.narma
+    reservoir = narma_reservoir_config(narma.base)
+    # 確保量の上限は実験側で見る (D-126)。課題層は length しか知らないので、
+    # length * n_units の上限は「リザバーを知っている側」でしか掛けられない。
+    validate_state_matrix_bounds(int(axis_value(reservoir, "n_units")), narma.length)
+    task = Narma10TaskConfig(length=narma.length)
     return TaskEntry(
         name=TASK_NAME,
-        reservoir=narma_reservoir_config(narma.base),
-        generate=lambda rng: generate_narma10(narma, rng),
+        reservoir=reservoir,
+        generate=lambda rng: generate_narma10(task, rng),
     )
 
 
