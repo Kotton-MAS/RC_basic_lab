@@ -1,7 +1,7 @@
 {
   "anomaly_rate_mean": 0.05550112612612612,
   "cjk_font": "Hiragino Sans",
-  "commit": "aa9dc68c91f6e30c1502bfcb570f3201e9e9bb93",
+  "commit": "f7c5ca7e0b990c9c2c14350e28e40b62fe2f9f03",
   "config": {
     "dataset": {
       "calibration_ratio": 0.15,
@@ -214,14 +214,14 @@
     "reference_n_units": 200,
     "saturated": false
   },
-  "timestamp_utc": "2026-09-02T02:56:55.951350+00:00",
+  "timestamp_utc": "2026-09-02T08:29:42.594936+00:00",
   "total_budget_s": 900.0,
   "wall_time_breakdown": {
-    "figures_s": 1.360957375029102,
-    "headline_s": 11.11820395803079,
-    "protocol_s": 297.4198425000068,
-    "size_s": 36.87965500005521,
-    "timeline_s": 0.7583940830081701
+    "figures_s": 1.3665084999520332,
+    "headline_s": 11.14829945890233,
+    "protocol_s": 299.2806770838797,
+    "size_s": 37.084415833000094,
+    "timeline_s": 0.7563028750009835
   },
   "wall_time_budget_s": {
     "figures_s": 20.0,
@@ -230,5 +230,5 @@
     "size_s": 150.0,
     "timeline_s": 30.0
   },
-  "wall_time_s": 347.53706470807083
+  "wall_time_s": 349.6362181250006
 }

@@ -28,6 +28,7 @@ from rc_basics_lab.reservoir.topology import (
     build_mask,
 )
 from rc_basics_lab.seeds import SeedStream, make_rng_for
+from rc_basics_lab.types import FloatArray
 
 GOLDEN_CONFIG = "tests/golden/configs/03_capacity.yaml"
 
@@ -103,11 +104,12 @@ def test_every_level_shares_the_same_weight_matrix() -> None:
     )
 
     # 値行列は reservoir ストリームだけで決まる (マスクを引いても消費しない)
-    def values() -> np.ndarray:
+    def values() -> FloatArray:
         rng = make_rng_for(0, SeedStream.RESERVOIR, 0)
         rng.uniform(-0.1, 0.1, n_units)
         rng.uniform(-1.0, 1.0, (n_units, 1))
-        return rng.uniform(-1.0, 1.0, (n_units, n_units))
+        drawn: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
+        return drawn
 
     assert np.array_equal(values(), values()), "値行列が水準ごとに変わっています"
     del config
