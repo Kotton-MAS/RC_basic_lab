@@ -23,9 +23,11 @@ from rc_basics_lab.reservoir.topology import (
     ErdosRenyiConfig,
     RingTopologyConfig,
     TopologyConfig,
+    TopologyControlConfig,
     WattsStrogatzConfig,
     build_mask,
     nominal_density,
+    rescaled_to_density,
 )
 from rc_basics_lab.types import BoolArray
 
@@ -378,3 +380,66 @@ def test_the_production_draw_order_is_unchanged() -> None:
     assert np.allclose(built.W, expected), (
         "本番の引き順が変わっています (mask -> values のはずです)"
     )
+
+
+@pytest.mark.parametrize("n_units", [25, 50, 100])
+def test_the_nominal_density_is_exact_for_the_deterministic_kinds(
+    n_units: int,
+) -> None:
+    """辺の本数が決まっている kind では見込みが**厳密に**当たる (D-140).
+
+    BA は「各点が m 本を張る」ので本数は乱数によらない。近似 (``2m/N``) は
+    初期の完全結合を数え落とし、N=25 / m=2 で 6% 高く出ていた。梯子は BA の
+    密度を基準に他の水準をそろえるので、そのずれがそのまま水準間の密度差に
+    なる (``matched_levels``)。
+    """
+    for config in (
+        BarabasiAlbertConfig(m=2),
+        BarabasiAlbertConfig(m=3),
+        DegreePreservingConfig(base=BarabasiAlbertConfig(m=2)),
+    ):
+        for seed in range(3):
+            mask = build_mask(config, n_units, np.random.default_rng(seed))
+            assert float(mask.mean()) == pytest.approx(
+                nominal_density(config, n_units)
+            ), f"{type(config).__name__} (N={n_units}, seed={seed})"
+
+
+@pytest.mark.parametrize("symmetrize", [False, True])
+@pytest.mark.parametrize("drop_self_loops", [False, True])
+def test_the_control_density_is_predicted_and_invertible(
+    symmetrize: bool, drop_self_loops: bool
+) -> None:
+    """control の見込みが当たり、逆算した土台がその密度を作る (D-140).
+
+    土台の密度をそのまま見込みとして報告すると、対称化した対照が**ほぼ倍の
+    密度**になる (N=50 / d=0.08 で 0.152)。梯子の対照が交絡を1つだけ動かす
+    という約束が、対照そのもので破れていた。
+    """
+    n_units, target = 50, 0.08
+    config = TopologyControlConfig(
+        symmetrize=symmetrize, drop_self_loops=drop_self_loops
+    )
+    predicted = nominal_density(config, n_units)
+    realized = float(
+        np.mean(
+            [
+                build_mask(config, n_units, np.random.default_rng(seed)).mean()
+                for seed in range(80)
+            ]
+        )
+    )
+    assert realized == pytest.approx(predicted, rel=0.05), "見込みが当たりません"
+
+    rescaled = rescaled_to_density(config, target, n_units)
+    assert rescaled is not None
+    assert nominal_density(rescaled, n_units) == pytest.approx(target)
+    back = float(
+        np.mean(
+            [
+                build_mask(rescaled, n_units, np.random.default_rng(seed)).mean()
+                for seed in range(80)
+            ]
+        )
+    )
+    assert back == pytest.approx(target, rel=0.05), f"逆算が効いていません: {back}"

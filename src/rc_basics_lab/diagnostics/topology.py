@@ -64,6 +64,19 @@ class SpectralConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class GainConfig:
+    """``effective_gain`` の判定基準.
+
+    Attributes:
+        norm_order: 行ノルムの次数。2 なら L2 (状態が受ける寄与の大きさ)、
+            1 なら L1 (重みの総量)。**ハブの立ち方は次数で見え方が変わる** ——
+            L1 は辺の本数に、L2 は大きい重み1本に、それぞれ引かれる。
+    """
+
+    norm_order: int = 2
+
+
+@dataclass(frozen=True, slots=True)
 class SmallWorldConfig:
     """``small_world`` の判定基準.
 
@@ -80,6 +93,7 @@ class SmallWorldConfig:
 
 DEFAULT_DEGREE = DegreeConfig()
 DEFAULT_SPECTRAL = SpectralConfig()
+DEFAULT_GAIN = GainConfig()
 DEFAULT_SMALL_WORLD = SmallWorldConfig()
 
 
@@ -203,6 +217,54 @@ def spectral_profile(
     )
 
 
+def effective_gain(
+    W: FloatArray,
+    *,
+    ctx: DiagnosticContext | None = None,
+    cfg: GainConfig = DEFAULT_GAIN,
+) -> DiagnosticResult:
+    """ノードごとの実効ゲイン (行の L2 ノルム) の分布を返す (D-140).
+
+    **「同じスペクトル半径」は「同じ動作点」ではない。** rho をそろえても、
+    ハブに重みが集中する行列と一様な行列では、ノードが受け取る入力の大きさの
+    分布が違う。行 ``i`` の L2 ノルムは ``x_{t+1} = f(W x_t + ...)`` で
+    ノード ``i`` が状態から受ける寄与の大きさそのものである (向きの規約は
+    ``W[i, j] != 0`` が j -> i、``registry.require_graph`` と同じ)。
+
+    **``spectral_profile`` の ``spectral_gap`` はこの目的に使えない** ——
+    実行列の固有値は共役対で出るので、最大固有値が複素なら ``|l1| - |l2|`` は
+    構造的に 0 になる。実測 (N=50 / rho=0.95) では梯子の5水準のうち4水準で
+    ちょうど 0 で、0 でなかったのは固有値が実数になる対称化した対照だけ
+    だった。つまりあれが測っているのは「ハブが支配的か」ではなく
+    「行列が対称か」である。
+
+    Args:
+        W: 結合行列 ``(N, N)``。
+        ctx: 使わない (族の署名を揃えるために受け取る)。
+        cfg: 判定基準 (行ノルムの次数)。
+
+    Returns:
+        ``scalars`` に実効ゲインの平均・最大・標準偏差、``arrays`` に
+        ノードごとの値。
+
+    Raises:
+        ValueError: ``W`` が正方でない、または空の場合。
+    """
+    matrix = _check_square(W)
+    gains: FloatArray = np.linalg.norm(matrix, ord=cfg.norm_order, axis=1)
+    del ctx
+    return DiagnosticResult(
+        name="effective_gain",
+        scalars={
+            "gain_mean": float(np.mean(gains)),
+            "gain_max": float(np.max(gains)),
+            "gain_std": float(np.std(gains)),
+        },
+        arrays={"gains": gains},
+        params={"norm_order": str(cfg.norm_order)},
+    )
+
+
 def _clustering_coefficient(mask: BoolArray) -> float:
     """無向化したグラフの大域クラスタ係数 (推移性) を返す。
 
@@ -301,12 +363,15 @@ def small_world(
 
 __all__ = [
     "DEFAULT_DEGREE",
+    "DEFAULT_GAIN",
     "DEFAULT_SMALL_WORLD",
     "DEFAULT_SPECTRAL",
     "DegreeConfig",
+    "GainConfig",
     "SmallWorldConfig",
     "SpectralConfig",
     "degree_distribution",
+    "effective_gain",
     "small_world",
     "spectral_profile",
 ]

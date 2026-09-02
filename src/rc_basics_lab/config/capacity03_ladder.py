@@ -67,6 +67,9 @@ def _ladder_sweeps() -> tuple[LadderSweepConfig, ...]:
       に住む**ので、25〜100 で順位が入れ替わるなら先行より重要な結果になる
     - ``state_noise``: ノイズなしで選んだ最適トポロジは、ノイズ下でも最適か。
       トポロジ最適化の文献はほぼすべてノイズなしで行われている
+    - ``rho``: 先行 (Nonlinear Dynamics 2025) の主張は「**広い rho の範囲で**
+      BA が優れる」「rho > 1 でも性能を保つ」である。1点で測っている限り
+      反証も追認もできないので、rho > 1 を含めて振る (D-140)
 
     両方を**同じ CSV** に入れる (``sweep_axis`` 列で区別する)。基準点
     (N=50 / ノイズ 0) が2つの掃引に重複して入るが、そこは**同じ数が出るはず
@@ -75,6 +78,7 @@ def _ladder_sweeps() -> tuple[LadderSweepConfig, ...]:
     return (
         LadderSweepConfig(axis="n_units", values=(25.0, 50.0, 100.0)),
         LadderSweepConfig(axis="state_noise", values=(0.0, 0.01, 0.1)),
+        LadderSweepConfig(axis="rho", values=(0.5, 0.8, 0.95, 1.1, 1.3)),
     )
 
 

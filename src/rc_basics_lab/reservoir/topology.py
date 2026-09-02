@@ -55,6 +55,7 @@ BA / WS でも**重みの値**は非対称になる —— 対称なのは**辺�
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
@@ -220,21 +221,78 @@ def nominal_density(config: TopologyConfig, n_units: int) -> float:
         case RingTopologyConfig():
             return 1.0 / float(n_units)
         case BarabasiAlbertConfig():
-            # 各点が m 本を張り、無向なので 2 倍。対角は使わない。
-            return min(1.0, 2.0 * config.m / float(n_units))
+            # **辺の本数は決定的なので厳密に数える** (D-140)。近似
+            # (2m/N) は N=25 / m=2 で 0.160 を返すが、実際に生成される
+            # のは 0.1504 で 6% ずれる —— 梯子は BA の密度を基準に
+            # 他をそろえるので、そのずれがそのまま水準間の密度差になる。
+            #   初期の完全結合 (m+1 点): m(m+1) 成分
+            #   以降の N-m-1 点: 1点あたり m 本を無向で張るので 2m 成分
+            m = config.m
+            entries = m * (m + 1) + 2 * m * (n_units - m - 1)
+            return min(1.0, entries / float(n_units * n_units))
         case WattsStrogatzConfig():
             return min(1.0, float(config.k) / float(n_units))
         case DegreePreservingConfig():
             # 次数列を保つので、借りてきた BA と同じ密度になる (D-135)
             return nominal_density(config.base, n_units)
         case TopologyControlConfig():
-            # 対称化は辺を増やし、自己ループの除去は減らす。**見込みは土台の
-            # まま**にする —— 実測の密度は degree_distribution が出す (D-138)。
-            return nominal_density(config.base, n_units)
+            # 対称化は辺を増やし (2d - d^2)、自己ループの除去は減らす。
+            # **土台のままにしてはいけない** (D-140) —— 実測すると N=50 /
+            # d=0.08 で対称化は 0.152 になり、梯子が排除したはずの密度差が
+            # 対照そのものに入る。
+            quadratic, linear = _control_coefficients(config, n_units)
+            base = config.base.density
+            return quadratic * base * base + linear * base
+
+
+def _control_coefficients(
+    config: TopologyControlConfig, n_units: int
+) -> tuple[float, float]:
+    """control の密度を ``A * d0^2 + B * d0`` と書いたときの ``(A, B)`` (D-140).
+
+    土台の ER の密度 ``d0`` に対し、``_control`` が作るマスクの各成分が
+    True になる確率は
+
+    - 非対角 (``(N^2 - N) / N^2`` の割合): 対称化するなら ``2 d0 - d0^2``
+      (``mask | mask.T`` は独立な2つの和事象)、しないなら ``d0``
+    - 対角 (``N / N^2`` の割合): 自己ループを抜くなら 0、抜かないなら ``d0``
+      (``mask[i, i] | mask[i, i]`` は ``mask[i, i]`` のまま)
+
+    である。
+    """
+    off_diagonal = (n_units - 1) / n_units
+    diagonal = 1.0 / n_units
+    quadratic = -off_diagonal if config.symmetrize else 0.0
+    linear = 2.0 * off_diagonal if config.symmetrize else off_diagonal
+    if not config.drop_self_loops:
+        linear += diagonal
+    return quadratic, linear
+
+
+def _control_base_density(
+    config: TopologyControlConfig, target: float, n_units: int
+) -> float:
+    """control が ``target`` の密度になる土台の ``d0`` を返す (D-140).
+
+    Raises:
+        ValueError: その ``target`` に届かない場合 (対称化には上限がある)。
+    """
+    quadratic, linear = _control_coefficients(config, n_units)
+    if quadratic == 0.0:
+        return target / linear
+    # -a d0^2 + B d0 = target を解く (a > 0)。小さいほうの根が [0, 1] に入る。
+    a = -quadratic
+    discriminant = linear * linear - 4.0 * a * target
+    if discriminant < 0.0:
+        raise ValueError(
+            f"対称化した対照は密度 {target} に届きません "
+            f"(N={n_units} での上限は {linear * linear / (4.0 * a):.4f})"
+        )
+    return float((linear - math.sqrt(discriminant)) / (2.0 * a))
 
 
 def rescaled_to_density(
-    config: TopologyConfig, density: float
+    config: TopologyConfig, density: float, n_units: int
 ) -> TopologyConfig | None:
     """密度を ``density`` に合わせた複製を返す。**合わせられなければ None**。
 
@@ -247,16 +305,22 @@ def rescaled_to_density(
 
     Args:
         config: トポロジの設定。
-        density: 合わせたい密度。
+        density: 合わせたい密度 (**生成されるマスクの密度**であって、土台の
+            ER に設定する値ではない。control は変換のぶんを逆算する。D-140)。
+        n_units: ユニット数 N (control の逆算に要る)。
 
     Returns:
         同じ kind の複製、または合わせられないなら ``None``。
+
+    Raises:
+        ValueError: control がその密度に届かない場合。
     """
     match config:
         case ErdosRenyiConfig():
             return replace(config, density=density)
         case TopologyControlConfig():
-            return replace(config, base=replace(config.base, density=density))
+            base = _control_base_density(config, density, n_units)
+            return replace(config, base=replace(config.base, density=base))
         case (
             RingTopologyConfig()
             | BarabasiAlbertConfig()

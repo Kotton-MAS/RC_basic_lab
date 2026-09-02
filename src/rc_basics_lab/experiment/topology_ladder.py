@@ -25,6 +25,10 @@ from rc_basics_lab.config import Capacity03Config, TopologyLadderConfig
 from rc_basics_lab.diagnostics.base import DiagnosticContext
 from rc_basics_lab.diagnostics.ipc import ipc
 from rc_basics_lab.diagnostics.memory_capacity import memory_capacity
+from rc_basics_lab.diagnostics.topology import (
+    degree_distribution,
+    effective_gain,
+)
 from rc_basics_lab.experiment.capacity import (
     capacity_context,
     drive_config_for,
@@ -34,6 +38,7 @@ from rc_basics_lab.experiment.capacity import (
 from rc_basics_lab.experiment.capacity_rows import CapacityCondition
 from rc_basics_lab.experiment.esp import simulate_reference_trajectory
 from rc_basics_lab.reservoir.axes import require_axes, with_axis
+from rc_basics_lab.reservoir.registry import require_graph
 from rc_basics_lab.reservoir.topology import (
     TopologyConfig,
     nominal_density,
@@ -63,8 +68,14 @@ class TopologyLadderRow:
         leak_rate: リーク率。
         sigma_u: 駆動信号の標準偏差。
         state_noise: 状態ノイズの標準偏差。
-        nominal_density: 設定から見込まれる密度 (実測ではない)。
+        nominal_density: 設定から見込まれる密度 (**そう設定した**)。
+        realized_density: 実際に生成された結合の密度 (**そうなった**)。
+        in_degree_max: 入次数の最大値 (ハブの強さ)。
+        in_degree_std: 入次数の標準偏差 (次数分布の広がり)。
+        gain_max: ノードごとの実効ゲイン (行の L2 ノルム) の最大値 (交絡4)。
+        gain_std: 同じくその標準偏差。**同じ rho でも動作点は同じでない**。
         mc_total: 線形メモリ容量。
+        mc_effective_delay: 容量の重心となる遅延 (**記憶の深さ**)。
         ipc_total: しきい値後の総容量。
         ipc_linear: 次数1の容量。
         ipc_nonlinear: 次数2以上の容量。
@@ -84,7 +95,13 @@ class TopologyLadderRow:
     sigma_u: float
     state_noise: float
     nominal_density: float
+    realized_density: float
+    in_degree_max: float
+    in_degree_std: float
+    gain_max: float
+    gain_std: float
     mc_total: float
+    mc_effective_delay: float
     ipc_total: float
     ipc_linear: float
     ipc_nonlinear: float
@@ -156,7 +173,7 @@ def matched_levels(
     pinned = tuple(
         level
         for level in levels
-        if rescaled_to_density(level, nominal_density(level, n_units)) is None
+        if rescaled_to_density(level, nominal_density(level, n_units), n_units) is None
     )
     if pinned:
         targets = {round(nominal_density(level, n_units), 12) for level in pinned}
@@ -169,7 +186,9 @@ def matched_levels(
         target = targets.pop()
     else:
         target = nominal_density(levels[0], n_units)
-    return tuple(rescaled_to_density(level, target) or level for level in levels)
+    return tuple(
+        rescaled_to_density(level, target, n_units) or level for level in levels
+    )
 
 
 def sweep_points(
@@ -294,6 +313,12 @@ def _measure(
     )
     states = trajectory.states
     states.flags.writeable = False
+    # 見込みではなく**そうなった**構造を測る (D-140)。nominal_density は
+    # 「そう設定した」しか答えず、密度そろえ (D-139) が実現値まで届いて
+    # いるかも、ハブが本当に立っているかも見えない。
+    adjacency = require_graph(trajectory.esn, used_by="実験3-T (対照の梯子)")
+    degrees = degree_distribution(adjacency)
+    gain = effective_gain(adjacency)
     mc = memory_capacity(states, trajectory.drive, ctx=ctx, cfg=config.mc)
     capacity = ipc(
         states,
@@ -315,7 +340,13 @@ def _measure(
         sigma_u=section.sigma_u,
         state_noise=section.state_noise,
         nominal_density=nominal_density(topology, section.n_units),
+        realized_density=degrees.scalars["density"],
+        in_degree_max=degrees.scalars["in_degree_max"],
+        in_degree_std=degrees.scalars["in_degree_std"],
+        gain_max=gain.scalars["gain_max"],
+        gain_std=gain.scalars["gain_std"],
         mc_total=mc.scalars["mc_total"],
+        mc_effective_delay=mc.scalars["mc_effective_delay"],
         ipc_total=capacity.scalars["ipc_total"],
         ipc_linear=capacity.scalars["ipc_linear"],
         ipc_nonlinear=capacity.scalars["ipc_nonlinear"],
