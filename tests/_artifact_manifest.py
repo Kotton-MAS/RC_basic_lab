@@ -51,7 +51,7 @@ TIMING_COLUMN_PREFIX = "wall_time"
 """CSV の時間列の接頭辞。内容指紋から除く。"""
 
 VOLATILE_JSON_KEYS = frozenset({"wall_time_s", "timestamp_utc", "commit"})
-"""``meta.json`` の**実行ごとに必ず変わる**キー。内容指紋から除く。
+"""``meta.json`` の**実行ごとに必ず変わる**キー。**深さを問わず**除く (D-141)。
 
 ``commit`` も除く。当初は「どのコミットで作られたかは内容の一部」として
 残したが、実測すると再生成のたびに ``meta.json`` が「内容が変わった」側に
@@ -59,6 +59,23 @@ VOLATILE_JSON_KEYS = frozenset({"wall_time_s", "timestamp_utc", "commit"})
 
 除いても弱くならない。commit がそろっていることは ``test_cycle_hygiene`` が
 ``meta.json`` を直接読んで見ており、内容指紋を経由していない。
+
+**深さを問わず落とす** (D-141)。03 の ``threshold_comparison.wall_time_s``
+のように、同じ名前が入れ子の中にも出るためである。
+"""
+
+VOLATILE_JSON_SUBTREES = frozenset({"wall_time_breakdown"})
+"""中身が丸ごと実測値である節。**部分木ごと**除く (D-141)。
+
+``wall_time_breakdown`` の下は ``capacity_s`` / ``stability_s`` のように
+節ごとに名前が違う。名前の規則 (``*_s`` で終わる) で落とす案は**採れない**
+—— 05 の ``total_budget_s`` と ``wall_time_budget_s.*`` は**設定値**であり、
+落とすと予算を変えたことが内容指紋に出なくなる。測っている値と設定した値が
+同じ接尾辞を共有している以上、名前ではなく**どの節にあるか**で決める。
+
+これを入れる前は 04 / 05 の ``meta.json`` が再生成のたびに「内容が変わった」
+側に出ていた。実行時間しか動いていないのに毎回説明を要する行が2件出ると、
+**本当に説明を要する行を見落とす**。
 """
 
 
@@ -130,14 +147,55 @@ def _csv_without_timing(payload: bytes) -> bytes:
 
 
 def _json_without_timing(payload: bytes) -> bytes:
-    """実行ごとに変わるキーを落とした JSON を返す。"""
-    parsed = json.loads(payload.decode("utf-8"))
+    """実行ごとに変わるキーを**深さを問わず**落とした JSON を返す (D-141)。"""
+    parsed: object = json.loads(payload.decode("utf-8"))
     if not isinstance(parsed, dict):
         return payload
-    stripped = {
-        key: value for key, value in parsed.items() if key not in VOLATILE_JSON_KEYS
-    }
+    stripped = _without_volatile(parsed)
     return json.dumps(stripped, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+
+def _without_volatile(node: object) -> object:
+    """実測値のキーと節を落とした複製を返す (辞書と配列を再帰的に歩く)。"""
+    if isinstance(node, dict):
+        mapping: dict[str, object] = node
+        return {
+            key: _without_volatile(value)
+            for key, value in mapping.items()
+            if key not in VOLATILE_JSON_KEYS and key not in VOLATILE_JSON_SUBTREES
+        }
+    if isinstance(node, list):
+        elements: list[object] = node
+        return [_without_volatile(element) for element in elements]
+    return node
+
+
+def volatile_json_paths(payload: bytes) -> tuple[str, ...]:
+    """その JSON で内容指紋から落ちるパス (**落ちすぎを検査するため**)。
+
+    落とす規則を広げると、設定を変えたのに内容指紋が動かない状態を静かに
+    作れてしまう。何が落ちているかを列挙できるようにしておき、
+    ``test_artifact_content_digest`` が実際の成果物で全件を突き合わせる。
+    """
+    parsed: object = json.loads(payload.decode("utf-8"))
+    return tuple(sorted(_volatile_paths(parsed, "")))
+
+
+def _volatile_paths(node: object, prefix: str) -> set[str]:
+    found: set[str] = set()
+    if isinstance(node, dict):
+        mapping: dict[str, object] = node
+        for key, value in mapping.items():
+            path = f"{prefix}{key}"
+            if key in VOLATILE_JSON_KEYS or key in VOLATILE_JSON_SUBTREES:
+                found.add(path)
+            else:
+                found |= _volatile_paths(value, f"{path}.")
+    elif isinstance(node, list):
+        elements: list[object] = node
+        for index, element in enumerate(elements):
+            found |= _volatile_paths(element, f"{prefix}[{index}].")
+    return found
 
 
 def read_manifest() -> dict[str, tuple[str, int, str]]:
