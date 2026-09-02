@@ -40,6 +40,7 @@ from rc_basics_lab.reservoir.topology import (
     ErdosRenyiConfig,
     RingTopologyConfig,
     TopologyConfig,
+    TopologyControlConfig,
     WattsStrogatzConfig,
     build_mask,
     nominal_density,
@@ -95,6 +96,8 @@ def _density_knob(topology: TopologyConfig) -> str:
             return "n_units (リングは密度を選べません)"
         case DegreePreservingConfig():
             return "topology.base.m (次数列は借りてくる BA が決めます)"
+        case TopologyControlConfig():
+            return "topology.base.density (対照は土台の密度を借ります)"
 
 
 def _validate_deep_config(config: DeepESNConfig, n_inputs: int) -> None:

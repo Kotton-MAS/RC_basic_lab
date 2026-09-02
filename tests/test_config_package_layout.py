@@ -199,6 +199,14 @@ SYMMETRY_ADDITIONS = ("SymmetrySweepConfig",)
 """
 
 
+LADDER_ADDITIONS = ("TopologyLadderConfig",)
+"""3-T (対照の梯子、D-138) で足した公開名。
+
+``make ladder-03`` の設定セクション1つ。本番の ``figures-03`` は読まない
+(``symmetry_sweep`` と同じ扱い)。
+"""
+
+
 TASK_REGISTRY_ADDITIONS = (
     "DelayParityTask",
     "MackeyGlassTask",
@@ -345,6 +353,7 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
         | set(ANOMALY05_ADDITIONS)
         | set(SYMMETRY_ADDITIONS)
         | set(TASK_REGISTRY_ADDITIONS)
+        | set(LADDER_ADDITIONS)
     )
     assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
         "config.__all__ が記録していない公開名を増やしています "
@@ -362,6 +371,7 @@ EXPECTED_ALL: tuple[str, ...] = (
     + ANOMALY05_ADDITIONS
     + SYMMETRY_ADDITIONS
     + TASK_REGISTRY_ADDITIONS
+    + LADDER_ADDITIONS
 )
 """``config.__all__`` に在るべき名前の全体。
 
@@ -405,6 +415,7 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
         | set(ANOMALY05_ADDITIONS)
         | set(SYMMETRY_ADDITIONS)
         | set(TASK_REGISTRY_ADDITIONS)
+        | set(LADDER_ADDITIONS)
     )
 
 

@@ -47,6 +47,7 @@ from rc_basics_lab.config.capacity03 import (
     McSweepConfig,
     Narma10Config,
     SymmetrySweepConfig,
+    TopologyLadderConfig,
 )
 from rc_basics_lab.config.chaos04 import (
     LORENZ_LYAPUNOV_REFERENCE,
@@ -147,6 +148,7 @@ __all__ = [
     "TaskSpec",
     "TimescaleConfig",
     "TimescaleSweepConfig",
+    "TopologyLadderConfig",
     "WashoutSweepConfig",
     "anomaly_stream_seed",
     "esp_stream_seed",

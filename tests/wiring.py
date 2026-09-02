@@ -27,7 +27,7 @@ import dataclasses
 import json
 import pkgutil
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from types import UnionType
 from typing import (
@@ -188,8 +188,37 @@ def leaf_paths(cls: type, prefix: str = "") -> set[str]:
     hints = get_type_hints(cls)
     paths: set[str] = set()
     for item in fields(cast("type[DataclassInstance]", cls)):
-        paths |= _leaf_paths_of(hints[item.name], f"{prefix}{item.name}")
+        path = f"{prefix}{item.name}"
+        default = _default_value(item)
+        if (
+            isinstance(default, tuple | list)
+            and default
+            and _holds_dataclasses(default)
+        ):
+            # **既定の実体から数える** (D-138)。union の要素数で回すと、並びの
+            # 長さと種類が既定と食い違ったときに存在しない葉を作る (梯子は
+            # 5要素 / TopologyConfig は6種類)。
+            for index, element in enumerate(default):
+                paths |= leaf_paths(type(element), f"{path}[{index}].")
+            continue
+        paths |= _leaf_paths_of(hints[item.name], path)
     return paths
+
+
+def _default_value(item: object) -> object:
+    """フィールドの既定値 (無ければ ``MISSING``)。"""
+    factory = getattr(item, "default_factory", MISSING)
+    if factory is not MISSING:
+        return factory()
+    return getattr(item, "default", MISSING)
+
+
+def _holds_dataclasses(values: object) -> bool:
+    """並びの要素がすべて dataclass のインスタンスか。"""
+    return all(
+        dataclasses.is_dataclass(value) and not isinstance(value, type)
+        for value in cast("Sequence[object]", values)
+    )
 
 
 def _leaf_paths_of(annotation: object, path: str) -> set[str]:

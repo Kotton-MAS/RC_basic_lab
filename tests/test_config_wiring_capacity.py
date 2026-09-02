@@ -86,6 +86,7 @@ from rc_basics_lab.config import (
     RidgeConfig,
     SplitConfig,
     SymmetrySweepConfig,
+    TopologyLadderConfig,
     load_config_as,
 )
 from rc_basics_lab.config._dump import as_plain_mapping
@@ -121,6 +122,14 @@ CHANNEL_SYMMETRY = "symmetry"
 ``CHANNEL_TAPS`` と同じ理由で専用チャネルにする —— ``capacity.csv`` に行が
 出ないので ``CHANNEL_ROWS`` では測れないが、**変えたら出力が変わる**ことは
 ここでも実測する (効かないフィールドを ROWS 以外へ逃がす経路を作らない)。
+"""
+
+CHANNEL_LADDER = "ladder"
+"""3-T の対照の梯子 (``capacity_topology.csv``) だけを変える葉 (D-138)。
+
+``CHANNEL_SYMMETRY`` と同じ理由で専用チャネルにする —— ``capacity.csv`` に行が
+出ないので ``CHANNEL_ROWS`` では測れないが、**変えたら出力が変わる**ことは
+ここでも実測する。
 """
 
 CHANNEL_TAPS = "taps"
@@ -281,6 +290,11 @@ def base_config() -> Capacity03Config:
                 ),
             ),
         ),
+        # 3-T は水準5本ぶん回すので、土台の側で秒未満に縮めておく
+        # (ケース側で縮めると、n_units などの葉の効きを打ち消してしまう)
+        topology_ladder=TopologyLadderConfig(
+            n_units=20, n_steps=900, n_graphs=1, n_replicates=1
+        ),
     )
 
 
@@ -367,6 +381,25 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     section_case("length_sweep.n_units", 11, EXPERIMENT_LENGTH_SWEEP),
     # --- 3-C: NARMA10 (系列長は 3-C の行の n_steps を動かす) ---
     # --- 3-S: 駆動入力の対称性 (make symmetry-03。figures-03 には含めない) ---
+    # --- 3-T: 対照の梯子 (make ladder-03。figures-03 には含めない。D-138) ---
+    case("topology_ladder.rho", 0.6, channel=CHANNEL_LADDER),
+    case("topology_ladder.leak_rate", 0.5, channel=CHANNEL_LADDER),
+    case("topology_ladder.sigma_u", 0.5, channel=CHANNEL_LADDER),
+    case("topology_ladder.n_units", 22, channel=CHANNEL_LADDER),
+    case("topology_ladder.n_steps", 1100, channel=CHANNEL_LADDER),
+    case("topology_ladder.n_graphs", 2, channel=CHANNEL_LADDER),
+    case("topology_ladder.n_replicates", 2, channel=CHANNEL_LADDER),
+    # 水準ごとの葉。**どの水準を変えても行が動く**ことを1つずつ測る
+    case("topology_ladder.levels[0].density", 0.3, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[1].base.density", 0.3, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[1].symmetrize", False, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[1].drop_self_loops", True, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[2].base.density", 0.3, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[2].symmetrize", True, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[2].drop_self_loops", False, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[3].base.m", 4, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[3].swaps_per_edge", 1, channel=CHANNEL_LADDER),
+    case("topology_ladder.levels[4].m", 4, channel=CHANNEL_LADDER),
     case("symmetry_sweep.offset_ratio_grid", (0.0, 4.0), channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.rho", 0.6, channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.leak_rate", 0.5, channel=CHANNEL_SYMMETRY),
@@ -429,6 +462,27 @@ def _seed_fingerprints(config: Capacity03Config) -> dict[SeedStream, bytes]:
         stream: make_rng_for(seeds[stream], stream, 0).bytes(_N_BYTES)
         for stream in CAPACITY_SEED_STREAMS
     }
+
+
+def _ladder_fingerprint(config: Capacity03Config) -> str:
+    """3-T の梯子の行の指紋 (実測時間の列は外す)。"""
+    from rc_basics_lab.experiment.topology_ladder import run_topology_ladder
+
+    rows = run_topology_ladder(config)
+    return json.dumps(
+        [
+            [
+                row.level,
+                row.graph,
+                row.replicate,
+                row.nominal_density,
+                round(row.mc_total, 9),
+                round(row.ipc_total, 9),
+            ]
+            for row in rows
+        ],
+        sort_keys=True,
+    )
 
 
 def _symmetry_fingerprint(config: Capacity03Config) -> str:
@@ -537,6 +591,14 @@ def test_each_capacity_parameter_changes_output(
         # 掃引の行が変わり、かつ capacity.csv の行は変わらない
         # (3-S は本番の3掃引を1行も触らない)
         assert _symmetry_fingerprint(changed_config) != _symmetry_fingerprint(base)
+        assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
+            f"{wiring_case.field} が本番の掃引の行まで変えています"
+        )
+        return
+
+    if wiring_case.channel == CHANNEL_LADDER:
+        # 梯子の行が変わり、かつ capacity.csv の行は変わらない
+        assert _ladder_fingerprint(changed_config) != _ladder_fingerprint(base)
         assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
             f"{wiring_case.field} が本番の掃引の行まで変えています"
         )
