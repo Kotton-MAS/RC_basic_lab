@@ -1023,3 +1023,97 @@ def test_row_alignment_lagged_rejects_multi_dimensional_series() -> None:
     series_2d: FloatArray = rng.standard_normal((300, 2))
     with pytest.raises(ValueError, match="1次元"):
         problem.rows.lagged(series_2d, 1)
+
+
+# --- 解析解のオラクル (D-142) --------------------------------------------
+
+_ORACLE_DELAYS = 10
+"""オラクルの遅延線の段数 K。容量の期待値がそのまま K になる。"""
+
+
+def _delay_line(
+    n_steps: int, n_delays: int, seed: int
+) -> tuple[FloatArray, FloatArray]:
+    """**完全な遅延線**の状態行列と駆動入力を返す (D-142)。
+
+    列 ``k`` がちょうど ``u[t-k-1]`` である状態は、遅延 1..K を誤差なく
+    復元でき、K を超える遅延は一切復元できない。したがって
+
+    - ``mc_total`` は**厳密に K**、``mc_profile`` は最初の K 個が 1 で残りが 0
+    - ``ipc_linear`` も**厳密に K**、非線形成分は 0 (線形状態から
+      ルジャンドル2次以上は作れない)
+
+    上限 (``<= N``) や単調性の検査は「容量測定がほぼ死んでいる」状態でも
+    成立し得るが、**絶対値を当てる検査は成立しない**。自前実装で測って
+    いることの弱点はここでしか埋まらない。
+    """
+    rng = np.random.default_rng(seed)
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, (n_steps, 1))
+    states: FloatArray = np.zeros((n_steps, n_delays))
+    for delay in range(n_delays):
+        states[delay + 1 :, delay] = inputs[: n_steps - delay - 1, 0]
+    return states, inputs
+
+
+def _second_degree_only(n_steps: int, seed: int) -> tuple[FloatArray, FloatArray]:
+    """状態が ``P2(u[t-1]) = (3x^2-1)/2`` **1列だけ**の系を返す (D-142)。
+
+    容量は次数2の遅延1に全部乗り、線形成分は 0 になる。次数の分解が
+    ラベルだけの飾りでないことを、次数を1つに絞った系で確かめる。
+    """
+    rng = np.random.default_rng(seed)
+    inputs: FloatArray = rng.uniform(-1.0, 1.0, (n_steps, 1))
+    states: FloatArray = np.zeros((n_steps, 1))
+    states[1:, 0] = 1.5 * inputs[: n_steps - 1, 0] ** 2 - 0.5
+    return states, inputs
+
+
+def test_the_memory_capacity_of_a_perfect_delay_line_is_exactly_its_length() -> None:
+    """完全遅延線の ``mc_total`` が**厳密に段数 K** (D-142)。
+
+    保存則 (``<= N``) と単調性だけでは、容量が体系的に何割か目減りして
+    いても緑で通る。ここは絶対値を当てるので通らない。
+    """
+    states, inputs = _delay_line(8000, _ORACLE_DELAYS, seed=0)
+    result = memory_capacity(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=100, seed=CTX_SEED),
+        cfg=MemoryCapacityConfig(max_delay=40),
+    )
+    scalars = _scalars(result)
+    assert scalars["mc_total"] == pytest.approx(_ORACLE_DELAYS, abs=1.0e-6), (
+        f"完全遅延線 K={_ORACLE_DELAYS} の mc_total が {scalars['mc_total']} です"
+    )
+    profile = result.arrays["mc_profile"]
+    assert profile[:_ORACLE_DELAYS] == pytest.approx(1.0, abs=1.0e-6), (
+        f"遅延 1..{_ORACLE_DELAYS} が 1 になりません: {profile[:_ORACLE_DELAYS]}"
+    )
+    assert profile[_ORACLE_DELAYS:] == pytest.approx(0.0, abs=1.0e-6), (
+        "段数を超えた遅延に容量が立っています (偽陽性)"
+    )
+    assert scalars["mc_effective_delay"] == pytest.approx(
+        (1 + _ORACLE_DELAYS) / 2.0, abs=1.0e-6
+    ), "容量が均等なら重心は (1+K)/2 のはずです"
+
+
+def test_a_purely_quadratic_state_has_no_linear_memory() -> None:
+    """次数2だけの系では ``mc_total`` が 0 (D-142)。
+
+    ``memory_capacity`` は次数1しか測らない。2次の状態から線形記憶を
+    拾ってしまうなら、基底の直交化か行合わせが壊れている。
+
+    厳密な 0 ではなく有限標本の下駄 (実測 T=8000 で 0.00088) を許す。
+    完全遅延線が遅延1本あたり 1.0 を返すのと比べて**3桁小さい**ことが
+    要点で、閾値 0.01 はその間に置いてある。
+    """
+    states, inputs = _second_degree_only(8000, seed=3)
+    result = memory_capacity(
+        states,
+        inputs,
+        ctx=DiagnosticContext(washout=100, seed=CTX_SEED),
+        cfg=MemoryCapacityConfig(max_delay=40),
+    )
+    assert _scalars(result)["mc_total"] < 0.01, (
+        f"2次だけの状態から線形記憶を拾っています: {_scalars(result)['mc_total']}"
+    )

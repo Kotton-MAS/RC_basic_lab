@@ -324,6 +324,7 @@ def base_config() -> Capacity03Config:
                 LadderSweepConfig(axis="n_units", values=(20.0,)),
                 LadderSweepConfig(axis="leak_rate", values=(0.5,)),
                 LadderSweepConfig(axis="rho", values=(0.95,)),
+                LadderSweepConfig(axis="n_steps", values=(900.0,)),
             ),
         ),
     )
@@ -457,6 +458,19 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("topology_ladder.sweeps[1].values", (0.25, 0.75), channel=CHANNEL_LADDER),
     case("topology_ladder.sweeps[2].axis", "sigma_u", channel=CHANNEL_LADDER),
     case("topology_ladder.sweeps[2].values", (0.6, 0.9), channel=CHANNEL_LADDER),
+    # 軸だけを差し替えると値が置き換え先の軸に合わない (n_steps の 900 を
+    # n_units に入れると 900 ユニットのリザバーになる)。軸と値は組で意味を
+    # 持つので、ここだけ2つ同時に動かす (分割比と同じ扱い)。
+    WiringCase(
+        field="topology_ladder.sweeps[3].axis",
+        overrides=(
+            ("topology_ladder.sweeps[3].axis", "n_units"),
+            ("topology_ladder.sweeps[3].values", (22.0,)),
+        ),
+        channel=CHANNEL_LADDER,
+        note="軸と値は組でしか意味を持たない",
+    ),
+    case("topology_ladder.sweeps[3].values", (800.0, 1100.0), channel=CHANNEL_LADDER),
     case("symmetry_sweep.offset_ratio_grid", (0.0, 4.0), channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.rho", 0.6, channel=CHANNEL_SYMMETRY),
     case("symmetry_sweep.leak_rate", 0.5, channel=CHANNEL_SYMMETRY),
@@ -609,8 +623,12 @@ def test_each_capacity_parameter_changes_output(
         round_trip(changed_config, tmp_path, "changed", Capacity03Config)
         == changed_config
     )
-    assert changed_leaves(base, changed_config) == {wiring_case.field}, (
-        f"{wiring_case.field} の差し替えが他の葉にも波及しています"
+    # 動いてよい葉は**ケースが宣言した葉だけ**。ほとんどのケースは1つだが、
+    # 掃引の (軸, 値) のように組でしか意味を持たない葉は2つ宣言する
+    # (分割比と同じ扱い)。宣言の外へ波及したらここで落とす。
+    declared = {path for path, _ in wiring_case.overrides}
+    assert changed_leaves(base, changed_config) == declared, (
+        f"{wiring_case.field} の差し替えが宣言していない葉にも波及しています"
     )
 
     if wiring_case.channel == CHANNEL_SEEDS:

@@ -1,6 +1,6 @@
 {
   "cjk_font": "Hiragino Sans",
-  "commit": "1222dc273dc3971cc06a6b687333e67de7cf94c8",
+  "commit": "f7fb35b426a2f4d4a5a4d0b86ee005a244995ce4",
   "config": {
     "conservation": {
       "leak_rate": 1.0,
@@ -310,6 +310,14 @@
             1.1,
             1.3
           ]
+        },
+        {
+          "axis": "n_steps",
+          "values": [
+            5000.0,
+            20000.0,
+            80000.0
+          ]
         }
       ]
     }
@@ -482,42 +490,42 @@
         "threshold_mode": "surrogate"
       }
     ],
-    "wall_time_s": 3.905374458990991
+    "wall_time_s": 3.87507937499322
   },
-  "timestamp_utc": "2026-09-02T10:30:13.369184+00:00",
+  "timestamp_utc": "2026-09-02T11:51:04.028758+00:00",
   "wall_time_breakdown": [
     {
       "experiment": "3A_mc_sweep",
       "n_conditions": 54,
-      "wall_time_ipc_s": 31.55605679261498,
-      "wall_time_mc_s": 4.275635082507506,
-      "wall_time_s": 43.47980516334064,
-      "wall_time_state_s": 7.64447095640935
+      "wall_time_ipc_s": 31.58898446522653,
+      "wall_time_mc_s": 4.286177789559588,
+      "wall_time_s": 43.48208733089268,
+      "wall_time_state_s": 7.603339039022103
     },
     {
       "experiment": "3B_ipc_sweep",
       "n_conditions": 36,
-      "wall_time_ipc_s": 84.04306587646715,
-      "wall_time_mc_s": 9.358935334719718,
-      "wall_time_s": 109.73701675329357,
-      "wall_time_state_s": 16.329965002834797
+      "wall_time_ipc_s": 84.17723933188245,
+      "wall_time_mc_s": 9.426865457324311,
+      "wall_time_s": 109.8625990014989,
+      "wall_time_state_s": 16.25388966756873
     },
     {
       "experiment": "3Bp_conservation",
       "n_conditions": 27,
-      "wall_time_ipc_s": 256.17552845715545,
-      "wall_time_mc_s": 22.09753241762519,
-      "wall_time_s": 306.4107658774592,
-      "wall_time_state_s": 28.13111291755922
+      "wall_time_ipc_s": 257.47005462506786,
+      "wall_time_mc_s": 22.42888916353695,
+      "wall_time_s": 307.96586395660415,
+      "wall_time_state_s": 28.061101499944925
     },
     {
       "experiment": "3C_narma10",
       "n_conditions": 1,
-      "wall_time_ipc_s": 0.20297237508930266,
-      "wall_time_mc_s": 0.024621875025331974,
-      "wall_time_s": 0.5004749170038849,
-      "wall_time_state_s": 0.049809916876256466
+      "wall_time_ipc_s": 0.2026197500526905,
+      "wall_time_mc_s": 0.024845541920512915,
+      "wall_time_s": 0.4990969579666853,
+      "wall_time_state_s": 0.04893008293583989
     }
   ],
-  "wall_time_s": 475.6462780840229
+  "wall_time_s": 477.25173433288
 }
