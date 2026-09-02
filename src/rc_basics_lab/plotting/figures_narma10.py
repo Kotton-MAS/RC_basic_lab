@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from statistics import mean
 
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
@@ -26,6 +27,7 @@ from rc_basics_lab.plotting.figures_operating import (
     draw_capacity_panel,
     operating_headline,
 )
+from rc_basics_lab.plotting.labels import METHOD_LABELS
 from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 from rc_basics_lab.plotting.narma10_panel import narma10_subtitle
 from rc_basics_lab.plotting.style import (
@@ -41,6 +43,23 @@ from rc_basics_lab.plotting.waveforms import (
     waveform_headline,
 )
 from rc_basics_lab.types import FloatArray
+
+
+def narma10_verdict(rows: Sequence[ResultRow], style: StyleContext) -> str:
+    """報告する1点での勝敗を**行から数えて**返す (固定文にしない)。
+
+    3-C'' のパネルが入った以上、表題は「どちらが勝つか」ではなく
+    「どこで勝つか」を言わなければならない。
+    """
+    means = {
+        method: mean([row.nmse for row in rows if row.method == method])
+        for method in {row.method for row in rows}
+    }
+    best = min(means, key=lambda key: means[key])
+    return style.label(
+        f"この動作点で最良なのは {METHOD_LABELS[best][0]} である",
+        f"the best method at this operating point is {METHOD_LABELS[best][1]}",
+    )
 
 
 def plot_narma10(
@@ -100,10 +119,16 @@ def plot_narma10(
         # ``draw_prediction_waveform`` は渡された軸を ``remove()`` するので、
         # 先に振ると下段の記号が消える (``fig_comparison`` で実際に消えていた)。
         label_panels([control, taps, operating, drawn.top], style=style)
+        # **固定文にしない** (D-145 と同じ規律)。3-C'' のパネルが入った時点で
+        # 「遅延線が ESN を上回る」は (a) の1点でしか正しくなくなった ——
+        # 表題とパネルが食い違う図は、読者に嘘をつく。
         figure.suptitle(
             style.label(
-                "実験 3-C / 3-C': NARMA10 では遅延線が ESN を上回る",
-                "Experiments 3-C / 3-C': on NARMA10 the delay line beats the ESN",
+                "実験 3-C / 3-C' / 3-C'': NARMA10 の勝敗は動作点で決まる\n"
+                f"報告する1点では遅延線が上回るが、{narma10_verdict(rows, style)}",
+                "Experiments 3-C / 3-C' / 3-C'': the NARMA10 winner is set by"
+                " the operating point\nAt the reported point the delay line"
+                f" wins, but {narma10_verdict(rows, style)}",
             )
         )
         # **原典未特定の注を落とさない。** 参照値 (0.16 / 0.107) は出典が

@@ -194,3 +194,26 @@ def test_a_moving_delay_line_is_rejected() -> None:
     axis = Figure().subplots(1, 1)
     with pytest.raises(ValueError, match="動作点で動いています"):
         draw_capacity_panel(axis, rows, _style())
+
+
+def test_the_narma10_title_names_the_winner_from_the_rows() -> None:
+    """``fig_narma10`` の表題が**行から**勝者を数える (D-146)。
+
+    3-C'' のパネルが入った時点で「遅延線が ESN を上回る」は報告する1点で
+    しか正しくなくなった。固定文のままだと表題とパネル (c) が食い違い、
+    図が読者に嘘をつく。ESN の成績を作り変えて表題が追随することを測る。
+    """
+    from test_plotting_capacity import narma10_rows
+
+    from rc_basics_lab.experiment.runner import ResultRow
+    from rc_basics_lab.plotting.figures_narma10 import narma10_verdict
+
+    def rows(esn_nmse: float) -> tuple[ResultRow, ...]:
+        return tuple(
+            dataclasses.replace(row, nmse=esn_nmse) if row.method == "esn" else row
+            for row in narma10_rows()
+        )
+
+    style = _style()
+    assert "遅延線" in narma10_verdict(rows(9.0), style)
+    assert "ESN" in narma10_verdict(rows(0.001), style)
