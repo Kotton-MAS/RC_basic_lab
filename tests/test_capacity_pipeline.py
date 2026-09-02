@@ -38,12 +38,15 @@ from rc_basics_lab.config import (
     ESNConfig,
     IpcConfig,
     IpcSweepConfig,
+    LadderSweepConfig,
     LengthSweepConfig,
     McSweepConfig,
     MemoryCapacityConfig,
     Narma10Config,
+    NarmaOperatingConfig,
     RidgeConfig,
     SplitConfig,
+    TopologyLadderConfig,
     load_config_as,
 )
 from rc_basics_lab.config._dump import as_plain_mapping
@@ -198,6 +201,22 @@ narma:
           topology:
             kind: erdos_renyi
             density: 0.5
+
+# 3-T / 3-C'': **掃引の値は絶対値なので、縮小設定でも明示しないと本番の格子が
+# 走る** (実測 220 秒)。CLI の予算 (20 秒) はここを書き忘れると必ず落ちる。
+topology_ladder:
+  n_units: 10
+  n_steps: 700
+  n_graphs: 1
+  n_replicates: 1
+  sweeps:
+    - axis: n_units
+      values: [8, 10]
+    - axis: rho
+      values: [0.8, 0.95]
+narma_operating:
+  n_units_grid: [20, 30]
+  leak_rate_grid: [0.5, 1.0]
 """
 """縮小設定 (構造は本番と同じ)。本番は 330 秒かかるため CLI テストでは使わない。"""
 
@@ -212,11 +231,29 @@ EXPECTED_ROWS = EXPECTED_SWEEP_ROWS + EXPECTED_NARMA_ROWS
 
 
 def tiny_config() -> Capacity03Config:
-    """``TINY_CONFIG`` と同じ内容の設定オブジェクト (YAML を経由しない版)。"""
+    """``TINY_CONFIG`` と同じ内容の設定オブジェクト (YAML を経由しない版)。
+
+    **``topology_ladder`` / ``narma_operating`` を必ず縮める。** 掃引の値は
+    絶対値なので、書かないと既定 (N=25/50/100・T=5000/20000/80000) がそのまま
+    走る —— 実測でこのテストが 220 秒かかった (D-146)。
+    """
     return Capacity03Config(
         name="capacity_cli_smoke",
         drive=CapacityDriveConfig(distribution="uniform", washout=40),
         reservoir=CapacityReservoirConfig(input_scale=1.0, density=0.3, n_replicates=2),
+        topology_ladder=TopologyLadderConfig(
+            n_units=20,
+            n_steps=700,
+            n_graphs=1,
+            n_replicates=1,
+            sweeps=(
+                LadderSweepConfig(axis="n_units", values=(16.0, 20.0)),
+                LadderSweepConfig(axis="rho", values=(0.8, 0.95)),
+            ),
+        ),
+        narma_operating=NarmaOperatingConfig(
+            n_units_grid=(20, 30), leak_rate_grid=(0.5, 1.0)
+        ),
         mc_sweep=McSweepConfig(
             rho_grid=(0.5, 0.95),
             leak_rate_grid=(1.0,),
@@ -963,8 +1000,19 @@ def test_production_profile_rows_are_positive_and_reference_the_same_conditions(
 
 
 def test_run_and_report_capacity_returns_what_it_wrote(tmp_path: Path) -> None:
-    """戻り値の行と書き出した CSV の行数が一致する (図 (T3) が読むのは戻り値)。"""
+    """戻り値の行と書き出した CSV の行数が一致する (図 (T3) が読むのは戻り値)。
+
+    **予算も同時に見る。** 掃引の値は絶対値なので、縮小設定の節を書き忘れると
+    ここだけが静かに 220 秒になる (実測、D-146)。行数の検査は通ったままなので、
+    時間を見ないと気づけない。
+    """
+    started = time.perf_counter()
     outputs = run_and_report_capacity(tiny_config(), tmp_path)
+    elapsed = time.perf_counter() - started
+    assert elapsed < CLI_BUDGET_S, (
+        f"縮小設定の合成層が {elapsed:.1f}s かかりました "
+        "(topology_ladder / narma_operating を縮め忘れていませんか)"
+    )
     assert len(outputs.rows) == EXPECTED_ROWS
     assert len(_read_csv(tmp_path / CAPACITY_CSV)) == EXPECTED_ROWS
     assert len(_read_csv(tmp_path / CAPACITY_PROFILE_CSV)) == len(outputs.profile_rows)

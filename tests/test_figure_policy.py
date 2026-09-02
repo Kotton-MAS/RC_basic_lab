@@ -37,6 +37,7 @@ from test_plotting_capacity import (
     conservation_rows,
     ipc_sweep_profile,
     ipc_sweep_rows,
+    ladder_rows,
     mc_sweep_profile,
     mc_sweep_rows,
     narma10_rows,
@@ -239,7 +240,9 @@ def test_literature_reference_lines_carry_their_source_in_the_legend(
     """
     mc_rows = mc_sweep_rows()
     plot_mc_sweep(mc_rows, mc_sweep_profile(mc_rows), tmp_path / "a.png", style=CONTEXT)
-    plot_ipc_conservation(conservation_rows(), tmp_path / "b.png", style=CONTEXT)
+    plot_ipc_conservation(
+        conservation_rows(), ladder_rows(), tmp_path / "b.png", style=CONTEXT
+    )
     plot_narma10_control(narma10_rows(), tmp_path / "c.png", style=CONTEXT)
     assert len(capture_figures) == 3
 
@@ -251,8 +254,8 @@ def test_literature_reference_lines_carry_their_source_in_the_legend(
         for label in labels:
             assert CITATION.search(label), f"参照線に出典がありません: {label!r}"
         checked |= labels
-    # 3-A に1本 + 3-B' に1本 + 3-C に2本
-    assert len(checked) == 4, f"検査した参照線が {sorted(checked)} です"
+    # 3-A に1本 + 3-B' に1本 + **3-T に1本** + 3-C に2本
+    assert len(checked) == 5, f"検査した参照線が {sorted(checked)} です"
 
 
 def test_cited_refuses_a_reference_line_without_a_source() -> None:

@@ -80,6 +80,10 @@ from rc_basics_lab.experiment.symmetry import (
     even_degree_share_at_offset,
     run_symmetry_sweep,
 )
+from rc_basics_lab.experiment.topology_ladder import (
+    TOPOLOGY_LADDER_CSV_COLUMNS,
+    run_topology_ladder,
+)
 from rc_basics_lab.experiment.waveform_data import waveform_predictions
 
 logger = logging.getLogger(__name__)
@@ -96,12 +100,20 @@ FIG_MEMORY_NONLINEARITY = "fig_memory_nonlinearity.png"
 FIG_IPC_CONSERVATION = "fig_ipc_conservation.png"
 FIG_NARMA10 = "fig_narma10.png"
 
+CAPACITY_TOPOLOGY_CSV = "capacity_topology.csv"
+"""3-T の成果物。**ここが単一の真実** (``ladder_pipeline`` が読む)。"""
+
+NARMA10_OPERATING_CSV = "narma10_operating.csv"
+"""3-C'' の成果物。"""
+
 CAPACITY_ARTIFACTS: tuple[str, ...] = (
     CAPACITY_CSV,
     CAPACITY_PROFILE_CSV,
     DIAGNOSTICS_CSV,
     NARMA10_CSV,
     NARMA10_TAPS_CSV,
+    CAPACITY_TOPOLOGY_CSV,
+    NARMA10_OPERATING_CSV,
     FIG_MC_SWEEP,
     FIG_IPC_PROFILE,
     FIG_MEMORY_NONLINEARITY,
@@ -322,6 +334,12 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
             "掃引を止めたい場合も、意図を config に書いて格子を与えてください。"
         )
     taps = run_narma10_tap_sweep(config)
+    # 3-T / 3-C'' は記事の図のパネルになったので、**本番の成果物に含める**
+    # (D-146)。手動実行 (ladder-03 / operating-03) は残すが、一斉再生成では
+    # ここが単一の producer である —— 2箇所で同じ CSV を書くと、どちらが
+    # 最後に走ったかで成果物が変わる。
+    ladder = run_topology_ladder(config)
+    operating = run_narma10_operating_sweep(config)
     # 受け入れ条件3 の一次資料。掃引とは別の1条件を回すので
     # wall_time_breakdown (実験ごとの内訳) には入らず、自分の wall_time_s を
     # threshold_comparison の中に持つ (全体の wall_time_s には含まれる)。
@@ -359,6 +377,12 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         # 3-C 専用の書き出しを作ると列順の単一の真実が2つになる (D-31)。
         write_comparison_csv(narma.rows, out_dir / NARMA10_CSV),
         write_rows_csv(taps, out_dir / NARMA10_TAPS_CSV, NARMA10_TAPS_CSV_COLUMNS),
+        write_rows_csv(
+            ladder, out_dir / CAPACITY_TOPOLOGY_CSV, TOPOLOGY_LADDER_CSV_COLUMNS
+        ),
+        write_rows_csv(
+            operating, out_dir / NARMA10_OPERATING_CSV, OPERATING_CSV_COLUMNS
+        ),
         plot_mc_sweep(
             _rows_of(results.mc_sweep),
             _profile_of(results.mc_sweep),
@@ -383,6 +407,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         ),
         plot_ipc_conservation(
             _rows_of(results.conservation),
+            ladder,
             out_dir / FIG_IPC_CONSERVATION,
             style=style,
         ),
@@ -390,6 +415,7 @@ def run_and_report_capacity(config: Capacity03Config, out_dir: Path) -> Capacity
         plot_narma10(
             narma.rows,
             taps,
+            operating,
             waveform_predictions(config.narma.base, narma.plan0, "narma10"),
             out_dir / FIG_NARMA10,
             style=style,
@@ -469,7 +495,6 @@ def write_symmetry_csv(rows: Sequence[SymmetryRow], path: Path) -> Path:
     return write_rows_csv(rows, path, SYMMETRY_CSV_COLUMNS)
 
 
-NARMA10_OPERATING_CSV = "narma10_operating.csv"
 """3-C'' の成果物 (``results/03_capacity/`` 配下)。"""
 
 

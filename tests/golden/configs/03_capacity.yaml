@@ -143,3 +143,28 @@ narma:
           density: 0.2
         activation: tanh
         state_noise: 0.0
+
+# 3-T / 3-C'': **縮小設定でも掃引の値は絶対値なので、明示しないと本番の格子が
+# 走る** (n_units 25/50/100、T 5000/20000/80000 で実測 22 分)。ゴールデンは
+# 秒未満で回る格子を書き下す。
+topology_ladder:
+  n_units: 25
+  n_steps: 900
+  n_graphs: 1
+  n_replicates: 1
+  # N を 12 まで落とすと ER のマスクが全ゼロになり
+  # 「生成した W のスペクトル半径が 0」で落ちる (実測)。
+  sweeps:
+    - axis: n_units
+      values: [20, 25]
+    - axis: rho
+      values: [0.8, 0.95]
+narma_operating:
+  # N=6 だと ER のマスクが全ゼロになり得る (実測で落ちた)。
+  n_units_grid: [20, 30]
+  leak_rate_grid: [0.5, 1.0]
+ladder_threshold:
+  n_surrogates_grid: [5]
+  quantile_grid: [0.9]
+  n_graphs: 1
+  n_replicates: 1

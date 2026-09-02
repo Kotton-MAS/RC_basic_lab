@@ -17,6 +17,9 @@ from pathlib import Path
 from statistics import mean
 
 from rc_basics_lab.config import Capacity03Config
+from rc_basics_lab.experiment.capacity_pipeline import (
+    CAPACITY_TOPOLOGY_CSV,
+)
 from rc_basics_lab.experiment.ladder_threshold import (
     LADDER_THRESHOLD_CSV_COLUMNS,
     LadderThresholdRow,
@@ -30,9 +33,6 @@ from rc_basics_lab.experiment.topology_ladder import (
 )
 
 logger = logging.getLogger(__name__)
-
-CAPACITY_TOPOLOGY_CSV = "capacity_topology.csv"
-"""3-T の成果物 (``results/03_capacity/`` 配下)。"""
 
 CAPACITY_TOPOLOGY_THRESHOLD_CSV = "capacity_topology_threshold.csv"
 """3-Th の成果物 (``results/03_capacity/`` 配下)。"""
