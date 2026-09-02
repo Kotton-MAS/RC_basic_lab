@@ -14,7 +14,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from rc_basics_lab.config.capacity03_ladder import TopologyLadderConfig
+from rc_basics_lab.config.capacity03_ladder import (
+    LadderThresholdConfig,
+    TopologyLadderConfig,
+)
 from rc_basics_lab.config.experiment01 import ExperimentConfig
 from rc_basics_lab.diagnostics.ipc import IpcConfig
 from rc_basics_lab.diagnostics.memory_capacity import MemoryCapacityConfig
@@ -271,6 +274,9 @@ class Capacity03Config:
     length_sweep: LengthSweepConfig = field(default_factory=LengthSweepConfig)
     symmetry_sweep: SymmetrySweepConfig = field(default_factory=SymmetrySweepConfig)
     topology_ladder: TopologyLadderConfig = field(default_factory=TopologyLadderConfig)
+    ladder_threshold: LadderThresholdConfig = field(
+        default_factory=LadderThresholdConfig
+    )
     mc: MemoryCapacityConfig = field(default_factory=MemoryCapacityConfig)
     ipc: IpcConfig = field(default_factory=IpcConfig)
     narma: Narma10Config = field(default_factory=Narma10Config)

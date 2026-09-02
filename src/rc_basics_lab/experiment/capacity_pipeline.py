@@ -23,7 +23,6 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from statistics import mean
 
 from rc_basics_lab.config import Capacity03Config
 from rc_basics_lab.experiment.capacity import (
@@ -75,11 +74,6 @@ from rc_basics_lab.experiment.symmetry import (
     even_degree_share_at_offset,
     run_symmetry_sweep,
 )
-from rc_basics_lab.experiment.topology_ladder import (
-    TOPOLOGY_LADDER_CSV_COLUMNS,
-    TopologyLadderRow,
-    run_topology_ladder,
-)
 from rc_basics_lab.experiment.waveform_data import waveform_predictions
 
 logger = logging.getLogger(__name__)
@@ -88,7 +82,6 @@ CAPACITY_CSV = "capacity.csv"
 CAPACITY_PROFILE_CSV = "capacity_profile.csv"
 CAPACITY_LENGTH_CSV = "capacity_length.csv"
 CAPACITY_SYMMETRY_CSV = "capacity_symmetry.csv"
-CAPACITY_TOPOLOGY_CSV = "capacity_topology.csv"
 NARMA10_CSV = "narma10.csv"
 NARMA10_TAPS_CSV = "narma10_taps.csv"
 FIG_MC_SWEEP = "fig_mc_sweep.png"
@@ -468,55 +461,6 @@ def run_and_report_length_sweep(config: Capacity03Config, out_dir: Path) -> Path
 def write_symmetry_csv(rows: Sequence[SymmetryRow], path: Path) -> Path:
     """3-S の結果を CSV に書く (列順は ``SymmetryRow`` の宣言順)。"""
     return write_rows_csv(rows, path, SYMMETRY_CSV_COLUMNS)
-
-
-def _ladder_group(row: TopologyLadderRow) -> tuple[str, float, str]:
-    """log をまとめる単位 (掃引軸, その値, 水準)。
-
-    掃引した値は**行の既存の列から読む** (``n_units`` を振ったなら
-    ``n_units`` 列)。専用の値の列を作らないのは、CSV だけを見た人が
-    「何を振ったのか」を設定と突き合わせずに読めるようにするためである。
-    """
-    if not row.sweep_axis:
-        return ("", 0.0, row.level)
-    return (row.sweep_axis, float(getattr(row, row.sweep_axis)), row.level)
-
-
-def run_and_report_topology_ladder(config: Capacity03Config, out_dir: Path) -> Path:
-    """対照の梯子を回し ``capacity_topology.csv`` に書く (3-T、D-138)。
-
-    本体の成果物とは独立に走る (``CAPACITY_ARTIFACTS`` に含めない)。
-    ``make ladder-03`` として手動実行する (``symmetry-03`` と同じ扱い)。
-
-    水準ごとの平均を log に出す —— **CSV を開かなくても梯子の形が読める**
-    ようにするためで、判定 (対応のある検定) は行を読む側の仕事である。
-    """
-    started = time.perf_counter()
-    rows = run_topology_ladder(config)
-    path = write_rows_csv(
-        rows, out_dir / CAPACITY_TOPOLOGY_CSV, TOPOLOGY_LADDER_CSV_COLUMNS
-    )
-    for key in dict.fromkeys(_ladder_group(row) for row in rows):
-        selected = [row for row in rows if _ladder_group(row) == key]
-        axis, value, level = key
-        where = f"{axis}={value:g} " if axis else ""
-        logger.info(
-            "3-T %s%s: MC=%.3f IPC=%.3f (線形 %.3f / 非線形 %.3f) n=%d",
-            where,
-            level,
-            mean(row.mc_total for row in selected),
-            mean(row.ipc_total for row in selected),
-            mean(row.ipc_linear for row in selected),
-            mean(row.ipc_nonlinear for row in selected),
-            len(selected),
-        )
-    logger.info(
-        "対照の梯子: %d 行 / wall_time=%.2fs / 出力=%s",
-        len(rows),
-        time.perf_counter() - started,
-        path,
-    )
-    return path
 
 
 def run_and_report_symmetry_sweep(config: Capacity03Config, out_dir: Path) -> Path:

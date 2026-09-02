@@ -232,6 +232,15 @@ narma:
 #
 # 密度は 2m/N = 0.08 で全水準そろえる (揃えないと「密度が違うから容量が違う」
 # という一番つまらない交絡が最初に効く)。
+# 3-Th: 梯子の結論が閾値の選び方で動かないことの実測 (D-143)。
+# make ladder-threshold-03 で手動実行する。
+ladder_threshold:
+  n_surrogates_grid: [25, 100, 400]
+  quantile_grid: [0.95, 0.99, 0.999]
+  include_no_threshold: true
+  n_graphs: 4
+  n_replicates: 2
+
 topology_ladder:
   rho: 0.95
   leak_rate: 1.0

@@ -50,6 +50,7 @@ from rc_basics_lab.config.capacity03 import (
 )
 from rc_basics_lab.config.capacity03_ladder import (
     LadderSweepConfig,
+    LadderThresholdConfig,
     TopologyLadderConfig,
 )
 from rc_basics_lab.config.chaos04 import (
@@ -132,6 +133,7 @@ __all__ = [
     "IpcConfig",
     "IpcSweepConfig",
     "LadderSweepConfig",
+    "LadderThresholdConfig",
     "LengthSweepConfig",
     "LorenzConfig",
     "LyapunovConfig",
