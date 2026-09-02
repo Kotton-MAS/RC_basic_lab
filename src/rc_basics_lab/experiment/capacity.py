@@ -75,6 +75,7 @@ from rc_basics_lab.experiment.esp import (
     ReferenceTrajectory,
     simulate_reference_trajectory,
 )
+from rc_basics_lab.experiment.graph_diagnostics import graph_diagnostics
 from rc_basics_lab.types import FloatArray
 
 logger = logging.getLogger(__name__)
@@ -416,7 +417,7 @@ def evaluate_capacity_condition(
         row.wall_time_mc_s,
         row.wall_time_ipc_s,
     )
-    return capacity_outcome_from(measurement, row)
+    return capacity_outcome_from(measurement, row, graph_diagnostics(reference.esn))
 
 
 def n_replicates_for(config: Capacity03Config, experiment: str) -> int:

@@ -14,10 +14,18 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from rc_basics_lab.config import ExperimentConfig
+from rc_basics_lab.experiment.diagnostics_rows import (
+    DIAGNOSTICS_CSV,
+    DiagnosticScalarRow,
+    condition_key,
+    scalar_rows,
+    write_diagnostics_csv,
+)
 from rc_basics_lab.experiment.horizon import CSV_COLUMNS as HORIZON_CSV_COLUMNS
 from rc_basics_lab.experiment.horizon import TASK_NAME as HORIZON_TASK
 from rc_basics_lab.experiment.horizon import run_horizon, summarize_horizon
@@ -62,6 +70,7 @@ ARTIFACTS: tuple[str, ...] = (
     COMPARISON_CSV,
     COMPARISON_SUMMARY_CSV,
     HORIZON_CSV,
+    DIAGNOSTICS_CSV,
     FIG_COMPARISON,
     FIG_STATE_WAVEFORM,
     FIG_STATE_SPACE,
@@ -149,6 +158,26 @@ def _waveform_panels(
     return tuple(panels)
 
 
+def _state_space_rows(
+    reports: Sequence[StateSpaceReport],
+) -> tuple[DiagnosticScalarRow, ...]:
+    """状態空間の診断を長形式の行へ畳む (D-118)。
+
+    条件キーの軸は課題名だけである —— 01 は構造ハイパーパラメータを振らない
+    (D-08) ので、条件を分けているのは「どの課題か」しかない。
+    """
+    return tuple(
+        row
+        for report in reports
+        for row in scalar_rows(
+            report.diagnostics,
+            experiment=report.task,
+            condition_id=condition_key({"task": report.task}),
+            replicate=report.replicate,
+        )
+    )
+
+
 def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs:
     """実験を実行し、CSV2枚・図2枚・meta.json を書き出す。
 
@@ -190,6 +219,8 @@ def run_and_report(config: ExperimentConfig, out_dir: Path) -> ExperimentOutputs
         write_comparison_csv(rows, out_dir / COMPARISON_CSV),
         write_comparison_summary_csv(stats, out_dir / COMPARISON_SUMMARY_CSV),
         write_rows_csv(horizon_rows, out_dir / HORIZON_CSV, HORIZON_CSV_COLUMNS),
+        # 診断のスカラは長形式へ (D-118)。01 は状態空間 PCA と活性度を測っている。
+        write_diagnostics_csv(_state_space_rows(reports), out_dir),
         # FIG-12: 波形と自走 (01') は単独図をやめ、比較図のパネルへ。
         plot_comparison(
             rows,

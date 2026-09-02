@@ -3,11 +3,12 @@
     "01_what_is_rc": {
       "comparison.csv": "sha256:566057abfa06e83816cadc031b1440045b255eaed549ffc7051dea58970581c0",
       "comparison_summary.csv": "sha256:42adbd744790cf55b01102aa8242e8e4412af072192c14055246266c3924184d",
+      "diagnostics.csv": "sha256:91e3dc8603c3e682df220cceb361f2a957fcabffa4952498c74eec04bd478228",
       "fig_comparison.png": "sha256:f2d30abd2606768ab37ff03d3ee42292d00f12428d074619e3c189a71519f7d5",
       "fig_state_space.png": "sha256:e41fd0661930ebf85bc07155f8764ab6389421dc796ea3891265f84e3b4f816a",
       "fig_state_waveform.png": "sha256:bdadc125213beee03e7cd52db58b8b48dda0ebd9ee8cef0cdb22a59fc7959794",
       "horizon.csv": "sha256:a33cd564f319703bc44e583aa6ebb8e17034f3959ac535f243fc15093d9d8e7d",
-      "meta.json": "sha256:d2d6029c4e3951973719269a58474605707b621501125323f800b7fd207caf62"
+      "meta.json": "sha256:3ea4bb56e735c26956f812ed4891957f237782feb6549ccf17f1fd93fbd94b1b"
     },
     "02_esp_and_dynamics": {
       "diagnostics.csv": "sha256:5fec77ac5ed2b018f49f459005a195a5386536c057fdc18acf90febeb9b0a0fe",
@@ -17,20 +18,20 @@
       "fig_esp_map.png": "sha256:93e4efd0764cede50802f569802029c174e86026acee8568ccf11186bd91bc33",
       "fig_leak_timescale.png": "sha256:a3248bd0b68caadd61a6cb6a68349ca2fcbf0888c7a03fd1ea4d788c49404a56",
       "fig_washout_sensitivity.png": "sha256:f8ad86c903f76ad7ee70448d80fc9eccc1993acb1a758eb5caabb9e8bc8bbd27",
-      "meta.json": "sha256:9c8499551e40ce24ddd190d96ad1ecac02173d371f0bbc06cf16c9af6b6d9589",
+      "meta.json": "sha256:221ce1c6213f984a9f30ed59fd53b1defb4df06ebb53bbd3536bcaa2e20cecbb",
       "washout_sensitivity.csv": "sha256:4a2c44d4e21eb798b92c89388cabe93d263db5c760c85fe89bef1f5067448a4d"
     },
     "03_capacity": {
       "capacity.csv": "sha256:2fb5a5902244f5857ff734e3c440f43e4444bbf788587fe7f1a7a0dfb81499a6",
       "capacity_length.csv": "sha256:bc74333a05241b03987e5f67955b0806a61c95e31f13041caf099443637a27ca",
       "capacity_profile.csv": "sha256:b196cc0466746c6738592ac9141f20bbe35c82851a8596a5160029a887cbff4a",
-      "diagnostics.csv": "sha256:e9446fc18cb8fa37758328fe9efd044b8627174587a660e82bfb9ddc2c9ef854",
+      "diagnostics.csv": "sha256:7587a5f80a19e82c5811f5d1573e52f77364eda4346346ec105888220cb59e62",
       "fig_ipc_conservation.png": "sha256:ec7388f248ee630aa98a0f87eb94d65be8bed7b7d829d1da8e2489a8c008ff27",
       "fig_ipc_profile.png": "sha256:281d32fd163b8f4597f44235592099c82435cf1ccad94c754c30e35f875541a2",
       "fig_mc_sweep.png": "sha256:629fbae4ec638e966728eab9fe53c2997bf9dedb1f6dd654d8622d94a9209bc2",
       "fig_memory_nonlinearity.png": "sha256:a96f8570e1ab106874500cc1f9b6578c61817f7994ddb22ffb71840c3dea7733",
       "fig_narma10.png": "sha256:295fa968e4b33685d7814639dc4c2ed38d471ea023bdf8b4f6916c8e6568427e",
-      "meta.json": "sha256:c2559efac2cd455dc8fa18b738c1e21263f737cb092486662e25dff08088f332",
+      "meta.json": "sha256:21d72106b4913898b8a9cc38eb764e292751948344e170353a015db27e4afb12",
       "narma10.csv": "sha256:eaf1ccb7adba69785cf50b3ccc9bb85e97dee93e395f691351a797ad1b36124e",
       "narma10_taps.csv": "sha256:92ca3189b69f1f8366bf82c26ea3f3fa5538b9e3d125d80a5971884d050cce41"
     },
@@ -44,7 +45,7 @@
       "fig_valid_time.png": "sha256:33fe42c61a11b0232881d342e4dff1535fa2e414a4ac28bc5dc7477a1c153697",
       "freerun.csv": "sha256:a64527beaee767d8ecf64a732fca2fec38eca3d3dce3ae5c108d8e54638a6cc2",
       "freerun_profile.csv": "sha256:f6d53207fde0eead81e7d57532fe855f48a0d6aef10a588a3ba5ed1257f118e2",
-      "meta.json": "sha256:370faa46de0e48123fdcbf643b09e6789d44a6258ede0e99ed5e47a053738889",
+      "meta.json": "sha256:a03b30dc618347d616ff0632bedc713e1867b9e1f4af4d6f53d971a2780cb300",
       "onestep.csv": "sha256:d20b164c1279eeac828c6535883690abf56102c777c5dbb3de78e163e8475737",
       "stability.csv": "sha256:bd25566a356e0c96b320426ff79d15519bfaa3d0c6d6a3e74fafc5cb1b665939"
     }

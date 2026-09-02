@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, fields
 
 from rc_basics_lab.config import Capacity03Config
@@ -417,7 +418,9 @@ def capacity_row_from(
 
 
 def capacity_outcome_from(
-    measurement: CapacityMeasurement, row: CapacityRow
+    measurement: CapacityMeasurement,
+    row: CapacityRow,
+    graph: Sequence[DiagnosticResult] = (),
 ) -> CapacityOutcome:
     """行と測定結果から ``CapacityOutcome`` を組む (図が使う配列を積み替える)。
 
@@ -431,8 +434,12 @@ def capacity_outcome_from(
         row=row,
         # 診断のスカラは長形式へ逃がす (D-118)。主表 (capacity.csv) の 39 列は
         # 1つも動かさないので、診断を足しても指紋も golden も動かない。
+        # graph は W を取る族 (D-122)。**条件キーは他の診断と同じ**にする ——
+        # トポロジは今この実験では振っていない軸なので条件キーに現れない
+        # (振る実験を作れば他の軸と同じように現れる)。どのトポロジだったかは
+        # meta.json が判別子つきで記録している (D-129)。
         diagnostics=scalar_rows(
-            (measurement.mc, measurement.ipc),
+            (measurement.mc, measurement.ipc, *graph),
             experiment=row.experiment,
             condition_id=condition_key(
                 {

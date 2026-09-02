@@ -16,14 +16,20 @@ from rc_basics_lab.overrides import KIND_KEY
 def as_plain_mapping(config: object) -> dict[str, object]:
     """設定 dataclass を、**そのまま読み直せる**マッピングへ落とす (D-123)。
 
-    ``dataclasses.asdict`` との違いは1点だけで、**リストの要素には ``kind`` を
-    書く**。単一フィールドの union は「書かなければ先頭」という既定があるので
-    位置から型が決まるが、リストの要素は位置では決まらない ——
-    ``asdict`` の結果をそのまま読み直すと、2番目の課題が先頭の型
-    (Mackey-Glass) として作られ、未知キーで落ちる。
+    ``dataclasses.asdict`` との違いは1点で、**判別子を名乗る dataclass には
+    ``kind`` を書く** (D-129)。``asdict`` は ``KIND`` が ``ClassVar`` なので
+    落としてしまい、結果は**どの型だったかを復元できない**:
 
-    単一フィールドに ``kind`` を書かないのは既存の ``meta.json`` を動かさない
-    ためである (``KIND_KEY`` の注を参照)。
+    - ``RingTopologyConfig`` はフィールドが0個なので ``{}`` になり情報がゼロ
+    - ``RingConfig`` (SCR) と ``ESNConfig`` は ``topology`` の有無でしか
+      区別できない
+    - リストの要素は位置でも型が決まらないので、2番目の課題が先頭の型
+      (Mackey-Glass) として読み直され、未知キーで落ちる
+
+    かつては**単一フィールドには書かなかった** —— 既存の ``meta.json`` を
+    動かさないためである。モデルが1種類しかなく ``kind`` が飾りだった頃は
+    それでよかったが、``kind`` を振ることがこのリポジトリの主題になった時点で
+    前提が消えた (D-129)。
 
     Args:
         config: frozen dataclass のインスタンス。
@@ -38,10 +44,11 @@ def as_plain_mapping(config: object) -> dict[str, object]:
 
 
 def _plain(value: object, *, in_sequence: bool) -> object:
+    del in_sequence  # 判別子は位置によらず常に書く (D-129)
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         body: dict[str, object] = {}
         kind = kind_of(type(value))
-        if in_sequence and kind is not None:
+        if kind is not None:
             body[KIND_KEY] = kind
         for item in dataclasses.fields(value):
             body[item.name] = _plain(getattr(value, item.name), in_sequence=False)

@@ -13,16 +13,17 @@ help:
 	@echo "  golden       - Byte-invariance of REGENERATED artifacts (01-04, seconds)"
 	@echo "  golden-update - Re-record the golden baseline (tests/golden/manifest.json)"
 	@echo ""
-	@echo "  手元で条件を振るときは make ではなく run スクリプトを直接:"
-	@echo "    uv run python experiments/03_capacity/run_03.py --preset quick"
-	@echo "    uv run python experiments/03_capacity/run_03.py --set mc_sweep.n_units=50"
+	@echo "  手元で条件を振るときは main.py を直接:"
+	@echo "    uv run python main.py --experiment 03 --preset quick"
+	@echo "    uv run python main.py --experiment 03 --set mc_sweep.n_units=50"
 	@echo "  出力は scratch/ に出る (results/ は成果物なので触らない)。docs/guide/条件を変えて試す.md"
 	@echo ""
-	@echo "  figures-01   - Regenerate results/ for experiment 01 (CSV + 2 figures + meta)"
-	@echo "  figures-02   - Regenerate results/ for experiment 02 (2 CSV + 4 figures + meta)"
-	@echo "  figures-03   - Regenerate results/ for experiment 03 (4 CSV + 6 figures + meta)"
-	@echo "  figures-04   - Regenerate results/ for experiment 04 (5 CSV + 5 figures + meta)"
-	@echo "  figures-05   - Regenerate results/ for experiment 05 (5 CSV + 5 figures + meta; needs data-05)"
+	@# 実験の行は CATALOG から出す。手書きの表は写経を忘れた時点で嘘になる (D-125)
+	@uv run python -c "from rc_basics_lab.experiment.catalog import CATALOG; \
+	  [print(f'  figures-{s.number}   - Regenerate {s.results_dir.name}/ ' \
+	         f'({sum(1 for a in s.artifacts if a.endswith(\".csv\"))} CSV + ' \
+	         f'{sum(1 for a in s.artifacts if a.endswith(\".png\"))} figures + meta' \
+	         + (\"; needs data-05\" if s.number == \"05\" else \"\") + ')') for s in CATALOG]"
 	@echo "  data-05      - Download + verify (SHA256) the experiment 05 datasets into data/"
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"

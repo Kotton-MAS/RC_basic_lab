@@ -718,3 +718,30 @@ def test_externally_built_states_can_produce_a_capacity_row() -> None:
     )
     # D-35 は外部生成の X にも効く (measure_capacity が塞ぐ)
     assert states.flags.writeable is False
+
+
+def test_the_capacity_rows_carry_the_topology_diagnostics() -> None:
+    """1条件の ``diagnostics`` に W を取る族の行が入る (D-132)。
+
+    道具 (``diagnostics/topology.py``) だけあって配線が無いと、``results/`` に
+    トポロジ由来の行が1行も出ない。**配線が在ることをここで固定する。**
+    """
+    config = base_config()
+    condition = CapacityCondition(
+        experiment=EXPERIMENT_MC_SWEEP,
+        replicate=0,
+        rho=0.9,
+        leak_rate=1.0,
+        sigma_u=0.1,
+        n_units=20,
+        state_noise=0.0,
+        n_steps=600,
+    )
+    outcome = evaluate_capacity_condition(config, condition)
+    names = {row.diagnostic for row in outcome.diagnostics}
+    assert {"degree_distribution", "spectral_profile", "small_world"} <= names, (
+        f"トポロジ診断の行がありません: {sorted(names)}"
+    )
+    # 条件キーは他の診断と同じ (トポロジは振っていない軸なので現れない)
+    keys = {row.condition_id for row in outcome.diagnostics}
+    assert len(keys) == 1, f"条件キーが割れています: {keys}"

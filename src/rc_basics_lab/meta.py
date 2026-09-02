@@ -19,6 +19,7 @@ import scipy
 
 from rc_basics_lab import __version__
 from rc_basics_lab.config import ExperimentConfig
+from rc_basics_lab.config._dump import as_plain_mapping
 
 UNKNOWN = "unknown"
 """git 情報を取得できなかったときのフォールバック値。"""
@@ -54,10 +55,17 @@ def git_commit() -> str:
 
 
 def _as_dict(value: object, label: str) -> dict[str, object]:
-    """dataclass インスタンスをプレーンな dict にする (``Any`` を書かずに)。"""
+    """dataclass インスタンスを**読み直せる** dict にする (D-129)。
+
+    ``dataclasses.asdict`` ではなく ``as_plain_mapping`` を通す。前者は
+    ``KIND`` が ``ClassVar`` なので落としてしまい、``meta.json`` から
+    「どのモデル・どの課題・どのトポロジだったか」が復元できなくなる。
+    ``results/`` は読者に届く唯一のものであり、``meta.json`` はその素性の記録
+    である —— 素性が読めない記録は記録として弱い。
+    """
     if not dataclasses.is_dataclass(value) or isinstance(value, type):
         raise TypeError(f"{label} は dataclass のインスタンスが必要です: {value!r}")
-    return dataclasses.asdict(value)
+    return as_plain_mapping(value)
 
 
 def collect_meta_for(config: object, seeds: object) -> dict[str, object]:
