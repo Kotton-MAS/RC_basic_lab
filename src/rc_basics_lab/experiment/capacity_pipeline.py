@@ -469,6 +469,9 @@ def write_symmetry_csv(rows: Sequence[SymmetryRow], path: Path) -> Path:
     return write_rows_csv(rows, path, SYMMETRY_CSV_COLUMNS)
 
 
+FIG_OPERATING = "fig_narma10_operating.png"
+"""3-C'' の図 (D-145)。"""
+
 NARMA10_OPERATING_CSV = "narma10_operating.csv"
 """3-C'' の成果物 (``results/03_capacity/`` 配下)。"""
 
@@ -485,6 +488,14 @@ def run_and_report_narma10_operating(config: Capacity03Config, out_dir: Path) ->
     started = time.perf_counter()
     rows = run_narma10_operating_sweep(config)
     path = write_rows_csv(rows, out_dir / NARMA10_OPERATING_CSV, OPERATING_CSV_COLUMNS)
+    # 作図層の import は関数本体に置く (D-53)。
+    from rc_basics_lab.meta import git_commit
+    from rc_basics_lab.plotting.figures_operating import plot_operating
+    from rc_basics_lab.plotting.style import setup_style
+
+    plot_operating(
+        rows, out_dir / FIG_OPERATING, style=setup_style(commit=git_commit())
+    )
     for point in dict.fromkeys((row.n_units, row.leak_rate) for row in rows):
         selected = [row for row in rows if (row.n_units, row.leak_rate) == point]
         esn = _mean_nrmse(selected, "esn")
@@ -548,6 +559,7 @@ __all__ = [
     "FIG_MC_SWEEP",
     "FIG_MEMORY_NONLINEARITY",
     "FIG_NARMA10",
+    "FIG_OPERATING",
     "NARMA10_CSV",
     "NARMA10_OPERATING_CSV",
     "NARMA10_TAPS_CSV",
