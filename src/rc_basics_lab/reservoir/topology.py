@@ -55,7 +55,7 @@ BA / WS でも**重みの値**は非対称になる —— 対称なのは**辺�
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar
 
 import numpy as np
@@ -124,8 +124,39 @@ class WattsStrogatzConfig:
     beta: float = 0.1
 
 
+@dataclass(frozen=True, slots=True)
+class DegreePreservingConfig:
+    """**別のトポロジの次数列だけを保った帰無モデル** (D-135)。
+
+    ``base`` のグラフを作ってから、次数列を保ったまま辺を張り替える
+    (double edge swap / configuration model)。**ハブの「次数分布」は保たれ、
+    生成過程が作った相関構造だけが壊れる**。
+
+    これはネットワーク科学では標準の帰無モデルだが、RC のトポロジ研究では
+    まず置かれていない。「スケールフリーだから容量が高い」という主張に対して:
+
+    - 優位が**残る** -> 効いているのは次数分布 (先行の主張が支持される)
+    - **消える** -> 効いていたのは次数分布ではなく生成過程が作る別の何か
+
+    Attributes:
+        base: 次数列を借りるトポロジ (既定は Barabasi-Albert)。
+        swaps_per_edge: 辺1本あたり何回の交換を試みるか。**大きいほど元の
+            相関が消える**。100 は文献の慣例 (交換の受理率が下がって
+            平衡に達するのに十分な回数)。
+    """
+
+    KIND: ClassVar[str] = "degree_preserving"
+
+    base: BarabasiAlbertConfig = field(default_factory=BarabasiAlbertConfig)
+    swaps_per_edge: int = 100
+
+
 type TopologyConfig = (
-    ErdosRenyiConfig | RingTopologyConfig | BarabasiAlbertConfig | WattsStrogatzConfig
+    ErdosRenyiConfig
+    | RingTopologyConfig
+    | BarabasiAlbertConfig
+    | WattsStrogatzConfig
+    | DegreePreservingConfig
 )
 """結合構造の設定。**先頭が既定** (``kind`` を省くと Erdos-Renyi)。
 
@@ -162,6 +193,9 @@ def nominal_density(config: TopologyConfig, n_units: int) -> float:
             return min(1.0, 2.0 * config.m / float(n_units))
         case WattsStrogatzConfig():
             return min(1.0, float(config.k) / float(n_units))
+        case DegreePreservingConfig():
+            # 次数列を保つので、借りてきた BA と同じ密度になる (D-135)
+            return nominal_density(config.base, n_units)
 
 
 def build_mask(
@@ -191,6 +225,8 @@ def build_mask(
             return _barabasi_albert(config, n_units, rng)
         case WattsStrogatzConfig():
             return _watts_strogatz(config, n_units, rng)
+        case DegreePreservingConfig():
+            return _degree_preserving(config, n_units, rng)
 
 
 def _erdos_renyi(
@@ -290,9 +326,53 @@ def _watts_strogatz(
     return mask
 
 
+def _degree_preserving(
+    config: DegreePreservingConfig, n_units: int, rng: np.random.Generator
+) -> BoolArray:
+    """次数列を保ったまま辺を張り替える (D-135)。
+
+    無向グラフの double edge swap: 辺 ``(a, b)`` と ``(c, d)`` を選び、
+    ``(a, d)`` と ``(c, b)`` へ張り替える。**両端点の次数は変わらない**。
+    既に辺がある / 自己ループになる交換は棄却する (次数が変わるため)。
+
+    ``base`` は無向 (対称) のトポロジに限る —— 有向グラフの次数保存交換は
+    入次数と出次数を別々に保つ必要があり、無向の交換とは別の手続きになる。
+    ここで扱うのは「BA のハブを次数だけ残して壊す」用途なので無向で足りる。
+    """
+    mask = _barabasi_albert(config.base, n_units, rng)
+    if config.swaps_per_edge < 0:
+        raise ValueError(
+            f"swaps_per_edge は 0 以上である必要があります: {config.swaps_per_edge}"
+        )
+    upper = np.triu(mask, k=1)
+    edges = np.argwhere(upper)
+    if edges.shape[0] < 2:
+        return mask
+    working = mask.copy()
+    attempts = config.swaps_per_edge * edges.shape[0]
+    for _ in range(attempts):
+        first, second = rng.integers(0, edges.shape[0], size=2)
+        if first == second:
+            continue
+        a, b = edges[first]
+        c, d = edges[second]
+        if len({int(a), int(b), int(c), int(d)}) < 4:
+            continue
+        if working[a, d] or working[c, b]:
+            continue
+        for i, j in ((a, b), (c, d)):
+            working[i, j] = working[j, i] = False
+        for i, j in ((a, d), (c, b)):
+            working[i, j] = working[j, i] = True
+        edges[first] = (a, d)
+        edges[second] = (c, b)
+    return working
+
+
 __all__ = [
     "MIN_UNITS",
     "BarabasiAlbertConfig",
+    "DegreePreservingConfig",
     "ErdosRenyiConfig",
     "RingTopologyConfig",
     "TopologyConfig",

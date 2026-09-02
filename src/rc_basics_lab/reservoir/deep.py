@@ -36,6 +36,7 @@ from rc_basics_lab.reservoir._kernel import (
 from rc_basics_lab.reservoir.esn import spectral_radius
 from rc_basics_lab.reservoir.topology import (
     BarabasiAlbertConfig,
+    DegreePreservingConfig,
     ErdosRenyiConfig,
     RingTopologyConfig,
     TopologyConfig,
@@ -92,6 +93,8 @@ def _density_knob(topology: TopologyConfig) -> str:
             return "topology.k"
         case RingTopologyConfig():
             return "n_units (リングは密度を選べません)"
+        case DegreePreservingConfig():
+            return "topology.base.m (次数列は借りてくる BA が決めます)"
 
 
 def _validate_deep_config(config: DeepESNConfig, n_inputs: int) -> None:
@@ -149,14 +152,19 @@ def _random_recurrent(
     topology: TopologyConfig,
     target_radius: float,
     rng: np.random.Generator,
+    topology_rng: np.random.Generator | None = None,
 ) -> FloatArray:
     """1層ぶんの再帰行列 (``ESN`` と同じ作り方・同じ引き方)。
 
-    結合の有無は ``topology`` 層が決め、値はここで引く (拡張性方針 §2-1)。
+    引き順は ``topology_rng`` を渡したかで変わる (D-134。``ESN`` と同じ)。
     **層ごとに独立に引く**ので、同じトポロジ設定でも層ごとに違う実現になる。
     """
-    mask = build_mask(topology, n_units, rng)
-    values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
+    if topology_rng is None:
+        mask = build_mask(topology, n_units, rng)
+        values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
+    else:
+        values = rng.uniform(-1.0, 1.0, (n_units, n_units))
+        mask = build_mask(topology, n_units, topology_rng)
     recurrent: FloatArray = np.where(mask, values, 0.0)
     measured = spectral_radius(recurrent)
     if measured == 0.0:
@@ -179,6 +187,7 @@ class DeepESN:
         rng: np.random.Generator,
         *,
         n_inputs: int = 1,
+        topology_rng: np.random.Generator | None = None,
     ) -> None:
         """層ごとの重みを生成する。
 
@@ -189,6 +198,8 @@ class DeepESN:
             config: 構造ハイパーパラメータ。
             rng: 重み生成用の Generator。
             n_inputs: 入力次元 D_in。
+            topology_rng: 結合**構造**を引く Generator。``None`` なら ``rng``
+                を使う (D-134)。
 
         Raises:
             ValueError: 設定値が範囲外、または生成した W が零行列だった場合。
@@ -218,6 +229,7 @@ class DeepESN:
                 config.topology,
                 config.spectral_radius,
                 rng,
+                topology_rng,
             )
             matrix.setflags(write=False)
             recurrent.append(matrix)

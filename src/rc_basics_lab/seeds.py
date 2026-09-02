@@ -27,16 +27,20 @@ class SeedStream(Enum):
     TASK = "task"
     SPLIT = "split"
     PROBE = "probe"
+    TOPOLOGY = "topology"
 
 
 # spawn_key の第1要素。値は永続化される (変えると既存結果が再現しなくなる)。
-# PROBE には既存3本と重ならない 3 を割り当てる (0〜2 を動かすと 01 の成果物が
-# 再現しなくなるため、追加は必ず末尾に足す)。
+# **追加は必ず末尾に足す** (0〜3 を動かすと既存の成果物が再現しなくなる)。
+# TOPOLOGY は結合の**構造**だけを引くストリーム (D-134)。重み (RESERVOIR) と
+# 分けてあるので、「同じ重み行列を違うマスクで切り出す」「同じマスクで重みだけ
+# 振る」の両方が書ける。
 _STREAM_INDEX: dict[SeedStream, int] = {
     SeedStream.RESERVOIR: 0,
     SeedStream.TASK: 1,
     SeedStream.SPLIT: 2,
     SeedStream.PROBE: 3,
+    SeedStream.TOPOLOGY: 4,
 }
 
 
@@ -73,6 +77,13 @@ def _base_seed(config: SeedConfig, stream: SeedStream) -> int:
             raise ValueError(
                 "SeedConfig は PROBE の基底シードを持ちません (D-14)。"
                 " make_rng_for(base_seed, SeedStream.PROBE, replicate) を使ってください"
+            )
+        case SeedStream.TOPOLOGY:
+            raise ValueError(
+                "SeedConfig は TOPOLOGY の基底シードを持ちません (D-134)。"
+                " 結合の構造だけを振るときは"
+                " make_rng_for(base_seed, SeedStream.TOPOLOGY, replicate) を"
+                "使ってください"
             )
 
 

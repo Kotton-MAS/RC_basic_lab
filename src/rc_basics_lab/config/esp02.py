@@ -83,6 +83,13 @@ def esp_stream_seed(seeds: EspSeedConfig, stream: SeedStream) -> int:
                 "実験 2-A/2-B/2-C は分割を行いません (SPLIT ストリームは未使用)。"
                 " 2-D の分割は washout.base.seeds.split を使ってください"
             )
+        case SeedStream.TOPOLOGY:
+            raise ValueError(
+                "EspSeedConfig は TOPOLOGY の基底シードを持ちません (D-134)。"
+                " 結合の構造だけを振るときは"
+                " make_rng_for(base_seed, SeedStream.TOPOLOGY, replicate) を"
+                "使ってください"
+            )
 
 
 @dataclass(frozen=True, slots=True)

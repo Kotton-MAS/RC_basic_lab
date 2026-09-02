@@ -19,6 +19,7 @@ import pytest
 from rc_basics_lab.reservoir import topology as topology_module
 from rc_basics_lab.reservoir.topology import (
     BarabasiAlbertConfig,
+    DegreePreservingConfig,
     ErdosRenyiConfig,
     RingTopologyConfig,
     TopologyConfig,
@@ -229,3 +230,151 @@ def test_the_docstring_records_every_topology_in_the_table() -> None:
     for config, _, _ in SYMMETRY_TABLE:
         name = type(config).__name__
         assert name in header, f"docstring の表に {name} がありません (D-131)"
+
+
+# --- ペアが組めること (D-134) ---------------------------------------------
+
+
+def test_the_same_seed_gives_the_same_weights_under_every_topology() -> None:
+    """``topology_rng`` を渡すと**同じ重み行列を違うマスクで切り出す** (D-134)。
+
+    渡した場合だけ値を先に引き、マスクは別ストリームから取る。渡さない (本番)
+    場合は従来の順のままなので、``results/`` の成果物はバイト不変である
+    (``test_the_production_draw_order_is_unchanged`` が固定する)。
+
+    引き順が壊れると ``build_mask`` が消費する乱数の個数がトポロジによって違う
+    ぶん重みの実現値までずれ、**トポロジの効果と重みの実現値の分散が分離
+    できない** (このリポジトリの統計はペアが前提である)。
+    """
+    from rc_basics_lab.reservoir.esn import ESN, ESNConfig
+    from rc_basics_lab.seeds import SeedStream, make_rng_for
+
+    def build(topology: TopologyConfig) -> ESN:
+        return ESN(
+            ESNConfig(n_units=120, topology=topology),
+            make_rng_for(0, SeedStream.RESERVOIR, 0),
+            topology_rng=make_rng_for(0, SeedStream.TOPOLOGY, 0),
+        )
+
+    reference = build(ErdosRenyiConfig(density=0.1))
+    for topology in (
+        BarabasiAlbertConfig(),
+        WattsStrogatzConfig(),
+        RingTopologyConfig(),
+    ):
+        other = build(topology)
+        assert np.array_equal(reference.W_in, other.W_in), "W_in が一致しません"
+        shared = (reference.W != 0) & (other.W != 0)
+        assert shared.sum() > 0, f"{topology} と共通する辺がありません"
+        left = reference.W[shared] / reference.config.spectral_radius
+        right = other.W[shared] / other.config.spectral_radius
+        assert np.array_equal(np.sign(left), np.sign(right)), (
+            f"{type(topology).__name__} と共通辺の重みの符号が違います "
+            "(値を先に引く順が壊れています)"
+        )
+
+
+def test_the_topology_stream_varies_the_graph_without_the_weights() -> None:
+    """``topology_rng`` を分けると、グラフだけ / 重みだけを振れる (D-134)。"""
+    from rc_basics_lab.reservoir.esn import ESN, ESNConfig
+    from rc_basics_lab.seeds import SeedStream, make_rng_for
+
+    def build(weight_replicate: int, graph_replicate: int) -> ESN:
+        return ESN(
+            ESNConfig(n_units=60),
+            make_rng_for(0, SeedStream.RESERVOIR, weight_replicate),
+            topology_rng=make_rng_for(0, SeedStream.TOPOLOGY, graph_replicate),
+        )
+
+    base = build(0, 0)
+    other_graph = build(0, 1)
+    other_weights = build(1, 0)
+    assert not np.array_equal(base.W != 0, other_graph.W != 0), (
+        "グラフのシードを変えてもマスクが同じです"
+    )
+    assert np.array_equal(base.W != 0, other_weights.W != 0), (
+        "重みのシードを変えたらマスクまで変わりました"
+    )
+
+
+# --- 次数保存ランダム化 (D-135) -------------------------------------------
+
+
+def test_degree_preserving_keeps_the_degree_sequence() -> None:
+    """次数列を厳密に保ち、辺の集合は変える (D-135)。"""
+    config = DegreePreservingConfig()
+    base = _mask(config.base, seed=7, n_units=200)
+    randomized = _mask(config, seed=7, n_units=200)
+    assert np.array_equal(np.sort(base.sum(axis=1)), np.sort(randomized.sum(axis=1))), (
+        "次数列が変わりました (帰無モデルとして成立していません)"
+    )
+    assert not np.array_equal(base, randomized), "辺が1本も動いていません"
+
+
+def test_degree_preserving_breaks_the_correlation_structure() -> None:
+    """次数を保ったまま**相関だけ**が壊れる (クラスタ係数が下がる)。"""
+    config = DegreePreservingConfig()
+    base = _mask(config.base, seed=7, n_units=200)
+    randomized = _mask(config, seed=7, n_units=200)
+    assert _clustering(randomized) < _clustering(base), (
+        "クラスタ係数が下がっていません (張り替えが効いていません)"
+    )
+
+
+def _clustering(mask: BoolArray) -> float:
+    undirected = (mask | mask.T).astype(np.float64)
+    np.fill_diagonal(undirected, 0.0)
+    triangles = float(np.trace(undirected @ undirected @ undirected))
+    degrees = undirected.sum(axis=1)
+    return triangles / float(np.sum(degrees * (degrees - 1.0)))
+
+
+def test_degree_preserving_matches_networkx_double_edge_swap() -> None:
+    """外部実装 (``networkx``) と**同じ性質**を持つことを突き合わせる。
+
+    交換はランダムなので辺の集合そのものは一致しないが、**次数列が保たれる**
+    という帰無モデルの定義は一致していなければならない (D-62 と同じ扱いで、
+    ``networkx`` は dev のオラクル)。
+    """
+    import networkx as nx
+
+    config = DegreePreservingConfig()
+    base = _mask(config.base, seed=11, n_units=120)
+    graph = nx.from_numpy_array(base | base.T)
+    graph.remove_edges_from(nx.selfloop_edges(graph))
+    before = sorted(degree for _, degree in graph.degree())
+    nx.double_edge_swap(graph, nswap=graph.number_of_edges(), max_tries=100_000, seed=1)
+    assert sorted(degree for _, degree in graph.degree()) == before
+
+    randomized = _mask(config, seed=11, n_units=120)
+    ours = (randomized | randomized.T).astype(np.int64)
+    np.fill_diagonal(ours, 0)
+    assert sorted(ours.sum(axis=1).tolist()) == before, (
+        "自前の張り替えが networkx と違う次数列を作っています"
+    )
+
+
+def test_the_production_draw_order_is_unchanged() -> None:
+    """``topology_rng`` を渡さなければ**従来の引き順** (D-134)。
+
+    成果物のバイト不変を守っているのはこの分岐である。``test_golden`` も
+    間接的には捕まえるが、あちらは「何かが変わった」としか言わない ——
+    ここは**引き順そのもの**を手で組み直して照合するので、壊れたときに
+    どこを見ればよいかが分かる。従来は ``mask -> values`` の順だった。
+    """
+    from rc_basics_lab.reservoir.esn import ESN, ESNConfig, spectral_radius
+
+    n_units = 60
+    config = ESNConfig(n_units=n_units)
+    built = ESN(config, np.random.default_rng(3))
+
+    manual = np.random.default_rng(3)
+    manual.uniform(-config.bias_scale, config.bias_scale, n_units)
+    manual.uniform(-config.input_scale, config.input_scale, (n_units, 1))
+    mask = build_mask(config.topology, n_units, manual)
+    values = manual.uniform(-1.0, 1.0, (n_units, n_units))
+    expected = np.where(mask, values, 0.0)
+    expected = expected * (config.spectral_radius / spectral_radius(expected))
+    assert np.allclose(built.W, expected), (
+        "本番の引き順が変わっています (mask -> values のはずです)"
+    )

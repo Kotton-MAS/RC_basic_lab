@@ -29,6 +29,7 @@ def build_reservoir(
     rng: np.random.Generator,
     *,
     n_inputs: int = 1,
+    topology_rng: np.random.Generator | None = None,
 ) -> Reservoir:
     """設定からリザバーを1つ作る (**モデル分岐はここだけ**)。
 
@@ -41,6 +42,9 @@ def build_reservoir(
         config: 構造ハイパーパラメータ。
         rng: 重み生成用の Generator (``seeds.make_rng`` の reservoir ストリーム)。
         n_inputs: 入力次元 D_in。課題側が決める量なので YAML ではなくここで渡す。
+        topology_rng: 結合**構造**を引く Generator (``seeds.make_rng`` の
+            topology ストリーム)。``None`` なら ``rng`` を使う。分けて渡すと
+            「同じ重み行列を違うマスクで切り出す」が書ける (D-134)。
 
     Returns:
         ``Reservoir`` を満たすインスタンス。
@@ -50,11 +54,13 @@ def build_reservoir(
     """
     match config:
         case ESNConfig():
-            return ESN(config, rng, n_inputs=n_inputs)
+            return ESN(config, rng, n_inputs=n_inputs, topology_rng=topology_rng)
         case DeepESNConfig():
-            return DeepESN(config, rng, n_inputs=n_inputs)
+            return DeepESN(config, rng, n_inputs=n_inputs, topology_rng=topology_rng)
         case RingConfig():
-            return RingReservoir(config, rng, n_inputs=n_inputs)
+            return RingReservoir(
+                config, rng, n_inputs=n_inputs, topology_rng=topology_rng
+            )
 
 
 def require_esn(config: ReservoirConfig, used_by: str) -> ESNConfig:

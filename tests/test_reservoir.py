@@ -117,7 +117,10 @@ def test_x0_and_state_noise_are_wired() -> None:
 
 def test_state_noise_without_rng_raises() -> None:
     """ノイズ設定が黙って無効化されない (設定したのに効いていない、を防ぐ)。"""
-    esn = ESN(ESNConfig(n_units=10, state_noise=0.1), np.random.default_rng(0))
+    # N=10 / density=0.1 は期待辺数が 10 本しかなく、乱数次第で零行列に
+    # なる (D-134 で引き順を直したら実際に引いた)。構造の検査には
+    # 大きさは要らないので、退化しない規模にする。
+    esn = ESN(ESNConfig(n_units=30, state_noise=0.1), np.random.default_rng(0))
     with pytest.raises(ValueError, match="rng"):
         esn.run(_inputs(n_steps=10))
 
@@ -173,8 +176,8 @@ def test_invalid_config_raises(config: ESNConfig, match: str) -> None:
     [
         (lambda esn: esn.run(np.zeros(20)), "2次元"),
         (lambda esn: esn.run(np.zeros((20, 2))), "入力次元"),
-        (lambda esn: esn.step(np.zeros(9), np.zeros(1)), "状態"),
-        (lambda esn: esn.step(np.zeros(10), np.zeros(2)), "入力"),
+        (lambda esn: esn.step(np.zeros(29), np.zeros(1)), "状態"),
+        (lambda esn: esn.step(np.zeros(30), np.zeros(2)), "入力"),
     ],
     ids=[
         "run_not_2d",
@@ -185,7 +188,9 @@ def test_invalid_config_raises(config: ESNConfig, match: str) -> None:
 )
 def test_shape_errors(action: Callable[[ESN], object], match: str) -> None:
     """形状不整合な呼び出しはそれぞれ該当箇所を含む ValueError を送出する。"""
-    esn = ESN(ESNConfig(n_units=10), np.random.default_rng(0))
+    # N=10 / density=0.1 は期待辺数が 10 本しかなく、乱数次第で零行列になる
+    # (D-134 で引き順を直したら実際に引いた)。形状の検査に大きさは要らない。
+    esn = ESN(ESNConfig(n_units=30), np.random.default_rng(0))
     with pytest.raises(ValueError, match=match):
         action(esn)
 

@@ -207,6 +207,13 @@ def anomaly_stream_seed(seeds: AnomalySeedConfig, stream: SeedStream) -> int:
             return seeds.split
         case SeedStream.PROBE:
             return seeds.control
+        case SeedStream.TOPOLOGY:
+            raise ValueError(
+                "AnomalySeedConfig は TOPOLOGY の基底シードを持ちません (D-134)。"
+                " 結合の構造だけを振るときは"
+                " make_rng_for(base_seed, SeedStream.TOPOLOGY, replicate) を"
+                "使ってください"
+            )
 
 
 @dataclass(frozen=True, slots=True)
