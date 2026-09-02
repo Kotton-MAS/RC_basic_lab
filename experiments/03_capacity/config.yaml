@@ -232,6 +232,13 @@ narma:
 #
 # 密度は 2m/N = 0.08 で全水準そろえる (揃えないと「密度が違うから容量が違う」
 # という一番つまらない交絡が最初に効く)。
+# 3-C'': NARMA10 の勝敗が手法側の動作点で変わることの実測 (D-144)。
+# 先行 (Kubota & Nakajima) は課題側の動作点への敏感さを論じている。
+# こちらは手法側で勝敗が変わることを示す。make operating-03 で手動実行。
+narma_operating:
+  n_units_grid: [25, 50, 100, 200]
+  leak_rate_grid: [0.3, 0.6, 1.0]
+
 # 3-Th: 梯子の結論が閾値の選び方で動かないことの実測 (D-143)。
 # make ladder-threshold-03 で手動実行する。
 ladder_threshold:

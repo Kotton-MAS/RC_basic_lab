@@ -85,6 +85,7 @@ from rc_basics_lab.config import (
     McSweepConfig,
     MemoryCapacityConfig,
     Narma10Config,
+    NarmaOperatingConfig,
     RidgeConfig,
     SplitConfig,
     SymmetrySweepConfig,
@@ -132,6 +133,13 @@ CHANNEL_LADDER = "ladder"
 ``CHANNEL_SYMMETRY`` と同じ理由で専用チャネルにする —— ``capacity.csv`` に行が
 出ないので ``CHANNEL_ROWS`` では測れないが、**変えたら出力が変わる**ことは
 ここでも実測する。
+"""
+
+CHANNEL_OPERATING = "operating"
+"""3-C'' の動作点掃引 (``narma10_operating.csv``) だけを変える葉 (D-144)。
+
+``CHANNEL_LADDER`` と同じ理由で専用チャネルにする —— ``capacity.csv`` には
+行が出ないので、そこでは測れない。
 """
 
 CHANNEL_LADDER_THRESHOLD = "ladder-threshold"
@@ -321,6 +329,10 @@ def base_config() -> Capacity03Config:
         ),
         # 3-T は水準5本ぶん回すので、土台の側で秒未満に縮めておく
         # (ケース側で縮めると、n_units などの葉の効きを打ち消してしまう)
+        # 3-C'' は動作点ぶん 3-C を回すので、土台の側で 2 点に縮めておく
+        narma_operating=NarmaOperatingConfig(
+            n_units_grid=(8,), leak_rate_grid=(0.5, 1.0)
+        ),
         # 3-Th は判定基準 x 水準ぶん回すので、土台の側で秒未満に縮めておく
         ladder_threshold=LadderThresholdConfig(
             n_surrogates_grid=(5,), quantile_grid=(0.9,), n_graphs=1, n_replicates=1
@@ -462,6 +474,8 @@ CAPACITY_WIRING_CASES: tuple[WiringCase, ...] = (
     case("topology_ladder.levels[3].swaps_per_edge", 1, channel=CHANNEL_LADDER),
     case("topology_ladder.levels[4].m", 4, channel=CHANNEL_LADDER_ERROR),
     case("topology_ladder.state_noise", 0.05, channel=CHANNEL_LADDER),
+    case("narma_operating.n_units_grid", (12,), channel=CHANNEL_OPERATING),
+    case("narma_operating.leak_rate_grid", (0.7,), channel=CHANNEL_OPERATING),
     case("ladder_threshold.n_surrogates_grid", (7,), channel=CHANNEL_LADDER_THRESHOLD),
     case("ladder_threshold.quantile_grid", (0.8,), channel=CHANNEL_LADDER_THRESHOLD),
     case(
@@ -554,6 +568,27 @@ def _seed_fingerprints(config: Capacity03Config) -> dict[SeedStream, bytes]:
         stream: make_rng_for(seeds[stream], stream, 0).bytes(_N_BYTES)
         for stream in CAPACITY_SEED_STREAMS
     }
+
+
+def _operating_fingerprint(config: Capacity03Config) -> str:
+    """3-C'' の行の指紋 (実測時間の列は外す)。"""
+    from rc_basics_lab.experiment.narma_operating import run_narma10_operating_sweep
+
+    rows = run_narma10_operating_sweep(config)
+    return json.dumps(
+        [
+            [
+                row.n_units,
+                row.leak_rate,
+                row.method,
+                row.replicate,
+                round(row.nrmse, 9),
+                round(row.ipc_linear, 9),
+            ]
+            for row in rows
+        ],
+        sort_keys=True,
+    )
 
 
 def _threshold_fingerprint(config: Capacity03Config) -> str:
@@ -711,6 +746,14 @@ def test_each_capacity_parameter_changes_output(
         assert _symmetry_fingerprint(changed_config) != _symmetry_fingerprint(base)
         assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
             f"{wiring_case.field} が本番の掃引の行まで変えています"
+        )
+        return
+
+    if wiring_case.channel == CHANNEL_OPERATING:
+        # 3-C'' の行が変わり、かつ capacity.csv の行は変わらない
+        assert _operating_fingerprint(changed_config) != _operating_fingerprint(base)
+        assert fingerprint(run_case(wiring_case)) == fingerprint(baseline_rows()), (
+            f"{wiring_case.field} が 3-C 本体の行まで変えています"
         )
         return
 

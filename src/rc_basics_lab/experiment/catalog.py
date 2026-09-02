@@ -33,6 +33,7 @@ from rc_basics_lab.experiment.capacity_pipeline import (
     CAPACITY_ARTIFACTS,
     run_and_report_capacity,
     run_and_report_length_sweep,
+    run_and_report_narma10_operating,
     run_and_report_symmetry_sweep,
 )
 from rc_basics_lab.experiment.esp_pipeline import (
@@ -211,6 +212,11 @@ def _run_03_length(request: RunRequest) -> None:
     run_and_report_length_sweep(_load_03(request), request.out)
 
 
+def _run_03_operating(request: RunRequest) -> None:
+    """動作点の掃引だけを回す (``narma10_operating.csv``、3-C'' / D-144)。"""
+    run_and_report_narma10_operating(_load_03(request), request.out)
+
+
 def _run_03_ladder_threshold(request: RunRequest) -> None:
     """閾値感度だけを回す (``capacity_topology_threshold.csv``、3-Th / D-143)。"""
     run_and_report_ladder_threshold(_load_03(request), request.out)
@@ -297,6 +303,7 @@ CATALOG: tuple[ExperimentSpec, ...] = (
             "symmetry": _run_03_symmetry,
             "ladder": _run_03_ladder,
             "ladder-threshold": _run_03_ladder_threshold,
+            "operating": _run_03_operating,
         },
     ),
     ExperimentSpec(

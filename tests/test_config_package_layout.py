@@ -199,6 +199,14 @@ SYMMETRY_ADDITIONS = ("SymmetrySweepConfig",)
 """
 
 
+NARMA_OPERATING_ADDITIONS = ("NarmaOperatingConfig",)
+"""3-C'' (動作点の掃引、D-144) で足した公開名。
+
+``make operating-03`` の設定セクション1つ。本番の ``figures-03`` は読まない
+(``symmetry_sweep`` / ``topology_ladder`` と同じ扱い)。
+"""
+
+
 LADDER_ADDITIONS = (
     "LadderSweepConfig",
     "LadderThresholdConfig",
@@ -369,6 +377,7 @@ def test_public_symbols_are_importable_from_the_package_root() -> None:
         | set(SYMMETRY_ADDITIONS)
         | set(TASK_REGISTRY_ADDITIONS)
         | set(LADDER_ADDITIONS)
+        | set(NARMA_OPERATING_ADDITIONS)
     )
     assert actual - set(PRE_SPLIT_ALL) == recorded_additions, (
         "config.__all__ が記録していない公開名を増やしています "
@@ -387,6 +396,7 @@ EXPECTED_ALL: tuple[str, ...] = (
     + SYMMETRY_ADDITIONS
     + TASK_REGISTRY_ADDITIONS
     + LADDER_ADDITIONS
+    + NARMA_OPERATING_ADDITIONS
 )
 """``config.__all__`` に在るべき名前の全体。
 
@@ -431,6 +441,7 @@ def test_dir_only_names_changed_exactly_as_recorded() -> None:
         | set(SYMMETRY_ADDITIONS)
         | set(TASK_REGISTRY_ADDITIONS)
         | set(LADDER_ADDITIONS)
+        | set(NARMA_OPERATING_ADDITIONS)
     )
 
 

@@ -46,6 +46,7 @@ from rc_basics_lab.config.capacity03 import (
     LengthSweepConfig,
     McSweepConfig,
     Narma10Config,
+    NarmaOperatingConfig,
     SymmetrySweepConfig,
 )
 from rc_basics_lab.config.capacity03_ladder import (
@@ -144,6 +145,7 @@ __all__ = [
     "McSweepConfig",
     "MemoryCapacityConfig",
     "Narma10Config",
+    "NarmaOperatingConfig",
     "ReservoirSweepConfig",
     "RidgeConfig",
     "SplitConfig",
