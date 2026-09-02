@@ -18,14 +18,15 @@ from rc_basics_lab.experiment.topology_ladder import TopologyLadderRow
 from rc_basics_lab.plotting.figures_ladder import (
     AXIS_LABELS,
     BASELINE_LEVEL,
+    LADDER_ARTICLE_AXES,
     TARGET_LEVEL,
+    draw_ladder_panel,
     ladder_headline,
     paired_sign_test,
-    plot_ladder,
 )
 from rc_basics_lab.plotting.figures_operating import (
+    draw_capacity_panel,
     operating_headline,
-    plot_operating,
 )
 from rc_basics_lab.plotting.style import StyleContext, setup_style
 
@@ -131,20 +132,27 @@ def test_the_ladder_panels_follow_the_sweep_axes() -> None:
         )
 
 
-def test_an_unknown_sweep_axis_is_rejected(tmp_path: Path) -> None:
+def test_an_unknown_sweep_axis_is_rejected() -> None:
     """見出しの決まっていない軸は**描く前に落とす** (FIG-5 と同じ規律)。"""
+    from matplotlib.figure import Figure
+
     rows = tuple(
         dataclasses.replace(row, sweep_axis="temperature") for row in _ladder_rows()
     )
+    axis = Figure().subplots(1, 1)
     with pytest.raises(ValueError, match="temperature"):
-        plot_ladder(rows, tmp_path / "fig.png", style=_style())
+        draw_ladder_panel(axis, rows, "temperature", "mc_total", _style())
 
 
-def test_the_ladder_figure_has_one_panel_per_axis(tmp_path: Path) -> None:
-    """図が書け、掃引軸の数だけパネルが立つ (FIG-15)。"""
-    rows = _ladder_rows()
-    path = plot_ladder(rows, tmp_path / "fig_topology_ladder.png", style=_style())
-    assert path.exists() and path.stat().st_size > 0
+def test_the_article_axes_are_present_in_the_artifact() -> None:
+    """記事に出す2軸が成果物に在る (D-146)。
+
+    ここが欠けると図のパネルが静かに空になる。掃引を止めるなら**図の側の
+    宣言も直す**、という対応関係をここで固定する。
+    """
+    present = {row.sweep_axis for row in _ladder_rows()}
+    missing = [name for name in LADDER_ARTICLE_AXES if name not in present]
+    assert not missing, f"記事に出す軸が成果物にありません: {missing}"
 
 
 def test_the_paired_sign_test_matches_the_reported_direction() -> None:
@@ -169,7 +177,7 @@ def test_the_operating_headline_follows_the_rows() -> None:
     assert "12 点のうち 2 点" in operating_headline(rows, style)
 
 
-def test_a_moving_delay_line_is_rejected(tmp_path: Path) -> None:
+def test_a_moving_delay_line_is_rejected() -> None:
     """**遅延線が動作点で動いていたら描かない** (D-144)。
 
     動いていたら掃引が課題か分割まで動かしており、図の主張 (「動作点で
@@ -181,13 +189,8 @@ def test_a_moving_delay_line_is_rejected(tmp_path: Path) -> None:
         else row
         for row in _operating_rows()
     )
+    from matplotlib.figure import Figure
+
+    axis = Figure().subplots(1, 1)
     with pytest.raises(ValueError, match="動作点で動いています"):
-        plot_operating(rows, tmp_path / "fig.png", style=_style())
-
-
-def test_the_operating_figure_is_written(tmp_path: Path) -> None:
-    """図が書ける。"""
-    path = plot_operating(
-        _operating_rows(), tmp_path / "fig_narma10_operating.png", style=_style()
-    )
-    assert path.exists() and path.stat().st_size > 0
+        draw_capacity_panel(axis, rows, _style())

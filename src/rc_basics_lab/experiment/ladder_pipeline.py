@@ -17,6 +17,9 @@ from pathlib import Path
 from statistics import mean
 
 from rc_basics_lab.config import Capacity03Config
+from rc_basics_lab.experiment.capacity_pipeline import (
+    CAPACITY_TOPOLOGY_CSV,
+)
 from rc_basics_lab.experiment.ladder_threshold import (
     LADDER_THRESHOLD_CSV_COLUMNS,
     LadderThresholdRow,
@@ -31,14 +34,8 @@ from rc_basics_lab.experiment.topology_ladder import (
 
 logger = logging.getLogger(__name__)
 
-CAPACITY_TOPOLOGY_CSV = "capacity_topology.csv"
-"""3-T の成果物 (``results/03_capacity/`` 配下)。"""
-
 CAPACITY_TOPOLOGY_THRESHOLD_CSV = "capacity_topology_threshold.csv"
 """3-Th の成果物 (``results/03_capacity/`` 配下)。"""
-
-FIG_LADDER = "fig_topology_ladder.png"
-"""3-T の図 (D-145)。CSV だけだと 1680 行を読まないと結論が出てこない。"""
 
 
 def _ladder_group(row: TopologyLadderRow) -> tuple[str, float, str]:
@@ -67,12 +64,6 @@ def run_and_report_topology_ladder(config: Capacity03Config, out_dir: Path) -> P
     path = write_rows_csv(
         rows, out_dir / CAPACITY_TOPOLOGY_CSV, TOPOLOGY_LADDER_CSV_COLUMNS
     )
-    # 作図層の import は関数本体に置く (D-53)。
-    from rc_basics_lab.meta import git_commit
-    from rc_basics_lab.plotting.figures_ladder import plot_ladder
-    from rc_basics_lab.plotting.style import setup_style
-
-    plot_ladder(rows, out_dir / FIG_LADDER, style=setup_style(commit=git_commit()))
     for key in dict.fromkeys(_ladder_group(row) for row in rows):
         selected = [row for row in rows if _ladder_group(row) == key]
         axis, value, level = key
@@ -157,7 +148,6 @@ def _paired_gap(rows: list[LadderThresholdRow], column: str) -> float:
 __all__ = [
     "CAPACITY_TOPOLOGY_CSV",
     "CAPACITY_TOPOLOGY_THRESHOLD_CSV",
-    "FIG_LADDER",
     "run_and_report_ladder_threshold",
     "run_and_report_topology_ladder",
 ]

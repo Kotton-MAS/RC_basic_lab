@@ -15,7 +15,6 @@ ESN は自分の線形容量が遅延線に許されたタップ数を超えた�
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
 from matplotlib.axes import Axes
@@ -24,18 +23,12 @@ from rc_basics_lab.experiment.narma_operating import OperatingPointRow
 from rc_basics_lab.plotting.capacity_grids import mean_std
 from rc_basics_lab.plotting.layout import (
     hide_minor_tick_labels,
-    label_panels,
-    wrapped_note,
 )
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
-    add_footnote,
     method_color,
-    new_figure,
-    rc_context_for,
-    save_png,
     sequential_colors,
 )
 
@@ -214,70 +207,10 @@ def draw_capacity_panel(
     axis.legend(loc="best")
 
 
-def plot_operating(
-    rows: Sequence[OperatingPointRow],
-    path: Path,
-    *,
-    style: StyleContext,
-) -> Path:
-    """3-C'' の動作点の面を1枚へ並べる (D-145)。
-
-    Args:
-        rows: ``narma10_operating.csv`` と同じ行。
-        path: 出力先の PNG。
-        style: 配色・言語・commit。
-
-    Returns:
-        書き出した PNG のパス。
-
-    Raises:
-        ValueError: 行が空、または遅延線が動作点で動いている場合。
-    """
-    if not rows:
-        raise ValueError("rows が空です")
-    with rc_context_for(style):
-        figure = new_figure(13.0, 5.5)
-        grid = figure.add_gridspec(1, 2)
-        left = figure.add_subplot(grid[0, 0])
-        right = figure.add_subplot(grid[0, 1])
-        draw_grid_panel(left, rows, style)
-        draw_capacity_panel(right, rows, style)
-        label_panels([left, right], style=style)
-        figure.suptitle(f"3-C'': {operating_headline(rows, style)}")
-        figure.supxlabel(
-            wrapped_note(
-                style.label(
-                    "遅延線は動作点によらず一定 (リザバーを見ないため)。"
-                    "右の帯は遅延線が検証で選んだタップ数で、"
-                    "ESN はそこを超える線形容量を持ったときに勝つ。",
-                    "The delay line is flat because it never sees the"
-                    " reservoir. The band on the right is the number of taps"
-                    " it selected; the ESN wins once its linear capacity"
-                    " exceeds that band.",
-                )
-            )
-        )
-        add_footnote(figure, _operating_conditions(rows, style), style=style)
-        return save_png(figure, path)
-
-
-def _operating_conditions(
-    rows: Sequence[OperatingPointRow], style: StyleContext
-) -> str:
-    """footnote の再現条件 (FIG-6)。"""
-    points = len({(row.n_units, row.leak_rate) for row in rows})
-    replicates = sorted({row.replicate for row in rows})
-    return style.label(
-        f"3-C'', 動作点 {points}, レプリケート {len(replicates)}",
-        f"3-C'', {points} operating points, {len(replicates)} replicates",
-    )
-
-
 __all__ = [
     "DELAY_LINE",
     "ESN",
     "draw_capacity_panel",
     "draw_grid_panel",
     "operating_headline",
-    "plot_operating",
 ]

@@ -198,6 +198,22 @@ narma:
           topology:
             kind: erdos_renyi
             density: 0.5
+
+# 3-T / 3-C'': **掃引の値は絶対値なので、縮小設定でも明示しないと本番の格子が
+# 走る** (実測 220 秒)。CLI の予算 (20 秒) はここを書き忘れると必ず落ちる。
+topology_ladder:
+  n_units: 10
+  n_steps: 700
+  n_graphs: 1
+  n_replicates: 1
+  sweeps:
+    - axis: n_units
+      values: [8, 10]
+    - axis: rho
+      values: [0.8, 0.95]
+narma_operating:
+  n_units_grid: [20, 30]
+  leak_rate_grid: [0.5, 1.0]
 """
 """縮小設定 (構造は本番と同じ)。本番は 330 秒かかるため CLI テストでは使わない。"""
 

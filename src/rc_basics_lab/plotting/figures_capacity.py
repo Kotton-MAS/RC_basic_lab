@@ -41,6 +41,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NMSE,
 )
 from rc_basics_lab.experiment.runner import ResultRow
+from rc_basics_lab.experiment.topology_ladder import TopologyLadderRow
 from rc_basics_lab.plotting.capacity_grids import (
     BOUND_MARGIN,
     conservation_bound,
@@ -49,6 +50,11 @@ from rc_basics_lab.plotting.capacity_grids import (
     mean_std,
     representative_leak_rate,
     sweep_conditions,
+)
+from rc_basics_lab.plotting.figures_ladder import (
+    LADDER_ARTICLE_AXES,
+    draw_ladder_panel,
+    ladder_headline,
 )
 from rc_basics_lab.plotting.labels import (
     DAMBRE_2012,
@@ -279,16 +285,36 @@ def _draw_conservation_bound(
 
 
 def plot_ipc_conservation(
-    rows: Sequence[CapacityRow], path: Path, *, style: StyleContext
+    rows: Sequence[CapacityRow],
+    ladder_rows: Sequence[TopologyLadderRow],
+    path: Path,
+    *,
+    style: StyleContext,
 ) -> Path:
-    """実験 3-B' の保存則 ``IPC_total <= N`` を描く (受け入れ条件2)。
+    """保存則 (3-B') と対照の梯子 (3-T) を1枚に並べる (受け入れ条件2 / D-146)。
 
-    横軸が N、縦軸が ``ipc_total``、線は ``state_noise`` 別。**傾き1の対角線**
-    が上限で、ノイズを入れると点が対角線から下へ離れる (ノイズがリザバーの
-    自由度を潰し、線形読み出しで取り出せる容量が N に届かなくなる)。
+    左は保存則そのもの: 横軸が N、縦軸が ``ipc_total / N``、線は
+    ``state_noise`` 別。**水平線 1** が上限で、ノイズを入れると点が下へ離れる。
+
+    右2枚は**その容量がトポロジで動くか**である。同じ図に置くのは、
+    「容量には上限がある」と「その中でトポロジは効くのか」が読者にとって
+    連続した1つの問いだからで、別々の図にすると『上限の話』と『構造の話』が
+    無関係に見える。
+
+    梯子は総容量ではなく**対応のある差**で描く (D-145)。N や rho で絶対値が
+    2桁動くので、総容量では水準間の差が潰れて読めない。
+
+    Args:
+        rows: ``capacity.csv`` の行 (左のパネル)。
+        ladder_rows: ``capacity_topology.csv`` の行 (右2枚)。
+        path: 出力先の PNG。
+        style: 配色・言語・commit。
+
+    Returns:
+        書き出した PNG のパス。
 
     Raises:
-        ValueError: ``rows`` が空の場合。
+        ValueError: いずれかが空、または梯子に N / rho の掃引が無い場合。
     """
     require_rows(rows)
     units = sorted({row.n_units for row in rows})
@@ -297,9 +323,11 @@ def plot_ipc_conservation(
     # 同じ「連続量の掃引」が記事の中で2種類の配色になっていた。
     colors = sequential_colors(len(noises))
 
+    require_rows(ladder_rows)
     with rc_context_for(style):
-        figure = _new_figure(7.2, 5.0)
-        axis = figure.subplots(1, 1)
+        figure = _new_figure(15.0, 5.0)
+        grid = figure.add_gridspec(1, 3)
+        axis = figure.add_subplot(grid[0, 0])
         for index, noise in enumerate(noises):
             # **比 (ipc_total / N) を縦軸にする** (2-7)。絶対値だと上限線が斜めになり、
             # 「上限からどれだけ離れたか」が目分量になる。比なら水平線 1 から縦に読む。
@@ -325,6 +353,13 @@ def plot_ipc_conservation(
                 ),
             )
         _draw_conservation_bound(axis, units, style)
+        ladder_axes = [figure.add_subplot(grid[0, 1]), figure.add_subplot(grid[0, 2])]
+        # 梯子の4軸のうち **N と rho** を出す。ノイズと T は「順位が動かない」
+        # ことの確認であって、動く軸ではない (CSV に全件ある)。
+        for panel, axis_name in zip(ladder_axes, LADDER_ARTICLE_AXES, strict=True):
+            draw_ladder_panel(panel, ladder_rows, axis_name, "mc_total", style)
+        ladder_axes[0].legend(loc="best", fontsize=7)
+        label_panels([axis, *ladder_axes], style=style)
         axis.set_xlabel(style.label("リザバーのユニット数 N", "reservoir size N"))
         axis.set_ylabel(
             style.label(
@@ -335,10 +370,13 @@ def plot_ipc_conservation(
         first = rows[0]
         figure.suptitle(
             style.label(
-                "実験 3-B': 状態ノイズを入れると IPC_total は上限 N から下へ離れる\n"
-                f"{DAMBRE_2012} の保存則の再実演",
-                "Experiment 3-B': state noise pushes IPC_total away from"
-                f" the bound N\nRe-enacting the capacity bound of {DAMBRE_2012}",
+                "実験 3-B' / 3-T: 容量には上限があり、"
+                f"その中で {ladder_headline(ladder_rows, style)}\n"
+                f"{DAMBRE_2012} の保存則の再実演と、交差する交絡を剥がした対照",
+                "Experiments 3-B' / 3-T: capacity is bounded, and within that"
+                f" bound {ladder_headline(ladder_rows, style)}\n"
+                f"Re-enacting the capacity bound of {DAMBRE_2012} with"
+                " confound-stripping controls",
             )
         )
         axis.legend(loc="upper left", fontsize=8)

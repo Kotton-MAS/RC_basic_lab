@@ -49,6 +49,7 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE_EN,
 )
 from rc_basics_lab.experiment.runner import DELAY_LINE, ESN_METHOD, LINEAR, ResultRow
+from rc_basics_lab.experiment.topology_ladder import TopologyLadderRow
 from rc_basics_lab.plotting import (
     figures_capacity,
     figures_ipc_profile,
@@ -256,6 +257,50 @@ def ipc_sweep_profile(rows: Sequence[CapacityRow]) -> tuple[CapacityProfileRow, 
     )
 
 
+def ladder_rows() -> tuple[TopologyLadderRow, ...]:
+    """保存則の図に足す 3-T の行 (記事に出す2軸ぶんの最小構成)。
+
+    成果物を読まずに合成するのは、作図の検査が ``results/`` の中身に依存
+    しないようにするため (D-146 の図は成果物からも描けるが、こちらは
+    「パネルが立つか」だけを見る)。
+    """
+    rows: list[TopologyLadderRow] = []
+    for axis_name, values in (("n_units", (25, 50)), ("rho", (0.8, 0.95))):
+        for value in values:
+            for level in ("erdos_renyi", "degree_preserving", "barabasi_albert"):
+                for graph in range(2):
+                    rows.append(
+                        TopologyLadderRow(
+                            experiment="3T_topology_ladder",
+                            sweep_axis=axis_name,
+                            level=level,
+                            topology_kind=level,
+                            graph=graph,
+                            replicate=0,
+                            n_units=int(value) if axis_name == "n_units" else 50,
+                            n_steps=20_000,
+                            rho=float(value) if axis_name == "rho" else 0.95,
+                            leak_rate=1.0,
+                            sigma_u=0.2,
+                            state_noise=0.0,
+                            nominal_density=0.08,
+                            realized_density=0.08,
+                            in_degree_max=8.0,
+                            in_degree_std=2.0,
+                            gain_max=1.5,
+                            gain_std=0.3,
+                            mc_total=10.0
+                            - (2.0 if level == "barabasi_albert" else 0.0),
+                            mc_effective_delay=8.0,
+                            ipc_total=30.0,
+                            ipc_linear=10.0,
+                            ipc_nonlinear=20.0,
+                            wall_time_s=0.1,
+                        )
+                    )
+    return tuple(rows)
+
+
 def conservation_rows(
     units: Sequence[int] = (10, 20),
     noises: Sequence[float] = (0.0, 0.05),
@@ -345,7 +390,10 @@ def _draw_all(tmp_path: Path, context: StyleContext) -> tuple[Path, ...]:
         ),
         plot_memory_nonlinearity(ipc_rows, tmp_path / "split.png", style=context),
         plot_ipc_conservation(
-            conservation_rows(), tmp_path / "bound.png", style=context
+            conservation_rows(),
+            ladder_rows(),
+            tmp_path / "bound.png",
+            style=context,
         ),
         plot_narma10_control(narma10_rows(), tmp_path / "narma.png", style=context),
     )
@@ -390,7 +438,9 @@ def test_conservation_figure_draws_the_bound_line(
     """
     rows = conservation_rows()
     units = sorted({row.n_units for row in rows})
-    path = plot_ipc_conservation(rows, tmp_path / "bound.png", style=setup_style())
+    path = plot_ipc_conservation(
+        rows, ladder_rows(), tmp_path / "bound.png", style=setup_style()
+    )
     assert path.is_file()
     assert len(captured) == 1
 
@@ -572,7 +622,9 @@ def test_figures_render_with_a_single_condition(tmp_path: Path) -> None:
             ipc_rows, ipc_sweep_profile(ipc_rows), tmp_path / "ipc.png", style=context
         ),
         plot_memory_nonlinearity(ipc_rows, tmp_path / "split.png", style=context),
-        plot_ipc_conservation(conservation, tmp_path / "bound.png", style=context),
+        plot_ipc_conservation(
+            conservation, ladder_rows(), tmp_path / "bound.png", style=context
+        ),
         plot_narma10_control(
             narma10_rows(replicates=(0,)), tmp_path / "narma.png", style=context
         ),
@@ -628,7 +680,9 @@ def test_figures_render_when_every_capacity_is_zero(tmp_path: Path) -> None:
         plot_mc_sweep(mc_rows, (), tmp_path / "mc.png", style=context),
         plot_ipc_profile(ipc_rows, (), tmp_path / "ipc.png", style=context),
         plot_memory_nonlinearity(ipc_rows, tmp_path / "split.png", style=context),
-        plot_ipc_conservation(conservation, tmp_path / "bound.png", style=context),
+        plot_ipc_conservation(
+            conservation, ladder_rows(), tmp_path / "bound.png", style=context
+        ),
         plot_narma10_control(
             narma10_rows(replicates=(0,)), tmp_path / "narma.png", style=context
         ),
@@ -652,7 +706,9 @@ def test_figures_render_when_every_capacity_is_zero(tmp_path: Path) -> None:
             id="split",
         ),
         pytest.param(
-            lambda path, context: plot_ipc_conservation((), path, style=context),
+            lambda path, context: plot_ipc_conservation(
+                (), ladder_rows(), path, style=context
+            ),
             id="bound",
         ),
         pytest.param(

@@ -21,26 +21,20 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
 from matplotlib.axes import Axes
 
 from rc_basics_lab.experiment.topology_ladder import TopologyLadderRow
 from rc_basics_lab.metrics_significance import sign_test_p_value
+from rc_basics_lab.plotting.labels import cited_bound
 from rc_basics_lab.plotting.layout import (
     hide_minor_tick_labels,
-    label_panels,
-    wrapped_note,
 )
 from rc_basics_lab.plotting.style import (
     REFERENCE_COLOR,
     REFERENCE_DASHES,
     StyleContext,
-    add_footnote,
-    new_figure,
-    rc_context_for,
-    save_png,
 )
 from rc_basics_lab.types import FloatArray
 
@@ -52,6 +46,22 @@ NULL_MODEL_LEVEL = "degree_preserving"
 
 TARGET_LEVEL = "barabasi_albert"
 """主張の対象 (先行が優れると報告している水準)。"""
+
+DEGREE_PRESERVING_SOURCE = "Maslov & Sneppen 2002"
+"""次数保存ランダム化 (double edge swap) の出典。
+
+ネットワーク科学では標準の帰無モデルだが、**RC のトポロジ論文ではまず
+置かれない** (D-135)。0 の線が「差が無いはず」を意味する根拠がここにある。
+"""
+
+LADDER_ARTICLE_AXES: tuple[str, ...] = ("n_units", "rho")
+"""記事の図に出す掃引軸 (D-146)。
+
+4軸すべてを出すと保存則のパネルと合わせて5枚になり、1記事あたりの図の
+上限 (FIG-12 / D-112) を守れない。**N と rho を出す** —— ノイズと T は
+「順位が動かない」ことの確認であって、動く軸ではないからである
+(全件は ``capacity_topology.csv`` にある)。
+"""
 
 AXIS_LABELS: dict[str, tuple[str, str]] = {
     "n_units": ("ユニット数 N", "units N"),
@@ -177,11 +187,17 @@ def draw_ladder_panel(
             capsize=4,
             label=label,
         )
+    # 0 の線は**この図の主張そのもの** (上なら BA が良い)。出典は帰無モデルの
+    # 側にある —— 差が 0 であることを期待するのは次数保存ランダム化が
+    # 帰無モデルだからで、その根拠は D-135 が引く標準的な構成法である。
     axis.axhline(
         0.0,
         color=REFERENCE_COLOR,
         dashes=REFERENCE_DASHES[0],
-        label=style.label("差 0 (優劣なし)", "no difference"),
+        label=cited_bound(
+            style.label("差 0 (優劣なし)", "no difference"),
+            DEGREE_PRESERVING_SOURCE,
+        ),
     )
     if axis_name in ("n_units", "n_steps"):
         axis.set_xscale("log")
@@ -194,71 +210,6 @@ def draw_ladder_panel(
         hide_minor_tick_labels(axis, which="x")
     axis.set_xlabel(style.label(*AXIS_LABELS[axis_name]))
     axis.set_ylabel(style.label("対応のある差 [ビット]", "paired difference [bits]"))
-
-
-def plot_ladder(
-    rows: Sequence[TopologyLadderRow],
-    path: Path,
-    *,
-    style: StyleContext,
-) -> Path:
-    """3-T の梯子を掃引軸ごとに1枚へ並べる (D-145)。
-
-    Args:
-        rows: ``capacity_topology.csv`` と同じ行。
-        path: 出力先の PNG。
-        style: 配色・言語・commit。
-
-    Returns:
-        書き出した PNG のパス。
-
-    Raises:
-        ValueError: 行が空、または掃引軸が見出し表に無い場合。
-    """
-    if not rows:
-        raise ValueError("rows が空です")
-    # **並びは行の出現順**にする (= config の sweeps の宣言順)。名前の
-    # アルファベット順にすると T が先頭に来て、問いの順 (N -> ノイズ -> rho
-    # -> T) と図の順が食い違う。
-    axes_present = list(dict.fromkeys(row.sweep_axis for row in rows if row.sweep_axis))
-    if not axes_present:
-        raise ValueError("掃引の行がありません (sweep_axis が空の行だけです)")
-    with rc_context_for(style):
-        figure = new_figure(14.0, 8.0)
-        grid = figure.add_gridspec(2, 2)
-        drawn: list[Axes] = []
-        for index, axis_name in enumerate(axes_present[:4]):
-            panel = figure.add_subplot(grid[index // 2, index % 2])
-            draw_ladder_panel(panel, rows, axis_name, "mc_total", style)
-            drawn.append(panel)
-        drawn[0].legend(loc="best")
-        label_panels(drawn, style=style)
-        figure.suptitle(f"3-T: {ladder_headline(rows, style)}")
-        figure.supxlabel(
-            wrapped_note(
-                style.label(
-                    "縦軸は同じグラフ・同じ重み行列で対にした差 (D-134)。"
-                    "密度は全水準で実測がそろえてある (D-140)。"
-                    "誤差棒は対ごとの差の標準偏差。",
-                    "The y axis is a paired difference over the same graph and"
-                    " weight matrix (D-134). Density is matched across levels"
-                    " by measurement (D-140). Error bars are the s.d. of the"
-                    " paired differences.",
-                )
-            )
-        )
-        add_footnote(figure, _ladder_conditions(rows, style), style=style)
-        return save_png(figure, path)
-
-
-def _ladder_conditions(rows: Sequence[TopologyLadderRow], style: StyleContext) -> str:
-    """footnote の再現条件 (FIG-6)。"""
-    pairs = len({(row.graph, row.replicate) for row in rows})
-    levels = len({row.level for row in rows})
-    return style.label(
-        f"3-T, 水準 {levels}, 対 {pairs} (グラフ x 重み)",
-        f"3-T, {levels} levels, {pairs} pairs (graph x weight)",
-    )
 
 
 def paired_sign_test(
@@ -279,10 +230,10 @@ def paired_sign_test(
 __all__ = [
     "AXIS_LABELS",
     "BASELINE_LEVEL",
+    "LADDER_ARTICLE_AXES",
     "NULL_MODEL_LEVEL",
     "TARGET_LEVEL",
     "draw_ladder_panel",
     "ladder_headline",
     "paired_sign_test",
-    "plot_ladder",
 ]

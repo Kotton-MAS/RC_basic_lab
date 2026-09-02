@@ -17,10 +17,15 @@ from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
     NARMA10_REFERENCE_NOTE_EN,
 )
+from rc_basics_lab.experiment.narma_operating import OperatingPointRow
 from rc_basics_lab.experiment.narma_taps import TapSweepRow
 from rc_basics_lab.experiment.runner import ResultRow
 from rc_basics_lab.plotting.figures_capacity import draw_narma10_control_panel
 from rc_basics_lab.plotting.figures_narma_taps import draw_narma10_taps_panel
+from rc_basics_lab.plotting.figures_operating import (
+    draw_capacity_panel,
+    operating_headline,
+)
 from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 from rc_basics_lab.plotting.narma10_panel import narma10_subtitle
 from rc_basics_lab.plotting.style import (
@@ -41,6 +46,7 @@ from rc_basics_lab.types import FloatArray
 def plot_narma10(
     rows: Sequence[ResultRow],
     tap_rows: Sequence[TapSweepRow],
+    operating_rows: Sequence[OperatingPointRow],
     waveform: tuple[FloatArray, dict[str, FloatArray]],
     path: Path,
     *,
@@ -50,7 +56,9 @@ def plot_narma10(
 
     Args:
         rows: ``narma10.csv`` と同じ行 (左上のパネル)。
-        tap_rows: ``narma10_taps.csv`` と同じ行 (右上のパネル)。
+        tap_rows: ``narma10_taps.csv`` と同じ行 (上段中央のパネル)。
+        operating_rows: ``narma10_operating.csv`` と同じ行 (右上のパネル、
+            3-C'' / D-146)。
         waveform: ``(真値, 手法 -> 予測)`` (下段のパネル)。
         path: 出力先の PNG。
         style: 配色・言語・commit。
@@ -67,12 +75,20 @@ def plot_narma10(
     with rc_context_for(style):
         # 上段に2つ、下段に波形。下段を全幅にするのは、波形が横軸に
         # 100 ステップあり、半幅では線が重なって読めなくなるためである。
-        figure = new_figure(13.0, 9.0)
-        grid = figure.add_gridspec(2, 2, height_ratios=(1.0, 1.15))
+        figure = new_figure(18.0, 9.0)
+        grid = figure.add_gridspec(2, 3, height_ratios=(1.0, 1.15))
         control = figure.add_subplot(grid[0, 0])
         taps = figure.add_subplot(grid[0, 1])
+        operating = figure.add_subplot(grid[0, 2])
         draw_narma10_control_panel(control, rows, style)
         draw_narma10_taps_panel(taps, tap_rows, style)
+        # 3-C'' は**動作点で勝敗が変わる**ことを示す (D-144)。3-C 本体の
+        # パネルの隣に置くのは、あちらが報告する1点がこちらの面の1点だから
+        # である —— 別の図にすると「その1点を選んだ」ことが読者に見えない。
+        draw_capacity_panel(operating, operating_rows, style)
+        operating.set_title(
+            operating_headline(operating_rows, style), fontsize=PANEL_TITLE_SIZE
+        )
         drawn = draw_prediction_waveform(
             figure, figure.add_subplot(grid[1, :]), truth, predictions, style
         )
@@ -83,7 +99,7 @@ def plot_narma10(
         # 記号は**波形を2段に割った後**に振る (FIG-16)。
         # ``draw_prediction_waveform`` は渡された軸を ``remove()`` するので、
         # 先に振ると下段の記号が消える (``fig_comparison`` で実際に消えていた)。
-        label_panels([control, taps, drawn.top], style=style)
+        label_panels([control, taps, operating, drawn.top], style=style)
         figure.suptitle(
             style.label(
                 "実験 3-C / 3-C': NARMA10 では遅延線が ESN を上回る",

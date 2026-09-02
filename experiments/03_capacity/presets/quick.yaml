@@ -30,3 +30,21 @@ conservation:
   n_units_grid: [25, 50, 100]
   state_noise_grid: [0.0, 0.1]
   n_steps: 8000
+
+# 3-T / 3-C'': **掃引の値は絶対値なので、ここで書き換えないと本番の格子が
+# そのまま走る** (n_units 25/50/100、T 5000/20000/80000 で実測 22 分)。
+# 本番の3倍以上を占めるので、quick では軸を2点ずつに落とす。
+topology_ladder:
+  n_units: 20
+  n_steps: 2000
+  n_graphs: 2
+  n_replicates: 1
+  sweeps:
+    - axis: n_units
+      values: [20, 40]
+    - axis: rho
+      values: [0.8, 0.95]
+
+narma_operating:
+  n_units_grid: [25, 50]
+  leak_rate_grid: [0.3, 1.0]

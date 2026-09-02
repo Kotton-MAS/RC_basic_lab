@@ -1068,3 +1068,40 @@ def test_capacity_config_does_not_leak_into_experiment_config() -> None:
         "ridge",
         "tasks",
     }
+
+
+def test_every_shrunk_config_overrides_the_absolute_sweep_grids() -> None:
+    """**縮小設定は掃引の格子を必ず書き換える** (D-146)。
+
+    ``sweeps`` / ``n_units_grid`` の値は**絶対値**なので、``n_steps`` や
+    ``n_units`` を小さくしても掃引点がそれを上書きして本番の格子が走る。
+    実測: ゴールデン設定に節を書き忘れていた間、縮小設定の CLI が 20 秒の
+    予算に対して 220 秒かかった (梯子が N=100 / T=80000 まで回っていた)。
+
+    「速いはずの設定が遅い」は気づきにくい —— 落ちるのは時間の予算だけで、
+    結果は正しいからである。**設定ファイルの側で機械的に見る。**
+    """
+    import yaml
+
+    shrunk = (
+        Path("tests/golden/configs/03_capacity.yaml"),
+        Path("experiments/03_capacity/presets/quick.yaml"),
+    )
+    for path in shrunk:
+        loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert "topology_ladder" in loaded, (
+            f"{path} に topology_ladder がありません "
+            "(本番の掃引 N=25/50/100・T=5000/20000/80000 がそのまま走ります)"
+        )
+        assert loaded["topology_ladder"].get("sweeps"), (
+            f"{path} の topology_ladder.sweeps が空です"
+        )
+        for sweep in loaded["topology_ladder"]["sweeps"]:
+            assert max(sweep["values"]) <= 100.0, (
+                f"{path} の掃引 {sweep['axis']} に本番規模の値が残っています: "
+                f"{sweep['values']}"
+            )
+        assert "narma_operating" in loaded, f"{path} に narma_operating がありません"
+        assert max(loaded["narma_operating"]["n_units_grid"]) <= 50, (
+            f"{path} の narma_operating に本番規模の N が残っています"
+        )
