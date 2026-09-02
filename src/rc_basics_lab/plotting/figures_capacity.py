@@ -325,9 +325,11 @@ def plot_ipc_conservation(
 
     require_rows(ladder_rows)
     with rc_context_for(style):
-        figure = _new_figure(15.0, 5.0)
-        grid = figure.add_gridspec(1, 3)
-        axis = figure.add_subplot(grid[0, 0])
+        # **横 3 枚並べると横縦比 2.85 で上限 (2.3) を超える** (FIG-13 / D-108)。
+        # 保存則を上段の全幅、梯子を下段に2枚で折る。
+        figure = _new_figure(11.0, 8.5)
+        grid = figure.add_gridspec(2, 2, height_ratios=(1.0, 1.0))
+        axis = figure.add_subplot(grid[0, :])
         for index, noise in enumerate(noises):
             # **比 (ipc_total / N) を縦軸にする** (2-7)。絶対値だと上限線が斜めになり、
             # 「上限からどれだけ離れたか」が目分量になる。比なら水平線 1 から縦に読む。
@@ -353,7 +355,7 @@ def plot_ipc_conservation(
                 ),
             )
         _draw_conservation_bound(axis, units, style)
-        ladder_axes = [figure.add_subplot(grid[0, 1]), figure.add_subplot(grid[0, 2])]
+        ladder_axes = [figure.add_subplot(grid[1, 0]), figure.add_subplot(grid[1, 1])]
         # 梯子の4軸のうち **N と rho** を出す。ノイズと T は「順位が動かない」
         # ことの確認であって、動く軸ではない (CSV に全件ある)。
         for panel, axis_name in zip(ladder_axes, LADDER_ARTICLE_AXES, strict=True):

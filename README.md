@@ -188,8 +188,9 @@ make threshold-02
 ## 実験03: 記憶容量 (MC / IPC) と情報処理容量
 
 ```bash
-# 9成果物 (CSV3枚 + 図5枚 + meta.json) を results/03_capacity/ に再生成する
-# (実測 wall_time_s = 326.98 秒 / 予算 900 秒)
+# 11成果物 (CSV5枚 + 図5枚 + meta.json) を results/03_capacity/ に再生成する
+# (実測 wall_time_s = 1761.57 秒 / 予算 1800 秒。うち約 1312 秒が 3-T の梯子で、
+#  D-146 で図のパネルになったため本番に入った)
 make figures-03
 
 # 系列長 T の掃引 CSV だけを再生成する (予算外・手動、実測 174.58 秒)

@@ -27,7 +27,7 @@
       "capacity_profile.csv": "sha256:b196cc0466746c6738592ac9141f20bbe35c82851a8596a5160029a887cbff4a",
       "capacity_topology.csv": "sha256:5b5de1635a82cb8153ba224af8ef5e34d772480884d0b0e7259e995398c94e95",
       "diagnostics.csv": "sha256:7587a5f80a19e82c5811f5d1573e52f77364eda4346346ec105888220cb59e62",
-      "fig_ipc_conservation.png": "sha256:dcac74c448f9504a3cb47c6bd7a797608d431c95f371b2dbfd06a020aaa8c684",
+      "fig_ipc_conservation.png": "sha256:7e397478dc2ee89adb77cb1c6f05b0ed18432b96e0fb0f298f01d39573343a8a",
       "fig_ipc_profile.png": "sha256:281d32fd163b8f4597f44235592099c82435cf1ccad94c754c30e35f875541a2",
       "fig_mc_sweep.png": "sha256:629fbae4ec638e966728eab9fe53c2997bf9dedb1f6dd654d8622d94a9209bc2",
       "fig_memory_nonlinearity.png": "sha256:a96f8570e1ab106874500cc1f9b6578c61817f7994ddb22ffb71840c3dea7733",
