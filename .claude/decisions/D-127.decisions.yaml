@@ -1,0 +1,4 @@
+- id: D-127
+  rule: "汎用基盤の切り出し手順 (docs/guide/切り出す.md) は、実際に切り出して動かす検査 (tests/test_core_extraction.py) と対で置く。手順書に載せるファイル一覧は手で書き写さず、tests/test_core_series_boundary.py の集合から生成する"
+  rationale: "境界の検査 (D-126) は import 文を読む静的なもので、**関数の中で import する経路とコード以外の同梱物は見えない**。実測で後者を踏んだ: 汎用側の .py だけを複製して import すると datasets/manifests/mgab.csv が無く FileNotFoundError になった —— 静的検査は緑のままである。したがって切り出しの手順書は『書いた通りにやれば動く』ことを別に測る必要がある。一時ディレクトリへ汎用側だけを複製し、連載側が1バイトも無い状態で 53 本を import し、課題生成 -> リザバー実行 -> 診断まで1本回す。実測 2.3 秒なので make ci に入れてよい。手順書のファイル一覧を手で書かないのは、写経した瞬間に境界の定義が2箇所になるためで、切り出す日に生成するコマンドを手順書自身に載せてある。パッケージ名の改名は切り出しと同時に行う (D-126 で先送りした判断の実行時点をここで明示する)"
+  guard_test: "tests/test_core_extraction.py::test_the_extracted_core_can_run_an_experiment_end_to_end"
