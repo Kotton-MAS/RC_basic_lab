@@ -236,17 +236,25 @@ def test_the_docstring_records_every_topology_in_the_table() -> None:
 
 
 def test_the_same_seed_gives_the_same_weights_under_every_topology() -> None:
-    """同一シードなら**同じ重み行列を違うマスクで切り出す** (D-134)。
+    """``topology_rng`` を渡すと**同じ重み行列を違うマスクで切り出す** (D-134)。
 
-    値を先に引き、そのあとで結合の有無を切り出す順にしてある。逆だと
-    ``build_mask`` が消費する乱数の個数がトポロジによって違うぶん重みの
-    実現値までずれ、**トポロジの効果と重みの実現値の分散が分離できない**
-    (このリポジトリの統計はペアが前提である)。
+    渡した場合だけ値を先に引き、マスクは別ストリームから取る。渡さない (本番)
+    場合は従来の順のままなので、``results/`` の成果物はバイト不変である
+    (``test_the_production_draw_order_is_unchanged`` が固定する)。
+
+    引き順が壊れると ``build_mask`` が消費する乱数の個数がトポロジによって違う
+    ぶん重みの実現値までずれ、**トポロジの効果と重みの実現値の分散が分離
+    できない** (このリポジトリの統計はペアが前提である)。
     """
     from rc_basics_lab.reservoir.esn import ESN, ESNConfig
+    from rc_basics_lab.seeds import SeedStream, make_rng_for
 
     def build(topology: TopologyConfig) -> ESN:
-        return ESN(ESNConfig(n_units=120, topology=topology), np.random.default_rng(0))
+        return ESN(
+            ESNConfig(n_units=120, topology=topology),
+            make_rng_for(0, SeedStream.RESERVOIR, 0),
+            topology_rng=make_rng_for(0, SeedStream.TOPOLOGY, 0),
+        )
 
     reference = build(ErdosRenyiConfig(density=0.1))
     for topology in (
@@ -343,4 +351,30 @@ def test_degree_preserving_matches_networkx_double_edge_swap() -> None:
     np.fill_diagonal(ours, 0)
     assert sorted(ours.sum(axis=1).tolist()) == before, (
         "自前の張り替えが networkx と違う次数列を作っています"
+    )
+
+
+def test_the_production_draw_order_is_unchanged() -> None:
+    """``topology_rng`` を渡さなければ**従来の引き順** (D-134)。
+
+    成果物のバイト不変を守っているのはこの分岐である。``test_golden`` も
+    間接的には捕まえるが、あちらは「何かが変わった」としか言わない ——
+    ここは**引き順そのもの**を手で組み直して照合するので、壊れたときに
+    どこを見ればよいかが分かる。従来は ``mask -> values`` の順だった。
+    """
+    from rc_basics_lab.reservoir.esn import ESN, ESNConfig, spectral_radius
+
+    n_units = 60
+    config = ESNConfig(n_units=n_units)
+    built = ESN(config, np.random.default_rng(3))
+
+    manual = np.random.default_rng(3)
+    manual.uniform(-config.bias_scale, config.bias_scale, n_units)
+    manual.uniform(-config.input_scale, config.input_scale, (n_units, 1))
+    mask = build_mask(config.topology, n_units, manual)
+    values = manual.uniform(-1.0, 1.0, (n_units, n_units))
+    expected = np.where(mask, values, 0.0)
+    expected = expected * (config.spectral_radius / spectral_radius(expected))
+    assert np.allclose(built.W, expected), (
+        "本番の引き順が変わっています (mask -> values のはずです)"
     )

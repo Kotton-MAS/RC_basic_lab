@@ -156,11 +156,15 @@ def _random_recurrent(
 ) -> FloatArray:
     """1層ぶんの再帰行列 (``ESN`` と同じ作り方・同じ引き方)。
 
-    **値を先に引き、そのあとで結合の有無を切り出す** (D-134)。
+    引き順は ``topology_rng`` を渡したかで変わる (D-134。``ESN`` と同じ)。
     **層ごとに独立に引く**ので、同じトポロジ設定でも層ごとに違う実現になる。
     """
-    values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
-    mask = build_mask(topology, n_units, topology_rng or rng)
+    if topology_rng is None:
+        mask = build_mask(topology, n_units, rng)
+        values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
+    else:
+        values = rng.uniform(-1.0, 1.0, (n_units, n_units))
+        mask = build_mask(topology, n_units, topology_rng)
     recurrent: FloatArray = np.where(mask, values, 0.0)
     measured = spectral_radius(recurrent)
     if measured == 0.0:

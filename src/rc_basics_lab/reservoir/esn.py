@@ -30,7 +30,7 @@ from rc_basics_lab.reservoir.topology import (
     TopologyConfig,
     build_mask,
 )
-from rc_basics_lab.types import FloatArray
+from rc_basics_lab.types import BoolArray, FloatArray
 
 TANH = "tanh"
 """現在サポートする唯一の活性化関数名。"""
@@ -102,6 +102,35 @@ def _validate_config(config: ESNConfig, n_inputs: int = 1) -> None:
     # トポロジ固有の値の検査は build_mask が行う (作る側と検査する側を分けない)。
 
 
+def _draw_weights_and_mask(
+    config: ESNConfig,
+    n_units: int,
+    rng: np.random.Generator,
+    topology_rng: np.random.Generator | None,
+) -> tuple[FloatArray, BoolArray]:
+    """再帰結合の値とマスクを引く (**引き順の唯一の場所**、D-134)。
+
+    ``topology_rng`` を渡さなければ従来の順 (mask -> values)。渡せば値を先に
+    引き、マスクは別ストリームから取る。**分岐がここ1つだけ**なので、
+    「どちらの順で引いたか」を確かめるのに他の場所を読まなくてよい。
+
+    Args:
+        config: 構造ハイパーパラメータ。
+        n_units: ユニット数 N。
+        rng: 重み生成用の Generator。
+        topology_rng: 構造用の Generator。``None`` なら ``rng`` から従来の順で引く。
+
+    Returns:
+        ``(values, mask)``。
+    """
+    if topology_rng is None:
+        mask = build_mask(config.topology, n_units, rng)
+        values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
+        return values, mask
+    values = rng.uniform(-1.0, 1.0, (n_units, n_units))
+    return values, build_mask(config.topology, n_units, topology_rng)
+
+
 class ESN:
     """漏れ積分型 tanh リザバー。
 
@@ -143,14 +172,16 @@ class ESN:
             -config.input_scale, config.input_scale, (n_units, n_inputs)
         )
 
-        # W: 値を**先に**引き、そのあとで結合の有無を切り出す (D-134)。
-        # 順序が逆だと、トポロジによって消費する乱数の個数が違うぶん重みの
-        # 実現値までずれ、「マスクだけが違う2つの行列」を作れない ——
-        # トポロジの効果と重みの実現値の分散が分離できなくなる。
-        # 密行列で持つのは N <= 1000 なら scipy.sparse より単純で
-        # eigvals もそのまま使えるため。
-        values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
-        mask = build_mask(config.topology, n_units, topology_rng or rng)
+        # W: 結合の有無は topology 層が決め、値はここで引く (拡張性方針 §2-1)。
+        # 密行列で持つのは N <= 1000 なら scipy.sparse より単純で eigvals も
+        # そのまま使えるため。
+        #
+        # **引き順は topology_rng を渡したかで変わる** (D-134)。
+        # 渡さない (本番) 場合は従来どおり mask -> values で、results/ の成果物は
+        # バイト不変のまま。渡した場合は values を先に引き、マスクは別ストリーム
+        # から取るので、**同じシードなら同じ重み行列を違うマスクで切り出す** ——
+        # トポロジを比べるときにペアが組める (比較の分散を差で潰せる)。
+        values, mask = _draw_weights_and_mask(config, n_units, rng, topology_rng)
         recurrent: FloatArray = np.where(mask, values, 0.0)
         measured = spectral_radius(recurrent)
         if measured == 0.0:
