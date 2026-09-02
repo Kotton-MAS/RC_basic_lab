@@ -113,12 +113,17 @@ class RingReservoir:
         rng: np.random.Generator,
         *,
         n_inputs: int = 1,
+        topology_rng: np.random.Generator | None = None,
     ) -> None:
         """重みを生成する。
 
         Args:
             config: 構造ハイパーパラメータ。
             rng: 符号を引く Generator (``seeds.make_rng`` の reservoir ストリーム)。
+            topology_rng: 結合**構造**を引く Generator (``seeds.make_rng`` の
+                topology ストリーム)。``None`` なら ``rng`` を使う。分けて渡すと
+                「同じ重み行列を違うマスクで切り出す」「同じマスクで重みだけ振る」
+                が書ける —— トポロジを比べるときに**ペアが組める** (D-134)。
             n_inputs: 入力次元 D_in。
 
         Raises:

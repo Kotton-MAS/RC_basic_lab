@@ -115,6 +115,7 @@ class ESN:
         rng: np.random.Generator,
         *,
         n_inputs: int = 1,
+        topology_rng: np.random.Generator | None = None,
     ) -> None:
         """重みを生成する。
 
@@ -122,6 +123,10 @@ class ESN:
             config: 構造ハイパーパラメータ。
             rng: 重み生成用の Generator (``seeds.make_rng`` の reservoir ストリーム)。
             n_inputs: 入力次元 D_in。課題側が決める量なので YAML ではなくここで渡す。
+            topology_rng: 結合**構造**を引く Generator (``seeds.make_rng`` の
+                topology ストリーム)。``None`` なら ``rng`` を使う。分けて渡すと
+                「同じ重み行列を違うマスクで切り出す」「同じマスクで重みだけ振る」
+                が書ける —— トポロジを比べるときに**ペアが組める** (D-134)。
 
         Raises:
             ValueError: 設定値が範囲外、または生成した W が零行列だった場合。
@@ -138,12 +143,14 @@ class ESN:
             -config.input_scale, config.input_scale, (n_units, n_inputs)
         )
 
-        # W: 結合の有無は topology 層が決め、値はここで引く (拡張性方針 §2-1)。
-        # **既定の Erdos-Renyi は分離前と同じ乱数の引き方**なので、
-        # results/ の成果物はバイト不変のまま (D-74)。密行列で持つのは
-        # N <= 1000 なら scipy.sparse より単純で eigvals もそのまま使えるため。
-        mask = build_mask(config.topology, n_units, rng)
+        # W: 値を**先に**引き、そのあとで結合の有無を切り出す (D-134)。
+        # 順序が逆だと、トポロジによって消費する乱数の個数が違うぶん重みの
+        # 実現値までずれ、「マスクだけが違う2つの行列」を作れない ——
+        # トポロジの効果と重みの実現値の分散が分離できなくなる。
+        # 密行列で持つのは N <= 1000 なら scipy.sparse より単純で
+        # eigvals もそのまま使えるため。
         values: FloatArray = rng.uniform(-1.0, 1.0, (n_units, n_units))
+        mask = build_mask(config.topology, n_units, topology_rng or rng)
         recurrent: FloatArray = np.where(mask, values, 0.0)
         measured = spectral_radius(recurrent)
         if measured == 0.0:
