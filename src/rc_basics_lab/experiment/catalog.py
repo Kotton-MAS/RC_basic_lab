@@ -296,7 +296,12 @@ CATALOG: tuple[ExperimentSpec, ...] = (
         name="03_capacity",
         results_dir=RESULTS_DIR / "03_capacity",
         artifacts=CAPACITY_ARTIFACTS,
-        budget_s=900.0,
+        # 900 秒は 03 が掃引3本 + 3-C の4区間だったときの数字である。
+        # D-146 で 3-T (梯子) と 3-C'' が図のパネルになって本番へ入り、
+        # 区間が6つになった。**古い予算を少し上へ動かすのではなく、いまの
+        # 中身から引き直す** —— 実測 1,754 秒に対し 2,400 秒 (73%)。
+        # 次に足すときは「どれかを減らす」から始めること (D-147)。
+        budget_s=2400.0,
         variants={
             MAIN: _run_03,
             "length": _run_03_length,

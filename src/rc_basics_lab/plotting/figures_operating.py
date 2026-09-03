@@ -40,18 +40,20 @@ DELAY_LINE = "delay_line"
 
 
 def _baseline(rows: Sequence[OperatingPointRow]) -> float:
-    """遅延線の NRMSE (動作点によらず一定のはず)。
+    """遅延線の NMSE (動作点によらず一定のはず)。
+
+    **指標は同じ図の (a) にそろえる** (C-3)。同じ比較を NMSE と NRMSE で
+    並べると、読者が 0.1538 と 0.392 を別の量だと気づかない。
+
 
     Raises:
         ValueError: 遅延線の行が無い、または動作点で動いている場合。
     """
-    values = {round(row.nrmse, 9) for row in rows if row.method == DELAY_LINE}
+    values = {round(row.nmse, 9) for row in rows if row.method == DELAY_LINE}
     if not values:
         raise ValueError("遅延線の行がありません")
     means = [
-        mean_std([r.nrmse for r in rows if r.method == DELAY_LINE and r.n_units == n])[
-            0
-        ]
+        mean_std([r.nmse for r in rows if r.method == DELAY_LINE and r.n_units == n])[0]
         for n in sorted({row.n_units for row in rows})
     ]
     if max(means) - min(means) > 1.0e-9:
@@ -80,7 +82,7 @@ def operating_headline(rows: Sequence[OperatingPointRow], style: StyleContext) -
     for n_units, leak_rate in points:
         mean, _ = mean_std(
             [
-                row.nrmse
+                row.nmse
                 for row in rows
                 if row.method == ESN
                 and row.n_units == n_units
@@ -110,7 +112,7 @@ def draw_grid_panel(
         for n_units in units:
             mean, std = mean_std(
                 [
-                    row.nrmse
+                    row.nmse
                     for row in rows
                     if row.method == ESN
                     and row.n_units == n_units
@@ -143,7 +145,7 @@ def draw_grid_panel(
     # 副目盛りのラベル (3x10^1 など) は**測っていない点**である (FIG-19)。
     hide_minor_tick_labels(axis, which="x")
     axis.set_xlabel(style.label("ユニット数 N", "units N"))
-    axis.set_ylabel(style.label("NRMSE (小さいほど良い)", "NRMSE (lower is better)"))
+    axis.set_ylabel(style.label("NMSE (小さいほど良い)", "NMSE (lower is better)"))
     axis.legend(loc="best")
 
 
@@ -166,7 +168,7 @@ def draw_capacity_panel(
         ys = [
             mean_std(
                 [
-                    row.nrmse
+                    row.nmse
                     for row in rows
                     if row.method == ESN and row.n_units == n and row.leak_rate == leak
                 ]
@@ -180,6 +182,17 @@ def draw_capacity_panel(
             color=colors[index],
             label=style.label(f"リーク率 {leak_rate:g}", f"leak {leak_rate:g}"),
         )
+        # **N は点の位置にしか現れない** (C-3)。どの点が勝ったのかを図から
+        # 読めるように、点の傍に N を書く。
+        for (n_units, _), x_value, y_value in zip(points, xs, ys, strict=True):
+            axis.annotate(
+                f"N={n_units}",
+                (x_value, y_value),
+                textcoords="offset points",
+                xytext=(4, 4),
+                fontsize=6,
+                color=colors[index],
+            )
     axis.axhline(
         baseline,
         color=method_color(DELAY_LINE),
@@ -203,7 +216,7 @@ def draw_capacity_panel(
             "ESN の線形容量 IPC_linear", "linear capacity IPC_linear of the ESN"
         )
     )
-    axis.set_ylabel(style.label("NRMSE (小さいほど良い)", "NRMSE (lower is better)"))
+    axis.set_ylabel(style.label("NMSE (小さいほど良い)", "NMSE (lower is better)"))
     axis.legend(loc="best")
 
 

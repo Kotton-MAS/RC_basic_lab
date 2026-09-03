@@ -189,7 +189,7 @@ make threshold-02
 
 ```bash
 # 11成果物 (CSV5枚 + 図5枚 + meta.json) を results/03_capacity/ に再生成する
-# (実測 wall_time_s = 1761.57 秒 / 予算 1800 秒。うち約 1312 秒が 3-T の梯子で、
+# (実測 wall_time_s = 1761.57 秒 / 予算 2400 秒。うち約 1312 秒が 3-T の梯子で、
 #  D-146 で図のパネルになったため本番に入った)
 make figures-03
 

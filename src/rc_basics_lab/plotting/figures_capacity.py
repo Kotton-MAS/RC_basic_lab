@@ -62,7 +62,7 @@ from rc_basics_lab.plotting.labels import (
     cited_bound,
     cited_measurement,
 )
-from rc_basics_lab.plotting.layout import label_panels
+from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 from rc_basics_lab.plotting.narma10_panel import (
     REFERENCE_CONDITIONS,
     REFERENCE_LABELS,
@@ -382,6 +382,24 @@ def plot_ipc_conservation(
             )
         )
         axis.legend(loc="upper left", fontsize=8)
+        # **(b)(c) の読み方を書く** (E-3)。誤差棒は対ごとの差のばらつきなので
+        # 平均と同オーダーになり (-1.9 ± 1.5)、一見「有意でない」に見える。
+        # 効いているのは点に添えた「正だった対 / 全対」の偏りのほうである。
+        figure.supxlabel(
+            wrapped_note(
+                style.label(
+                    "(b)(c) の縦軸は同じグラフ・同じ重み行列で対にした差"
+                    " (D-134)。密度は全水準で実測をそろえてある (D-140)。"
+                    "点に添えた数字は「差が正だった対 / 全対」で、"
+                    "効いているのは誤差棒の幅ではなくこの符号の偏りである。",
+                    "In (b)(c) the y axis is a paired difference over the same"
+                    " graph and weight matrix (D-134); density is matched by"
+                    " measurement (D-140). The annotation is"
+                    " positive pairs / all pairs -- the sign imbalance, not"
+                    " the error bar, is what carries the result.",
+                )
+            )
+        )
         conditions = f"rho = {first.rho:g}, a = {first.leak_rate:g}"
         add_provenance(figure, conditions, rows, style=style)
         return _save(figure, path)

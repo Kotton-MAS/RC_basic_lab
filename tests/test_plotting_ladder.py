@@ -184,7 +184,7 @@ def test_a_moving_delay_line_is_rejected() -> None:
     勝敗が変わる」) の対照そのものが壊れている。
     """
     rows = tuple(
-        dataclasses.replace(row, nrmse=row.nrmse + 0.1 * row.n_units)
+        dataclasses.replace(row, nmse=row.nmse + 0.1 * row.n_units)
         if row.method == "delay_line"
         else row
         for row in _operating_rows()

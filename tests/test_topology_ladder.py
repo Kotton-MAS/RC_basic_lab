@@ -367,3 +367,53 @@ def test_the_symmetrised_control_does_not_double_the_density() -> None:
     assert control.base.density < 0.06, (
         f"土台の密度を逆算していません: {control.base.density}"
     )
+
+
+def test_the_gain_spread_does_not_follow_the_degree_spread() -> None:
+    """**交絡4 は効いていない** —— 実測で落とす (E-2)。
+
+    「rho をそろえてもハブにゲインが集中し、残りのノードが動かなくなる」は
+    もっともらしいが、成果物で測ると成り立たない。次数分布は文句なく広がる
+    (BA - ER の ``in_degree_std`` は 24/24 で正) のに、実効ゲインの広がりは
+    **BA のほうが狭い** (3/24)。rho 正規化がゲインをならしているためである。
+
+    交絡を列挙したら、効いていないものも測って落とす —— そうしないと
+    「たぶんこれのせい」が本文に残る。
+    """
+    import csv
+
+    from rc_basics_lab.metrics_significance import sign_test_p_value
+
+    with open(
+        "results/03_capacity/capacity_topology.csv", encoding="utf-8", newline=""
+    ) as handle:
+        rows = [row for row in csv.DictReader(handle) if row["sweep_axis"] == "n_units"]
+    at_n = [row for row in rows if int(row["n_units"]) == 100]
+    assert at_n, "N=100 の行がありません"
+    paired: dict[tuple[str, str], dict[str, dict[str, str]]] = {}
+    for row in at_n:
+        paired.setdefault((row["graph"], row["replicate"]), {})[row["level"]] = row
+
+    def gap(column: str) -> tuple[float, int, int]:
+        diffs = [
+            float(pair["barabasi_albert"][column]) - float(pair["erdos_renyi"][column])
+            for pair in paired.values()
+        ]
+        return (
+            sum(diffs) / len(diffs),
+            sum(1 for value in diffs if value > 0.0),
+            len(diffs),
+        )
+
+    degree_mean, degree_wins, total = gap("in_degree_std")
+    assert degree_wins == total, (
+        f"次数の広がりが BA で広がっていません: {degree_wins}/{total}"
+    )
+    assert sign_test_p_value(total, degree_wins) < 0.001
+
+    gain_mean, gain_wins, _ = gap("gain_std")
+    assert gain_mean < 0.0, f"ゲインの広がりが BA で広い: {gain_mean}"
+    assert sign_test_p_value(total, gain_wins) > 0.5, (
+        "ゲインの広がりが BA 側に偏っています (交絡4 の結論が変わりました)"
+    )
+    assert degree_mean > 0.0
