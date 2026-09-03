@@ -94,13 +94,20 @@ def _paired_differences(
 
 def _difference_series(
     rows: Sequence[TopologyLadderRow], axis_name: str, other: str, column: str
-) -> tuple[list[float], list[float], list[float]]:
-    """1つの軸に沿った (軸の値, 差の平均, 差の s.d.) を昇順で返す。"""
+) -> tuple[list[float], list[float], list[float], list[tuple[int, int]]]:
+    """1つの軸に沿った (軸の値, 差の平均, 差の s.d., 正の対/全対) を昇順で返す。
+
+    **符号カウントも返す** (E-3)。誤差棒は対ごとの差のばらつきなので平均と
+    同オーダーになり (-1.9 ± 1.5)、一見「有意でない」ように見える。効いて
+    いるのは ``2/24`` のほう —— 24 対のうち 22 対で BA が負けている、という
+    符号の偏りである。図に出さないと読者は誤差棒だけを見る。
+    """
     at_axis = [row for row in rows if row.sweep_axis == axis_name]
     points = sorted({float(getattr(row, axis_name)) for row in at_axis})
     xs: list[float] = []
     means: list[float] = []
     stds: list[float] = []
+    signs: list[tuple[int, int]] = []
     for value in points:
         group = [row for row in at_axis if float(getattr(row, axis_name)) == value]
         diffs = _paired_differences(group, other, column)
@@ -109,7 +116,8 @@ def _difference_series(
         xs.append(value)
         means.append(float(np.mean(diffs)))
         stds.append(float(np.std(diffs, ddof=1)) if diffs.size > 1 else 0.0)
-    return xs, means, stds
+        signs.append((int(np.sum(diffs > 0.0)), int(diffs.size)))
+    return xs, means, stds, signs
 
 
 def ladder_headline(rows: Sequence[TopologyLadderRow], style: StyleContext) -> str:
@@ -120,7 +128,7 @@ def ladder_headline(rows: Sequence[TopologyLadderRow], style: StyleContext) -> s
     wins = 0
     total = 0
     for axis_name in dict.fromkeys(row.sweep_axis for row in rows if row.sweep_axis):
-        _, means, _ = _difference_series(rows, axis_name, BASELINE_LEVEL, "mc_total")
+        _, means, _, _ = _difference_series(rows, axis_name, BASELINE_LEVEL, "mc_total")
         total += len(means)
         wins += sum(1 for value in means if value > 0.0)
     if total == 0:
@@ -176,10 +184,10 @@ def draw_ladder_panel(
             ),
         ),
     ):
-        xs, means, stds = _difference_series(rows, axis_name, other, column)
+        xs, means, stds, signs = _difference_series(rows, axis_name, other, column)
         if not xs:
             raise ValueError(f"{axis_name} の行がありません")
-        axis.errorbar(
+        drawn = axis.errorbar(
             xs,
             means,
             yerr=np.asarray(stds, dtype=np.float64),
@@ -187,6 +195,18 @@ def draw_ladder_panel(
             capsize=4,
             label=label,
         )
+        # **符号カウントを点の傍に書く** (E-3)。誤差棒だけを見ると
+        # 「有意でない」に見えるが、効いているのは符号の偏りである。
+        color = drawn.lines[0].get_color()
+        for x_value, y_value, (wins, total) in zip(xs, means, signs, strict=True):
+            axis.annotate(
+                f"{wins}/{total}",
+                (x_value, y_value),
+                textcoords="offset points",
+                xytext=(5, -11 if other == BASELINE_LEVEL else 5),
+                fontsize=6,
+                color=color,
+            )
     # 0 の線は**この図の主張そのもの** (上なら BA が良い)。出典は帰無モデルの
     # 側にある —— 差が 0 であることを期待するのは次数保存ランダム化が
     # 帰無モデルだからで、その根拠は D-135 が引く標準的な構成法である。

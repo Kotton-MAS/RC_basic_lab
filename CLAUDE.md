@@ -132,12 +132,16 @@ make artifacts-manifest     # 成果物の指紋を書き直す (**意図して�
   `test_artifact_invariance` は両者を分けて報告するので、
   「実行時間だけが変わった」と出ていれば数値は同じである。
   **「内容が変わった成果物」の側に出たものだけが説明を要する**
-- **一斉再生成は「ターンを終えずに」前景で回す**。全5実験で約 890 秒
-  (01 約1s / 02 約91s / 03 約346s / 04 約222s / 05 約235s) かかり前景の上限を超えるので、
-  `make figures-01 figures-02 figures-03` と `make figures-04 figures-05` の
-  **2回に割り、その間に最終応答を返さない**。auto-commit が HEAD を動かすのは
-  ターン終了時だけなので、これで commit が固定される。
-  途中で HEAD が動くと実験ごとに違う commit が焼き込まれ `test_cycle_hygiene` が落ちる。
+- **一斉再生成は「ターンを終えずに」回す**。全5実験 + 手動 target で
+  **約 3,400 秒 (57 分)** かかる (01 約4s / 02 約130s / **03 約1,760s** /
+  04 約320s / 05 約360s / 手動の threshold-02・saturation-03・symmetry-03・
+  ladder-threshold-03 で約 800s)。03 が全体の半分で、その大半 (約 1,312s) は
+  3-T の梯子である (D-146 で図のパネルになり本番へ入った)。
+  1回の前景実行 (上限 600 秒) には収まらないので、**作業ツリーを空にしてから
+  バックグラウンドへ投げ、ターンを終えずに待つ**。auto-commit はターン終了時
+  にしか動かないので、コミット済み = 何も commit するものが無い状態にして
+  おけば HEAD は動かない。途中で HEAD が動くと実験ごとに違う commit が
+  焼き込まれ `test_cycle_hygiene` が落ちる。
 - **`PDCA_KIT_AUTO_COMMIT=off` を `make` に付けても効かない。**
   `auto-commit.sh` は Claude プロセス側のフックとして動くので、`make` の環境変数は
   届かない。`.claude/settings.local.json` の `env` に置く手も試したが、それでも

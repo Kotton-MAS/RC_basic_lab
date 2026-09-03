@@ -834,7 +834,7 @@ FIG-12 に条項を足す: **1 記事あたりの図は最大 4 枚**。超え�
 |---|---|---|---|---|---|
 | 01 | 3 | 12 | 6 | 14 | comparison 4 / state_space 6 / state_waveform 2 |
 | 02 | 4 | 8 | 3 | 9 | esp_decay 1 / leak_timescale 3 / esp_map 2 / washout 2 |
-| 03 | 5 | **13** | 4 | 16 | mc_sweep 2 / ipc_profile 4 / memory_nonlinearity 3 / ipc_conservation 1 / narma10 3 |
+| 03 | 5 | **16** | 4 | 19 | mc_sweep 2 / ipc_profile 4 / memory_nonlinearity 3 / ipc_conservation **3** / narma10 **4** |
 | 04 | 5 | **14** | 5 | 14 | freerun_attractor 3 / valid_time 1 / freerun_timeline 1 / stability_map 5 / freerun_stats 4 |
 | 05 | 5 | 12 | 6 | 18 | pr_curves 1 / score_timeline 6 / threshold_tradeoff 2 / protocol_sensitivity 2 / size_vs_performance 1 |
 
@@ -847,6 +847,12 @@ FIG-12 に条項を足す: **1 記事あたりの図は最大 4 枚**。超え�
 ### 決めたこと
 
 - **1記事あたり総パネル 12 以内**（`FIG-12` の枚数上限 4 と併用する）
+  - **03 は 16 で超過している**（2026-09-03 実測）。D-146 で 3-T と 3-C'' を
+    既存の図に畳んだためで、`ipc_conservation` が 1→3、`narma10` が 3→4 に
+    なった。**枚数上限を守るためにパネル上限を破った**形である
+  - 枚数・総パネル・実行時間は**同じものを別の単位で数えている**。1つを守る
+    ために他を破るのはラチェットを外したのと同じなので、次に 03 へ何かを足す
+    ときは「どれかを減らす」から始める（D-147）
 - **1枚あたり 6 パネルまで**
 - 模式図は別枠（`results/` に置かない、AC の判断）
 

@@ -28,6 +28,10 @@ help:
 	@echo "  threshold-02 - Regenerate the ESP threshold sensitivity CSV (design.md 9)"
 	@echo "  saturation-03 - Regenerate the sequence-length sweep CSV (manual, ~30 min)"
 	@echo "  symmetry-03  - Regenerate the drive-symmetry sweep CSV (manual, D-116)"
+	@# variant の行は手書きだが、抜けは tests/test_makefile_variants.py が拾う
+	@echo "  ladder-03    - Regenerate the 3-T control ladder CSV only (manual, D-138)"
+	@echo "  ladder-threshold-03 - Regenerate the 3-Th threshold sensitivity CSV (manual, D-143)"
+	@echo "  operating-03 - Regenerate the 3-C'' operating-point CSV only (manual, D-144)"
 	@echo "  module-map   - Regenerate docs/guide/モジュール地図.md from the code"
 	@echo "  panels       - Measure panels per figure (manual, ~20 min; FIG-15)"
 	@echo "  washout-02-unpadded - Regenerate the pad_series=False washout CSV (design.md 9.6)"

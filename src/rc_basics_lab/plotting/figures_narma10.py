@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from statistics import mean
+from statistics import mean, stdev
 
 from rc_basics_lab.experiment.narma import (
     NARMA10_REFERENCE_NOTE,
@@ -50,16 +50,43 @@ def narma10_verdict(rows: Sequence[ResultRow], style: StyleContext) -> str:
 
     3-C'' のパネルが入った以上、表題は「どちらが勝つか」ではなく
     「どこで勝つか」を言わなければならない。
+
+    **実測の s.d. の範囲で並ぶものに「最良」と言わない。** 許容差なしの
+    argmin を取ると、0.1534 (OLS) と 0.1538 (リッジ) の差 0.0004 —— 同じ
+    条件の s.d. 0.0071 の**19分の1** —— に「最良」の語が付き、記事の主張
+    (「小さいタップ数では正則化の有無で結論が変わらない」) と矛盾する。
+    最良の手法の s.d. 以内に収まるものは**並んでいる**と書く。
     """
-    means = {
-        method: mean([row.nmse for row in rows if row.method == method])
+    stats = {
+        method: (
+            mean([row.nmse for row in rows if row.method == method]),
+            _spread([row.nmse for row in rows if row.method == method]),
+        )
         for method in {row.method for row in rows}
     }
-    best = min(means, key=lambda key: means[key])
-    return style.label(
-        f"この動作点で最良なのは {METHOD_LABELS[best][0]} である",
-        f"the best method at this operating point is {METHOD_LABELS[best][1]}",
+    best = min(stats, key=lambda key: stats[key][0])
+    best_mean, best_spread = stats[best]
+    tied = sorted(
+        method
+        for method, (value, _) in stats.items()
+        if value - best_mean <= best_spread
     )
+    if len(tied) == 1:
+        return style.label(
+            f"この動作点で最良なのは {METHOD_LABELS[best][0]} である",
+            f"the best method at this operating point is {METHOD_LABELS[best][1]}",
+        )
+    names_ja = " / ".join(METHOD_LABELS[method][0] for method in tied)
+    names_en = " / ".join(METHOD_LABELS[method][1] for method in tied)
+    return style.label(
+        f"この動作点では {names_ja} が s.d. の範囲で並ぶ",
+        f"at this operating point {names_en} tie within one s.d.",
+    )
+
+
+def _spread(values: Sequence[float]) -> float:
+    """レプリケート間の標準偏差 (1本しか無ければ 0)。"""
+    return float(stdev(values)) if len(values) > 1 else 0.0
 
 
 def plot_narma10(

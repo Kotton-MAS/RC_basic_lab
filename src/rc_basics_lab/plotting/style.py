@@ -99,6 +99,14 @@ REFERENCE_DASHES: tuple[tuple[float, float], ...] = ((6.0, 3.0), (2.0, 2.0))
 区別する (3-C の NMSE = 0.16 / 0.107)。
 """
 
+LEGEND_GID_PREFIX = "legend-bottom:"
+"""``layout.legend_below`` が凡例の下端を伝える ``gid`` の接頭辞。
+
+**``layout`` から import しない** —— ``layout`` は ``style`` を import して
+いるので、逆向きを引くと循環する。値の一致は
+``tests/test_plotting_layout.py`` が突き合わせる。
+"""
+
 FOOTNOTE_FONTSIZE = 7
 """再現条件の footnote の文字サイズ (FIG-6)。"""
 
@@ -106,7 +114,15 @@ FOOTNOTE_COLOR = "#555555"
 """footnote の色 (データではないので本文より薄くする)。"""
 
 FOOTNOTE_OFFSET = -0.01
-"""footnote を置く縦位置 (figure 座標。負 = 枠の外)。"""
+"""footnote を置く縦位置 (figure 座標。負 = 枠の外)。
+
+**図の外に凡例がある図では、その下端からさらに下げる** (``_footnote_y``)。
+固定値のままだと、凡例と footnote が同じ帯を取り合う (実測: 3枚で重なり、
+3サイクル指摘され続けた)。
+"""
+
+FOOTNOTE_GAP = 0.012
+"""凡例の下端と footnote の間に空ける縦の隙間 (figure 座標)。"""
 
 
 COMMIT_LENGTH = 7
@@ -235,13 +251,28 @@ def add_footnote(figure: Figure, conditions: str, *, style: StyleContext) -> Non
     # 保存は bbox_inches="tight" なので、外に出した分だけ余白が広がる。
     figure.text(
         1.0,
-        FOOTNOTE_OFFSET,
+        _footnote_y(figure),
         footnote_text(conditions, commit=style.commit),
         ha="right",
         va="top",
         fontsize=FOOTNOTE_FONTSIZE,
         color=FOOTNOTE_COLOR,
     )
+
+
+def _footnote_y(figure: Figure) -> float:
+    """footnote の縦位置 (**図の外の凡例より下**)。
+
+    ``legend_below`` が凡例の下端を ``gid`` に書いているので、それを読んで
+    さらに ``FOOTNOTE_GAP`` だけ下げる。凡例が無ければ既定のまま。
+    """
+    lowest = FOOTNOTE_OFFSET
+    for legend in figure.legends:
+        gid = legend.get_gid()
+        if gid is None or not gid.startswith(LEGEND_GID_PREFIX):
+            continue
+        lowest = min(lowest, float(gid[len(LEGEND_GID_PREFIX) :]) - FOOTNOTE_GAP)
+    return lowest
 
 
 class HasReplicate(Protocol):

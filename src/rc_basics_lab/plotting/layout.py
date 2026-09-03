@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import math
 import unicodedata
 from collections.abc import Sequence
 
@@ -48,8 +49,30 @@ LEGEND_BELOW_FONTSIZE = 8
 """図の外に出す凡例の文字サイズ。"""
 
 
-LEGEND_BELOW_ANCHOR: tuple[float, float] = (0.5, -0.08)
-"""図の外に出す凡例の位置 (figure 座標。負 = 枠の下)。"""
+LEGEND_BELOW_ANCHOR: tuple[float, float] = (0.5, -0.02)
+"""図の外に出す凡例の**上端**の位置 (figure 座標。負 = 枠の下)。
+
+``loc="upper center"`` と組で使う。かつては ``loc="lower center"`` で
+``-0.08`` に置いていたが、それだと**凡例が上へ伸びる**ので、行数が増えた
+図で x 軸ラベルに食い込んだ (実測: ``fig_pr_curves`` は凡例・軸ラベル・
+footnote の3重の重なりで、3サイクル指摘され続けた)。上端を固定して下へ
+伸ばせば、行数がいくつでも枠の中には入らない。
+"""
+
+LEGEND_ROW_HEIGHT_PT = LEGEND_BELOW_FONTSIZE * 1.6
+"""凡例1行の高さ [pt] (文字サイズ + 行間)。
+
+figure 座標の高さは図の縦インチ数で割って出す —— 固定の割合にすると、
+縦長の図で空きすぎ、横長の図で足りなくなる。
+"""
+
+LEGEND_GID_PREFIX = "legend-bottom:"
+"""凡例の下端を ``add_footnote`` へ伝える ``gid`` の接頭辞。
+
+**公開 API だけで伝える**ための細工である。``Legend`` は列数を公開して
+いないので行数を後から数え直せず、描画前に renderer も無い。置いた側が
+下端を知っているので、そこで書いて読む。
+"""
 
 
 PANEL_LABEL_FONTSIZE = 11
@@ -123,15 +146,20 @@ def legend_below(
                 labels.append(text)
     if not handles:
         return
-    figure.legend(
+    legend = figure.legend(
         handles,
         labels,
-        loc="lower center",
+        loc="upper center",
         ncol=ncol,
         fontsize=LEGEND_BELOW_FONTSIZE,
         frameon=False,
         bbox_to_anchor=LEGEND_BELOW_ANCHOR,
     )
+    # 下端を figure 座標で計算して ``gid`` に書く。``add_footnote`` が
+    # これを読んで、footnote を凡例より下へ置く (FIG-6 との重なりの解消)。
+    rows = math.ceil(len(handles) / max(ncol, 1))
+    height = rows * LEGEND_ROW_HEIGHT_PT / 72.0 / figure.get_figheight()
+    legend.set_gid(f"{LEGEND_GID_PREFIX}{LEGEND_BELOW_ANCHOR[1] - height:.5f}")
 
 
 def panel_label(axis: Axes, letter: str, *, style: StyleContext) -> None:
