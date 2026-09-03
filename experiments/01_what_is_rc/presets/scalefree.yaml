@@ -1,0 +1,22 @@
+# スケールフリー / スモールワールドのプリセット (--preset scalefree)
+#
+# **本体 config.yaml との差分だけ**を書く。
+#
+# `--set` では書けない例として `docs/guide/条件を変えて試す.md` が挙げている
+# もので、そちらから名指しされている以上、実在していないと手引きが嘘になる
+# (D-149)。`--set tasks.mackey_glass.reservoir.topology.kind=barabasi_albert`
+# だけを書くと `density` が残って `m` が無い設定になるので、**セクションを
+# 丸ごと置き換える**必要がある。
+#
+# 結果の解釈には対照が要る (`docs/guide/対照の置き方.md`)。密度をそろえずに
+# ER と BA を比べると、次数分布・相互結合率・自己ループ・rho 正規化との
+# 相互作用が同時に動く (D-131 / D-140)。ここは「動かして形を見る」ための
+# プリセットであって、主張の根拠にはならない。
+
+tasks:
+  - kind: mackey_glass
+    reservoir:
+      topology: {kind: barabasi_albert, m: 2}
+  - kind: delay_parity
+    reservoir:
+      topology: {kind: watts_strogatz, k: 4, beta: 0.1}

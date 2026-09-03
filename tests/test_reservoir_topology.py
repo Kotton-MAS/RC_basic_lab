@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -443,3 +444,30 @@ def test_the_control_density_is_predicted_and_invertible(
         )
     )
     assert back == pytest.approx(target, rel=0.05), f"逆算が効いていません: {back}"
+
+
+def test_the_two_ring_kinds_are_distinguishable_in_the_artifact() -> None:
+    """``kind: "ring"`` が2箇所にあることを**成果物から見分けられる** (D-149)。
+
+    ``topology.kind`` (ESN の結合だけ閉路) と ``reservoir.kind`` (モデルが
+    SCR) は同じ名前で意味が違う。名前を変えるのは既存の成果物と YAML を
+    壊すので、**見分けがつくこと**のほうを固定する —— 判別子の型が別なら、
+    設定を読んだ側は取り違えようがない。
+
+    ここが壊れる形は「片方が他方の別名になる」なので、両者が**別の型**で
+    あり、かつトポロジ側がモデルの必須フィールドを持たないことを見る。
+    """
+    from rc_basics_lab.reservoir.ring import RingConfig
+
+    assert RingTopologyConfig.KIND == RingConfig.KIND == "ring"
+    # mypy が「別の型なので常に真」と言う —— それがまさに固定したいこと。
+    assert RingTopologyConfig.__name__ != RingConfig.__name__
+    topology_fields = {item.name for item in dataclasses.fields(RingTopologyConfig())}
+    reservoir_fields = {item.name for item in dataclasses.fields(RingConfig())}
+    assert "n_units" in reservoir_fields, "モデル側は N を持つ"
+    assert "n_units" not in topology_fields, (
+        "トポロジ側が N を持つと、モデルの設定と見分けが付かなくなる"
+    )
+    assert not topology_fields, (
+        f"トポロジ側は設定を持たない (密度は 1/N で決まる): {topology_fields}"
+    )
