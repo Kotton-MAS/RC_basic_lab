@@ -26,7 +26,7 @@ from rc_basics_lab.plotting.figures_freerun import (
     REGIME_MARKERS,
 )
 from rc_basics_lab.plotting.freerun_grids import label_of
-from rc_basics_lab.plotting.layout import label_panels
+from rc_basics_lab.plotting.layout import label_panels, wrapped_note
 
 if TYPE_CHECKING:  # pragma: no cover - 型検査時のみ必要
     from matplotlib.typing import HashableList
@@ -111,6 +111,25 @@ def plot_stability_map(
             loc="outside lower center",
             ncols=len(REGIMES),
             fontsize=9,
+        )
+        # **各マスがレプリケートをどう畳んだかを図の中に書く** (regime_map の
+        # 多数決)。本文が「格子 80 点」と書く一方で図は 16 マスなので、書かないと
+        # 読者が数を突き合わせられない。
+        n_replicates = len({row.replicate for row in rows})
+        figure.supxlabel(
+            wrapped_note(
+                style.label(
+                    f"注: (a)-(d) の各マスは {n_replicates} レプリケートの多数決"
+                    " (同数なら 発散 > 周期軌道 > アトラクタ再現 の順で悪い方に"
+                    "倒す)。(e) はレプリケートを畳まず 1 点 1 行で描いている。",
+                    f"Note: each cell in (a)-(d) is the majority vote over"
+                    f" {n_replicates} replicates (ties fall to the worse regime:"
+                    " diverged > periodic > attractor). Panel (e) plots one point"
+                    " per row without folding replicates.",
+                ),
+                width=140,  # 5 パネル幅の図なので既定の 78 桁では 3 行に折れる
+            ),
+            fontsize=8,
         )
         figure.suptitle(
             style.label(

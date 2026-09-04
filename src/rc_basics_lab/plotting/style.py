@@ -124,6 +124,12 @@ FOOTNOTE_OFFSET = -0.01
 FOOTNOTE_GAP = 0.012
 """凡例の下端と footnote の間に空ける縦の隙間 (figure 座標)。"""
 
+LEGEND_GAP = 0.012
+"""図の中身 (軸ラベル・注記) の下端と、外に出した凡例の上端の隙間 (figure 座標)。"""
+
+FOOTNOTE_GID = "footnote"
+"""``add_footnote`` が書く ``figure.text`` の ``gid``。"""
+
 
 COMMIT_LENGTH = 7
 """footnote に載せるコミットハッシュの桁数。"""
@@ -257,6 +263,7 @@ def add_footnote(figure: Figure, conditions: str, *, style: StyleContext) -> Non
         va="top",
         fontsize=FOOTNOTE_FONTSIZE,
         color=FOOTNOTE_COLOR,
+        gid=FOOTNOTE_GID,
     )
 
 
@@ -462,10 +469,56 @@ def new_figure(width: float, height: float) -> Figure:
     return figure
 
 
-def save_png(figure: Figure, path: Path) -> Path:
-    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
+def settle_outside_artists(figure: Figure) -> None:
+    """図の外に出した凡例と footnote を、**描画後の実寸**で下へ積み直す。
+
+    ``legend_below`` は凡例の上端を figure 座標の定数 (``-0.02``) に置き、
+    ``add_footnote`` は凡例の高さを行数から**見積もって**その下に置く。
+    どちらも描画前の推定なので、``supxlabel`` の注記が2行に折り返された図や
+    軸ラベルの長い図では、凡例が注記や x 軸ラベルに食い込んだ
+    (実測: ``fig_esp_decay`` / ``fig_pr_curves`` / ``fig_threshold_tradeoff``)。
+
+    ここでは一度描画してから、凡例と footnote を除いた中身の tight bbox の
+    下端を測り、その下に凡例、さらにその実寸の下に footnote を置く。
+    constrained layout は ``figure.legend`` と ``figure.text`` を配置に
+    数えないので、この2つだけを後から動かしても軸は動かない。
+    """
+    legends = [
+        legend
+        for legend in figure.legends
+        if (legend.get_gid() or "").startswith(LEGEND_GID_PREFIX)
+    ]
+    notes = [text for text in figure.texts if text.get_gid() == FOOTNOTE_GID]
+    if not legends and not notes:
+        return
     FigureCanvasAgg(figure)
+    canvas = figure.canvas
+    for artist in (*legends, *notes):
+        artist.set_visible(False)
+    canvas.draw()
+    # ``get_tightbbox(None)`` は figure に紐づく renderer を使う (typed API)。
+    content = figure.get_tightbbox(None)
+    for artist in (*legends, *notes):
+        artist.set_visible(True)
+    to_figure = figure.transFigure.inverted()
+    bottom = float(to_figure.transform((0.0, content.y0))[1]) - LEGEND_GAP
+    for legend in legends:
+        legend.set_bbox_to_anchor((0.5, bottom), transform=figure.transFigure)
+        canvas.draw()
+        extent = legend.get_window_extent(None)
+        bottom = float(to_figure.transform((0.0, extent.y0))[1])
+    for note in notes:
+        note.set_position((1.0, bottom - FOOTNOTE_GAP))
+
+
+def save_png(figure: Figure, path: Path) -> Path:
+    """Agg キャンバスで PNG を書く (ディスプレイに依存しない)。
+
+    保存の直前に ``settle_outside_artists`` で図の外の凡例と footnote を
+    実寸で積み直す。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    settle_outside_artists(figure)
     figure.savefig(path, format="png")
     return path
 
@@ -485,7 +538,10 @@ __all__ = [
     "FIGURE_SIZES",
     "FOOTNOTE_COLOR",
     "FOOTNOTE_FONTSIZE",
+    "FOOTNOTE_GAP",
+    "FOOTNOTE_GID",
     "FOOTNOTE_OFFSET",
+    "LEGEND_GAP",
     "LINEAR_METHOD",
     "MAX_ASPECT_RATIO",
     "METHOD_COLORS",
@@ -512,6 +568,7 @@ __all__ = [
     "require_rows",
     "save_png",
     "sequential_colors",
+    "settle_outside_artists",
     "setup_style",
     "unique_sorted",
 ]

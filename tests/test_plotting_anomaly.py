@@ -31,6 +31,7 @@ from rc_basics_lab.experiment.anomaly_score import (
     ESN_RESIDUAL,
     RANDOM_CONTROL,
 )
+from rc_basics_lab.plotting import figures_anomaly
 from rc_basics_lab.plotting.figures_anomaly import (
     MARKED_STYLE,
     MARKED_SUFFIX,
@@ -435,3 +436,39 @@ def test_the_zoom_window_falls_back_to_the_middle_without_anomalies() -> None:
     first, last = _zoom_span((), rows)
     indices = [row.index for row in rows]
     assert min(indices) <= first < last <= max(indices)
+
+
+FORBIDDEN_PARENS: tuple[str, ...] = ("(", "\uff08")
+"""系統名に入れてはいけない括弧 (半角と全角。全角は ruff の RUF001 が
+リテラルを嫌うのでコードポイントで書く)。"""
+
+
+def test_no_method_label_carries_its_own_parentheses() -> None:
+    """系統名そのものが括弧を持たない (D-152)。
+
+    ``method_label`` は ``mark`` を渡されると ``(対照と区別できる)`` を
+    **自分で添える**。名前の側にも括弧があると
+    ``一様乱数 (対照) (対照と区別できない)`` のように**二重括弧**になり、
+    凡例が読めなくなる (実測で 5-A / 5-B の凡例がそうなっていた)。
+
+    括弧を添えるのは1箇所だけ、という約束をここで固定する。
+    """
+    offenders = {
+        method: labels
+        for method, labels in figures_anomaly.METHOD_LABELS.items()
+        if any(any(mark in text for mark in FORBIDDEN_PARENS) for text in labels)
+    }
+    assert not offenders, (
+        "系統名が括弧を含んでいます (method_label が添えるので二重になります):\n"
+        + "\n".join(f"  {method}: {labels}" for method, labels in offenders.items())
+    )
+
+
+def test_the_marked_label_adds_exactly_one_parenthesis() -> None:
+    """``mark`` を渡したラベルの括弧がちょうど1組である。"""
+    style = setup_style(commit="0" * 40)
+    for method in figures_anomaly.METHOD_LABELS:
+        for mark in (True, False):
+            label = figures_anomaly.method_label(method, style, mark=mark)
+            assert label.count("(") == 1, f"{method} (mark={mark}): {label}"
+            assert label.count(")") == 1, f"{method} (mark={mark}): {label}"
