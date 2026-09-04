@@ -41,8 +41,12 @@ help:
 sync:
 	uv sync --locked
 
+# -n auto は pytest-xdist (dev 依存)。**フックの予算が理由ではなく、時間が
+# 予算に張り付くと「遅いから落ちた」と「壊れたから落ちた」が区別できなく
+# なるから**である (実測: 直列 118 秒 / 並列 24〜27 秒、3 回とも全件パス)。
+# 直列で走らせたいときは `uv run pytest -q` を直接叩く。
 test:
-	uv run pytest -q
+	uv run pytest -q -n auto
 
 cov:
 	uv run pytest --cov

@@ -7,7 +7,7 @@
 | `docs/design.md` | **実測値の正本**。各実験の設計判断と、感度表・閾値表などの数値記録 | 実装者。数値の出どころを辿るとき |
 | `docs/review-findings-*.md` | reviewer が出した findings の記録。`F-xx-y-zzz` の ID はここに実在する | fixer / reviewer。ID を引くとき |
 | `docs/adr/` | architect の設計判断記録 (ADR) | 実装者。「なぜこの構造か」を辿るとき |
-| `docs/plans/` | planner の仕様書・タスクリスト (サイクル 01〜05)。**未着手の修正指示もここ** | 実装者。着手前に読む |
+| `docs/plans/` | planner の仕様書 (サイクル 01〜05) と、生きている方針書。**消化した指示書は畳んで `docs/plans/README.md` の索引に1行だけ残す** | 実装者。着手前に読む |
 | `docs/series/` | **記事(連載)側の文書**。企画・要件・図の方針・サーベイ・整合レビュー | 執筆者。記事を書く/直すとき |
 | `docs/process/` | 開発プロセスそのものの記録。エージェント運用の振り返り・削減候補・申し送り | 運用改善のとき。実装中は読まなくてよい |
 
@@ -42,11 +42,19 @@
 | `agent-operations-retrospective.md` | サイクル 01〜04 のエージェント運用の振り返り |
 | `agent-system-review-from-artifacts.md` | 成果物から逆算したエージェント構成のレビュー |
 | `agent-behaviour-fixes.md` | 上記の指摘 B-1〜B-6 への是正 |
-| `kit-fixes-for-another-session.md` | kit 側 (`~/.claude/`) の改修事項 |
 | `リファクタリング方針.md` | モジュール分割・共通層の切り方の方針 |
-| `削減候補-05.md` | 「削れるか」reviewer の実行結果 |
-| `next-pr-candidates-05a.md` | 05a からの申し送り (次の PR 候補) |
-| `checkpoint-05b-t3.md` | 05b T3 の測定チェックポイント |
+| `削減候補-05.md` / `削減候補-figure-polish-3.md` | 「削れるか」reviewer の実行結果。**`tests/test_cycle_hygiene.py` が要求する** |
+| `checkpoint-05b-t3.md` | 05b T3 の測定チェックポイント。`tests/test_anomaly_dataset_source.py` が「なぜ UCR を回さなかったか」の根拠として引く |
+
+## 畳んだ文書
+
+一時的な指示書・レビューは、**消化した時点で本体を消して索引に1行だけ残す**
+(`docs/plans/README.md`)。残し続けると同じ判断が指示書と決定とコードの3箇所に
+散り、独立にドリフトする。中身は `git log --follow -- <パス>` で読める。
+
+2026-09-04 に 10 本 (2,650 行) を畳んだ。あわせて `docs/モジュール地図.md` を
+消した —— D-126 で `docs/guide/` へ移した際の**移動漏れ**で、機械が読んでいる
+のは `docs/guide/モジュール地図.md` のほうだけだった。
 
 ## 書き分けの原則 (CLAUDE.md より)
 

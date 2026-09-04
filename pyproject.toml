@@ -26,6 +26,7 @@ dev = [
     "pre-commit>=4.6.0",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.15.4",
     "scikit-learn>=1.9.0",
     "types-networkx>=3.6.1.20260728",
