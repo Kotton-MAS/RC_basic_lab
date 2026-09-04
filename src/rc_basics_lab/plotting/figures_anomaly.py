@@ -82,10 +82,13 @@ METHOD_LABELS: dict[str, tuple[str, str]] = {
     DELAY_LINE_RESIDUAL: ("遅延線 残差", "delay-line residual"),
     PERSISTENCE_RESIDUAL: ("直前値 残差", "persistence residual"),
     MOVING_STATISTICS: ("移動統計", "moving statistics"),
-    RANDOM_CONTROL: ("一様乱数 (対照)", "uniform random (control)"),
-    INPUT_NORM_CONTROL: ("入力ノルム (対照)", "input norm (control)"),
+    RANDOM_CONTROL: ("一様乱数対照", "uniform-random control"),
+    INPUT_NORM_CONTROL: ("入力ノルム対照", "input-norm control"),
 }
-"""系統名の表示 (``ANOMALY_METHODS`` の全要素を持つ。欠けたら描く前に落とす)。"""
+"""系統名の表示 (``ANOMALY_METHODS`` の全要素を持つ。欠けたら描く前に落とす)。
+
+対照2本は括弧なしで綴る (``method_label`` が括弧を添えるので二重になっていた)。
+"""
 
 METHOD_COLORS: dict[str, str] = {
     ESN_RESIDUAL: "#1a9850",

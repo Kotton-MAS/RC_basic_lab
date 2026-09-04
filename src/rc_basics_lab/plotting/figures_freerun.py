@@ -474,14 +474,17 @@ def _annotate_distance(
     finite_surrogate = [value for value in surrogate if math.isfinite(value)]
     if not finite or not finite_surrogate:
         return
+    count = len(finite)  # 描画は1本、注記は全本の中央値。注記に本数と中央値を明記する
     axis.text(
         0.03,
         0.97,
         style.label(
             f"自走 {float(np.median(finite)):.3f}"
-            f" / 代替 {float(np.median(finite_surrogate)):.3f}",
+            f" / 代替 {float(np.median(finite_surrogate)):.3f}"
+            f" ({count} 本の中央値)",
             f"free run {float(np.median(finite)):.3f}"
-            f" / surrogate {float(np.median(finite_surrogate)):.3f}",
+            f" / surrogate {float(np.median(finite_surrogate)):.3f}"
+            f" (median of {count})",
         ),
         transform=axis.transAxes,
         ha="left",
