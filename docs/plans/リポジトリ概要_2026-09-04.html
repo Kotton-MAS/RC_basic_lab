@@ -1,0 +1,343 @@
+<title>RC_basic_lab 全体像</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=IBM+Plex+Sans+JP:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#F6F7F9; --surface:#FFFFFF; --ink:#1B2430; --muted:#5B6675; --line:#D8DDE5;
+    --accent:#0E6B67; --accent-soft:#DCEFEC; --warn:#A8701A; --warn-soft:#F6EBD3; --ok:#2E7D4F;
+    --code-bg:#EEF1F5;
+    --serif:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+    --sans:"IBM Plex Sans JP","Hiragino Sans","Noto Sans JP",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0F1419; --surface:#161C24; --ink:#E7EBF0; --muted:#98A4B4; --line:#2B333E;
+      --accent:#43B9B0; --accent-soft:#163430; --warn:#D9A24A; --warn-soft:#3A2D14; --ok:#6CC08E;
+      --code-bg:#1C232C;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0F1419; --surface:#161C24; --ink:#E7EBF0; --muted:#98A4B4; --line:#2B333E;
+    --accent:#43B9B0; --accent-soft:#163430; --warn:#D9A24A; --warn-soft:#3A2D14; --ok:#6CC08E;
+    --code-bg:#1C232C;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.75;
+       -webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  code,pre{font-family:var(--mono);font-size:.88em}
+  code{background:var(--code-bg);padding:.1em .4em;border-radius:3px}
+  pre{background:var(--code-bg);padding:14px 16px;border-radius:4px;overflow-x:auto;line-height:1.55}
+  pre code{background:none;padding:0}
+
+  .shell{display:grid;grid-template-columns:220px minmax(0,1fr);gap:48px;max-width:1120px;margin:0 auto;padding:40px 28px 80px}
+  @media (max-width:860px){.shell{grid-template-columns:1fr;gap:24px;padding:24px 16px 60px}}
+
+  nav.toc{position:sticky;top:24px;align-self:start;font-size:13px}
+  @media (max-width:860px){nav.toc{position:static}}
+  nav.toc .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  nav.toc ol{list-style:none;margin:0;padding:0;border-left:1px solid var(--line)}
+  nav.toc li a{display:block;padding:5px 0 5px 14px;color:var(--muted);text-decoration:none;border-left:2px solid transparent;margin-left:-1px}
+  nav.toc li a:hover,nav.toc li a:focus-visible{color:var(--ink);border-left-color:var(--accent);outline:none}
+  nav.toc .meta{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.7}
+  nav.toc .meta b{color:var(--ink);font-weight:500}
+
+  main{max-width:72ch}
+  header.masthead{margin-bottom:44px}
+  header .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--accent);text-transform:uppercase}
+  header h1{font-family:var(--serif);font-weight:700;font-size:40px;line-height:1.2;margin:8px 0 12px;text-wrap:balance;letter-spacing:.01em}
+  header .lede{font-size:16.5px;color:var(--muted);margin:0;max-width:62ch}
+
+  section{margin:0 0 56px}
+  h2{font-family:var(--serif);font-weight:700;font-size:25px;line-height:1.3;margin:0 0 6px;text-wrap:balance;
+     padding-top:18px;border-top:1px solid var(--line)}
+  h2 + .sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+  h3{font-size:15.5px;font-weight:600;margin:28px 0 8px;letter-spacing:.01em}
+  p{margin:0 0 14px}
+  ul,ol{padding-left:1.4em;margin:0 0 14px}
+  li{margin:2px 0}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);margin:22px 0 8px}
+  .stat{background:var(--surface);padding:14px 16px}
+  .stat .n{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.1}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:4px}
+
+  table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0 18px}
+  .tbl{overflow-x:auto;margin:12px 0 18px}
+  .tbl table{margin:0}
+  th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{font-weight:600;font-size:12.5px;color:var(--muted);letter-spacing:.02em;border-bottom:2px solid var(--line)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px}
+  td code{white-space:nowrap}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:2px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .pill.acc{background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+  .pill.warn{background:var(--warn-soft);border-color:transparent;color:var(--warn)}
+
+  .note{border-left:3px solid var(--accent);padding:10px 16px;background:var(--surface);margin:16px 0}
+  .note.warn{border-left-color:var(--warn)}
+  .note p:last-child{margin:0}
+
+  .mermaid{background:var(--surface);border:1px solid var(--line);padding:16px;overflow-x:auto;margin:14px 0 8px}
+  figcaption{font-size:12.5px;color:var(--muted);margin:0 0 18px}
+
+  dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 18px;margin:10px 0 16px;font-size:14px}
+  dl.kv dt{font-family:var(--mono);font-size:12.5px;color:var(--muted);padding-top:2px}
+  dl.kv dd{margin:0}
+
+  .tree{font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--code-bg);padding:14px 16px;border-radius:4px;overflow-x:auto;white-space:pre;margin:12px 0 18px}
+  .tree .c{color:var(--muted)}
+
+  @media (prefers-reduced-motion:no-preference){a{transition:color .12s}}
+</style>
+
+<div class="shell">
+<nav class="toc" aria-label="目次">
+  <div class="eyebrow">Contents</div>
+  <ol>
+    <li><a href="#s1">1. これは何か</a></li>
+    <li><a href="#s2">2. ディレクトリの全体像</a></li>
+    <li><a href="#s3">3. コードの層</a></li>
+    <li><a href="#s4">4. 差し替えられる部品</a></li>
+    <li><a href="#s5">5. 実験と成果物</a></li>
+    <li><a href="#s6">6. これまでに分かったこと</a></li>
+    <li><a href="#s7">7. 品質を守る仕組み</a></li>
+    <li><a href="#s8">8. 記事側との対応</a></li>
+    <li><a href="#s9">9. いまの状態と残件</a></li>
+  </ol>
+  <div class="meta">
+    <b>RC_basic_lab</b><br>
+    HEAD <b>7e06d32</b><br>
+    origin/main 058e1dc<br>
+    2026-09-03 時点
+  </div>
+</nav>
+
+<main>
+<header class="masthead">
+  <div class="kicker">Repository overview</div>
+  <h1>RC_basic_lab の全体像</h1>
+  <p class="lede">リザバーコンピューティングの連載記事（RC 基礎編 01〜05）を支える実験基盤と、そこから育った汎用の測定装置。何がどこにあり、何が測れて、何が分かっていて、何が残っているかを 1 枚にまとめたもの。</p>
+</header>
+
+<section id="s1">
+  <h2>1. これは何か</h2>
+  <p class="sub">目的と、いまの性格</p>
+  <p>もともとは Zenn の連載「RC 基礎編」5 本のための実験リポジトリで、記事に載る図と CSV を再現可能な形で生成することが役目でした。成果物は <code>results/</code> の CSV と PNG で、これが読者に届く唯一のものです。</p>
+  <p>8 月末からの拡張で性格が 1 段変わっています。リザバー・課題・トポロジ・診断がそれぞれ差し替え可能な部品になり、<strong>「X が効く」という主張の隣に対照を置く装置</strong>として汎用側（core）と連載側（series）が境界つきで分かれました。切り出し手順はテストが毎回実際に実行して検査しています。</p>
+  <div class="stats">
+    <div class="stat"><div class="n">143</div><div class="l">src モジュール / 36,516 行</div></div>
+    <div class="stat"><div class="n">107</div><div class="l">テストファイル / 37,219 行</div></div>
+    <div class="stat"><div class="n">1,911</div><div class="l">passed（直近の全件実行）</div></div>
+    <div class="stat"><div class="n">147</div><div class="l">設計判断 D-01〜D-149</div></div>
+    <div class="stat"><div class="n">30 / 22</div><div class="l">成果物 CSV / PNG</div></div>
+    <div class="stat"><div class="n">55</div><div class="l">docs の Markdown</div></div>
+  </div>
+  <figcaption>テストの 2 件の失敗は既知のプラットフォーム固定（macOS で緑、Linux/OpenBLAS で BLAS 差）。</figcaption>
+</section>
+
+<section id="s2">
+  <h2>2. ディレクトリの全体像</h2>
+  <p class="sub">トップレベルの役割分担</p>
+<div class="tree">RC_basic_lab/
+├── main.py                 <span class="c">全実験の入口。CATALOG を読むだけ</span>
+├── Makefile                <span class="c">make ci / figures-% / variant 用ターゲット。help は CATALOG から生成</span>
+├── experiments/0N_*/       <span class="c">config.yaml と presets/ だけ。run スクリプトは廃止（D-125）</span>
+├── src/rc_basics_lab/      <span class="c">本体。§3 参照</span>
+├── results/                <span class="c">成果物。指紋を tests/artifact_manifest.csv に固定</span>
+│   ├── (01 は直下)  02_esp_and_dynamics/  03_capacity/
+│   └── 04_chaotic_freerun/  05_anomaly_detection/
+├── tests/                  <span class="c">単体テスト + 規律のガード（§7）+ golden/</span>
+├── docs/
+│   ├── guide/              <span class="c">汎用側の手引き 11 本（足す／切り出す／対照の置き方）</span>
+│   ├── series/             <span class="c">連載固有: 要件・構成案・図の設計方針・サーベイ</span>
+│   ├── plans/              <span class="c">指示書とレビュー記録 15 本</span>
+│   ├── adr/ process/       <span class="c">ADR 3 本、運用の振り返り 9 本</span>
+│   └── design.md           <span class="c">実測値の表（テストが機械照合。動かせない）</span>
+├── .claude/
+│   ├── decisions/          <span class="c">D-121 以降は 1 件 1 ファイル（union マージ事故の対策 D-121）</span>
+│   └── decisions.yaml      <span class="c">D-01〜D-120 のアーカイブ</span>
+├── data/                   <span class="c">05 の外部データ（MGAB）。SHA256 照合つき、リポジトリには含めない</span>
+├── scripts/                <span class="c">module_map.py / count_panels.py</span>
+└── scratch/                <span class="c">手元で条件を振ったときの出力先</span></div>
+  <p><code>docs/モジュール地図.md</code> が直下にも残っていますが、正本は <code>docs/guide/モジュール地図.md</code>（生成物、134 モジュール）です。直下のものは 123 モジュール時点の古いコピーです。</p>
+</section>
+
+<section id="s3">
+  <h2>3. コードの層</h2>
+  <p class="sub">依存は一方向。実際の import から起こした図</p>
+  <pre class="mermaid">
+graph LR
+  core[core]
+  config[config]
+  tasks[tasks]
+  datasets[datasets]
+  reservoir[reservoir]
+  readout[readout]
+  diagnostics[diagnostics]
+  experiment[experiment]
+  plotting[plotting]
+  config --> tasks
+  config --> reservoir
+  config --> diagnostics
+  datasets --> tasks
+  diagnostics --> readout
+  experiment --> config
+  experiment --> tasks
+  experiment --> datasets
+  experiment --> reservoir
+  experiment --> readout
+  experiment --> diagnostics
+  experiment -.-> plotting
+  plotting --> experiment
+  </pre>
+  <figcaption>core（types / seeds / metrics / split / cli / overrides）はすべての層から参照されるため省略。破線は関数内 import（experiment は plotting を module-level で読まない、D-53）。</figcaption>
+
+  <div class="tbl"><table>
+    <tr><th>層</th><th class="num">本数</th><th class="num">行数</th><th>役割</th><th>誰を知らないか</th></tr>
+    <tr><td><code>tasks/</code></td><td class="num">10</td><td class="num">1,732</td><td>入力 u と目標 y を作る純関数。判別子つき union + <code>build_task</code></td><td>手法も reservoir も I/O も</td></tr>
+    <tr><td><code>reservoir/</code></td><td class="num">9</td><td class="num">2,133</td><td>状態系列 X を作る。<code>Reservoir</code> Protocol（5 面）+ <code>build_reservoir</code>。トポロジは独立の軸</td><td>diagnostics</td></tr>
+    <tr><td><code>readout/</code></td><td class="num">5</td><td class="num">958</td><td>特徴設計 <code>FeatureSpec</code> とリッジ回帰、時系列 CV</td><td>—</td></tr>
+    <tr><td><code>diagnostics/</code></td><td class="num">11</td><td class="num">3,653</td><td>X を取る診断族と W を取る診断族。全診断が同じ署名</td><td><strong>reservoir を一切 import しない</strong>（外部素子の状態にもそのまま当たる）</td></tr>
+    <tr><td><code>datasets/</code></td><td class="num">7</td><td class="num">1,283</td><td>外部データの取得・キャッシュ・SHA256。<strong>I/O を持つ唯一の場所</strong></td><td>—</td></tr>
+    <tr><td><code>config/</code></td><td class="num">10</td><td class="num">2,092</td><td>実験ごとの設定 dataclass。未知キーは即エラー、<code>--set</code> / <code>--preset</code></td><td>—</td></tr>
+    <tr><td><code>experiment/</code></td><td class="num">51</td><td class="num">15,474</td><td>合成層。実験の骨格・掃引・CSV 書き出し。<code>catalog.py</code> が全実験の宣言</td><td>plotting（関数内のみ）</td></tr>
+    <tr><td><code>plotting/</code></td><td class="num">30</td><td class="num">7,854</td><td>作図。色・footnote・パネル記号は <code>style.py</code> に集約</td><td>—</td></tr>
+  </table></div>
+  <p>汎用側（core）は <code>tasks / reservoir / readout / diagnostics / datasets</code> と root の 8 モジュール、それに <code>experiment/</code> の 3 本で、連載側を 1 行も import していません（<code>test_core_series_boundary.py</code> が実測）。</p>
+</section>
+
+<section id="s4">
+  <h2>4. 差し替えられる部品</h2>
+  <p class="sub">YAML の <code>kind</code> で選べるもの。足すときは union に 1 行 + <code>case</code> を 1 つ</p>
+
+  <h3>リザバー <span class="pill">reservoir/</span></h3>
+  <dl class="kv">
+    <dt>esn</dt><dd>Echo State Network（Jaeger 2001）。既定。ランダム疎結合 + 漏れ積分 tanh</dd>
+    <dt>deep_esn</dt><dd>層を積む（Gallicchio &amp; Micheli 2017）。層間の辺も <code>adjacency()</code> に含める</dd>
+    <dt>ring</dt><dd>単一閉路 + 大きさ一定の入力重み（SCR、Rodan &amp; Tino 2011）。乱数をほとんど使わない</dd>
+  </dl>
+  <p>面は <code>config / n_units / n_inputs / step / run</code> の 5 つだけ。結合行列を持つモデルだけが追加で <code>GraphReservoir</code>（<code>adjacency()</code>）を満たします。</p>
+
+  <h3>トポロジ <span class="pill">reservoir/topology.py</span></h3>
+  <p>結合の有無をモデル本体から切り離した軸。更新式を固定して形だけを振れます。</p>
+  <dl class="kv">
+    <dt>erdos_renyi</dt><dd>一様ランダム。既定（density 0.1）。自己ループあり、非対称</dd>
+    <dt>barabasi_albert</dt><dd>優先的選択によるスケールフリー。<strong>対称・自己ループなし</strong></dd>
+    <dt>watts_strogatz</dt><dd>スモールワールド（k, β）。対称・自己ループなし</dd>
+    <dt>ring</dt><dd>一方向の閉路。乱数を消費しない</dd>
+    <dt>degree_preserving</dt><dd>土台のグラフの次数列を保って辺を張り替える帰無モデル（D-135）</dd>
+    <dt>control</dt><dd>対称化だけ／自己ループ除去だけ、という交絡を 1 つだけ動かす対照（D-138）</dd>
+  </dl>
+  <p>重みは<strong>値を先に引いてからマスクで切り出す</strong>順（D-134）なので、同じシードで ER と BA を作ると重みが一致し、対応のある比較が組めます。</p>
+
+  <h3>課題 <span class="pill">tasks/</span></h3>
+  <dl class="kv">
+    <dt>mackey_glass</dt><dd>τ=17 のカオス時系列、1 ステップ先予測</dd>
+    <dt>delay_parity</dt><dd>y[t] = u[t−1]·u[t−2]。線形手法が解析的に解けない対照（D-07）</dd>
+    <dt>narma10</dt><dd>実験 3-C。<code>experiment/narma.py</code> 経由でレジストリの外（D-123 に記載）</dd>
+    <dt>lorenz / anomaly</dt><dd>04 と 05 の課題。同じくレジストリの外</dd>
+  </dl>
+
+  <h3>読み出しの手法 <span class="pill">readout/design.py</span></h3>
+  <p>線形（入力そのまま）／遅延線（過去 k タップ、リッジ）／ESN 状態。分岐は <code>_layout_of</code> の 1 箇所。3-C だけ正則化なしの遅延線（OLS）を対照に持ちます。alpha 格子と分割は全手法で共通（D-04 / D-05）、構造ハイパーパラメータは検証分割で選びません（D-08）。</p>
+
+  <h3>診断 <span class="pill">diagnostics/</span></h3>
+  <div class="tbl"><table>
+    <tr><th>族</th><th>入力</th><th>診断</th><th>使う実験</th></tr>
+    <tr><td>X 族（D-01）</td><td>状態系列 X</td><td><code>state_pca</code> <code>unit_activity</code> <code>esp_convergence</code> <code>conditional_lyapunov</code> <code>autocorrelation_time</code> <code>memory_capacity</code> <code>ipc</code> <code>max_lyapunov</code></td><td>01 / 02 / 03 / 04</td></tr>
+    <tr><td>W 族（D-122）</td><td>結合行列 W</td><td><code>degree_distribution</code> <code>spectral_profile</code> <code>effective_gain</code> <code>small_world</code></td><td>03（3-A / 3-B / 3-B' の全条件）</td></tr>
+  </table></div>
+  <p>返り値の <code>scalars</code> は主表の列を増やさず、<code>results/&lt;exp&gt;/diagnostics.csv</code> へ長形式で出ます（D-118）。診断を 1 本足しても既存 CSV の指紋が動きません。</p>
+</section>
+
+<section id="s5">
+  <h2>5. 実験と成果物</h2>
+  <p class="sub"><code>experiment/catalog.py</code> の宣言と、いまの成果物</p>
+  <div class="tbl"><table>
+    <tr><th>#</th><th>実験</th><th>variant</th><th class="num">CSV / PNG</th><th class="num">予算 [s]</th><th class="num">実測 [s]</th></tr>
+    <tr><td>01</td><td><code>01_what_is_rc</code> 3 手法 × 2 課題の比較、状態空間 PCA</td><td>main</td><td class="num">4 / 3</td><td class="num">120</td><td class="num">1</td></tr>
+    <tr><td>02</td><td><code>02_esp_and_dynamics</code> ESP 判定・λ・時定数・washout</td><td>main, threshold, washout-unpadded</td><td class="num">5 / 4</td><td class="num">600</td><td class="num">129</td></tr>
+    <tr><td>03</td><td><code>03_capacity</code> MC / IPC / NARMA10 / 対照の梯子 / 動作点</td><td>main, length, symmetry, ladder, ladder-threshold, operating</td><td class="num">10 / 5</td><td class="num">2,400</td><td class="num">1,789</td></tr>
+    <tr><td>04</td><td><code>04_chaotic_freerun</code> 自走・3 態マップ・容量</td><td>main</td><td class="num">6 / 5</td><td class="num">900</td><td class="num">324</td></tr>
+    <tr><td>05</td><td><code>05_anomaly_detection</code> MGAB の 6 系統比較</td><td>main</td><td class="num">5 / 5</td><td class="num">900</td><td class="num">348</td></tr>
+  </table></div>
+  <p>全 5 実験の一斉再生成は <strong>約 43 分</strong>（03 が 30 分）。<code>make figures-0N</code> はパターンルール 1 本で、何をどこへ書くかは Makefile ではなく CATALOG が持ちます。補助実験は <code>--variant</code> で選び、真偽フラグは使いません（D-125）。</p>
+  <h3>03 の成果物が増えた分</h3>
+  <dl class="kv">
+    <dt>capacity_topology.csv</dt><dd>3-T 対照の梯子。14 掃引点 × 5 水準 × 24 対 = 1,680 行</dd>
+    <dt>capacity_topology_threshold.csv</dt><dd>3-Th。しきい値 10 通りで梯子の結論が動かないことの実測（400 行）</dd>
+    <dt>narma10_operating.csv</dt><dd>3-C''。N × リーク率の 12 動作点で NARMA10 の勝敗（240 行）</dd>
+  </dl>
+  <p>この 3 本の図は独立した PNG にせず、<code>fig_ipc_conservation.png</code>（3-T → パネル b, c）と <code>fig_narma10.png</code>（3-C'' → パネル c）に畳んであります（D-146）。</p>
+</section>
+
+<section id="s6">
+  <h2>6. これまでに分かったこと</h2>
+  <p class="sub">数値は <code>results/</code> の実測。記事 02〜05 の既存の数値とは全一致を確認済み</p>
+
+  <h3>01 リザバーは何を足しているか</h3>
+  <p>Mackey-Glass 1 ステップ先では遅延線と ESN が同じ桁（NRMSE 0.0005 / 0.0007）。遅延パリティは<strong>ESN だけが解ける</strong>（0.089 対 1.00）。目標が遅延線の線形空間に厳密に直交するため。</p>
+
+  <h3>02 ESP</h3>
+  <p>無入力なら ρ &lt; 1 が必要条件だが、<strong>入力を強くすると境界が動く</strong>（σ_u = 1.0 で境界 ρ = 1.7、2.0 で格子内に境界なし）。washout は訓練長を補償すると効かない（6 組すべて変動比 1.008 以内）。λ &lt; 0 なのに非収束が 27/332（8.1%）— 原因は多安定性で、λ は ESP の代わりにならない。</p>
+
+  <h3>03 容量と NARMA10</h3>
+  <ul>
+    <li>MC は ρ = 1 付近で最大だが上限 N の 2 割弱（18.9%）。残りは非線形に回っている</li>
+    <li>ρ を上げると非線形容量が 22.2 → 4.6 と 5 分の 1 に落ちる。上げすぎると線形も減る</li>
+    <li>NARMA10（N=50, leak 0.3）は遅延線 0.1538 が ESN 0.2673 を上回る。ESN は容量の 2/3 を課題が要求していない非線形に使っていた</li>
+    <li><strong>3-C''</strong>: 動作点を動かすと勝敗が変わる。N=200/leak 1.0 で 0.0514、N=100/leak 1.0 で 0.1037 —— どちらも遅延線を下回る</li>
+    <li><strong>3-T</strong>: 密度をそろえると <strong>BA は ER を上回らない</strong>（対応のある差 −1.92、正の対 2/24、N とともに差が開く）。<strong>BA − 次数保存ランダム化 = +0.13</strong>（15/24）で、BA の効果は次数列だけで説明が付く。しきい値 10 通りで差は −2.52〜−2.55</li>
+  </ul>
+
+  <h3>04 カオスの自走</h3>
+  <p>1 ステップ先では差が出ないのに、自走では ESN 4.73 Lyapunov 時間 対 遅延線 0.25（19 倍）。遅延線の自走は 10 本とも周期軌道に落ちる。ESN の自走は位相がずれてもアトラクタの形と統計を保つ（シャッフル代替より 10/10 近い、p = 0.00098）。状態ノイズを 4 桁振っても再現できる領域はほとんど動かない。</p>
+
+  <h3>05 異常検知（MGAB）</h3>
+  <p>6 系統のうち一様乱数対照を超えたのは <strong>ESN 残差だけ</strong>（AUPRC 0.160 対 0.057、15 対中 15 対）。プロトコルを 27 通り変えても ESN の首位は動かず、順位が入れ替わるのは対照と区別できない集団の中だけ。</p>
+</section>
+
+<section id="s7">
+  <h2>7. 品質を守る仕組み</h2>
+  <p class="sub">散文ではなく機械で守っているもの</p>
+  <dl class="kv">
+    <dt>成果物のバイト不変</dt><dd>リファクタリングの唯一の合否判定（D-74）。<code>test_artifact_invariance</code> がバイト指紋と内容指紋（実行時間を除く）を別々に照合</dd>
+    <dt>golden</dt><dd>縮小設定で再生成した成果物の不変を数秒で検査。プラットフォーム固定（macOS）</dd>
+    <dt>決定の記録</dt><dd><code>decisions.yaml</code> の各件が <code>guard_test</code> を持ち、変異注入で赤くなることを確認してから記録。ID の一意性・キー重複・参照解決を検査</dd>
+    <dt>行数のラチェット</dt><dd>1 モジュール 600 行。超過中の 7 本は現在値で凍結（増えたら落ちる、減らすのは自由）</dd>
+    <dt>層の境界</dt><dd>import を実測して逆流 0 件を検査。diagnostics は reservoir を知らない</dd>
+    <dt>core / series</dt><dd>汎用側だけを一時ディレクトリへ複製し、連載側なしで実験を 1 本回す（<code>test_core_extraction</code>）</dd>
+    <dt>図の規約</dt><dd>アスペクト比 ≤ 2.3、凡例は軸内、参照線に出典、footnote に条件と commit（FIG-1〜16）</dd>
+    <dt>診断の署名</dt><dd>pkgutil で全診断を列挙し、X 族と W 族が交わらないこと・追加引数の境界を検査</dd>
+    <dt>時間予算</dt><dd><code>test_wall_time_budgets</code> が各実験の実測を <code>budget_s</code> と照合</dd>
+  </dl>
+  <p><code>make ci</code>（lock-check + ruff + mypy strict + pytest）が Stop hook と GitHub Actions の両方から呼ばれ、ローカルと CI の判定を 1 本にしています。</p>
+</section>
+
+<section id="s8">
+  <h2>8. 記事側との対応</h2>
+  <p class="sub"><code>writing_article/</code>（Obsidian vault 内、Zenn へ自動デプロイ）</p>
+  <div class="tbl"><table>
+    <tr><th>記事</th><th>状態</th><th>リポジトリとの対応</th></tr>
+    <tr><td><code>rc-basics-01-what-is-rc</code></td><td><span class="pill acc">完成形</span></td><td>成果物は不変。以後手を入れない方針</td></tr>
+    <tr><td><code>rc-basics-02-esp</code></td><td><span class="pill">素案・数値一致</span></td><td>TODO 2 件（他論文の訓練長補償、Gallicchio の ESP index との対応）</td></tr>
+    <tr><td><code>rc-basics-03-capacity</code></td><td><span class="pill warn">要更新</span></td><td>3-T / 3-C'' が未反映。図 2 枚（conservation / narma10）が旧版で、キャプションのパネル記号がずれている。冒頭の「動作点は測っていない」が今は偽</td></tr>
+    <tr><td><code>rc-basics-04-chaotic-freerun</code></td><td><span class="pill">素案・数値一致</span></td><td>乱数バグの経緯をどこまで書くかの判断だけ</td></tr>
+    <tr><td><code>rc-basics-05-anomaly-detection</code></td><td><span class="pill warn">要更新（小）</span></td><td>§7 総括の NARMA10 行に動作点の但し書き。point-adjust の件は判断待ち</td></tr>
+  </table></div>
+  <p>数値はリポジトリの実測値と完全一致させる、測っていないことは書かない、図から数値を読み取らない、が記事側の規律です。<code>writing_article</code> の git は 8 月中旬から commit されておらず、記事 5 本と図 22 枚は作業ツリーだけにあります。</p>
+</section>
+
+<section id="s9">
+  <h2>9. いまの状態と残件</h2>
+  <p class="sub">2026-09-03 の棚卸し（<code>docs/plans/問題点と課題の棚卸し_2026-09-03.md</code>）以降</p>
+  <p>棚卸しの C-1〜C-4 / D-1 / D-2 / E-1〜E-3 / F は <code>dcf3159</code> と <code>7e06d32</code> で閉じています。凡例の重なり（3 サイクル続いた）は凡例を上端固定にして解消、D-136 は記録され、予算は 2,400 秒に宣言し直してテストで守られるようになりました。作業ツリーは clean、origin/main は PR #45 まで。</p>
+  <div class="note warn">
+    <p><strong>残っているのは記事側です。</strong> 3-T（密度をそろえると BA は ER を上回らない）と 3-C''（動作点で勝敗が変わる）は連載でいちばん書く価値のある結果ですが、記事 03 にはまだ 1 行もありません。図 2 枚の差し替えとキャプションの書き直し、05 §7 の但し書きが、記事を書き進める前提になります。</p>
+  </div>
+  <h3>手引き（<code>docs/guide/</code>）</h3>
+  <p>モジュール地図 ／ リザバーを足す ／ 課題を足す ／ 診断を足す ／ 実験を足す ／ 条件を変えて試す ／ 対照の置き方 ／ 交差検証 ／ 型と名前の対応表 ／ 切り出す。どれも「実測で確かめた手数」を書く流儀で、手順書が嘘になるとテストが赤くなる形になっています。</p>
+</section>
+</main>
+</div>

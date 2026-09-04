@@ -24,7 +24,8 @@ ESN 0.3935 / 遅延線 0.1877 に対し一様乱数対照 0.0811 (異常率 0.07
 `.claude/decisions.yaml` **64 件** (D-54〜D-68) / `mypy` strict・`ruff` green /
 `results/01..04/` バイト不変 / 実行時依存は4件のまま (scikit-learn は dev のみ)。
 
-**05b に着手する前に `docs/process/next-pr-candidates-05a.md` §1 を読むこと。**
+**05b は実施済み。** 着手前の申し送り (05a §1) は消化されたので畳んである
+(`docs/plans/README.md` の索引)。
 そこに挙げた3点 (`mackey_glass` の死葉 / `SeriesSource` Protocol / `datasets` の循環 import) は
 **T3 の planner への入力**であり、決めずに着手すると実装後に構造的な作り直しが要る。
 特に `mackey_glass.length` / `horizon` の死葉は、

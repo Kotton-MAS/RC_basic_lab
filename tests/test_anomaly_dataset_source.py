@@ -8,7 +8,7 @@
 (D-117 の rationale)。**採ったほうを設定側にも固定する**のがこの検査である。
 
 `src/rc_basics_lab/datasets/ucr.py` は残す —— 取得と読み取りの経路まで消すと、
-「なぜ UCR を回さなかったのか」の判断材料 (`docs/plans/checkpoint-05b-t3.md` の
+「なぜ UCR を回さなかったのか」の判断材料 (`docs/process/checkpoint-05b-t3.md` の
 8系列の実測) を再現できなくなる。**在ることと、本番で回すことは別である。**
 """
 

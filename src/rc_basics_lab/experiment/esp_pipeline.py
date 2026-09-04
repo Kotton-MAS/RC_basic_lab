@@ -3,7 +3,7 @@
 ``esp_diagnostics.csv`` / ``washout_sensitivity.csv`` / ``fig_esp_decay.png`` /
 ``fig_leak_timescale.png`` / ``fig_esp_map.png`` /
 ``fig_washout_sensitivity.png`` / ``meta.json`` をここで一括生成する。CLI
-(``main.py --experiment 02`` と ``experiments/02_esp_and_dynamics/run.py``) は
+(``main.py --experiment 02``) は
 この関数を呼ぶだけの薄い層にして、「どのコマンドから走らせても同じ成果物が
 出る」を構造で保証する (01 の ``pipeline.py`` と同じ規律)。
 
